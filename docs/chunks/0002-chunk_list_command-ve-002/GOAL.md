@@ -9,23 +9,23 @@ code_paths:
 code_references:
   - file: src/chunks.py
     ranges:
-      - lines: 40-55
+      - lines: 53-68
         implements: "list_chunks() method - lists chunks sorted by numeric prefix descending"
-      - lines: 57-66
+      - lines: 70-79
         implements: "get_latest_chunk() method - returns highest-numbered chunk"
   - file: src/ve.py
     ranges:
-      - lines: 121-139
+      - lines: 122-140
         implements: "list CLI command - ve chunk list with --latest and --project-dir options"
   - file: tests/test_chunks.py
     ranges:
       - lines: 35-71
         implements: "TestListChunks - unit tests for list_chunks() method"
-      - lines: 74-94
+      - lines: 74-95
         implements: "TestGetLatestChunk - unit tests for get_latest_chunk() method"
   - file: tests/test_chunk_list.py
     ranges:
-      - lines: 6-92
+      - lines: 6-93
         implements: "TestListCommand - CLI integration tests for ve chunk list"
 ---
 

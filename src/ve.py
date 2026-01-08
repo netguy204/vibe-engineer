@@ -6,6 +6,7 @@
 #   "jinja2",
 #   "click",
 #   "pyyaml",
+#   "pydantic",
 # ]
 # ///
 
@@ -153,6 +154,22 @@ def overlap(chunk_id, project_dir):
 
     for name in affected:
         click.echo(f"docs/chunks/{name}")
+
+
+@chunk.command()
+@click.argument("chunk_id", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def complete(chunk_id, project_dir):
+    """Validate chunk is ready for completion."""
+    chunks = Chunks(project_dir)
+    result = chunks.validate_chunk_complete(chunk_id)
+
+    if not result.success:
+        for error in result.errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Chunk {result.chunk_name} is ready for completion")
 
 
 if __name__ == "__main__":

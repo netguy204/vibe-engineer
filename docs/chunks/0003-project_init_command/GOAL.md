@@ -23,7 +23,7 @@ code_references:
         implements: "init() - orchestrates all initialization, aggregates results"
   - file: src/ve.py
     ranges:
-      - lines: 60-75
+      - lines: 61-76
         implements: "CLI init command - invokes Project.init() and displays results"
   - file: src/templates/CLAUDE.md
     ranges:

@@ -1,12 +1,25 @@
 """Chunks module - business logic for chunk management."""
 
+from dataclasses import dataclass, field
 import pathlib
 import re
 
 import jinja2
+from pydantic import ValidationError
 import yaml
 
+from models import CodeReference
+
 template_dir = pathlib.Path(__file__).parent / "templates"
+
+
+@dataclass
+class ValidationResult:
+    """Result of chunk completion validation."""
+
+    success: bool
+    errors: list[str] = field(default_factory=list)
+    chunk_name: str | None = None
 
 
 def render_template(template_name, **kwargs):
@@ -138,35 +151,35 @@ class Chunks:
     def parse_code_references(self, refs: list) -> dict[str, tuple[int, int]]:
         """Parse code_references from frontmatter into file -> (earliest, latest) mapping.
 
-        Expected format: [{file: "src/main.py", ranges: [{lines: "10-20", ...}]}]
+        Uses Pydantic models for validation. Raises ValidationError if malformed.
+
+        Args:
+            refs: List of code reference dicts from frontmatter.
 
         Returns:
             Dict mapping file paths to (earliest_line, latest_line) tuples.
+
+        Raises:
+            pydantic.ValidationError: If any reference is malformed.
         """
         result: dict[str, tuple[int, int]] = {}
 
         for ref in refs:
-            if not isinstance(ref, dict) or "file" not in ref:
-                continue
+            validated = CodeReference.model_validate(ref)
 
-            file_path = ref["file"]
-            ranges = ref.get("ranges", [])
-            for r in ranges:
-                lines = r.get("lines") if isinstance(r, dict) else None
-                if lines:
-                    # Parse "10-20" or "10" format
-                    lines_str = str(lines)
-                    if "-" in lines_str:
-                        parts = lines_str.split("-")
-                        start, end = int(parts[0]), int(parts[1])
-                    else:
-                        start = end = int(lines_str)
+            for r in validated.ranges:
+                # Parse "10-20" or "10" format
+                if "-" in r.lines:
+                    parts = r.lines.split("-")
+                    start, end = int(parts[0]), int(parts[1])
+                else:
+                    start = end = int(r.lines)
 
-                    if file_path in result:
-                        curr_earliest, curr_latest = result[file_path]
-                        result[file_path] = (min(curr_earliest, start), max(curr_latest, end))
-                    else:
-                        result[file_path] = (start, end)
+                if validated.file in result:
+                    curr_earliest, curr_latest = result[validated.file]
+                    result[validated.file] = (min(curr_earliest, start), max(curr_latest, end))
+                else:
+                    result[validated.file] = (start, end)
 
         return result
 
@@ -240,3 +253,77 @@ class Chunks:
                         break
 
         return sorted(affected)
+
+    def validate_chunk_complete(self, chunk_id: str | None = None) -> ValidationResult:
+        """Validate that a chunk is ready for completion.
+
+        Checks:
+        1. Chunk exists
+        2. Status is IMPLEMENTING
+        3. code_references conforms to schema and is non-empty
+
+        Args:
+            chunk_id: The chunk ID to validate. Defaults to latest chunk.
+
+        Returns:
+            ValidationResult with success status and any errors.
+        """
+        errors: list[str] = []
+
+        # Resolve chunk_id
+        if chunk_id is None:
+            chunk_id = self.get_latest_chunk()
+            if chunk_id is None:
+                return ValidationResult(
+                    success=False,
+                    errors=["No chunks found"],
+                )
+
+        chunk_name = self.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            return ValidationResult(
+                success=False,
+                errors=[f"Chunk '{chunk_id}' not found"],
+            )
+
+        # Parse frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            return ValidationResult(
+                success=False,
+                errors=[f"Could not parse frontmatter for chunk '{chunk_id}'"],
+                chunk_name=chunk_name,
+            )
+
+        # Check status
+        status = frontmatter.get("status")
+        valid_statuses = ("IMPLEMENTING", "ACTIVE")
+        if status not in valid_statuses:
+            errors.append(
+                f"Status is '{status}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
+            )
+
+        # Validate code_references
+        code_refs = frontmatter.get("code_references", [])
+
+        if not code_refs:
+            errors.append(
+                "code_references is empty; at least one reference is required"
+            )
+        else:
+            # Validate each reference against Pydantic model
+            for i, ref in enumerate(code_refs):
+                try:
+                    CodeReference.model_validate(ref)
+                except ValidationError as e:
+                    for err in e.errors():
+                        loc = ".".join(str(x) for x in err["loc"])
+                        field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
+                        msg = err["msg"]
+                        errors.append(f"{field_path}: {msg}")
+
+        return ValidationResult(
+            success=len(errors) == 0,
+            errors=errors,
+            chunk_name=chunk_name,
+        )

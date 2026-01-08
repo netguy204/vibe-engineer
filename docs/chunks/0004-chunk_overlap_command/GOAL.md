@@ -11,21 +11,21 @@ code_references:
     ranges:
       - lines: 8
         implements: "pyyaml dependency for YAML frontmatter parsing"
-      - lines: 141-155
+      - lines: 142-156
         implements: "overlap CLI command - accepts chunk_id, --project-dir, outputs affected chunk paths"
   - file: src/chunks.py
     ranges:
-      - lines: 7
+      - lines: 9
         implements: "yaml import for frontmatter parsing"
-      - lines: 88-102
+      - lines: 101-115
         implements: "resolve_chunk_id() - resolves 4-digit or full name to directory name"
-      - lines: 104-113
+      - lines: 117-126
         implements: "get_chunk_goal_path() - resolves chunk ID to GOAL.md path"
-      - lines: 115-136
+      - lines: 128-149
         implements: "parse_chunk_frontmatter() - extracts and parses YAML frontmatter from GOAL.md"
-      - lines: 138-171
+      - lines: 151-184
         implements: "parse_code_references() - parses nested code_references format into file->line mappings"
-      - lines: 173-242
+      - lines: 186-255
         implements: "find_overlapping_chunks() - finds ACTIVE chunks with lower IDs having overlapping references"
   - file: tests/test_chunk_overlap.py
     ranges:

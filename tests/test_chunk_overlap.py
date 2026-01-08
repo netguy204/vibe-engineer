@@ -12,7 +12,7 @@ def write_goal_frontmatter(chunk_path: pathlib.Path, status: str, code_reference
         chunk_path: Path to chunk directory
         status: Chunk status (ACTIVE, COMPLETED, etc.)
         code_references: List of dicts with 'file' and 'ranges' keys, e.g.:
-            [{"file": "src/main.py", "ranges": [{"lines": "10-20"}]}]
+            [{"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "feature"}]}]
     """
     goal_path = chunk_path / "GOAL.md"
 
@@ -22,9 +22,9 @@ def write_goal_frontmatter(chunk_path: pathlib.Path, status: str, code_reference
             refs_lines.append(f"  - file: {ref['file']}")
             refs_lines.append("    ranges:")
             for r in ref.get("ranges", []):
-                refs_lines.append(f"      - lines: {r['lines']}")
-                if "implements" in r:
-                    refs_lines.append(f"        implements: \"{r['implements']}\"")
+                implements = r.get("implements", "test implementation")
+                refs_lines.append(f"      - lines: \"{r['lines']}\"")
+                refs_lines.append(f"        implements: \"{implements}\"")
         refs_yaml = "\n".join(refs_lines)
     else:
         refs_yaml = "code_references: []"
