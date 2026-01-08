@@ -1,6 +1,7 @@
 """Chunks module - business logic for chunk management."""
 
 import pathlib
+import re
 
 import jinja2
 
@@ -34,6 +35,34 @@ class Chunks:
         else:
             suffix = f"-{short_name}"
         return [name for name in self.enumerate_chunks() if name.endswith(suffix)]
+
+    def list_chunks(self) -> list[tuple[int, str]]:
+        """List all chunks sorted by numeric prefix descending.
+
+        Returns:
+            List of (chunk_number, chunk_name) tuples, sorted by chunk_number
+            descending. Returns empty list if no chunks exist.
+        """
+        chunks = []
+        pattern = re.compile(r"^(\d{4})-")
+        for name in self.enumerate_chunks():
+            match = pattern.match(name)
+            if match:
+                chunk_number = int(match.group(1))
+                chunks.append((chunk_number, name))
+        chunks.sort(key=lambda x: x[0], reverse=True)
+        return chunks
+
+    def get_latest_chunk(self) -> str | None:
+        """Return the highest-numbered chunk directory name.
+
+        Returns:
+            The chunk directory name if chunks exist, None otherwise.
+        """
+        chunks = self.list_chunks()
+        if chunks:
+            return chunks[0][1]
+        return None
 
     def create_chunk(self, ticket_id: str | None, short_name: str):
         """Instantiate the chunk templates for the given ticket and short name."""

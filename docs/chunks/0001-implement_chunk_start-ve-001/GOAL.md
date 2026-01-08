@@ -13,20 +13,20 @@ code_references:
         implements: "validate_short_name() - rejects spaces, invalid chars, length >= 32"
       - lines: 38-49
         implements: "validate_ticket_id() - same character validation rules"
-      - lines: 70-105
+      - lines: 70-106
         implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag, success output"
   - file: src/chunks.py
     ranges:
-      - lines: 17-28
+      - lines: 18-29
         implements: "Chunks class init, enumerate_chunks, num_chunks property"
-      - lines: 30-36
+      - lines: 31-37
         implements: "find_duplicates() - detects existing chunks with same short_name+ticket_id"
-      - lines: 38-56
+      - lines: 67-85
         implements: "create_chunk() - directory creation with correct path format, template rendering"
   - file: tests/test_ve.py
     ranges:
-      - lines: 1-321
-        implements: "Comprehensive test suite - 23 tests covering all success criteria"
+      - lines: 1-298
+        implements: "Comprehensive test suite - 23 tests covering chunk start command success criteria"
 ---
 
 <!--

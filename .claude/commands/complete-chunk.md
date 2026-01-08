@@ -1,9 +1,17 @@
 Add code references to the chunk represented by $ARGUMENTS and move both the PLAN.md and the GOAL.md to the ACTIVE state.
 
-Start by identifying where in the code the goal is implemented. The code_paths
-field of the GOAL.md metadata and the PLAN.md file in the chunk directory can
-help guide your search and git diff may provide clues but may be more or less
-than the true scope of the code involved in the change. Take note of the file
-names and the line ranges for semantically meaningful (with respect to the
-GOAL.md) chunks of code and record these chunks in the code_references field in
-the GOAL.md metadata.
+1. Determine the currently active chunk by running `ve chunk list --latest`. We
+   will refer to the directory returned by this command below as <chunk
+   directory>
+
+2. Identifying where in the code the <chunk directory>/GOAL.md is implemented.
+   The code_paths field of this file's metadata and the <chunk
+   directory>/PLAN.md file in the chunk directory can help guide your search and
+   git diff may provide clues but may be more or less than the true scope of the
+   code involved in the change. Take note of the file names and the line ranges
+   for semantically meaningful (with respect to the GOAL.md) chunks of code and
+   record these chunks in the code_references field in the GOAL.md metadata.
+   When we mark a goal as historical, we are saying that there is so much
+   semantic drift between what the document set out to achieve and what the code
+   base does now, that the document is now only valuable as a historic reference
+   point. 

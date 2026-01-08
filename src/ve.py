@@ -105,5 +105,25 @@ def start(short_name, ticket_id, project_dir, yes):
     click.echo(f"Created {relative_path}")
 
 
+@chunk.command("list")
+@click.option("--latest", is_flag=True, help="Output only the most recent chunk")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_chunks(latest, project_dir):
+    """List all chunks."""
+    chunks = Chunks(project_dir)
+    chunk_list = chunks.list_chunks()
+
+    if not chunk_list:
+        click.echo("No chunks found", err=True)
+        raise SystemExit(1)
+
+    if latest:
+        latest_chunk = chunks.get_latest_chunk()
+        click.echo(f"docs/chunks/{latest_chunk}")
+    else:
+        for _, chunk_name in chunk_list:
+            click.echo(f"docs/chunks/{chunk_name}")
+
+
 if __name__ == "__main__":
     cli()
