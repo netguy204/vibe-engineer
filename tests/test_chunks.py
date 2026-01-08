@@ -92,3 +92,49 @@ class TestGetLatestChunk:
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.create_chunk("VE-003", "third")
         assert chunk_mgr.get_latest_chunk() == "0003-third-VE-003"
+
+
+class TestParseFrontmatterDependents:
+    """Tests for parsing dependents from chunk frontmatter."""
+
+    def test_parse_frontmatter_with_dependents(self, temp_project):
+        """Existing parse_chunk_frontmatter returns dependents field when present."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "feature")
+
+        # Write GOAL.md with dependents in frontmatter
+        goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
+        goal_path.write_text(
+            "---\n"
+            "status: active\n"
+            "dependents:\n"
+            "  - project: other-repo\n"
+            "    chunk: 0002-integration\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        assert "dependents" in frontmatter
+        assert len(frontmatter["dependents"]) == 1
+        assert frontmatter["dependents"][0]["project"] == "other-repo"
+        assert frontmatter["dependents"][0]["chunk"] == "0002-integration"
+
+    def test_parse_frontmatter_without_dependents(self, temp_project):
+        """Existing chunks without dependents continue to work."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "feature")
+
+        # Write GOAL.md without dependents
+        goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
+        goal_path.write_text(
+            "---\n"
+            "status: active\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        assert frontmatter is not None
+        assert "dependents" not in frontmatter
+        assert frontmatter.get("status") == "active"

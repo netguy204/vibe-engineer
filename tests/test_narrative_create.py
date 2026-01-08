@@ -31,7 +31,7 @@ class TestNarrativeShortNameValidation:
             ["narrative", "create", "my narrative", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "spaces" in result.output.lower()
+        assert "invalid characters" in result.output.lower()
 
     def test_rejects_invalid_characters(self, runner, temp_project):
         """short_name with invalid characters is rejected."""
@@ -71,9 +71,8 @@ class TestNarrativeShortNameValidation:
         assert result.exit_code != 0
         # Should mention multiple issues
         output_lower = result.output.lower()
-        assert "space" in output_lower
-        assert "character" in output_lower
-        assert "32" in result.output or "length" in output_lower
+        assert "invalid characters" in output_lower
+        assert "32" in result.output or "less than" in output_lower
 
 
 class TestNarrativeLowercaseNormalization:

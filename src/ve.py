@@ -1,44 +1,23 @@
 """Vibe Engineer CLI - view layer for chunk management."""
 
 import pathlib
-import re
 
 import click
 
 from chunks import Chunks
 from narratives import Narratives
 from project import Project
+from validation import validate_identifier
 
 
 def validate_short_name(short_name: str) -> list[str]:
     """Validate short_name and return list of error messages."""
-    errors = []
-
-    if " " in short_name:
-        errors.append("short_name cannot contain spaces")
-
-    if not re.match(r'^[a-zA-Z0-9_-]+$', short_name):
-        invalid_chars = re.sub(r'[a-zA-Z0-9_-]', '', short_name)
-        errors.append(f"short_name contains invalid characters: {invalid_chars!r}")
-
-    if len(short_name) >= 32:
-        errors.append(f"short_name must be less than 32 characters (got {len(short_name)})")
-
-    return errors
+    return validate_identifier(short_name, "short_name", max_length=31)
 
 
 def validate_ticket_id(ticket_id: str) -> list[str]:
     """Validate ticket_id and return list of error messages."""
-    errors = []
-
-    if " " in ticket_id:
-        errors.append("ticket_id cannot contain spaces")
-
-    if not re.match(r'^[a-zA-Z0-9_-]+$', ticket_id):
-        invalid_chars = re.sub(r'[a-zA-Z0-9_-]', '', ticket_id)
-        errors.append(f"ticket_id contains invalid characters: {invalid_chars!r}")
-
-    return errors
+    return validate_identifier(ticket_id, "ticket_id", max_length=None)
 
 
 @click.group()

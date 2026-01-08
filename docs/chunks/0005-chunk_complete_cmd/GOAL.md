@@ -10,7 +10,7 @@ code_paths:
 code_references:
   - file: src/models.py
     ranges:
-      - lines: "1-17"
+      - lines: "64-75"
         implements: "Pydantic Model Definition - CodeRange and CodeReference models"
   - file: src/chunks.py
     ranges:

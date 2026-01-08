@@ -4,9 +4,14 @@ ticket: {{ ticket_id }}
 parent_chunk: null
 code_paths: []
 code_references: []
+narrative: null
 ---
 
 <!--
+Do not delete this front matter description text until the chunk complete
+command is run. This describes schema information that needs to be adhered
+to throughout the process. 
+
 STATUS VALUES:
 - IMPLEMENTING: This chunk is in the process of being implemented. 
 - ACTIVE: This chunk accurately describes current or recently-merged work
@@ -33,6 +38,9 @@ CODE_REFERENCES:
           implements: "SegmentWriter struct and core write loop"
         - lines: 122-145
           implements: "fsync durability guarantees"
+
+NARRATIVE:
+- If this chunk was derived from a narrative document, reference the narrative directory name. 
 -->
 
 # Chunk Goal
