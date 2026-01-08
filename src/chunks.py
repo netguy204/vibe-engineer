@@ -8,9 +8,8 @@ import jinja2
 from pydantic import ValidationError
 import yaml
 
+from constants import template_dir
 from models import CodeReference
-
-template_dir = pathlib.Path(__file__).parent / "templates"
 
 
 @dataclass

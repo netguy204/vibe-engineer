@@ -1,7 +1,8 @@
 """Tests for the Project class."""
 
 from chunks import Chunks
-from project import Project, InitResult, template_dir
+from constants import template_dir
+from project import Project, InitResult
 
 
 class TestProjectClass:

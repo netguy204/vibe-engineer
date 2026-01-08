@@ -10,17 +10,17 @@ code_paths:
 code_references:
   - file: src/models.py
     ranges:
-      - lines: "1-18"
+      - lines: "1-17"
         implements: "Pydantic Model Definition - CodeRange and CodeReference models"
   - file: src/chunks.py
     ranges:
-      - lines: "16-23"
+      - lines: "15-22"
         implements: "ValidationResult dataclass for structured error reporting"
-      - lines: "257-329"
+      - lines: "256-328"
         implements: "validate_chunk_complete method - status and code_references validation"
   - file: src/ve.py
     ranges:
-      - lines: "148-162"
+      - lines: "148-161"
         implements: "CLI command interface - chunk complete command"
   - file: tests/test_chunk_complete.py
     ranges:

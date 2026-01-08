@@ -9,11 +9,11 @@ code_paths:
 code_references:
   - file: src/narratives.py
     ranges:
-      - lines: 1-65
+      - lines: 1-64
         implements: "Narratives class - business logic for narrative management including create_narrative()"
   - file: src/project.py
     ranges:
-      - lines: 77-88
+      - lines: 76-87
         implements: "_init_narratives() method - creates docs/narratives/ during ve init"
   - file: src/ve.py
     ranges:

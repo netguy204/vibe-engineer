@@ -1,6 +1,6 @@
 Update the code references in the goal file of a chunk. 
 
-The user has requested that the following chunk have its code references refreshed:
+The operator has requested that the following chunk have its code references refreshed:
 
 $ARGUMENTS
 
@@ -22,8 +22,8 @@ $ARGUMENTS
 
 4. If all of the referenced locations either are unchanged or can be updated
    unambiguously to a new block of code that is the same semantic concept, then
-   perform the update and respond to the user with a table summarizing the
+   perform the update and respond to the operator with a table summarizing the
    nature of your update. If any reference to a location is now obsolete because
    it semantically no longer exists or the most similar concept to map it to an
-   ambiguous match. Describe the ambiguity or the absence to the user and ask
+   ambiguous match. Describe the ambiguity or the absence to the operator and ask
    them if they want to move the goal to the historical status. 

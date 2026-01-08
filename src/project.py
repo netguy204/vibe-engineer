@@ -5,8 +5,7 @@ import shutil
 from dataclasses import dataclass, field
 
 from chunks import Chunks
-
-template_dir = pathlib.Path(__file__).parent / "templates"
+from constants import template_dir
 
 
 @dataclass

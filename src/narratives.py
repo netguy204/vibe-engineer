@@ -1,10 +1,8 @@
 """Narratives module - business logic for narrative management."""
 
-import pathlib
-
 import jinja2
 
-template_dir = pathlib.Path(__file__).parent / "templates"
+from constants import template_dir
 
 
 def render_template(template_name, **kwargs):

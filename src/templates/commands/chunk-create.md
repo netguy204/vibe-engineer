@@ -1,6 +1,6 @@
 Create a new chunk of work and refine its goal. 
 
-The user wants to define a piece of work to do the following:
+The operator wants to define a piece of work to do the following:
 
 $ARGUMENTS
 
@@ -14,7 +14,7 @@ completely in order:
    provide a terse handle for thinking about what the work represents.
    Substitute this shortname below for the <shortname> placeholder.
 
-2. And if the user has referenced a ticket number, extract it and supply it to
+2. And if the operator has referenced a ticket number, extract it and supply it to
    the command below where the placeholder <ticket number> is referenced. If no
    ticket number is referenced, pass no argument to the command below in the
    <ticket number> placeholder.

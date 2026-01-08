@@ -28,5 +28,5 @@ Update code references in the current chunk and move both the PLAN.md and the GO
 5. In parallel sub-agents run /chunk-resolve-references for each of the returned
    directories. 
 
-6. Report to the user on updates made to previous chunk metadata or chunks that
+6. Report to the operator on updates made to previous chunk metadata or chunks that
    need to be investigated for continuing applicability.

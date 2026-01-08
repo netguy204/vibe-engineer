@@ -9,17 +9,17 @@ code_paths:
 code_references:
   - file: src/project.py
     ranges:
-      - lines: 12-18
+      - lines: 11-16
         implements: "InitResult dataclass - tracks created/skipped/warnings for idempotent operations"
-      - lines: 20-31
+      - lines: 19-29
         implements: "Project class with lazy Chunks property"
-      - lines: 32-48
+      - lines: 31-47
         implements: "_init_trunk() - creates docs/trunk/ and copies template documents"
-      - lines: 50-75
+      - lines: 49-74
         implements: "_init_commands() - creates .claude/commands/ symlinks with copy fallback"
-      - lines: 90-102
+      - lines: 89-101
         implements: "_init_claude_md() - copies CLAUDE.md template to project root"
-      - lines: 104-122
+      - lines: 103-121
         implements: "init() - orchestrates all initialization, aggregates results"
   - file: src/ve.py
     ranges:
@@ -31,11 +31,11 @@ code_references:
         implements: "CLAUDE.md template explaining vibe engineering workflow to agents"
   - file: tests/test_project.py
     ranges:
-      - lines: 7-34
+      - lines: 8-34
         implements: "TestProjectClass - tests Project class basics and lazy Chunks property"
-      - lines: 36-129
+      - lines: 37-129
         implements: "TestProjectInit - tests init() creates trunk docs, commands, CLAUDE.md"
-      - lines: 131-219
+      - lines: 132-219
         implements: "TestProjectInitIdempotency - tests init() skips existing files"
   - file: tests/test_init.py
     ranges:
