@@ -14,8 +14,11 @@ What patterns or techniques will you use?
 What existing code will you build on?
 
 Reference trunk DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, add it to
-DECISIONS.md and reference it here.
+If this approach represents a new significant decision, ask the user
+if we should add it to DECISIONS.md and reference it here.
+
+Always include tests in your implementation plan and adhere to
+docs/trunk/TESTING_PHILOSOPHY.md in your planning.
 
 Remember to update code_paths in the header of GOAL.md in this chunk
 directory with references to the files that you expect to touch.

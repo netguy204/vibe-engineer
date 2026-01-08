@@ -65,6 +65,25 @@ Appends a message to the queue.
 - Concurrency: Thread-safe, may block during fsync
 -->
 
+The only stable API provided by this package is the CLI. There is no guarantee
+of stability for internal methods that implement that CLI. 
+
+### CLI
+
+#### ve init
+
+Create the initial trunk document set from templates. Also initialize CLAUDE.md
+and. cloud/commands from the templates. In its /command form, this may
+investigate an existing code base and attempt to complete the goal and spec
+documents within the trunk. Ultimately, the trunk documents are where a lot of
+the engineering happens. So we can't eliminate the cost of init, but maybe we
+can amortize it over a long period. 
+
+#### ve chunk start <shortname> <ticket>
+
+Create a new chunk from the templates for the provided ticket number. The
+initial status of the chunk is implementing. 
+
 ## Guarantees
 
 <!--
@@ -132,7 +151,7 @@ documents within the trunk. Ultimately, the trunk documents are where a lot of
 the engineering happens. So we can't eliminate the cost of init, but maybe we
 can amortize it over a long period. 
 
-#### ve chunk start <ticket>
+#### ve chunk start <shortname> <ticket>
 
 Create a new chunk from the templates for the provided ticket number. The
 initial status of the chunk is implementing. 

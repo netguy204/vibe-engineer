@@ -16,6 +16,7 @@ import re
 import click
 
 from chunks import Chunks
+from project import Project
 
 
 def validate_short_name(short_name: str) -> list[str]:
@@ -56,9 +57,20 @@ def cli():
 
 
 @cli.command()
-def init():
+@click.option("--project-dir", type=click.Path(path_type=pathlib.Path), default=".")
+def init(project_dir):
     """Initialize the Vibe Engineer document store."""
-    pass
+    project = Project(project_dir)
+    result = project.init()
+
+    for path in result.created:
+        click.echo(f"Created {path}")
+
+    if result.skipped:
+        click.echo(f"Skipped {len(result.skipped)} existing file(s)")
+
+    for warning in result.warnings:
+        click.echo(f"Warning: {warning}", err=True)
 
 
 @cli.group()

@@ -1,4 +1,4 @@
-Add code references to the chunk represented by $ARGUMENTS and move both the PLAN.md and the GOAL.md to the ACTIVE state.
+Update code references in the current chunk and move both the PLAN.md and the GOAL.md to the ACTIVE state.
 
 1. Determine the currently active chunk by running `ve chunk list --latest`. We
    will refer to the directory returned by this command below as <chunk

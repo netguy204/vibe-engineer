@@ -1,6 +1,6 @@
 ---
 status: ACTIVE
-ticket: null
+ticket: ve-002
 parent_chunk: null
 code_paths:
   - src/ve.py
@@ -9,10 +9,10 @@ code_paths:
 code_references:
   - src/chunks.py:39-54  # list_chunks() method - lists chunks sorted by numeric prefix descending
   - src/chunks.py:56-65  # get_latest_chunk() method - returns highest-numbered chunk
-  - src/ve.py:108-125  # list CLI command - ve chunk list with --latest and --project-dir options
-  - tests/test_ve.py:300-336  # TestListChunks - unit tests for list_chunks() method
-  - tests/test_ve.py:339-359  # TestGetLatestChunk - unit tests for get_latest_chunk() method
-  - tests/test_ve.py:362-448  # TestListCommand - CLI integration tests for ve chunk list
+  - src/ve.py:120-138  # list CLI command - ve chunk list with --latest and --project-dir options
+  - tests/test_chunks.py:35-71  # TestListChunks - unit tests for list_chunks() method
+  - tests/test_chunks.py:74-94  # TestGetLatestChunk - unit tests for get_latest_chunk() method
+  - tests/test_chunk_list.py:6-92  # TestListCommand - CLI integration tests for ve chunk list
 ---
 
 # Chunk Goal
