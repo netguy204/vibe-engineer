@@ -14,7 +14,7 @@ chunks:
 
 ## Advances Trunk Goal
 
-**Required Properties** from trunk GOAL.md states:
+**Required Properties** from docs/trunk/GOAL.md states:
 
 > "It must be possible to perform the workflow outside the context of a Git repository."
 

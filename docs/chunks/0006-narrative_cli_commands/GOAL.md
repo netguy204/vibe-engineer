@@ -7,18 +7,16 @@ code_paths:
   - src/narratives.py
   - src/project.py
 code_references:
-  - file: src/narratives.py
-    ranges:
-      - lines: 1-63
-        implements: "Narratives class - business logic for narrative management including create_narrative()"
-  - file: src/project.py
-    ranges:
-      - lines: 76-87
-        implements: "_init_narratives() method - creates docs/narratives/ during ve init"
-  - file: src/ve.py
-    ranges:
-      - lines: 169-195
-        implements: "ve narrative create CLI command with validation and output"
+  - ref: src/narratives.py#Narratives
+    implements: "Business logic for narrative management"
+  - ref: src/narratives.py#Narratives::create_narrative
+    implements: "Creates narrative directory with template files"
+  - ref: src/project.py#Project::_init_narratives
+    implements: "Creates docs/narratives/ during ve init"
+  - ref: src/ve.py#narrative
+    implements: "Narrative CLI command group"
+  - ref: src/ve.py#create
+    implements: "ve narrative create CLI command with validation"
 ---
 
 # Chunk Goal

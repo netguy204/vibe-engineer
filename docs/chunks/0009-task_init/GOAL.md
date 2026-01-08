@@ -10,34 +10,26 @@ code_paths:
   - tests/test_task_init_cli.py
   - README.md
 code_references:
-  - file: src/task_init.py
-    ranges:
-      - lines: "11-18"
-        implements: "TaskInitResult dataclass for returning init results"
-      - lines: "20-49"
-        implements: "_resolve_repo_path() helper to resolve org/repo format to filesystem path"
-      - lines: "52-65"
-        implements: "TaskInit class initialization with cwd, external, projects"
-      - lines: "67-92"
-        implements: "validate() method - checks already exists, no projects, directory validation"
-      - lines: "94-123"
-        implements: "_validate_directory() - checks existence, git repo, VE-initialized"
-      - lines: "125-146"
-        implements: "execute() - creates .ve-task.yaml with TaskConfig schema"
-  - file: src/git_utils.py
-    ranges:
-      - lines: "78-102"
-        implements: "is_git_repository() helper for validation"
-  - file: src/ve.py
-    ranges:
-      - lines: "198-201"
-        implements: "task command group"
-      - lines: "204-233"
-        implements: "task init subcommand with --external and --project options"
-  - file: README.md
-    ranges:
-      - lines: "148-162"
-        implements: "Cross-Repository Work documentation section"
+  - ref: src/task_init.py#TaskInitResult
+    implements: "Dataclass for returning init results"
+  - ref: src/task_init.py#_resolve_repo_path
+    implements: "Helper to resolve org/repo format to filesystem path"
+  - ref: src/task_init.py#TaskInit
+    implements: "Task initialization class"
+  - ref: src/task_init.py#TaskInit::validate
+    implements: "Checks already exists, no projects, directory validation"
+  - ref: src/task_init.py#TaskInit::_validate_directory
+    implements: "Checks existence, git repo, VE-initialized"
+  - ref: src/task_init.py#TaskInit::execute
+    implements: "Creates .ve-task.yaml with TaskConfig schema"
+  - ref: src/git_utils.py#is_git_repository
+    implements: "Helper for git repository validation"
+  - ref: src/ve.py#task
+    implements: "Task command group"
+  - ref: src/ve.py#init
+    implements: "task init subcommand"
+  - ref: README.md
+    implements: "Cross-Repository Work documentation section"
 narrative: 0001-cross_repo_chunks
 ---
 
@@ -45,7 +37,7 @@ narrative: 0001-cross_repo_chunks
 
 ## Minor Goal
 
-Implement the `ve task init` command to initialize task directories for cross-repository work. This directly advances the trunk GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
+Implement the `ve task init` command to initialize task directories for cross-repository work. This directly advances docs/trunk/GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
 
 A **task directory** is the coordination point for engineering work that spans multiple repositories. It contains git worktrees for all participating repos plus an external chunk repository, unified by a `.ve-task.yaml` configuration file.
 

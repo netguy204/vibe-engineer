@@ -10,44 +10,28 @@ code_paths:
   - tests/test_task_utils.py
   - tests/test_chunks.py
 code_references:
-  - file: src/models.py
-    ranges:
-      - lines: "16-36"
-        implements: "TaskConfig schema with external_chunk_repo and projects fields"
-      - lines: "39-55"
-        implements: "ExternalChunkRef schema with project and chunk fields"
-      - lines: "58-61"
-        implements: "ChunkDependent schema with dependents list"
-  - file: src/validation.py
-    ranges:
-      - lines: "6-37"
-        implements: "Shared validate_identifier for directory name validation"
-  - file: src/task_utils.py
-    ranges:
-      - lines: "10-12"
-        implements: "is_task_directory utility function"
-      - lines: "15-22"
-        implements: "is_external_chunk utility function"
-      - lines: "25-45"
-        implements: "load_task_config utility function"
-      - lines: "48-68"
-        implements: "load_external_ref utility function"
-  - file: tests/test_task_models.py
-    ranges:
-      - lines: "9-64"
-        implements: "TaskConfig validation tests"
-      - lines: "67-102"
-        implements: "ExternalChunkRef validation tests"
-      - lines: "105-148"
-        implements: "ChunkDependent validation tests"
-  - file: tests/test_task_utils.py
-    ranges:
-      - lines: "12-88"
-        implements: "Utility function tests"
-  - file: tests/test_chunks.py
-    ranges:
-      - lines: "97-140"
-        implements: "Frontmatter dependents parsing tests"
+  - ref: src/models.py#TaskConfig
+    implements: "Schema with external_chunk_repo and projects fields"
+  - ref: src/models.py#ExternalChunkRef
+    implements: "Schema for chunk references between repos"
+  - ref: src/models.py#ChunkDependent
+    implements: "Schema for chunk GOAL.md dependents list"
+  - ref: src/validation.py#validate_identifier
+    implements: "Shared directory name validation"
+  - ref: src/task_utils.py#is_task_directory
+    implements: "Detects task directory presence"
+  - ref: src/task_utils.py#is_external_chunk
+    implements: "Detects external chunk presence"
+  - ref: src/task_utils.py#load_task_config
+    implements: "Loads and validates .ve-task.yaml"
+  - ref: src/task_utils.py#load_external_ref
+    implements: "Loads and validates external.yaml"
+  - ref: tests/test_task_models.py
+    implements: "Validation tests for TaskConfig, ExternalChunkRef, ChunkDependent"
+  - ref: tests/test_task_utils.py
+    implements: "Utility function tests"
+  - ref: tests/test_chunks.py
+    implements: "Frontmatter dependents parsing tests"
 narrative: 0001-cross_repo_chunks
 ---
 
@@ -55,7 +39,7 @@ narrative: 0001-cross_repo_chunks
 
 ## Minor Goal
 
-Introduce Pydantic models and utility functions to support cross-repository chunk management. This directly advances the trunk GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
+Introduce Pydantic models and utility functions to support cross-repository chunk management. This directly advances docs/trunk/GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
 
 When engineering work spans multiple repositories, chunks need to live outside any single repo while still maintaining versioning and archaeological properties. This chunk establishes the foundational data models that all subsequent cross-repo functionality depends on.
 

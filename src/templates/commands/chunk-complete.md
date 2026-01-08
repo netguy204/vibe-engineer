@@ -8,9 +8,29 @@ Update code references in the current chunk and move both the PLAN.md and the GO
    code_paths field of this file's metadata and the <chunk directory>/PLAN.md
    file in the chunk directory can help guide your search and git diff may
    provide clues but may be more or less than the true scope of the code
-   involved in the change. Take note of the file names and the line ranges for
-   semantically meaningful (with respect to the GOAL.md) chunks of code and
-   record these chunks in the code_references field in the GOAL.md metadata.
+   involved in the change.
+
+   Record these locations in the code_references field using **symbolic references**:
+   - Format: `{file_path}#{symbol_path}` where symbol_path uses `::` for nesting
+   - Examples:
+     - `src/chunks.py#Chunks` - reference to a class
+     - `src/chunks.py#Chunks::create_chunk` - reference to a method
+     - `src/ve.py#validate_short_name` - reference to a standalone function
+     - `src/models.py` - reference to an entire module (no symbol)
+
+   Each reference should include:
+   - `ref`: The symbolic reference string
+   - `implements`: Description of what requirement/goal this code implements
+
+   Example code_references:
+   ```yaml
+   code_references:
+     - ref: src/chunks.py#Chunks::validate_chunk_complete
+       implements: "Chunk completion validation logic"
+     - ref: src/symbols.py#extract_symbols
+       implements: "Python AST-based symbol extraction"
+   ```
+
    When we mark a goal as historical, we are saying that there is so much
    semantic drift between what the document set out to achieve and what the code
    base does now, that the document is now only valuable as a historic reference
@@ -32,3 +52,7 @@ Update code references in the current chunk and move both the PLAN.md and the GO
 
 6. Report to the operator on updates made to previous chunk metadata or chunks that
    need to be investigated for continuing applicability.
+
+7. Mark the chunk status as active in the front matter and remove the comment
+   explaining the structure of the front matter from the <chunk
+   directory>/GOAL.md file

@@ -130,3 +130,53 @@ class CodeReference(BaseModel):
 
     file: str
     ranges: list[CodeRange]
+
+
+class SymbolicReference(BaseModel):
+    """A symbolic reference to code that implements a requirement.
+
+    Format: {file_path} or {file_path}#{symbol_path}
+
+    Examples:
+        - src/chunks.py (entire module)
+        - src/chunks.py#Chunks (class)
+        - src/chunks.py#Chunks::create_chunk (method)
+        - src/ve.py#validate_short_name (standalone function)
+    """
+
+    ref: str  # format: {file_path} or {file_path}#{symbol_path}
+    implements: str  # description of what this reference implements
+
+    @field_validator("ref")
+    @classmethod
+    def validate_ref(cls, v: str) -> str:
+        """Validate ref field format."""
+        if not v:
+            raise ValueError("ref cannot be empty")
+
+        if v.startswith("#"):
+            raise ValueError("ref must start with a file path, not #")
+
+        if v.count("#") > 1:
+            raise ValueError("ref cannot contain multiple # characters")
+
+        if "#" in v:
+            file_path, symbol_path = v.split("#", 1)
+            if not symbol_path:
+                raise ValueError("symbol path cannot be empty after #")
+
+            # Check for empty components in symbol path
+            parts = symbol_path.split("::")
+            for part in parts:
+                if not part:
+                    raise ValueError("symbol path cannot have empty component between ::")
+
+        return v
+
+    @field_validator("implements")
+    @classmethod
+    def validate_implements(cls, v: str) -> str:
+        """Validate implements field is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("implements cannot be empty")
+        return v

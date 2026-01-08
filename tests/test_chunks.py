@@ -94,6 +94,35 @@ class TestGetLatestChunk:
         assert chunk_mgr.get_latest_chunk() == "0003-third-VE-003"
 
 
+class TestChunkDirectoryInTemplates:
+    """Tests for chunk_directory variable in rendered templates."""
+
+    def test_plan_md_contains_chunk_directory(self, temp_project):
+        """Rendered PLAN.md contains actual chunk directory name, not placeholder."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature")
+
+        plan_path = result_path / "PLAN.md"
+        plan_content = plan_path.read_text()
+
+        # Should contain the actual chunk directory path
+        assert "docs/chunks/0001-feature/GOAL.md" in plan_content
+        # Should NOT contain the placeholder
+        assert "NNNN-name" not in plan_content
+
+    def test_plan_md_contains_chunk_directory_with_ticket(self, temp_project):
+        """Rendered PLAN.md includes ticket ID in chunk directory reference."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk("VE-001", "feature")
+
+        plan_path = result_path / "PLAN.md"
+        plan_content = plan_path.read_text()
+
+        # Should contain the full chunk directory with ticket
+        assert "docs/chunks/0001-feature-VE-001/GOAL.md" in plan_content
+        assert "NNNN-name" not in plan_content
+
+
 class TestParseFrontmatterDependents:
     """Tests for parsing dependents from chunk frontmatter."""
 
@@ -138,3 +167,74 @@ class TestParseFrontmatterDependents:
         assert frontmatter is not None
         assert "dependents" not in frontmatter
         assert frontmatter.get("status") == "active"
+
+
+class TestSymbolicOverlap:
+    """Tests for compute_symbolic_overlap function."""
+
+    def test_same_file_overlaps(self):
+        """Two references to the same file overlap."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py"]
+        refs_b = ["src/foo.py"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+    def test_parent_contains_child(self):
+        """foo.py#Bar and foo.py#Bar::baz overlap (parent contains child)."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar"]
+        refs_b = ["src/foo.py#Bar::baz"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+    def test_child_overlaps_with_parent(self):
+        """Child also overlaps with parent (symmetric)."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar::baz"]
+        refs_b = ["src/foo.py#Bar"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+    def test_different_symbols_same_file_no_overlap(self):
+        """foo.py#Bar and foo.py#Qux do not overlap (different symbols)."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar"]
+        refs_b = ["src/foo.py#Qux"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is False
+
+    def test_file_reference_overlaps_any_symbol(self):
+        """foo.py (whole module) overlaps with any symbol in that module."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py"]
+        refs_b = ["src/foo.py#Bar"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+        refs_a = ["src/foo.py"]
+        refs_b = ["src/foo.py#Bar::baz"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+    def test_different_files_no_overlap(self):
+        """References to different files never overlap."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar"]
+        refs_b = ["src/baz.py#Bar"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is False
+
+    def test_empty_refs_no_overlap(self):
+        """Empty reference lists don't overlap."""
+        from chunks import compute_symbolic_overlap
+        assert compute_symbolic_overlap([], ["src/foo.py"]) is False
+        assert compute_symbolic_overlap(["src/foo.py"], []) is False
+        assert compute_symbolic_overlap([], []) is False
+
+    def test_multiple_refs_any_overlap(self):
+        """Multiple refs: overlap if any pair overlaps."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar", "src/baz.py#Qux"]
+        refs_b = ["src/foo.py#Bar::method"]  # overlaps with refs_a[0]
+        assert compute_symbolic_overlap(refs_a, refs_b) is True
+
+    def test_multiple_refs_no_overlap(self):
+        """Multiple refs: no overlap if no pair overlaps."""
+        from chunks import compute_symbolic_overlap
+        refs_a = ["src/foo.py#Bar", "src/baz.py#Qux"]
+        refs_b = ["src/foo.py#Other", "src/baz.py#Different"]
+        assert compute_symbolic_overlap(refs_a, refs_b) is False

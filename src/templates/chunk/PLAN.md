@@ -13,15 +13,15 @@ How will you build this? Describe the strategy at a high level.
 What patterns or techniques will you use?
 What existing code will you build on?
 
-Reference trunk DECISIONS.md entries where relevant.
+Reference docs/trunk/DECISIONS.md entries where relevant.
 If this approach represents a new significant decision, ask the user
 if we should add it to DECISIONS.md and reference it here.
 
 Always include tests in your implementation plan and adhere to
 docs/trunk/TESTING_PHILOSOPHY.md in your planning.
 
-Remember to update code_paths in the header of GOAL.md in this chunk
-directory with references to the files that you expect to touch.
+Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/{{ chunk_directory }}/GOAL.md)
+with references to the files that you expect to touch.
 -->
 
 ## Sequence

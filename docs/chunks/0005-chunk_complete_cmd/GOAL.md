@@ -8,24 +8,18 @@ code_paths:
   - src/models.py
   - tests/test_chunk_complete.py
 code_references:
-  - file: src/models.py
-    ranges:
-      - lines: "121-132"
-        implements: "Pydantic Model Definition - CodeRange and CodeReference models"
-  - file: src/chunks.py
-    ranges:
-      - lines: "15-22"
-        implements: "ValidationResult dataclass for structured error reporting"
-      - lines: "256-328"
-        implements: "validate_chunk_complete method - status and code_references validation"
-  - file: src/ve.py
-    ranges:
-      - lines: "153-166"
-        implements: "CLI command interface - chunk complete command"
-  - file: tests/test_chunk_complete.py
-    ranges:
-      - lines: "1-403"
-        implements: "Test coverage for all success criteria"
+  - ref: src/models.py#CodeRange
+    implements: "Pydantic model for line-based code range"
+  - ref: src/models.py#CodeReference
+    implements: "Pydantic model for file with code ranges"
+  - ref: src/chunks.py#ValidationResult
+    implements: "Dataclass for structured error reporting"
+  - ref: src/chunks.py#Chunks::validate_chunk_complete
+    implements: "Status and code_references validation"
+  - ref: src/ve.py#complete
+    implements: "CLI command interface - chunk complete command"
+  - ref: tests/test_chunk_complete.py
+    implements: "Test coverage for all success criteria"
 ---
 
 # Chunk Goal

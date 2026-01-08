@@ -29,15 +29,16 @@ CODE_PATHS:
 
 CODE_REFERENCES:
 - Populated after implementation, before PR
-- Maps specific line ranges to what they implement
+- Uses symbolic references to identify code locations
+- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
 - Example:
   code_references:
-    - file: src/segment/writer.rs
-      ranges:
-        - lines: 45-120
-          implements: "SegmentWriter struct and core write loop"
-        - lines: 122-145
-          implements: "fsync durability guarantees"
+    - ref: src/segment/writer.rs#SegmentWriter
+      implements: "Core write loop and buffer management"
+    - ref: src/segment/writer.rs#SegmentWriter::fsync
+      implements: "Durability guarantees"
+    - ref: src/utils.py#validate_input
+      implements: "Input validation logic"
 
 NARRATIVE:
 - If this chunk was derived from a narrative document, reference the narrative directory name.
@@ -50,7 +51,7 @@ NARRATIVE:
 ## Minor Goal
 
 <!--
-What does this chunk accomplish? Frame it in terms of the trunk GOAL.md.
+What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
 Why is this the right next step? What does completing this enable?
 
 Keep this focused. If you're describing multiple independent outcomes,
@@ -61,7 +62,7 @@ you may need multiple chunks.
 
 <!--
 How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of trunk SPEC.md where applicable.
+Reference relevant sections of docs/trunk/SPEC.md where applicable.
 
 Example:
 - SegmentWriter correctly encodes messages per SPEC.md Section 3.2

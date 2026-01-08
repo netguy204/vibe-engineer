@@ -6,20 +6,12 @@ code_paths:
   - src/git_utils.py
   - tests/test_git_utils.py
 code_references:
-  - file: src/git_utils.py
-    ranges:
-      - lines: 11-39
-        implements: "get_current_sha() function - returns HEAD SHA, validates path exists and is git repo"
-      - lines: 42-75
-        implements: "resolve_ref() function - resolves branch/tag/symbolic refs to SHA with error handling"
-  - file: tests/test_git_utils.py
-    ranges:
-      - lines: 53-90
-        implements: "TestGetCurrentSha - tests SHA retrieval, error cases, 40-char validation"
-      - lines: 127-175
-        implements: "TestResolveRef - tests branch/tag/HEAD resolution, error cases"
-      - lines: 216-263
-        implements: "TestWorktreeSupport - validates both functions work with git worktrees"
+  - ref: src/git_utils.py#get_current_sha
+    implements: "Returns HEAD SHA, validates path exists and is git repo"
+  - ref: src/git_utils.py#resolve_ref
+    implements: "Resolves branch/tag/symbolic refs to SHA with error handling"
+  - ref: tests/test_git_utils.py
+    implements: "Tests for SHA retrieval, ref resolution, worktree support"
 narrative: 0001-cross_repo_chunks
 ---
 
@@ -63,7 +55,7 @@ NARRATIVE:
 
 ## Minor Goal
 
-Create utility functions for working with local git repositories and worktrees. This directly supports the trunk GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
+Create utility functions for working with local git repositories and worktrees. This directly supports docs/trunk/GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
 
 When working in a task directory that contains multiple git worktrees, the `ve sync` command needs to resolve SHAs and update `pinned` fields in `external.yaml` files. This chunk provides the foundational git operations that make that possible:
 

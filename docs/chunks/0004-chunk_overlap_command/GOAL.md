@@ -7,35 +7,27 @@ code_paths:
   - src/chunks.py
   - tests/test_chunk_overlap.py
 code_references:
-  - file: src/ve.py
-    ranges:
-      - lines: 136-150
-        implements: "overlap CLI command - accepts chunk_id, --project-dir, outputs affected chunk paths"
-  - file: src/chunks.py
-    ranges:
-      - lines: "9"
-        implements: "yaml import for frontmatter parsing"
-      - lines: 100-114
-        implements: "resolve_chunk_id() - resolves 4-digit or full name to directory name"
-      - lines: 116-125
-        implements: "get_chunk_goal_path() - resolves chunk ID to GOAL.md path"
-      - lines: 127-148
-        implements: "parse_chunk_frontmatter() - extracts and parses YAML frontmatter from GOAL.md"
-      - lines: 150-183
-        implements: "parse_code_references() - parses nested code_references format into file->line mappings"
-      - lines: 185-254
-        implements: "find_overlapping_chunks() - finds ACTIVE chunks with lower IDs having overlapping references"
-  - file: tests/test_chunk_overlap.py
-    ranges:
-      - lines: 1-274
-        implements: "TestOverlapCommand - 11 tests covering CLI interface, overlap detection, edge cases"
+  - ref: src/ve.py#overlap
+    implements: "CLI command - accepts chunk_id, --project-dir, outputs affected chunk paths"
+  - ref: src/chunks.py#Chunks::resolve_chunk_id
+    implements: "Resolves 4-digit or full name to directory name"
+  - ref: src/chunks.py#Chunks::get_chunk_goal_path
+    implements: "Resolves chunk ID to GOAL.md path"
+  - ref: src/chunks.py#Chunks::parse_chunk_frontmatter
+    implements: "Extracts and parses YAML frontmatter from GOAL.md"
+  - ref: src/chunks.py#Chunks::parse_code_references
+    implements: "Parses nested code_references format into file->line mappings"
+  - ref: src/chunks.py#Chunks::find_overlapping_chunks
+    implements: "Finds ACTIVE chunks with lower IDs having overlapping references"
+  - ref: tests/test_chunk_overlap.py
+    implements: "Tests covering CLI interface, overlap detection, edge cases"
 ---
 
 # Chunk Goal
 
 ## Minor Goal
 
-Implement `ve chunk overlap <chunk_id>` to identify which ACTIVE chunks have code references that may have been affected by the specified chunk's changes. This supports the trunk GOAL.md's requirement that "maintaining the referential integrity of documents is an agent problem" by providing tooling to guide reference updates at chunk completion time.
+Implement `ve chunk overlap <chunk_id>` to identify which ACTIVE chunks have code references that may have been affected by the specified chunk's changes. This supports docs/trunk/GOAL.md's requirement that "maintaining the referential integrity of documents is an agent problem" by providing tooling to guide reference updates at chunk completion time.
 
 When completing a chunk, knowing which other chunks have potentially-shifted references allows agents to systematically update those references rather than discovering drift later.
 

@@ -139,3 +139,26 @@ only ephemeral trunks, then I haven't solved the problem.
 **Consequences**: README.md becomes a living document that must be updated when workflow-relevant commands change. CLAUDE.md remains the authoritative source for agent instructions, while README serves human operators.
 
 **Revisit If**: If the command surface grows large enough that README becomes unwieldy, consider a dedicated commands reference or generated documentation.
+
+---
+
+### DEC-004: Markdown references relative to project root
+
+**Date**: 2026-01-08
+
+**Status**: ACCEPTED
+
+**Decision**: All file and directory references within markdown documentation files must be relative to the project root, not relative to the markdown file's location.
+
+**Context**: Agents working within the project need to navigate file references reliably. When an agent reads a markdown file that references `src/utils/foo.ts`, it must be able to resolve that path confidently from its current working directory (the project root).
+
+**Alternatives Considered**:
+- Relative to the markdown file's location: Common in documentation but requires agents to compute paths from the file's directory
+- Absolute paths: Unambiguous but not portable across machines
+- Mixed approach: Flexible but inconsistent and error-prone
+
+**Rationale**: Agents typically operate from the project root as their working directory. Project-root-relative paths allow direct resolution without path manipulation. This makes references predictable and reduces errors when agents follow documentation links.
+
+**Consequences**: Authors must think in terms of project root when writing references (e.g., `docs/chunks/0001/GOAL.md` instead of `../chunks/0001/GOAL.md`). Agents navigating from task directories will need special handling, which is deferred to a future decision.
+
+**Revisit If**: If task directory navigation becomes a significant use case that this convention makes awkward, or if tooling emerges that makes file-relative paths easier for agents to handle.

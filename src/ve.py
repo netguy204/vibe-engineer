@@ -163,6 +163,10 @@ def complete(chunk_id, project_dir):
             click.echo(f"Error: {error}", err=True)
         raise SystemExit(1)
 
+    # Display warnings (but still succeed)
+    for warning in result.warnings:
+        click.echo(warning, err=True)
+
     click.echo(f"Chunk {result.chunk_name} is ready for completion")
 
 

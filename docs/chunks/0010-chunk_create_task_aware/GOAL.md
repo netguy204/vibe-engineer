@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -9,98 +9,42 @@ code_paths:
   - tests/test_task_chunk_create.py
   - tests/test_task_models.py
 code_references:
-  - file: src/models.py
-    ranges:
-      - lines: 18-46
-        implements: "_require_valid_repo_ref() validator for GitHub org/repo format"
-      - lines: 49-50
-        implements: "SHA_PATTERN regex for 40-char hex SHA validation"
-      - lines: 53-77
-        implements: "TaskConfig model with org/repo format validation for external_chunk_repo and projects"
-      - lines: 79-113
-        implements: "ExternalChunkRef unified model for both external.yaml and dependents list"
-      - lines: 115-118
-        implements: "ChunkDependent model for chunk GOAL.md frontmatter with dependents"
-  - file: src/task_utils.py
-    ranges:
-      - lines: 18-58
-        implements: "resolve_repo_directory() to resolve org/repo reference to filesystem path"
-      - lines: 117-134
-        implements: "get_next_chunk_id() to calculate next sequential chunk ID for a project"
-      - lines: 137-174
-        implements: "create_external_yaml() to write external.yaml in project's chunk directory"
-      - lines: 177-214
-        implements: "add_dependents_to_chunk() to update GOAL.md frontmatter with dependents"
-      - lines: 217-220
-        implements: "TaskChunkError exception class for user-friendly error messages"
-      - lines: 223-317
-        implements: "create_task_chunk() orchestrator for multi-repo chunk creation"
-  - file: src/ve.py
-    ranges:
-      - lines: "11"
-        implements: "Import of task-aware functions (is_task_directory, create_task_chunk, TaskChunkError)"
-      - lines: 75-78
-        implements: "Task directory detection and branching in chunk start command"
-      - lines: 98-113
-        implements: "_start_task_chunk() CLI handler for cross-repo mode output"
-  - file: tests/test_task_chunk_create.py
-    ranges:
-      - lines: 1-307
-        implements: "Integration tests for task-aware chunk creation"
-  - file: tests/test_task_models.py
-    ranges:
-      - lines: 1-195
-        implements: "Unit tests for TaskConfig, ExternalChunkRef, and ChunkDependent models"
-  - file: tests/test_task_utils.py
-    ranges:
-      - lines: 1-382
-        implements: "Unit tests for task utility functions"
+  - ref: src/models.py#_require_valid_repo_ref
+    implements: "Validator for GitHub org/repo format"
+  - ref: src/models.py#TaskConfig
+    implements: "Model with org/repo format validation for external_chunk_repo and projects"
+  - ref: src/models.py#ExternalChunkRef
+    implements: "Unified model for both external.yaml and dependents list"
+  - ref: src/models.py#ChunkDependent
+    implements: "Model for chunk GOAL.md frontmatter with dependents"
+  - ref: src/task_utils.py#resolve_repo_directory
+    implements: "Resolves org/repo reference to filesystem path"
+  - ref: src/task_utils.py#get_next_chunk_id
+    implements: "Calculates next sequential chunk ID for a project"
+  - ref: src/task_utils.py#create_external_yaml
+    implements: "Writes external.yaml in project's chunk directory"
+  - ref: src/task_utils.py#add_dependents_to_chunk
+    implements: "Updates GOAL.md frontmatter with dependents"
+  - ref: src/task_utils.py#TaskChunkError
+    implements: "Exception class for user-friendly error messages"
+  - ref: src/task_utils.py#create_task_chunk
+    implements: "Orchestrator for multi-repo chunk creation"
+  - ref: src/ve.py#_start_task_chunk
+    implements: "CLI handler for cross-repo mode output"
+  - ref: tests/test_task_chunk_create.py
+    implements: "Integration tests for task-aware chunk creation"
+  - ref: tests/test_task_models.py
+    implements: "Unit tests for TaskConfig, ExternalChunkRef, ChunkDependent"
+  - ref: tests/test_task_utils.py
+    implements: "Unit tests for task utility functions"
 narrative: 0001-cross_repo_chunks
 ---
-
-<!--
-DO NOT DELETE THIS COMMENT until the chunk complete command is run.
-This describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Maps specific line ranges to what they implement
-- Example:
-  code_references:
-    - file: src/segment/writer.rs
-      ranges:
-        - lines: 45-120
-          implements: "SegmentWriter struct and core write loop"
-        - lines: 122-145
-          implements: "fsync durability guarantees"
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
--->
 
 # Chunk Goal
 
 ## Minor Goal
 
-Extend `ve chunk create <short-name>` to support cross-repository work when run from a task directory. This directly advances the trunk GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
+Extend `ve chunk create <short-name>` to support cross-repository work when run from a task directory. This directly advances docs/trunk/GOAL.md's required property: "It must be possible to perform the workflow outside the context of a Git repository."
 
 When working in a task directory containing multiple git worktrees, the user needs to create chunks that live in the external chunk repository but are referenced from all participating projects. This chunk enables that workflow with a single command.
 

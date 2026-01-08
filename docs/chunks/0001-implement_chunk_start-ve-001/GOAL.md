@@ -7,24 +7,24 @@ code_paths:
   - src/chunks.py
   - tests/test_ve.py
 code_references:
-  - file: src/ve.py
-    ranges:
-      - lines: 15-22
-        implements: "validate_short_name() and validate_ticket_id() - delegating to validate_identifier()"
-      - lines: 54-95
-        implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag, success output (single-repo mode)"
-  - file: src/chunks.py
-    ranges:
-      - lines: 31-42
-        implements: "Chunks class init, enumerate_chunks, num_chunks property"
-      - lines: 44-50
-        implements: "find_duplicates() - detects existing chunks with same short_name+ticket_id"
-      - lines: 80-98
-        implements: "create_chunk() - directory creation with correct path format, template rendering"
-  - file: tests/test_chunk_start.py
-    ranges:
-      - lines: 1-269
-        implements: "Comprehensive test suite - 23 tests covering chunk start command success criteria"
+  - ref: src/ve.py#validate_short_name
+    implements: "Short name validation delegating to validate_identifier()"
+  - ref: src/ve.py#validate_ticket_id
+    implements: "Ticket ID validation delegating to validate_identifier()"
+  - ref: src/ve.py#start
+    implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag"
+  - ref: src/chunks.py#Chunks::__init__
+    implements: "Chunks class initialization"
+  - ref: src/chunks.py#Chunks::enumerate_chunks
+    implements: "List existing chunk directories"
+  - ref: src/chunks.py#Chunks::num_chunks
+    implements: "Count of existing chunks"
+  - ref: src/chunks.py#Chunks::find_duplicates
+    implements: "Detects existing chunks with same short_name+ticket_id"
+  - ref: src/chunks.py#Chunks::create_chunk
+    implements: "Directory creation with correct path format, template rendering"
+  - ref: tests/test_chunk_start.py
+    implements: "Comprehensive test suite covering chunk start command"
 ---
 
 <!--

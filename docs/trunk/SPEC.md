@@ -17,6 +17,25 @@ This specification defines the `ve` command-line tool that supports the vibe eng
 
 The CLI provides commands to initialize a project's documentation structure and to manage the lifecycle of chunks from creation through completion. All operations produce human-readable Markdown files that serve as the source of truth for both humans and AI agents working on the project.
 
+## Design Principles
+
+### Language Agnosticism
+
+Vibe Engineer is equally useful and applicable to projects written in any programming language. The `ve` tool and its associated workflows make no assumptions about the host project's technology stack, language, or framework.
+
+**Requirements:**
+
+- Templates and generated artifacts must not contain language-specific content (no Python/JavaScript/etc. boilerplate)
+- Code references use generic `path/to/file.ext` formats without assuming file extensions
+- Documentation examples should be technology-neutral or use varied examples across languages
+- CLI behavior must work identically regardless of the host project's language
+
+**Implications for contributors:**
+
+- Do not add Python-specific (or any language-specific) tooling assumptions to `ve` commands
+- Test workflows against non-Python projects to verify language-neutral behavior
+- Example code references in documentation should use generic paths like `src/module.ext` rather than `src/module.py`
+
 ## Terminology
 
 ### Entities
@@ -36,7 +55,7 @@ The CLI provides commands to initialize a project's documentation structure and 
 - **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
 - **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
 - **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk
-- **Code Reference**: A file path with line range that links documentation to specific implementation locations
+- **Code Reference**: A symbolic path (file#symbol) that links documentation to specific implementation locations
 - **Superseded**: A document status indicating it has been replaced by a newer version but retained for historical context
 
 ## Data Format
@@ -85,11 +104,10 @@ status: IMPLEMENTING | ACTIVE | SUPERSEDED | HISTORICAL
 ticket: {ticket_id} | null
 parent_chunk: {chunk_id} | null
 code_paths:
-  - path/to/file.py
+  - path/to/file.ext
 code_references:
-  - file: path/to/file.py
-    lines: 10-25
-    description: "Implementation of feature X"
+  - ref: path/to/file.ext#ClassName::method_name
+    implements: "Description of what this code implements"
 ---
 ```
 
@@ -99,7 +117,30 @@ code_references:
 | ticket | string\|null | External issue tracker reference |
 | parent_chunk | string\|null | ID of chunk this modifies/corrects |
 | code_paths | string[] | Files created or modified by this chunk |
-| code_references | object[] | Specific line ranges implementing features |
+| code_references | object[] | Symbolic references to implementation locations |
+
+### Code Reference Format
+
+Code references use symbolic paths rather than line numbers for stability as code evolves.
+
+**Format**: `{file_path}` or `{file_path}#{symbol_path}`
+
+- The `#` character separates the file path from the symbol path
+- The `::` separator denotes nesting (class::method, outer::inner)
+- File-only references (no `#`) indicate the entire module
+
+**Examples**:
+- `src/chunks.py` - entire module
+- `src/chunks.py#Chunks` - a class
+- `src/chunks.py#Chunks::create_chunk` - a method in a class
+- `src/ve.py#validate_short_name` - a standalone function
+- `src/models.py#Outer::Inner::method` - deeply nested symbol
+
+**Validation**:
+- When completing a chunk (`ve chunk complete`), symbolic references are validated
+- Missing files or symbols produce **warnings** (not errors)
+- Validation uses AST-based symbol extraction for Python files
+- Non-Python files support file-level references only (no symbol validation)
 
 ## API Surface
 

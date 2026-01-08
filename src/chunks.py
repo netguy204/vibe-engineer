@@ -9,7 +9,8 @@ from pydantic import ValidationError
 import yaml
 
 from constants import template_dir
-from models import CodeReference
+from models import CodeReference, SymbolicReference
+from symbols import is_parent_of, parse_reference, extract_symbols
 
 
 @dataclass
@@ -18,6 +19,7 @@ class ValidationResult:
 
     success: bool
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     chunk_name: str | None = None
 
 
@@ -92,6 +94,7 @@ class Chunks:
                 ticket_id=ticket_id,
                 short_name=short_name,
                 next_chunk_id=next_chunk_id_str,
+                chunk_directory=chunk_path.name,
             )
             with open(chunk_path / chunk_template.name, "w") as chunk_file:
                 chunk_file.write(rendered_template)
@@ -182,8 +185,31 @@ class Chunks:
 
         return result
 
+    def _extract_symbolic_refs(self, code_refs: list) -> list[str]:
+        """Extract symbolic reference strings from code_references list.
+
+        Args:
+            code_refs: List of code reference dicts (symbolic format).
+
+        Returns:
+            List of reference strings (e.g., ["src/foo.py#Bar", "src/baz.py"]).
+        """
+        refs = []
+        for ref in code_refs:
+            if "ref" in ref:
+                refs.append(ref["ref"])
+        return refs
+
+    def _is_symbolic_format(self, code_refs: list) -> bool:
+        """Check if code_references use symbolic format (has 'ref' key)."""
+        return any("ref" in ref for ref in code_refs)
+
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
         """Find ACTIVE chunks with lower IDs that have overlapping code references.
+
+        Supports both symbolic references (new format) and line-based references
+        (old format). Symbolic refs use hierarchical containment for overlap;
+        line-based refs use line number comparison.
 
         Args:
             chunk_id: The chunk ID to check (4-digit or full name).
@@ -207,10 +233,16 @@ class Chunks:
         if not code_refs:
             return []
 
-        # Parse target's references
-        target_refs = self.parse_code_references(code_refs)
-        if not target_refs:
-            return []
+        # Detect format and extract references
+        target_is_symbolic = self._is_symbolic_format(code_refs)
+        if target_is_symbolic:
+            target_refs = self._extract_symbolic_refs(code_refs)
+            if not target_refs:
+                return []
+        else:
+            target_refs_dict = self.parse_code_references(code_refs)
+            if not target_refs_dict:
+                return []
 
         # Extract numeric ID of target chunk
         target_match = re.match(r'^(\d{4})-', chunk_name)
@@ -240,16 +272,37 @@ class Chunks:
             if not candidate_refs_raw:
                 continue
 
-            candidate_refs = self.parse_code_references(candidate_refs_raw)
+            candidate_is_symbolic = self._is_symbolic_format(candidate_refs_raw)
 
-            # Check for overlap
-            for file_path, (_, candidate_latest) in candidate_refs.items():
-                if file_path in target_refs:
-                    target_earliest, _ = target_refs[file_path]
-                    # Overlap: target's earliest line <= candidate's latest line
-                    if target_earliest <= candidate_latest:
-                        affected.append(name)
-                        break
+            # Handle overlap based on format combinations
+            if target_is_symbolic and candidate_is_symbolic:
+                # Both symbolic: use compute_symbolic_overlap
+                candidate_refs = self._extract_symbolic_refs(candidate_refs_raw)
+                if compute_symbolic_overlap(target_refs, candidate_refs):
+                    affected.append(name)
+            elif not target_is_symbolic and not candidate_is_symbolic:
+                # Both line-based: use old line number comparison
+                candidate_refs = self.parse_code_references(candidate_refs_raw)
+                for file_path, (_, candidate_latest) in candidate_refs.items():
+                    if file_path in target_refs_dict:
+                        target_earliest, _ = target_refs_dict[file_path]
+                        if target_earliest <= candidate_latest:
+                            affected.append(name)
+                            break
+            else:
+                # Mixed formats: extract file paths and check file-level overlap
+                # For symbolic refs, extract just the file path portion
+                if target_is_symbolic:
+                    target_files = {parse_reference(r)[0] for r in target_refs}
+                    candidate_files = set(self.parse_code_references(candidate_refs_raw).keys())
+                else:
+                    target_files = set(target_refs_dict.keys())
+                    candidate_refs = self._extract_symbolic_refs(candidate_refs_raw)
+                    candidate_files = {parse_reference(r)[0] for r in candidate_refs}
+
+                # Any shared file means potential overlap
+                if target_files & candidate_files:
+                    affected.append(name)
 
         return sorted(affected)
 
@@ -258,16 +311,20 @@ class Chunks:
 
         Checks:
         1. Chunk exists
-        2. Status is IMPLEMENTING
+        2. Status is IMPLEMENTING or ACTIVE
         3. code_references conforms to schema and is non-empty
+        4. (For symbolic refs) Referenced symbols exist (produces warnings, not errors)
+
+        Supports both old line-based format and new symbolic format.
 
         Args:
             chunk_id: The chunk ID to validate. Defaults to latest chunk.
 
         Returns:
-            ValidationResult with success status and any errors.
+            ValidationResult with success status, errors, and warnings.
         """
         errors: list[str] = []
+        warnings: list[str] = []
 
         # Resolve chunk_id
         if chunk_id is None:
@@ -310,19 +367,96 @@ class Chunks:
                 "code_references is empty; at least one reference is required"
             )
         else:
-            # Validate each reference against Pydantic model
-            for i, ref in enumerate(code_refs):
-                try:
-                    CodeReference.model_validate(ref)
-                except ValidationError as e:
-                    for err in e.errors():
-                        loc = ".".join(str(x) for x in err["loc"])
-                        field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
-                        msg = err["msg"]
-                        errors.append(f"{field_path}: {msg}")
+            # Detect format: symbolic (has 'ref') or line-based (has 'file')
+            is_symbolic = any("ref" in ref for ref in code_refs)
+
+            if is_symbolic:
+                # Validate symbolic references
+                for i, ref in enumerate(code_refs):
+                    try:
+                        validated = SymbolicReference.model_validate(ref)
+                        # Validate that referenced symbol exists
+                        symbol_warnings = self._validate_symbol_exists(validated.ref)
+                        warnings.extend(symbol_warnings)
+                    except ValidationError as e:
+                        for err in e.errors():
+                            loc = ".".join(str(x) for x in err["loc"])
+                            field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
+                            msg = err["msg"]
+                            errors.append(f"{field_path}: {msg}")
+            else:
+                # Validate old line-based format
+                for i, ref in enumerate(code_refs):
+                    try:
+                        CodeReference.model_validate(ref)
+                    except ValidationError as e:
+                        for err in e.errors():
+                            loc = ".".join(str(x) for x in err["loc"])
+                            field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
+                            msg = err["msg"]
+                            errors.append(f"{field_path}: {msg}")
 
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
+            warnings=warnings,
             chunk_name=chunk_name,
         )
+
+    def _validate_symbol_exists(self, ref: str) -> list[str]:
+        """Validate that a symbolic reference points to an existing symbol.
+
+        Args:
+            ref: Symbolic reference string (e.g., "src/foo.py#Bar::baz")
+
+        Returns:
+            List of warning messages (empty if valid).
+        """
+        file_path, symbol_path = parse_reference(ref)
+
+        # Check if file exists
+        full_path = self.project_dir / file_path
+        if not full_path.exists():
+            return [f"Warning: File not found: {file_path} (ref: {ref})"]
+
+        # If no symbol path, just check file exists (which we did above)
+        if symbol_path is None:
+            return []
+
+        # Extract symbols from file and check if referenced symbol exists
+        symbols = extract_symbols(full_path)
+        if not symbols:
+            # Could be syntax error or non-Python file
+            if str(file_path).endswith(".py"):
+                return [f"Warning: Could not extract symbols from {file_path} (ref: {ref})"]
+            # Non-Python files can't have symbol validation
+            return []
+
+        if symbol_path not in symbols:
+            return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
+
+        return []
+
+
+def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:
+    """Determine if two lists of symbolic references have any overlap.
+
+    Overlap occurs when any reference in refs_a is a parent of, child of,
+    or equal to any reference in refs_b.
+
+    Args:
+        refs_a: List of symbolic reference strings.
+        refs_b: List of symbolic reference strings.
+
+    Returns:
+        True if any overlap exists, False otherwise.
+    """
+    if not refs_a or not refs_b:
+        return False
+
+    for ref_a in refs_a:
+        for ref_b in refs_b:
+            # Check both directions since is_parent_of is not symmetric
+            if is_parent_of(ref_a, ref_b) or is_parent_of(ref_b, ref_a):
+                return True
+    return False

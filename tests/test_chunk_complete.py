@@ -48,6 +48,45 @@ Test chunk content.
     goal_path.write_text(frontmatter)
 
 
+def write_symbolic_frontmatter(
+    chunk_path: pathlib.Path,
+    status: str,
+    code_references: list[dict] | None = None,
+):
+    """Helper to write GOAL.md with symbolic reference frontmatter.
+
+    Args:
+        chunk_path: Path to chunk directory
+        status: Chunk status (IMPLEMENTING, ACTIVE, etc.)
+        code_references: List of dicts with 'ref' and 'implements' keys, e.g.:
+            [{"ref": "src/main.py#MyClass::method", "implements": "req1"}]
+    """
+    goal_path = chunk_path / "GOAL.md"
+
+    if code_references:
+        refs_lines = ["code_references:"]
+        for ref in code_references:
+            refs_lines.append(f"  - ref: {ref['ref']}")
+            refs_lines.append(f"    implements: \"{ref['implements']}\"")
+        refs_yaml = "\n".join(refs_lines)
+    else:
+        refs_yaml = "code_references: []"
+
+    frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+    goal_path.write_text(frontmatter)
+
+
 class TestCompleteCommandInterface:
     """Tests for 've chunk complete' command interface."""
 
@@ -401,3 +440,124 @@ class TestSuccessOutput:
             ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
+
+
+class TestSymbolicReferenceValidation:
+    """Tests for symbolic code_references validation with warnings."""
+
+    def test_valid_symbolic_reference_passes(self, runner, temp_project):
+        """Valid symbolic reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/models.py#SymbolicReference", "implements": "Model definition"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_file_only_reference_passes(self, runner, temp_project):
+        """File-only reference (no symbol) passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/models.py", "implements": "Full module"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_nonexistent_symbol_produces_warning(self, runner, temp_project):
+        """Reference to non-existent symbol produces warning but succeeds."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/models.py#NonExistentClass", "implements": "Missing class"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        # Should succeed (exit 0) but show warning
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_nonexistent_file_produces_warning(self, runner, temp_project):
+        """Reference to non-existent file produces warning but succeeds."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/nonexistent.py#SomeClass", "implements": "Missing file"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        # Should succeed (exit 0) but show warning
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_multiple_warnings_collected(self, runner, temp_project):
+        """Multiple invalid references produce multiple warnings."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/models.py#NonExistent1", "implements": "First missing"},
+            {"ref": "src/models.py#NonExistent2", "implements": "Second missing"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        # Should succeed but show warnings for both
+        assert result.exit_code == 0
+        # Both symbols should be mentioned
+        assert "NonExistent1" in result.output or "warning" in result.output.lower()
+
+    def test_no_warnings_when_all_symbols_valid(self, runner, temp_project):
+        """No warnings shown when all symbols are valid."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+
+        # Create a real Python file with a symbol
+        src_dir = temp_project / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "test_module.py").write_text("class MyClass:\n    pass\n")
+
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/test_module.py#MyClass", "implements": "Valid class"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "warning" not in result.output.lower()

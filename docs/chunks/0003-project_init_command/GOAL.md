@@ -7,40 +7,26 @@ code_paths:
   - src/project.py
   - src/templates/CLAUDE.md
 code_references:
-  - file: src/project.py
-    ranges:
-      - lines: 11-16
-        implements: "InitResult dataclass - tracks created/skipped/warnings for idempotent operations"
-      - lines: 19-29
-        implements: "Project class with lazy Chunks property"
-      - lines: 31-47
-        implements: "_init_trunk() - creates docs/trunk/ and copies template documents"
-      - lines: 49-74
-        implements: "_init_commands() - creates .claude/commands/ symlinks with copy fallback"
-      - lines: 89-101
-        implements: "_init_claude_md() - copies CLAUDE.md template to project root"
-      - lines: 103-121
-        implements: "init() - orchestrates all initialization, aggregates results"
-  - file: src/ve.py
-    ranges:
-      - lines: 31-46
-        implements: "CLI init command - invokes Project.init() and displays results"
-  - file: src/templates/CLAUDE.md
-    ranges:
-      - lines: 1-46
-        implements: "CLAUDE.md template explaining vibe engineering workflow to agents"
-  - file: tests/test_project.py
-    ranges:
-      - lines: 8-34
-        implements: "TestProjectClass - tests Project class basics and lazy Chunks property"
-      - lines: 37-129
-        implements: "TestProjectInit - tests init() creates trunk docs, commands, CLAUDE.md"
-      - lines: 132-220
-        implements: "TestProjectInitIdempotency - tests init() skips existing files"
-  - file: tests/test_init.py
-    ranges:
-      - lines: 9-91
-        implements: "TestInitCommand - CLI integration tests for 've init'"
+  - ref: src/project.py#InitResult
+    implements: "Tracks created/skipped/warnings for idempotent operations"
+  - ref: src/project.py#Project
+    implements: "Project class with lazy Chunks property"
+  - ref: src/project.py#Project::_init_trunk
+    implements: "Creates docs/trunk/ and copies template documents"
+  - ref: src/project.py#Project::_init_commands
+    implements: "Creates .claude/commands/ symlinks with copy fallback"
+  - ref: src/project.py#Project::_init_claude_md
+    implements: "Copies CLAUDE.md template to project root"
+  - ref: src/project.py#Project::init
+    implements: "Orchestrates all initialization, aggregates results"
+  - ref: src/ve.py#init
+    implements: "CLI init command - invokes Project.init() and displays results"
+  - ref: src/templates/CLAUDE.md
+    implements: "CLAUDE.md template explaining vibe engineering workflow to agents"
+  - ref: tests/test_project.py
+    implements: "Tests Project class, init(), and idempotency"
+  - ref: tests/test_init.py
+    implements: "CLI integration tests for 've init'"
 ---
 
 # Chunk Goal
