@@ -1,7 +1,13 @@
 ---
-status: DRAFTING
+status: ACTIVE
 advances_trunk_goal: "Required Properties: It must be possible to perform the workflow outside the context of a Git repository."
-chunks: []
+chunks:
+  - prompt: "Cross-repo schemas: Define Pydantic models for .ve-task.yaml, external.yaml, and extended chunk GOAL.md frontmatter with dependents list. Add utility functions to detect task directories and external vs local chunks."
+    chunk_directory: "0007-cross_repo_schemas"
+  - prompt: "Git local utilities: Create utility functions for working with local git worktrees. Implement get_current_sha and resolve_ref to operate on local worktrees within the task directory."
+    chunk_directory: "0008-git_local_utilities"
+  - prompt: "ve task init command: Implement ve task init --external <dir> --project <dir> to initialize a task directory. Validate directories exist and are VE-initialized git repos, create .ve-task.yaml, and report success."
+    chunk_directory: "0009-task_init"
 ---
 
 ## Advances Trunk Goal

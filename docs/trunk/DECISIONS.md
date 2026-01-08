@@ -115,4 +115,27 @@ free the user to create short-lived Vibe engineering workflows against mature
 projects spanning multiple repositories. 
 
 **Revisit if**: If my natural usage of Vibe Engineering leads me to creating
-only ephemeral trunks, then I haven't solved the problem. 
+only ephemeral trunks, then I haven't solved the problem.
+
+---
+
+### DEC-003: Document operator-facing commands in README
+
+**Date**: 2026-01-08
+
+**Status**: ACCEPTED
+
+**Decision**: The README.md file should document commands that are part of an operator's standard workflow, making them discoverable without reading implementation details.
+
+**Context**: As the project adds more slash commands and CLI utilities, operators need a clear reference for their day-to-day workflow. Currently, command discovery requires reading CLAUDE.md or exploring the codebase.
+
+**Alternatives Considered**:
+- Document commands only in CLAUDE.md: Keeps documentation minimal but requires operators to know where to look
+- Create a separate COMMANDS.md: More comprehensive but adds another file to maintain
+- Rely on `--help` output only: Standard for CLIs but doesn't show workflow context
+
+**Rationale**: An operator should be able to understand their cohesive workflow by consuming just the README.md file. Commands that fit into the narrative of that workflow belong there, giving operators a single source for understanding how to use the system end-to-end.
+
+**Consequences**: README.md becomes a living document that must be updated when workflow-relevant commands change. CLAUDE.md remains the authoritative source for agent instructions, while README serves human operators.
+
+**Revisit If**: If the command surface grows large enough that README becomes unwieldy, consider a dedicated commands reference or generated documentation.

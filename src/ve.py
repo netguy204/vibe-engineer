@@ -7,6 +7,7 @@ import click
 from chunks import Chunks
 from narratives import Narratives
 from project import Project
+from task_init import TaskInit
 from validation import validate_identifier
 
 
@@ -167,6 +168,44 @@ def create(short_name, project_dir):
     # Show path relative to project_dir
     relative_path = narrative_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+
+@cli.group()
+def task():
+    """Task directory commands."""
+    pass
+
+
+@task.command()
+@click.option(
+    "--external",
+    required=True,
+    type=click.Path(),
+    help="External chunk repository directory",
+)
+@click.option(
+    "--project",
+    "projects",
+    required=True,
+    multiple=True,
+    type=click.Path(),
+    help="Participating repository directory",
+)
+def init(external, projects):
+    """Initialize a task directory for cross-repository work."""
+    cwd = pathlib.Path.cwd()
+    task_init = TaskInit(cwd=cwd, external=external, projects=list(projects))
+
+    errors = task_init.validate()
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    result = task_init.execute()
+    click.echo(f"Created {result.config_path.name}")
+    click.echo(f"  External: {result.external_repo}")
+    click.echo(f"  Projects: {', '.join(result.projects)}")
 
 
 if __name__ == "__main__":

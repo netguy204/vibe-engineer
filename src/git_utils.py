@@ -73,3 +73,30 @@ def resolve_ref(repo_path: Path, ref: str) -> str:
         if "not a git repository" in stderr.lower():
             raise ValueError(f"Not a git repository: {repo_path}") from e
         raise ValueError(f"Cannot resolve ref '{ref}' in {repo_path}") from e
+
+
+def is_git_repository(path: Path) -> bool:
+    """Check if path is a git repository (or worktree).
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if path is a git repository, False otherwise
+    """
+    if not path.exists():
+        return False
+
+    if not path.is_dir():
+        return False
+
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=path,
+            check=True,
+            capture_output=True,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False

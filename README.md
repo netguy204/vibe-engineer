@@ -145,6 +145,21 @@ ve chunk complete 0001-my-feature
 ve chunk overlap 0001-my-feature
 ```
 
+### Cross-Repository Work
+
+When engineering work spans multiple repositories, use task directories to coordinate:
+
+```bash
+# Initialize a task directory with an external chunk repo and participating projects
+ve task init --external acme-chunks --project service-a --project service-b
+```
+
+This creates a `.ve-task.yaml` configuration file that enables task-aware chunk management across repositories.
+
+**Requirements:**
+- All directories must be git repositories
+- All directories must be Vibe Engineer initialized (`ve init` run, so `docs/chunks/` exists)
+
 ## License
 
 MIT

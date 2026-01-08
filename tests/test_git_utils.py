@@ -5,11 +5,35 @@ import subprocess
 
 import pytest
 
-from git_utils import get_current_sha, resolve_ref
+from git_utils import get_current_sha, is_git_repository, resolve_ref
 
 
 # Regex to match a valid 40-character hex SHA
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+
+class TestIsGitRepository:
+    """Tests for is_git_repository function."""
+
+    def test_returns_true_for_git_repo(self, tmp_path):
+        """Returns True for a valid git repository."""
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        assert is_git_repository(tmp_path) is True
+
+    def test_returns_false_for_non_git_directory(self, tmp_path):
+        """Returns False for a directory that is not a git repository."""
+        assert is_git_repository(tmp_path) is False
+
+    def test_returns_true_for_empty_git_repo(self, tmp_path):
+        """Returns True for git repo without any commits."""
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        # No commit made - still a valid git repo
+        assert is_git_repository(tmp_path) is True
+
+    def test_returns_false_for_nonexistent_path(self, tmp_path):
+        """Returns False for a path that does not exist."""
+        nonexistent = tmp_path / "does_not_exist"
+        assert is_git_repository(nonexistent) is False
 
 
 @pytest.fixture
