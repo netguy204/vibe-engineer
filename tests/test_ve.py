@@ -1,0 +1,321 @@
+"""Tests for ve.py CLI"""
+
+import pathlib
+import tempfile
+
+import pytest
+from click.testing import CliRunner
+
+# Import the module under test
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
+from ve import cli
+from chunks import Chunks
+
+
+@pytest.fixture
+def temp_project():
+    """Create a temporary project directory for chunk output."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield pathlib.Path(tmpdir)
+
+
+@pytest.fixture
+def runner():
+    """Create a Click test runner."""
+    return CliRunner()
+
+
+class TestChunksClass:
+    """Tests for the Chunks class."""
+
+    def test_create_chunk_creates_directory(self, temp_project):
+        """Verify chunk creation creates the expected directory structure."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk("VE-001", "my_feature")
+
+        assert result_path.exists()
+        assert result_path.is_dir()
+        assert "0001-my_feature-VE-001" in result_path.name
+
+    def test_enumerate_chunks_empty(self, temp_project):
+        """Verify enumerate_chunks returns empty list for new project."""
+        chunk_mgr = Chunks(temp_project)
+        assert chunk_mgr.enumerate_chunks() == []
+
+    def test_num_chunks_increments(self, temp_project):
+        """Verify chunk numbering increments correctly."""
+        chunk_mgr = Chunks(temp_project)
+        assert chunk_mgr.num_chunks == 0
+
+        chunk_mgr.create_chunk("VE-001", "first")
+        assert chunk_mgr.num_chunks == 1
+
+        chunk_mgr.create_chunk("VE-002", "second")
+        assert chunk_mgr.num_chunks == 2
+
+
+class TestStartCommand:
+    """Tests for the 'chunk start' command."""
+
+    def test_start_command_exists(self, runner):
+        """Verify the start command is registered."""
+        result = runner.invoke(cli, ["chunk", "start", "--help"])
+        assert result.exit_code == 0
+        assert "Start a new chunk" in result.output
+
+    def test_start_accepts_short_name_only(self, runner, temp_project):
+        """Command accepts short_name without ticket_id."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    def test_start_accepts_short_name_and_ticket_id(self, runner, temp_project):
+        """Command accepts short_name followed by ticket_id."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+
+class TestShortNameValidation:
+    """Tests for short_name validation."""
+
+    def test_rejects_spaces(self, runner, temp_project):
+        """short_name with spaces is rejected."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "spaces" in result.output.lower()
+
+    def test_rejects_invalid_characters(self, runner, temp_project):
+        """short_name with invalid characters is rejected."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my@feature!", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "character" in result.output.lower()
+
+    def test_rejects_length_32_or_more(self, runner, temp_project):
+        """short_name with 32+ characters is rejected."""
+        long_name = "a" * 32
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", long_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "32" in result.output or "length" in result.output.lower()
+
+    def test_accepts_valid_short_name(self, runner, temp_project):
+        """Valid short_name with alphanumeric, underscore, hyphen is accepted."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature-v2", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    def test_collects_all_errors(self, runner, temp_project):
+        """Multiple validation errors are collected and shown together."""
+        # 33 chars with a space and invalid char
+        bad_name = "a" * 30 + " @!"
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", bad_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Should mention multiple issues
+        output_lower = result.output.lower()
+        assert "space" in output_lower
+        assert "character" in output_lower
+        assert "32" in result.output or "length" in output_lower
+
+
+class TestTicketIdValidation:
+    """Tests for ticket_id validation."""
+
+    def test_rejects_invalid_characters(self, runner, temp_project):
+        """ticket_id with invalid characters is rejected."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "VE@001!", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "character" in result.output.lower()
+
+    def test_rejects_spaces(self, runner, temp_project):
+        """ticket_id with spaces is rejected."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "VE 001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "space" in result.output.lower()
+
+    def test_accepts_valid_ticket_id(self, runner, temp_project):
+        """Valid ticket_id with alphanumeric, underscore, hyphen is accepted."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "VE-001_a", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+
+class TestLowercaseNormalization:
+    """Tests for lowercase normalization of inputs."""
+
+    def test_short_name_normalized_to_lowercase(self, runner, temp_project):
+        """short_name is normalized to lowercase."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "My_Feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+        # Check the created directory uses lowercase
+        chunk_dir = temp_project / "docs" / "chunks"
+        created_dirs = list(chunk_dir.iterdir())
+        assert len(created_dirs) == 1
+        assert "my_feature" in created_dirs[0].name
+        assert "My_Feature" not in created_dirs[0].name
+
+    def test_ticket_id_normalized_to_lowercase(self, runner, temp_project):
+        """ticket_id is normalized to lowercase."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+        # Check the created directory uses lowercase
+        chunk_dir = temp_project / "docs" / "chunks"
+        created_dirs = list(chunk_dir.iterdir())
+        assert len(created_dirs) == 1
+        assert "ve-001" in created_dirs[0].name
+        assert "VE-001" not in created_dirs[0].name
+
+
+class TestDuplicateDetection:
+    """Tests for duplicate chunk detection."""
+
+    def test_detects_duplicate_and_prompts(self, runner, temp_project):
+        """Duplicate chunk detected, prompt shown, abort on 'no'."""
+        # Create first chunk
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Try to create duplicate - answer 'n' to abort
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)],
+            input="n\n"
+        )
+        assert result2.exit_code != 0
+        assert "already exists" in result2.output.lower() or "duplicate" in result2.output.lower()
+
+        # Should still have only 1 chunk
+        chunk_dir = temp_project / "docs" / "chunks"
+        assert len(list(chunk_dir.iterdir())) == 1
+
+    def test_allows_duplicate_when_confirmed(self, runner, temp_project):
+        """Duplicate creation proceeds when user confirms."""
+        # Create first chunk
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Create duplicate - answer 'y' to proceed
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)],
+            input="y\n"
+        )
+        assert result2.exit_code == 0
+
+        # Should have 2 chunks now
+        chunk_dir = temp_project / "docs" / "chunks"
+        assert len(list(chunk_dir.iterdir())) == 2
+
+    def test_yes_flag_skips_prompt(self, runner, temp_project):
+        """--yes flag bypasses duplicate confirmation prompt."""
+        # Create first chunk
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Create duplicate with --yes - no prompt needed
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--yes", "--project-dir", str(temp_project)]
+        )
+        assert result2.exit_code == 0
+
+        # Should have 2 chunks now
+        chunk_dir = temp_project / "docs" / "chunks"
+        assert len(list(chunk_dir.iterdir())) == 2
+
+
+class TestPathFormat:
+    """Tests for chunk path format."""
+
+    def test_path_format_with_ticket_id(self, runner, temp_project):
+        """Path format is {NNNN}-{short_name}-{ticket_id} when ticket_id provided."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "ve-001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        chunk_dir = temp_project / "docs" / "chunks"
+        created_dirs = list(chunk_dir.iterdir())
+        assert len(created_dirs) == 1
+        assert created_dirs[0].name == "0001-feature-ve-001"
+
+    def test_path_format_without_ticket_id(self, runner, temp_project):
+        """Path format is {NNNN}-{short_name} when ticket_id omitted."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        chunk_dir = temp_project / "docs" / "chunks"
+        created_dirs = list(chunk_dir.iterdir())
+        assert len(created_dirs) == 1
+        # Should NOT have -None at the end
+        assert created_dirs[0].name == "0001-feature"
+        assert "None" not in created_dirs[0].name
+
+
+class TestSuccessOutput:
+    """Tests for success output."""
+
+    def test_prints_created_path(self, runner, temp_project):
+        """Success message shows the created path."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "ve-001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+        assert "docs/chunks/0001-feature-ve-001" in result.output
+
+    def test_prints_created_path_without_ticket_id(self, runner, temp_project):
+        """Success message shows the created path when ticket_id omitted."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+        assert "docs/chunks/0001-feature" in result.output

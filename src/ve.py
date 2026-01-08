@@ -8,73 +8,101 @@
 # ]
 # ///
 
+"""Vibe Engineer CLI - view layer for chunk management."""
+
 import pathlib
+import re
 
 import click
-import jinja2
 
-template_dir = pathlib.Path(__file__).parent.parent / "templates"
+from chunks import Chunks
 
-def render_template(template_name, **kwargs):
-    template_path = template_dir / template_name
-    with open(template_path, "r") as template_file:
-        template = jinja2.Template(template_file.read())
-        return template.render(**kwargs)
 
-class Chunks:
-    def __init__(self, project_dir):
-        self.project_dir = project_dir
-        self.chunk_dir = project_dir / "docs" / "chunks"
-        self.chunk_dir.mkdir(parents=True, exist_ok=True)
+def validate_short_name(short_name: str) -> list[str]:
+    """Validate short_name and return list of error messages."""
+    errors = []
 
-    def enumerate_chunks(self):
-        return [f.name for f in self.chunk_dir.iterdir() if f.is_dir()]
+    if " " in short_name:
+        errors.append("short_name cannot contain spaces")
 
-    @property
-    def num_chunks(self):
-        return len(self.enumerate_chunks())
+    if not re.match(r'^[a-zA-Z0-9_-]+$', short_name):
+        invalid_chars = re.sub(r'[a-zA-Z0-9_-]', '', short_name)
+        errors.append(f"short_name contains invalid characters: {invalid_chars!r}")
 
-    def create_chunk(self, ticket_id: str, short_name: str):
-        """instantiate the chunk templates for the given ticket and short name"""
+    if len(short_name) >= 32:
+        errors.append(f"short_name must be less than 32 characters (got {len(short_name)})")
 
-        next_chunk_id = self.num_chunks + 1
-        next_chunk_id_str = f"{next_chunk_id:04d}"
-        chunk_path = self.chunk_dir / f"{next_chunk_id_str}-{short_name}-{ticket_id}"
-        chunk_path.mkdir(parents=True, exist_ok=True)
-        for chunk_template in template_dir.glob("chunk/*.md"):
-            rendered_template = render_template(
-                chunk_template.relative_to(template_dir),
-                ticket_id=ticket_id,
-                short_name=short_name,
-                next_chunk_id=next_chunk_id_str,
-            )
-            with open(chunk_path / chunk_template.name, "w") as chunk_file:
-                chunk_file.write(rendered_template)
-        return chunk_path
+    return errors
+
+
+def validate_ticket_id(ticket_id: str) -> list[str]:
+    """Validate ticket_id and return list of error messages."""
+    errors = []
+
+    if " " in ticket_id:
+        errors.append("ticket_id cannot contain spaces")
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', ticket_id):
+        invalid_chars = re.sub(r'[a-zA-Z0-9_-]', '', ticket_id)
+        errors.append(f"ticket_id contains invalid characters: {invalid_chars!r}")
+
+    return errors
+
 
 @click.group()
 def cli():
     """Vibe Engineer"""
     pass
 
+
 @cli.command()
 def init():
     """Initialize the Vibe Engineer document store."""
     pass
+
 
 @cli.group()
 def chunk():
     """Chunk commands"""
     pass
 
+
 @chunk.command()
-@click.argument("ticket_id")
 @click.argument("short_name")
+@click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def start(ticket_id, short_name, project_dir):
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
+def start(short_name, ticket_id, project_dir, yes):
     """Start a new chunk."""
+    errors = validate_short_name(short_name)
+    if ticket_id:
+        errors.extend(validate_ticket_id(ticket_id))
+
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Normalize to lowercase
+    short_name = short_name.lower()
+    if ticket_id:
+        ticket_id = ticket_id.lower()
+
     chunks = Chunks(project_dir)
-    chunks.create_chunk(ticket_id, short_name)
+
+    # Check for duplicates
+    duplicates = chunks.find_duplicates(short_name, ticket_id)
+    if duplicates and not yes:
+        click.echo(f"Chunk with short_name '{short_name}' and ticket_id '{ticket_id}' already exists:")
+        for dup in duplicates:
+            click.echo(f"  - {dup}")
+        if not click.confirm("Create another chunk with the same name?"):
+            raise SystemExit(1)
+
+    chunk_path = chunks.create_chunk(ticket_id, short_name)
+    # Show path relative to project_dir
+    relative_path = chunk_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
 
 
 if __name__ == "__main__":

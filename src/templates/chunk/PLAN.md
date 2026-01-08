@@ -1,13 +1,4 @@
----
-status: ACTIVE
----
-
 <!--
-STATUS VALUES:
-- ACTIVE: This plan reflects current implementation approach
-- SUPERSEDED: Plan was significantly revised; see successor
-- HISTORICAL: Implementation diverged significantly; kept for archaeology
-
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
 to hand to an agent.
@@ -25,6 +16,9 @@ What existing code will you build on?
 Reference trunk DECISIONS.md entries where relevant.
 If this approach represents a new significant decision, add it to
 DECISIONS.md and reference it here.
+
+Remember to update code_paths in the header of GOAL.md in this chunk
+directory with references to the files that you expect to touch.
 -->
 
 ## Sequence
