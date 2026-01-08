@@ -19,8 +19,20 @@ The CLI provides commands to initialize a project's documentation structure and 
 
 ## Terminology
 
+### Entities
+
+- **Agent**: An automated system (e.g., an AI assistant) that performs tasks within the workflow
+- **Operator**: An entity interacting with and guiding an agent during development
+- **User**: The entity that the product being vibe-engineered is designed for
+
+### Artifacts
+
 - **Trunk**: The `docs/trunk/` directory containing stable, project-level documentation (GOAL.md, SPEC.md, DECISIONS.md, TESTING_PHILOSOPHY.md)
 - **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
+- **Narrative**: A high-level, multi-step goal that decomposes into multiple chunks. Stored in `docs/narratives/`.
+
+### Identifiers and Metadata
+
 - **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
 - **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
 - **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk

@@ -9,13 +9,13 @@ code_paths:
 code_references:
   - file: src/ve.py
     ranges:
-      - lines: 8
+      - lines: "8"
         implements: "pyyaml dependency for YAML frontmatter parsing"
       - lines: 142-156
         implements: "overlap CLI command - accepts chunk_id, --project-dir, outputs affected chunk paths"
   - file: src/chunks.py
     ranges:
-      - lines: 9
+      - lines: "9"
         implements: "yaml import for frontmatter parsing"
       - lines: 101-115
         implements: "resolve_chunk_id() - resolves 4-digit or full name to directory name"

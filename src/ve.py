@@ -6,6 +6,7 @@ import re
 import click
 
 from chunks import Chunks
+from narratives import Narratives
 from project import Project
 
 
@@ -158,6 +159,35 @@ def complete(chunk_id, project_dir):
         raise SystemExit(1)
 
     click.echo(f"Chunk {result.chunk_name} is ready for completion")
+
+
+@cli.group()
+def narrative():
+    """Narrative commands"""
+    pass
+
+
+@narrative.command()
+@click.argument("short_name")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def create(short_name, project_dir):
+    """Create a new narrative."""
+    errors = validate_short_name(short_name)
+
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Normalize to lowercase
+    short_name = short_name.lower()
+
+    narratives = Narratives(project_dir)
+    narrative_path = narratives.create_narrative(short_name)
+
+    # Show path relative to project_dir
+    relative_path = narrative_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
 
 
 if __name__ == "__main__":

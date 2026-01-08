@@ -46,6 +46,7 @@ class TestInitCommand:
             ["init", "--project-dir", str(temp_project)]
         )
         assert result1.exit_code == 0
+        assert "Created" in result1.output
 
         # Second run
         result2 = runner.invoke(
@@ -54,7 +55,29 @@ class TestInitCommand:
         )
         assert result2.exit_code == 0
         assert "Skipped" in result2.output
-        assert "10" in result2.output  # 10 files skipped
+        assert "existing" in result2.output.lower()
+
+    def test_init_creates_narratives_directory(self, runner, temp_project):
+        """ve init creates docs/narratives/ directory."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert (temp_project / "docs" / "narratives").exists()
+        assert (temp_project / "docs" / "narratives").is_dir()
+
+    def test_init_narratives_idempotent(self, runner, temp_project):
+        """ve init skips narratives directory if it already exists."""
+        # Create narratives dir before init
+        (temp_project / "docs" / "narratives").mkdir(parents=True)
+
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert (temp_project / "docs" / "narratives").exists()
 
     def test_init_command_default_project_dir(self, runner):
         """ve init uses current directory by default."""

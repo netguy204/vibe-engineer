@@ -74,6 +74,19 @@ class Project:
 
         return result
 
+    def _init_narratives(self) -> InitResult:
+        """Create docs/narratives/ directory for narrative documents."""
+        result = InitResult()
+        narratives_dir = self.project_dir / "docs" / "narratives"
+
+        if narratives_dir.exists():
+            result.skipped.append("docs/narratives/")
+        else:
+            narratives_dir.mkdir(parents=True, exist_ok=True)
+            result.created.append("docs/narratives/")
+
+        return result
+
     def _init_claude_md(self) -> InitResult:
         """Create CLAUDE.md at project root from template."""
         result = InitResult()
@@ -100,6 +113,7 @@ class Project:
             self._init_trunk(),
             self._init_commands(),
             self._init_claude_md(),
+            self._init_narratives(),
         ]:
             result.created.extend(sub_result.created)
             result.skipped.extend(sub_result.skipped)

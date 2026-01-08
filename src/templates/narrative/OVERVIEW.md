@@ -1,0 +1,97 @@
+---
+status: DRAFTING
+advances_trunk_goal: null
+chunks: []
+---
+
+<!--
+STATUS VALUES:
+- DRAFTING: The narrative is being refined; chunks not yet created
+- ACTIVE: Chunks are being created and implemented from this narrative
+- COMPLETED: All chunks have been created and the narrative's ambition is realized
+
+ADVANCES_TRUNK_GOAL:
+- Reference the specific section of docs/trunk/GOAL.md this narrative advances
+- Example: "Required Properties: Must support multi-repository workflows"
+
+CHUNKS:
+- Starts empty; entries are added as prompts are turned into chunks via /chunk-create
+- Each entry records which prompt was refined and where the resulting chunk lives
+- prompt: The prompt text from this document that was used to create the chunk
+- chunk_directory: The created chunk directory (e.g., "0007-feature_name")
+-->
+
+## Advances Trunk Goal
+
+<!--
+Which section of docs/trunk/GOAL.md does this narrative advance?
+Be specific - reference the section name and summarize the relevant content.
+
+Example: "Required Properties: Must support multi-repository workflows"
+
+If no existing section applies to this narrative, STOP. This is a signal that
+trunk GOAL.md has a gap. Work with the operator to expand trunk GOAL.md first,
+then return here and complete this reference.
+
+A narrative without a clear trunk GOAL anchor risks drift and scope creep.
+-->
+
+## Driving Ambition
+
+<!--
+Describe what you're trying to achieve in natural language. Write as if you're
+explaining the goal to a colleague - what's the high-level objective? Why does
+it matter? What does success look like at a high level?
+
+This doesn't need to be polished. A rough description is a good starting point.
+Through dialogue with the agent, we'll refine this ambition into concrete chunks.
+
+Example:
+"I want to support multi-repository workflows so that teams can manage related
+projects together. Right now each repo is isolated, which creates friction
+when changes span multiple codebases. Success means an operator can define
+relationships between repos and the tooling respects those relationships
+during chunk creation and completion."
+-->
+
+## Chunks
+
+<!--
+REFINEMENT GUIDANCE FOR AGENTS:
+
+Before populating this section, help the operator decompose their ambition.
+Consider asking:
+
+- What's the first concrete step toward this ambition?
+- Are there dependencies between the pieces of work, or could they happen in
+  any order?
+- What's the smallest useful increment that delivers value?
+- Is any piece of this too large to be a single chunk? (A chunk should be
+  completable in a focused session.)
+- What would need to be true before you'd consider this narrative complete?
+
+Each chunk prompt should be a sentence or two - enough to seed the /chunk-create
+process, which handles detailed refinement.
+-->
+
+<!--
+Update the chunks array in the frontmatter as prompts are defined.
+The list below mirrors the frontmatter for readability.
+-->
+
+1. _Chunk prompt will appear here after refinement_
+
+## Completion Criteria
+
+<!--
+How will you know this narrative is done? This isn't about individual chunk
+success (each chunk has its own criteria) - it's about the narrative as a whole.
+
+When all chunks are complete, what can the user do that they couldn't do before?
+Focus on user outcomes - the operator and agent are means to deliver value to
+the user.
+
+Example:
+"When complete, a user can manage related projects as a unified workspace,
+with changes that span repositories tracked and deployed together."
+-->

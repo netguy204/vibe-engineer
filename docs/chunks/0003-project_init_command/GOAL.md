@@ -17,13 +17,13 @@ code_references:
         implements: "_init_trunk() - creates docs/trunk/ and copies template documents"
       - lines: 50-75
         implements: "_init_commands() - creates .claude/commands/ symlinks with copy fallback"
-      - lines: 77-89
+      - lines: 90-102
         implements: "_init_claude_md() - copies CLAUDE.md template to project root"
-      - lines: 91-108
+      - lines: 104-122
         implements: "init() - orchestrates all initialization, aggregates results"
   - file: src/ve.py
     ranges:
-      - lines: 61-76
+      - lines: 50-65
         implements: "CLI init command - invokes Project.init() and displays results"
   - file: src/templates/CLAUDE.md
     ranges:
@@ -35,11 +35,11 @@ code_references:
         implements: "TestProjectClass - tests Project class basics and lazy Chunks property"
       - lines: 36-129
         implements: "TestProjectInit - tests init() creates trunk docs, commands, CLAUDE.md"
-      - lines: 131-200
+      - lines: 131-219
         implements: "TestProjectInitIdempotency - tests init() skips existing files"
   - file: tests/test_init.py
     ranges:
-      - lines: 9-68
+      - lines: 9-91
         implements: "TestInitCommand - CLI integration tests for 've init'"
 ---
 
