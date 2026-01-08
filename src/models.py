@@ -1,5 +1,7 @@
 """Pydantic models for chunk validation."""
 
+import re
+
 from pydantic import BaseModel, field_validator
 
 from validation import validate_identifier
@@ -13,46 +15,101 @@ def _require_valid_dir_name(value: str, field_name: str) -> str:
     return value
 
 
-class TaskConfig(BaseModel):
-    """Configuration for cross-repository chunk management."""
+def _require_valid_repo_ref(value: str, field_name: str) -> str:
+    """Validate a GitHub-style org/repo reference.
 
-    external_chunk_repo: str
-    projects: list[str]
+    Format: {org}/{repo} where both parts are valid identifiers.
+    """
+    if "/" not in value:
+        raise ValueError(f"{field_name} must be in 'org/repo' format")
+
+    parts = value.split("/")
+    if len(parts) != 2:
+        raise ValueError(f"{field_name} must have exactly one slash (org/repo format)")
+
+    org, repo = parts
+    if not org:
+        raise ValueError(f"{field_name} org part cannot be empty")
+    if not repo:
+        raise ValueError(f"{field_name} repo part cannot be empty")
+
+    # Validate org part (allow dots, max 39 chars per GitHub)
+    org_errors = validate_identifier(org, f"{field_name} org", allow_dot=True, max_length=39)
+    if org_errors:
+        raise ValueError("; ".join(org_errors))
+
+    # Validate repo part (allow dots, max 100 chars per GitHub)
+    repo_errors = validate_identifier(repo, f"{field_name} repo", allow_dot=True, max_length=100)
+    if repo_errors:
+        raise ValueError("; ".join(repo_errors))
+
+    return value
+
+
+# Regex for validating 40-character hex SHA
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+
+class TaskConfig(BaseModel):
+    """Configuration for cross-repository chunk management.
+
+    All repository references use GitHub's org/repo format.
+    """
+
+    external_chunk_repo: str  # org/repo format
+    projects: list[str]  # list of org/repo format
 
     @field_validator("external_chunk_repo")
     @classmethod
     def validate_external_chunk_repo(cls, v: str) -> str:
-        """Validate external_chunk_repo is a valid directory name."""
-        return _require_valid_dir_name(v, "external_chunk_repo")
+        """Validate external_chunk_repo is in org/repo format."""
+        return _require_valid_repo_ref(v, "external_chunk_repo")
 
     @field_validator("projects")
     @classmethod
     def validate_projects(cls, v: list[str]) -> list[str]:
-        """Validate projects list is non-empty with valid directory names."""
+        """Validate projects list is non-empty with org/repo format entries."""
         if not v:
             raise ValueError("projects must contain at least one project")
         for project in v:
-            _require_valid_dir_name(project, "project")
+            _require_valid_repo_ref(project, "project")
         return v
 
 
 class ExternalChunkRef(BaseModel):
-    """Reference to a chunk in an external project."""
+    """Reference to a chunk in another repository.
 
-    project: str
-    chunk: str
+    Used for both:
+    - external.yaml files in participating repos (with track/pinned)
+    - dependents list in external chunk GOAL.md (without track/pinned)
+    """
 
-    @field_validator("project")
+    repo: str  # GitHub-style org/repo format
+    chunk: str  # Chunk directory name
+    track: str | None = None  # Branch to follow (optional)
+    pinned: str | None = None  # 40-char SHA (optional)
+
+    @field_validator("repo")
     @classmethod
-    def validate_project(cls, v: str) -> str:
-        """Validate project is a valid directory name."""
-        return _require_valid_dir_name(v, "project")
+    def validate_repo(cls, v: str) -> str:
+        """Validate repo is in org/repo format."""
+        return _require_valid_repo_ref(v, "repo")
 
     @field_validator("chunk")
     @classmethod
     def validate_chunk(cls, v: str) -> str:
         """Validate chunk is a valid directory name."""
         return _require_valid_dir_name(v, "chunk")
+
+    @field_validator("pinned")
+    @classmethod
+    def validate_pinned(cls, v: str | None) -> str | None:
+        """Validate pinned is a 40-character hex SHA if provided."""
+        if v is None:
+            return v
+        if not SHA_PATTERN.match(v):
+            raise ValueError("pinned must be a 40-character lowercase hex SHA")
+        return v
 
 
 class ChunkDependent(BaseModel):

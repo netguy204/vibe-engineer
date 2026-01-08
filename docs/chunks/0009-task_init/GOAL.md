@@ -14,13 +14,15 @@ code_references:
     ranges:
       - lines: "11-18"
         implements: "TaskInitResult dataclass for returning init results"
-      - lines: "20-34"
+      - lines: "20-49"
+        implements: "_resolve_repo_path() helper to resolve org/repo format to filesystem path"
+      - lines: "52-65"
         implements: "TaskInit class initialization with cwd, external, projects"
-      - lines: "35-60"
+      - lines: "67-92"
         implements: "validate() method - checks already exists, no projects, directory validation"
-      - lines: "62-91"
+      - lines: "94-123"
         implements: "_validate_directory() - checks existence, git repo, VE-initialized"
-      - lines: "93-114"
+      - lines: "125-146"
         implements: "execute() - creates .ve-task.yaml with TaskConfig schema"
   - file: src/git_utils.py
     ranges:
@@ -28,13 +30,13 @@ code_references:
         implements: "is_git_repository() helper for validation"
   - file: src/ve.py
     ranges:
-      - lines: "173-176"
+      - lines: "198-201"
         implements: "task command group"
-      - lines: "179-208"
+      - lines: "204-233"
         implements: "task init subcommand with --external and --project options"
   - file: README.md
     ranges:
-      - lines: "148-161"
+      - lines: "148-162"
         implements: "Cross-Repository Work documentation section"
 narrative: 0001-cross_repo_chunks
 ---

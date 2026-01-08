@@ -15,7 +15,7 @@ code_references:
         implements: "get_latest_chunk() method - returns highest-numbered chunk"
   - file: src/ve.py
     ranges:
-      - lines: 111-129
+      - lines: 116-133
         implements: "list CLI command - ve chunk list with --latest and --project-dir options"
   - file: tests/test_chunks.py
     ranges:

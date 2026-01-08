@@ -8,6 +8,7 @@ from chunks import Chunks
 from narratives import Narratives
 from project import Project
 from task_init import TaskInit
+from task_utils import is_task_directory, create_task_chunk, TaskChunkError
 from validation import validate_identifier
 
 
@@ -71,6 +72,12 @@ def start(short_name, ticket_id, project_dir, yes):
     if ticket_id:
         ticket_id = ticket_id.lower()
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _start_task_chunk(project_dir, short_name, ticket_id)
+        return
+
+    # Single-repo mode
     chunks = Chunks(project_dir)
 
     # Check for duplicates
@@ -86,6 +93,24 @@ def start(short_name, ticket_id, project_dir, yes):
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+
+def _start_task_chunk(task_dir: pathlib.Path, short_name: str, ticket_id: str | None):
+    """Handle chunk creation in task directory (cross-repo mode)."""
+    try:
+        result = create_task_chunk(task_dir, short_name, ticket_id)
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_chunk_path"]
+    click.echo(f"Created chunk in external repo: {external_path.relative_to(task_dir)}/")
+
+    for project_ref, yaml_path in result["project_refs"].items():
+        # Show the chunk directory, not the yaml file
+        chunk_dir = yaml_path.parent
+        click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
 @chunk.command("list")

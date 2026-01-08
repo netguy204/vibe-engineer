@@ -23,7 +23,7 @@ code_references:
         implements: "init() - orchestrates all initialization, aggregates results"
   - file: src/ve.py
     ranges:
-      - lines: 50-65
+      - lines: 31-46
         implements: "CLI init command - invokes Project.init() and displays results"
   - file: src/templates/CLAUDE.md
     ranges:
@@ -35,7 +35,7 @@ code_references:
         implements: "TestProjectClass - tests Project class basics and lazy Chunks property"
       - lines: 37-129
         implements: "TestProjectInit - tests init() creates trunk docs, commands, CLAUDE.md"
-      - lines: 132-219
+      - lines: 132-220
         implements: "TestProjectInitIdempotency - tests init() skips existing files"
   - file: tests/test_init.py
     ranges:

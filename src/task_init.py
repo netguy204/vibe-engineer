@@ -17,6 +17,38 @@ class TaskInitResult:
     projects: list[str]
 
 
+def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
+    """Resolve a repo reference to a filesystem path.
+
+    Args:
+        cwd: Task directory containing repositories
+        repo_ref: Either org/repo format or plain directory name
+
+    Returns:
+        Path to the directory if found, None otherwise.
+    """
+    # If it's org/repo format, extract repo name
+    if "/" in repo_ref:
+        parts = repo_ref.split("/")
+        if len(parts) == 2:
+            org, repo = parts
+            # Try just repo name first
+            simple_path = cwd / repo
+            if simple_path.exists() and simple_path.is_dir():
+                return simple_path
+            # Try nested org/repo
+            nested_path = cwd / org / repo
+            if nested_path.exists() and nested_path.is_dir():
+                return nested_path
+            return None
+
+    # Plain directory name
+    path = cwd / repo_ref
+    if path.exists() and path.is_dir():
+        return path
+    return None
+
+
 class TaskInit:
     """Initialize a task directory for cross-repository work."""
 
@@ -25,8 +57,8 @@ class TaskInit:
 
         Args:
             cwd: Current working directory where .ve-task.yaml will be created
-            external: Name of the external chunk repository directory
-            projects: List of participating project directory names
+            external: External chunk repository (org/repo format)
+            projects: List of participating projects (org/repo format)
         """
         self.cwd = cwd
         self.external = external
@@ -59,32 +91,32 @@ class TaskInit:
 
         return errors
 
-    def _validate_directory(self, name: str) -> list[str]:
+    def _validate_directory(self, repo_ref: str) -> list[str]:
         """Validate a single directory.
 
         Args:
-            name: Directory name relative to cwd
+            repo_ref: Repository reference (org/repo format or plain name)
 
         Returns:
             List of error messages for this directory.
         """
         errors: list[str] = []
-        path = self.cwd / name
+        path = _resolve_repo_path(self.cwd, repo_ref)
 
         # Check if directory exists
-        if not path.exists():
-            errors.append(f"Directory '{name}' does not exist")
+        if path is None:
+            errors.append(f"Directory '{repo_ref}' does not exist")
             return errors
 
         # Check if it's a git repository
         if not is_git_repository(path):
-            errors.append(f"Directory '{name}' is not a git repository")
+            errors.append(f"Directory '{repo_ref}' is not a git repository")
             return errors
 
         # Check if VE-initialized (docs/chunks/ exists)
         if not (path / "docs" / "chunks").exists():
             errors.append(
-                f"Directory '{name}' is not a Vibe Engineer project (missing docs/chunks/)"
+                f"Directory '{repo_ref}' is not a Vibe Engineer project (missing docs/chunks/)"
             )
             return errors
 

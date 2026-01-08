@@ -17,7 +17,7 @@ code_references:
         implements: "_init_narratives() method - creates docs/narratives/ during ve init"
   - file: src/ve.py
     ranges:
-      - lines: 144-170
+      - lines: 169-195
         implements: "ve narrative create CLI command with validation and output"
 ---
 

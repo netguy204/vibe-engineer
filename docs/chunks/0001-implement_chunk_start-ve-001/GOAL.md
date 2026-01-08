@@ -9,12 +9,10 @@ code_paths:
 code_references:
   - file: src/ve.py
     ranges:
-      - lines: 13-27
-        implements: "validate_short_name() - rejects spaces, invalid chars, length >= 32"
-      - lines: 30-41
-        implements: "validate_ticket_id() - same character validation rules"
-      - lines: 73-108
-        implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag, success output"
+      - lines: 15-22
+        implements: "validate_short_name() and validate_ticket_id() - delegating to validate_identifier()"
+      - lines: 54-95
+        implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag, success output (single-repo mode)"
   - file: src/chunks.py
     ranges:
       - lines: 31-42
@@ -25,7 +23,7 @@ code_references:
         implements: "create_chunk() - directory creation with correct path format, template rendering"
   - file: tests/test_chunk_start.py
     ranges:
-      - lines: 1-270
+      - lines: 1-269
         implements: "Comprehensive test suite - 23 tests covering chunk start command success criteria"
 ---
 

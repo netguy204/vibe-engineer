@@ -32,13 +32,15 @@ class TestTaskInitValidate:
 
     def test_returns_error_when_task_directory_already_exists(self, tmp_path):
         """Returns error when .ve-task.yaml already exists."""
-        (tmp_path / ".ve-task.yaml").write_text("external_chunk_repo: ext\nprojects:\n  - proj\n")
+        (tmp_path / ".ve-task.yaml").write_text(
+            "external_chunk_repo: acme/ext\nprojects:\n  - acme/proj\n"
+        )
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external)
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
@@ -50,7 +52,7 @@ class TestTaskInitValidate:
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=[])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=[])
         errors = init.validate()
 
         assert len(errors) == 1
@@ -61,11 +63,11 @@ class TestTaskInitValidate:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "ext" in errors[0]
+        assert "acme/ext" in errors[0]
         assert "does not exist" in errors[0]
 
     def test_returns_error_when_project_directory_does_not_exist(self, tmp_path):
@@ -73,11 +75,11 @@ class TestTaskInitValidate:
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "proj" in errors[0]
+        assert "acme/proj" in errors[0]
         assert "does not exist" in errors[0]
 
     def test_returns_error_when_external_is_not_git_repo(self, tmp_path):
@@ -88,11 +90,11 @@ class TestTaskInitValidate:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "ext" in errors[0]
+        assert "acme/ext" in errors[0]
         assert "not a git repository" in errors[0]
 
     def test_returns_error_when_project_is_not_git_repo(self, tmp_path):
@@ -103,11 +105,11 @@ class TestTaskInitValidate:
         project.mkdir()
         (project / "docs" / "chunks").mkdir(parents=True)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "proj" in errors[0]
+        assert "acme/proj" in errors[0]
         assert "not a git repository" in errors[0]
 
     def test_returns_error_when_external_is_not_ve_initialized(self, tmp_path):
@@ -118,11 +120,11 @@ class TestTaskInitValidate:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "ext" in errors[0]
+        assert "acme/ext" in errors[0]
         assert "not a Vibe Engineer project" in errors[0]
         assert "docs/chunks" in errors[0]
 
@@ -134,11 +136,11 @@ class TestTaskInitValidate:
         project.mkdir()
         subprocess.run(["git", "init"], cwd=project, check=True, capture_output=True)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert len(errors) == 1
-        assert "proj" in errors[0]
+        assert "acme/proj" in errors[0]
         assert "not a Vibe Engineer project" in errors[0]
         assert "docs/chunks" in errors[0]
 
@@ -149,7 +151,7 @@ class TestTaskInitValidate:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         errors = init.validate()
 
         assert errors == []
@@ -163,7 +165,7 @@ class TestTaskInitValidate:
         proj2 = tmp_path / "proj2"
         make_ve_initialized_git_repo(proj2)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj1", "proj2"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
         errors = init.validate()
 
         assert errors == []
@@ -176,12 +178,25 @@ class TestTaskInitValidate:
         proj2 = tmp_path / "proj2"
         proj2.mkdir()
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj1", "proj2"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
         errors = init.validate()
 
         assert len(errors) == 2
-        assert any("proj1" in e and "does not exist" in e for e in errors)
-        assert any("proj2" in e and "not a git repository" in e for e in errors)
+        assert any("acme/proj1" in e and "does not exist" in e for e in errors)
+        assert any("acme/proj2" in e and "not a git repository" in e for e in errors)
+
+    def test_resolves_nested_directory_structure(self, tmp_path):
+        """Resolves org/repo to nested directory structure when simple not found."""
+        # Create nested structure: tmp_path/acme/ext
+        external = tmp_path / "acme" / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "acme" / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        errors = init.validate()
+
+        assert errors == []
 
 
 class TestTaskInitExecute:
@@ -194,7 +209,7 @@ class TestTaskInitExecute:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         result = init.execute()
 
         assert (tmp_path / ".ve-task.yaml").exists()
@@ -210,11 +225,11 @@ class TestTaskInitExecute:
         proj2 = tmp_path / "proj2"
         make_ve_initialized_git_repo(proj2)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj1", "proj2"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
         result = init.execute()
 
-        assert result.external_repo == "ext"
-        assert result.projects == ["proj1", "proj2"]
+        assert result.external_repo == "acme/ext"
+        assert result.projects == ["acme/proj1", "acme/proj2"]
 
     def test_result_can_be_loaded_by_load_task_config(self, tmp_path):
         """Created file can be loaded by load_task_config()."""
@@ -223,9 +238,9 @@ class TestTaskInitExecute:
         project = tmp_path / "proj"
         make_ve_initialized_git_repo(project)
 
-        init = TaskInit(cwd=tmp_path, external="ext", projects=["proj"])
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
         init.execute()
 
         config = load_task_config(tmp_path)
-        assert config.external_chunk_repo == "ext"
-        assert config.projects == ["proj"]
+        assert config.external_chunk_repo == "acme/ext"
+        assert config.projects == ["acme/proj"]

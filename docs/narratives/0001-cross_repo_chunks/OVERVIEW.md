@@ -8,6 +8,8 @@ chunks:
     chunk_directory: "0008-git_local_utilities"
   - prompt: "ve task init command: Implement ve task init --external <dir> --project <dir> to initialize a task directory. Validate directories exist and are VE-initialized git repos, create .ve-task.yaml, and report success."
     chunk_directory: "0009-task_init"
+  - prompt: "ve chunk create task-aware: Extend ve chunk create to detect task directory context. When in a task directory: create the chunk in the external chunk repo with dependents metadata, create external.yaml references in each project repo (using next sequential local ID per repo), resolve and populate pinned fields, and report all created paths. Preserve existing single-repo behavior when not in a task directory."
+    chunk_directory: "0010-chunk_create_task_aware"
 ---
 
 ## Advances Trunk Goal

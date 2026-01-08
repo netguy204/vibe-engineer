@@ -8,8 +8,8 @@ narrative: null
 ---
 
 <!--
-Do not delete this front matter description text until the chunk complete
-command is run. This describes schema information that needs to be adhered
+DO NOT DELETE THIS COMMENT until the chunk complete command is run.
+This describes schema information that needs to be adhered
 to throughout the process. 
 
 STATUS VALUES:
@@ -40,7 +40,9 @@ CODE_REFERENCES:
           implements: "fsync durability guarantees"
 
 NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name. 
+- If this chunk was derived from a narrative document, reference the narrative directory name.
+- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
+  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
 -->
 
 # Chunk Goal

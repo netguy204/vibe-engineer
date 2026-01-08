@@ -8,6 +8,10 @@ from task_utils import (
     is_external_chunk,
     load_task_config,
     load_external_ref,
+    resolve_repo_directory,
+    get_next_chunk_id,
+    create_external_yaml,
+    add_dependents_to_chunk,
 )
 from models import TaskConfig, ExternalChunkRef
 
@@ -17,7 +21,7 @@ class TestIsTaskDirectory:
 
     def test_is_task_directory_true(self, tmp_path):
         """Returns True when .ve-task.yaml exists."""
-        (tmp_path / ".ve-task.yaml").write_text("external_chunk_repo: chunks\n")
+        (tmp_path / ".ve-task.yaml").write_text("external_chunk_repo: acme/chunks\n")
         assert is_task_directory(tmp_path) is True
 
     def test_is_task_directory_false(self, tmp_path):
@@ -30,7 +34,7 @@ class TestIsExternalChunk:
 
     def test_is_external_chunk_true(self, tmp_path):
         """Returns True when external.yaml exists (and no GOAL.md)."""
-        (tmp_path / "external.yaml").write_text("project: other\nchunk: 0001-feature\n")
+        (tmp_path / "external.yaml").write_text("repo: acme/other\nchunk: 0001-feature\n")
         assert is_external_chunk(tmp_path) is True
 
     def test_is_external_chunk_false_normal_chunk(self, tmp_path):
@@ -50,21 +54,21 @@ class TestLoadTaskConfig:
         """Loads and returns TaskConfig from valid YAML."""
         config_file = tmp_path / ".ve-task.yaml"
         config_file.write_text(
-            "external_chunk_repo: chunks\n"
+            "external_chunk_repo: acme/chunks\n"
             "projects:\n"
-            "  - repo1\n"
-            "  - repo2\n"
+            "  - acme/repo1\n"
+            "  - acme/repo2\n"
         )
         config = load_task_config(tmp_path)
         assert isinstance(config, TaskConfig)
-        assert config.external_chunk_repo == "chunks"
-        assert config.projects == ["repo1", "repo2"]
+        assert config.external_chunk_repo == "acme/chunks"
+        assert config.projects == ["acme/repo1", "acme/repo2"]
 
     def test_load_task_config_invalid(self, tmp_path):
         """Raises ValidationError for invalid YAML."""
         config_file = tmp_path / ".ve-task.yaml"
         config_file.write_text(
-            "external_chunk_repo: chunks\n"
+            "external_chunk_repo: acme/chunks\n"
             "projects: []\n"  # Empty projects list is invalid
         )
         with pytest.raises(ValidationError):
@@ -83,20 +87,295 @@ class TestLoadExternalRef:
         """Loads and returns ExternalChunkRef from valid YAML."""
         ref_file = tmp_path / "external.yaml"
         ref_file.write_text(
-            "project: other-project\n"
+            "repo: acme/other-project\n"
             "chunk: 0001-feature\n"
         )
         ref = load_external_ref(tmp_path)
         assert isinstance(ref, ExternalChunkRef)
-        assert ref.project == "other-project"
+        assert ref.repo == "acme/other-project"
         assert ref.chunk == "0001-feature"
+
+    def test_load_external_ref_with_versioning(self, tmp_path):
+        """Loads external ref with track and pinned fields."""
+        ref_file = tmp_path / "external.yaml"
+        ref_file.write_text(
+            "repo: acme/chunks\n"
+            "chunk: 0001-feature\n"
+            "track: main\n"
+            "pinned: " + "a" * 40 + "\n"
+        )
+        ref = load_external_ref(tmp_path)
+        assert ref.track == "main"
+        assert ref.pinned == "a" * 40
 
     def test_load_external_ref_invalid(self, tmp_path):
         """Raises ValidationError for invalid YAML."""
         ref_file = tmp_path / "external.yaml"
         ref_file.write_text(
-            "project: invalid project\n"  # Space is invalid
+            "repo: invalid repo/project\n"  # Space is invalid
             "chunk: 0001-feature\n"
         )
         with pytest.raises(ValidationError):
             load_external_ref(tmp_path)
+
+
+class TestResolveRepoDirectory:
+    """Tests for resolve_repo_directory."""
+
+    def test_resolves_simple_repo_name(self, tmp_path):
+        """Resolves org/repo to task_dir/repo when it exists."""
+        (tmp_path / "service-a").mkdir()
+        result = resolve_repo_directory(tmp_path, "acme/service-a")
+        assert result == tmp_path / "service-a"
+
+    def test_resolves_nested_repo_path(self, tmp_path):
+        """Resolves org/repo to task_dir/org/repo when nested exists."""
+        (tmp_path / "acme" / "service-a").mkdir(parents=True)
+        result = resolve_repo_directory(tmp_path, "acme/service-a")
+        assert result == tmp_path / "acme" / "service-a"
+
+    def test_prefers_simple_over_nested(self, tmp_path):
+        """Prefers simple path when both exist."""
+        (tmp_path / "service-a").mkdir()
+        (tmp_path / "acme" / "service-a").mkdir(parents=True)
+        result = resolve_repo_directory(tmp_path, "acme/service-a")
+        assert result == tmp_path / "service-a"
+
+    def test_raises_when_not_found(self, tmp_path):
+        """Raises FileNotFoundError when neither path exists."""
+        with pytest.raises(FileNotFoundError) as exc_info:
+            resolve_repo_directory(tmp_path, "acme/missing")
+        assert "acme/missing" in str(exc_info.value)
+
+    def test_raises_for_invalid_format(self, tmp_path):
+        """Raises ValueError for non org/repo format."""
+        with pytest.raises(ValueError) as exc_info:
+            resolve_repo_directory(tmp_path, "noslash")
+        assert "org/repo" in str(exc_info.value)
+
+
+class TestGetNextChunkId:
+    """Tests for get_next_chunk_id."""
+
+    def test_returns_0001_for_empty_chunks(self, tmp_path):
+        """Returns '0001' when no chunks exist."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+        result = get_next_chunk_id(tmp_path)
+        assert result == "0001"
+
+    def test_returns_next_id_after_existing(self, tmp_path):
+        """Returns next sequential ID after existing chunks."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "0001-first").mkdir()
+        (chunks_dir / "0002-second").mkdir()
+        (chunks_dir / "0003-third").mkdir()
+
+        result = get_next_chunk_id(tmp_path)
+        assert result == "0004"
+
+    def test_handles_gaps_in_sequence(self, tmp_path):
+        """Returns next ID after highest, even with gaps."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "0001-first").mkdir()
+        (chunks_dir / "0005-fifth").mkdir()  # Gap from 2-4
+
+        result = get_next_chunk_id(tmp_path)
+        assert result == "0006"
+
+    def test_zero_pads_result(self, tmp_path):
+        """Result is always 4-digit zero-padded."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "0001-first").mkdir()
+
+        result = get_next_chunk_id(tmp_path)
+        assert result == "0002"
+        assert len(result) == 4
+
+
+class TestCreateExternalYaml:
+    """Tests for create_external_yaml."""
+
+    def test_creates_external_yaml_file(self, tmp_path):
+        """Creates external.yaml file in correct location."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            chunk_id="0003",
+            short_name="auth_token",
+            external_repo_ref="acme/chunks",
+            external_chunk_id="0001-auth_token",
+            pinned_sha="a" * 40,
+        )
+
+        assert result.exists()
+        assert result == tmp_path / "docs" / "chunks" / "0003-auth_token" / "external.yaml"
+
+    def test_creates_chunk_directory(self, tmp_path):
+        """Creates chunk directory if it doesn't exist."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        create_external_yaml(
+            project_path=tmp_path,
+            chunk_id="0003",
+            short_name="auth_token",
+            external_repo_ref="acme/chunks",
+            external_chunk_id="0001-auth_token",
+            pinned_sha="a" * 40,
+        )
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "0003-auth_token"
+        assert chunk_dir.exists()
+        assert chunk_dir.is_dir()
+
+    def test_yaml_contains_correct_content(self, tmp_path):
+        """Created YAML has all required fields."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            chunk_id="0003",
+            short_name="auth_token",
+            external_repo_ref="acme/chunks",
+            external_chunk_id="0001-auth_token",
+            pinned_sha="abcd1234" * 5,
+            track="develop",
+        )
+
+        # Load and verify via load_external_ref
+        chunk_dir = result.parent
+        ref = load_external_ref(chunk_dir)
+        assert ref.repo == "acme/chunks"
+        assert ref.chunk == "0001-auth_token"
+        assert ref.track == "develop"
+        assert ref.pinned == "abcd1234" * 5
+
+    def test_defaults_track_to_main(self, tmp_path):
+        """Track defaults to 'main' if not specified."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            chunk_id="0003",
+            short_name="auth_token",
+            external_repo_ref="acme/chunks",
+            external_chunk_id="0001-auth_token",
+            pinned_sha="a" * 40,
+        )
+
+        ref = load_external_ref(result.parent)
+        assert ref.track == "main"
+
+
+class TestAddDependentsToChunk:
+    """Tests for add_dependents_to_chunk."""
+
+    def test_adds_dependents_to_frontmatter(self, tmp_path):
+        """Adds dependents field to GOAL.md frontmatter."""
+        chunk_path = tmp_path / "0001-feature"
+        chunk_path.mkdir(parents=True)
+        goal_path = chunk_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: IMPLEMENTING\n"
+            "ticket: null\n"
+            "---\n"
+            "# Goal\n"
+            "Some content here.\n"
+        )
+
+        add_dependents_to_chunk(
+            chunk_path,
+            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+        )
+
+        content = goal_path.read_text()
+        assert "dependents:" in content
+        assert "acme/service-a" in content
+        assert "0003-feature" in content
+
+    def test_preserves_existing_frontmatter(self, tmp_path):
+        """Preserves existing frontmatter fields."""
+        chunk_path = tmp_path / "0001-feature"
+        chunk_path.mkdir(parents=True)
+        goal_path = chunk_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: IMPLEMENTING\n"
+            "ticket: ABC-123\n"
+            "parent_chunk: null\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        add_dependents_to_chunk(
+            chunk_path,
+            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+        )
+
+        content = goal_path.read_text()
+        assert "status: IMPLEMENTING" in content
+        assert "ticket: ABC-123" in content
+        assert "parent_chunk:" in content
+
+    def test_preserves_body_content(self, tmp_path):
+        """Preserves content after frontmatter."""
+        chunk_path = tmp_path / "0001-feature"
+        chunk_path.mkdir(parents=True)
+        goal_path = chunk_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: IMPLEMENTING\n"
+            "---\n"
+            "# Goal\n"
+            "\n"
+            "This is important content.\n"
+            "\n"
+            "## Success Criteria\n"
+            "- Criterion 1\n"
+        )
+
+        add_dependents_to_chunk(
+            chunk_path,
+            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+        )
+
+        content = goal_path.read_text()
+        assert "This is important content." in content
+        assert "## Success Criteria" in content
+        assert "- Criterion 1" in content
+
+    def test_handles_multiple_dependents(self, tmp_path):
+        """Handles multiple dependents correctly."""
+        chunk_path = tmp_path / "0001-feature"
+        chunk_path.mkdir(parents=True)
+        goal_path = chunk_path / "GOAL.md"
+        goal_path.write_text("---\nstatus: IMPLEMENTING\n---\n# Goal\n")
+
+        add_dependents_to_chunk(
+            chunk_path,
+            [
+                {"repo": "acme/service-a", "chunk": "0003-feature"},
+                {"repo": "acme/service-b", "chunk": "0007-feature"},
+            ],
+        )
+
+        content = goal_path.read_text()
+        assert "acme/service-a" in content
+        assert "acme/service-b" in content
+        assert "0003-feature" in content
+        assert "0007-feature" in content
+
+    def test_raises_when_goal_missing(self, tmp_path):
+        """Raises FileNotFoundError when GOAL.md doesn't exist."""
+        chunk_path = tmp_path / "0001-feature"
+        chunk_path.mkdir(parents=True)
+
+        with pytest.raises(FileNotFoundError):
+            add_dependents_to_chunk(
+                chunk_path,
+                [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+            )

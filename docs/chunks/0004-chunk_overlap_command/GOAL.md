@@ -9,7 +9,7 @@ code_paths:
 code_references:
   - file: src/ve.py
     ranges:
-      - lines: 131-145
+      - lines: 136-150
         implements: "overlap CLI command - accepts chunk_id, --project-dir, outputs affected chunk paths"
   - file: src/chunks.py
     ranges:
@@ -27,7 +27,7 @@ code_references:
         implements: "find_overlapping_chunks() - finds ACTIVE chunks with lower IDs having overlapping references"
   - file: tests/test_chunk_overlap.py
     ranges:
-      - lines: 1-275
+      - lines: 1-274
         implements: "TestOverlapCommand - 11 tests covering CLI interface, overlap detection, edge cases"
 ---
 
