@@ -9,19 +9,19 @@ code_paths:
 code_references:
   - file: src/ve.py
     ranges:
-      - lines: 22-36
+      - lines: 23-37
         implements: "validate_short_name() - rejects spaces, invalid chars, length >= 32"
-      - lines: 39-50
+      - lines: 40-51
         implements: "validate_ticket_id() - same character validation rules"
-      - lines: 82-117
+      - lines: 83-118
         implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag, success output"
   - file: src/chunks.py
     ranges:
-      - lines: 18-29
+      - lines: 19-30
         implements: "Chunks class init, enumerate_chunks, num_chunks property"
-      - lines: 31-37
+      - lines: 32-38
         implements: "find_duplicates() - detects existing chunks with same short_name+ticket_id"
-      - lines: 67-85
+      - lines: 68-86
         implements: "create_chunk() - directory creation with correct path format, template rendering"
   - file: tests/test_chunk_start.py
     ranges:

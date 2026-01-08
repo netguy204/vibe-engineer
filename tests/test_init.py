@@ -54,7 +54,7 @@ class TestInitCommand:
         )
         assert result2.exit_code == 0
         assert "Skipped" in result2.output
-        assert "9" in result2.output  # 9 files skipped
+        assert "10" in result2.output  # 10 files skipped
 
     def test_init_command_default_project_dir(self, runner):
         """ve init uses current directory by default."""

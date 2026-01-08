@@ -7,12 +7,26 @@ code_paths:
   - src/chunks.py
   - tests/test_ve.py
 code_references:
-  - src/chunks.py:39-54  # list_chunks() method - lists chunks sorted by numeric prefix descending
-  - src/chunks.py:56-65  # get_latest_chunk() method - returns highest-numbered chunk
-  - src/ve.py:120-138  # list CLI command - ve chunk list with --latest and --project-dir options
-  - tests/test_chunks.py:35-71  # TestListChunks - unit tests for list_chunks() method
-  - tests/test_chunks.py:74-94  # TestGetLatestChunk - unit tests for get_latest_chunk() method
-  - tests/test_chunk_list.py:6-92  # TestListCommand - CLI integration tests for ve chunk list
+  - file: src/chunks.py
+    ranges:
+      - lines: 40-55
+        implements: "list_chunks() method - lists chunks sorted by numeric prefix descending"
+      - lines: 57-66
+        implements: "get_latest_chunk() method - returns highest-numbered chunk"
+  - file: src/ve.py
+    ranges:
+      - lines: 121-139
+        implements: "list CLI command - ve chunk list with --latest and --project-dir options"
+  - file: tests/test_chunks.py
+    ranges:
+      - lines: 35-71
+        implements: "TestListChunks - unit tests for list_chunks() method"
+      - lines: 74-94
+        implements: "TestGetLatestChunk - unit tests for get_latest_chunk() method"
+  - file: tests/test_chunk_list.py
+    ranges:
+      - lines: 6-92
+        implements: "TestListCommand - CLI integration tests for ve chunk list"
 ---
 
 # Chunk Goal

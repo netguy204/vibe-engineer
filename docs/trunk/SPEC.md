@@ -13,174 +13,196 @@ Mark sections as DRAFT if they're not yet solidified.
 
 ## Overview
 
-<!--
-A brief summary of what this specification defines. One or two paragraphs
-that orient the reader before diving into details.
--->
+This specification defines the `ve` command-line tool that supports the vibe engineering workflow. The tool manages two primary artifact types: **trunk documents** (project-level documentation that evolves slowly over the project lifetime) and **chunks** (discrete units of implementation work).
+
+The CLI provides commands to initialize a project's documentation structure and to manage the lifecycle of chunks from creation through completion. All operations produce human-readable Markdown files that serve as the source of truth for both humans and AI agents working on the project.
 
 ## Terminology
 
-<!--
-Define terms that have specific meanings in this project. This prevents
-ambiguity and ensures everyone (including agents) uses language consistently.
-
-Example:
-- **Message**: A single unit of data written to the queue
-- **Segment**: A file containing a sequence of messages
-- **Acknowledgment**: Confirmation that a message has been processed
--->
+- **Trunk**: The `docs/trunk/` directory containing stable, project-level documentation (GOAL.md, SPEC.md, DECISIONS.md, TESTING_PHILOSOPHY.md)
+- **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
+- **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
+- **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
+- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk
+- **Code Reference**: A file path with line range that links documentation to specific implementation locations
+- **Superseded**: A document status indicating it has been replaced by a newer version but retained for historical context
 
 ## Data Format
 
-<!--
-If the system has a persistent representation (file format, wire protocol,
-database schema), define it precisely here.
+All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontmatter for machine-readable metadata.
 
-Include:
-- Layout and structure
-- Field definitions with types and valid ranges
-- Encoding details (endianness, string encoding, etc.)
-- Versioning scheme
-- Checksums or integrity mechanisms
+### Directory Structure
 
-Be precise enough that someone could implement a parser from this description.
--->
+```
+{project_root}/
+  CLAUDE.md                          # Project workflow instructions for agents
+  docs/
+    trunk/
+      GOAL.md                         # Project goal and constraints
+      SPEC.md                         # Technical specification (this document)
+      DECISIONS.md                    # Architectural decision records
+      TESTING_PHILOSOPHY.md           # Testing approach
+    chunks/
+      {NNNN}-{short_name}[-{ticket}]/ # Chunk directories
+        GOAL.md                       # Chunk goal with frontmatter
+        PLAN.md                       # Implementation plan
+  .claude/
+    commands/                         # Agent command definitions
+      chunk-create.md
+      chunk-plan.md
+      chunk-complete.md
+      chunk-update-references.md
+      chunks-resolve-references.md
+```
+
+### Chunk Directory Naming
+
+Format: `{chunk_id}-{short_name}[-{ticket_id}]`
+
+- `chunk_id`: 4-digit zero-padded integer (0001, 0002, ...)
+- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `ticket_id`: optional, lowercase alphanumeric with underscores/hyphens
+
+Examples: `0001-initial_setup`, `0002-auth-feature-PROJ-123`
+
+### Chunk GOAL.md Frontmatter
+
+```yaml
+---
+status: IMPLEMENTING | ACTIVE | SUPERSEDED | HISTORICAL
+ticket: {ticket_id} | null
+parent_chunk: {chunk_id} | null
+code_paths:
+  - path/to/file.py
+code_references:
+  - file: path/to/file.py
+    lines: 10-25
+    description: "Implementation of feature X"
+---
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| status | enum | Current lifecycle state of the chunk |
+| ticket | string\|null | External issue tracker reference |
+| parent_chunk | string\|null | ID of chunk this modifies/corrects |
+| code_paths | string[] | Files created or modified by this chunk |
+| code_references | object[] | Specific line ranges implementing features |
 
 ## API Surface
 
-<!--
-Define the operations the system supports. For each operation:
-- Name and signature
-- Preconditions (what must be true before calling)
-- Postconditions (what will be true after calling)
-- Error conditions and how they're signaled
-- Concurrency semantics (thread-safe? blocking? async?)
-
-Example:
-### write(message: bytes) -> MessageId
-Appends a message to the queue.
-- Preconditions: message.length > 0, message.length <= MAX_MESSAGE_SIZE
-- Postconditions: message is durably stored, MessageId is unique
-- Errors: QueueFull, MessageTooLarge, IOError
-- Concurrency: Thread-safe, may block during fsync
--->
-
-The only stable API provided by this package is the CLI. There is no guarantee
-of stability for internal methods that implement that CLI. 
+The only stable API provided by this package is the CLI. There is no guarantee of stability for internal methods that implement that CLI.
 
 ### CLI
 
-#### ve init
+#### ve init [--project-dir PATH]
 
-Create the initial trunk document set from templates. Also initialize CLAUDE.md
-and. cloud/commands from the templates. In its /command form, this may
-investigate an existing code base and attempt to complete the goal and spec
-documents within the trunk. Ultimately, the trunk documents are where a lot of
-the engineering happens. So we can't eliminate the cost of init, but maybe we
-can amortize it over a long period. 
+Initialize a project with the vibe engineering document structure.
 
-#### ve chunk start <shortname> <ticket>
+- **Arguments**: None
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**: None (idempotent operation)
+- **Postconditions**:
+  - `docs/trunk/` contains GOAL.md, SPEC.md, DECISIONS.md, TESTING_PHILOSOPHY.md
+  - `docs/chunks/` directory exists
+  - `.claude/commands/` contains command definition files
+  - `CLAUDE.md` exists at project root
+- **Behavior**:
+  - Skips files that already exist (preserves existing content)
+  - Command files are symlinked to package templates (copies on Windows)
+  - Reports created files, skipped files, and any warnings
+- **Errors**:
+  - IOError if directories cannot be created
+- **Exit codes**: 0 on success
 
-Create a new chunk from the templates for the provided ticket number. The
-initial status of the chunk is implementing. 
+#### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes]
+
+Create a new chunk directory with goal and plan templates.
+
+- **Arguments**:
+  - `SHORT_NAME` (required): Identifier for the chunk
+  - `TICKET_ID` (optional): External issue tracker reference
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+  - `--yes`, `-y`: Skip duplicate confirmation prompts
+- **Preconditions**:
+  - `docs/chunks/` directory exists
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
+- **Postconditions**:
+  - New directory `docs/chunks/{NNNN}-{short_name}[-{ticket_id}]/` created
+  - Directory contains GOAL.md and PLAN.md from templates
+  - GOAL.md frontmatter has `status: IMPLEMENTING`
+- **Behavior**:
+  - Chunk ID is auto-incremented from existing chunks
+  - Inputs are normalized to lowercase
+  - Warns if duplicate short_name + ticket_id exists; prompts for confirmation
+- **Errors**:
+  - ValidationError if SHORT_NAME contains spaces
+  - ValidationError if SHORT_NAME contains invalid characters
+  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if TICKET_ID contains spaces or invalid characters
+- **Exit codes**: 0 on success, 1 on validation error or user abort
+
+#### ve chunk list [--latest] [--project-dir PATH]
+
+List existing chunks.
+
+- **Arguments**: None
+- **Options**:
+  - `--latest`: Show only the highest-numbered chunk
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**: None
+- **Postconditions**: None (read-only operation)
+- **Output**:
+  - Relative paths in format `docs/chunks/{chunk_name}`
+  - Sorted in descending order by chunk ID
+- **Errors**: None
+- **Exit codes**: 0 if chunks found, 1 if no chunks exist 
 
 ## Guarantees
 
-<!--
-What properties does the system guarantee? Be precise about conditions.
+- **Idempotency**: Running `ve init` multiple times produces the same result as running it once. Existing files are never overwritten or modified.
+- **Ordering**: Chunk IDs are assigned sequentially. A chunk with ID N was created before any chunk with ID > N.
+- **Isolation**: Each chunk directory is self-contained. Deleting a chunk directory has no effect on other chunks (though code_references may become stale).
+- **Human-readable**: All generated artifacts are valid Markdown readable without special tooling.
 
-Examples:
-- Durability: "A message is durable once write() returns. Durable means
-  the message will survive process crash and OS crash, assuming no
-  storage hardware failure."
-- Ordering: "Messages are read in the order they were written within
-  a single segment. Cross-segment ordering requires..."
-- Delivery: "Each message will be delivered at least once. Exactly-once
-  requires external deduplication."
-
-Also specify what is NOT guaranteed if it might be assumed.
--->
+**Not guaranteed**:
+- **Referential integrity**: Code references in chunk frontmatter may become stale as code evolves. Maintaining references is an agent responsibility.
+- **Uniqueness enforcement**: Duplicate short_name + ticket_id combinations are permitted after user confirmation.
 
 ## Performance Requirements
 
-<!--
-Quantitative requirements that implementations must meet.
-
-Examples:
-- Throughput: >= 50,000 messages/second for 1KB messages
-- Latency: P99 write latency <= 10ms
-- Space: Overhead per message <= 32 bytes
-- Recovery: Queue must be readable within 5 seconds of process start
-
-Specify measurement conditions (hardware class, message size, queue depth).
--->
+This tool is for documentation management, not high-throughput data processing. No specific performance requirements are defined. Operations should complete in reasonable time for typical project sizes (< 1000 chunks).
 
 ## Limits
 
-<!--
-Hard limits that define the boundaries of correct operation.
-
-Examples:
-- Maximum message size: 16 MB
-- Maximum messages per segment: 1,000,000
-- Maximum queue depth: Limited by available disk space
-- Maximum concurrent readers: 64
-
-Specify what happens when limits are exceeded (error, undefined behavior, etc.)
--->
+| Limit | Value | Behavior when exceeded |
+|-------|-------|------------------------|
+| SHORT_NAME length | 31 characters | ValidationError, operation aborted |
+| Chunk ID digits | 4 (0001-9999) | Undefined behavior beyond 9999 chunks |
+| Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility
 
-<!--
-How does the spec evolve over time?
-- How are versions identified?
-- What compatibility guarantees exist between versions?
-- How should implementations handle unknown versions?
--->
+### Document Versioning
+
+Documents are not versioned by the tool. Version control is delegated to the user's VCS (typically git). The frontmatter `status` field tracks lifecycle state, not version.
+
+### CLI Versioning
+
+The CLI follows semantic versioning:
+- **Major**: Breaking changes to CLI interface or document format
+- **Minor**: New commands or options, backward-compatible
+- **Patch**: Bug fixes
+
+### Compatibility
+
+- Documents created by older CLI versions remain valid
+- Newer CLI versions may add optional frontmatter fields
+- Unknown frontmatter fields should be preserved by agents
 
 ## DRAFT Sections
 
-### Commands
-
-#### ve init
-
-Create the initial trunk document set from templates. Also initialize CLAUDE.md
-and. cloud/commands from the templates. In its /command form, this may
-investigate an existing code base and attempt to complete the goal and spec
-documents within the trunk. Ultimately, the trunk documents are where a lot of
-the engineering happens. So we can't eliminate the cost of init, but maybe we
-can amortize it over a long period. 
-
-#### ve chunk start <shortname> <ticket>
-
-Create a new chunk from the templates for the provided ticket number. The
-initial status of the chunk is implementing. 
-
-#### ve chunk finish
-
-Mark the implementation of the chunk as complete and verify that grass
-references are set. If all gates are met, set the status of the chunk to active. 
-
-#### ve chunk abandon
-
-If a chunk is in the implementing state, verify with the user and delete the
-chunk with its documentation. If the chunk is in the active state, then change
-the state to historic. 
-
-#### ve vacuum
-
-For all active chunks. 
-
-```
-grep -l "status: ACTIVE" docs/chunks/*/GOAL.md
-```
-
-For all code_paths and code_references in those chunks. 
-
-```
-git log --oneline --since="2024-01-01" -- src/segment/compactor.rs
-```
-
-Decide if the chunk was materially impacted by the changes, and ask the user
-whether it should be updated or marked historic because drift has moved beyond
-its intent. 
+*No draft sections at this time.*

@@ -77,6 +77,7 @@ class TestProjectInit:
             "chunk-plan.md",
             "chunk-complete.md",
             "chunk-update-references.md",
+            "chunks-resolve-references.md",
         ]
         for cmd in expected_commands:
             cmd_path = commands_dir / cmd
@@ -120,8 +121,8 @@ class TestProjectInit:
         """init() reports all created files in result."""
         project = Project(temp_project)
         result = project.init()
-        # Should have 4 trunk docs + 4 commands + 1 CLAUDE.md = 9 files
-        assert len(result.created) == 9
+        # Should have 4 trunk docs + 5 commands + 1 CLAUDE.md = 10 files
+        assert len(result.created) == 10
         assert "CLAUDE.md" in result.created
         assert any("docs/trunk/" in f for f in result.created)
         assert any(".claude/commands/" in f for f in result.created)
@@ -136,9 +137,9 @@ class TestProjectInitIdempotency:
         result1 = project.init()
         result2 = project.init()
         # First run creates, second run skips
-        assert len(result1.created) == 9
+        assert len(result1.created) == 10
         assert len(result2.created) == 0
-        assert len(result2.skipped) == 9
+        assert len(result2.skipped) == 10
 
     def test_init_skips_existing_trunk_files(self, temp_project):
         """init() skips existing trunk files without overwriting."""
@@ -194,5 +195,5 @@ class TestProjectInitIdempotency:
 
         # Second run - all skipped
         result2 = project.init()
-        assert len(result2.skipped) == 9
+        assert len(result2.skipped) == 10
         assert len(result2.created) == 0

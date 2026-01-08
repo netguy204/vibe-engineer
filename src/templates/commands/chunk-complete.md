@@ -15,3 +15,12 @@ Update code references in the current chunk and move both the PLAN.md and the GO
    semantic drift between what the document set out to achieve and what the code
    base does now, that the document is now only valuable as a historic reference
    point. 
+
+3. Extract the sequential ID for the chunk from the prefix number in the chunk
+   directory. We will call this <chunk_id> below.
+
+4. Run `ve chunk overlap <chunk_id>`
+
+5. In parallel sub-agents run /chunk-resolve-references for each of the returned
+   directories. 
+

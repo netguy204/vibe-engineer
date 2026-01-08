@@ -5,6 +5,7 @@
 # dependencies = [
 #   "jinja2",
 #   "click",
+#   "pyyaml",
 # ]
 # ///
 
@@ -135,6 +136,23 @@ def list_chunks(latest, project_dir):
     else:
         for _, chunk_name in chunk_list:
             click.echo(f"docs/chunks/{chunk_name}")
+
+
+@chunk.command()
+@click.argument("chunk_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def overlap(chunk_id, project_dir):
+    """Find chunks with overlapping code references."""
+    chunks = Chunks(project_dir)
+
+    try:
+        affected = chunks.find_overlapping_chunks(chunk_id)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    for name in affected:
+        click.echo(f"docs/chunks/{name}")
 
 
 if __name__ == "__main__":
