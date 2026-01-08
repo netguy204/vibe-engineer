@@ -1,0 +1,35 @@
+[project]
+name = "vibe-engineer"
+version = "0.1.0"
+description = "Documentation-driven development workflow tooling"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click",
+    "jinja2",
+    "pydantic",
+    "pyyaml",
+]
+
+[project.scripts]
+ve = "ve:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/**", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]

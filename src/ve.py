@@ -1,15 +1,3 @@
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#   "jinja2",
-#   "click",
-#   "pyyaml",
-#   "pydantic",
-# ]
-# ///
-
 """Vibe Engineer CLI - view layer for chunk management."""
 
 import pathlib
