@@ -1,12 +1,13 @@
 ---
-status: {{ status | default('IMPLEMENTING') }}
-ticket: {{ ticket_id | default('null', true) }}
+status: IMPLEMENTING
+ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/templates/chunk/GOAL.md
+  - tests/test_chunks.py
 code_references: []
 narrative: null
 ---
-
 <!--
 DO NOT DELETE THIS COMMENT until the chunk complete command is run.
 This describes schema information that needs to be adhered
@@ -51,37 +52,22 @@ NARRATIVE:
 
 ## Minor Goal
 
-<!--
-What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
-Why is this the right next step? What does completing this enable?
+Fix the chunk GOAL.md template to output valid YAML `null` instead of Python's `None` when no ticket ID is provided.
 
-Keep this focused. If you're describing multiple independent outcomes,
-you may need multiple chunks.
--->
+Currently, `src/templates/chunk/GOAL.md` uses `{{ ticket_id }}` which renders Python's `None` value as the literal string `None`. YAML interprets this as the string "None" rather than a null value, producing invalid frontmatter.
+
+This advances the trunk goal's **Required Properties** by ensuring generated artifacts are immediately valid without manual correction—a prerequisite for maintaining document health over time.
 
 ## Success Criteria
 
-<!--
-How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of docs/trunk/SPEC.md where applicable.
+1. **Template uses Jinja2 filter** to convert Python `None` to YAML `null`:
+   - Change `ticket: {{ ticket_id }}` to `ticket: {{ ticket_id | default('null', true) }}` or equivalent
+   - The `default` filter with `true` as second argument treats `None` as undefined
 
-Example:
-- SegmentWriter correctly encodes messages per SPEC.md Section 3.2
-- fsync is called after each write, satisfying durability guarantee
-- Write throughput meets SPEC.md performance requirements (>50K msg/sec)
-- All tests in TESTS.md pass
--->
+2. **New chunks render valid YAML**:
+   - Running `ve chunk start test_chunk` produces `ticket: null` (not `ticket: None`)
+   - Running `ve chunk start test_chunk TICKET-123` produces `ticket: TICKET-123`
 
-## Relationship to Parent
-
-<!--
-DELETE THIS SECTION if parent_chunk is null.
-
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
-
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->
+3. **Unit test** verifies both cases:
+   - Template renders `null` when ticket_id is None
+   - Template renders the ticket ID when provided

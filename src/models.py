@@ -1,10 +1,59 @@
 """Pydantic models for chunk validation."""
 
 import re
+from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
 from validation import validate_identifier
+
+
+class SubsystemStatus(StrEnum):
+    """Status values for subsystem documentation lifecycle."""
+
+    DISCOVERING = "DISCOVERING"
+    DOCUMENTED = "DOCUMENTED"
+    REFACTORING = "REFACTORING"
+    STABLE = "STABLE"
+    DEPRECATED = "DEPRECATED"
+
+
+# Regex for validating chunk ID format: {NNNN}-{short_name}
+CHUNK_ID_PATTERN = re.compile(r"^\d{4}-.+$")
+
+
+class ChunkRelationship(BaseModel):
+    """Relationship between a subsystem and a chunk.
+
+    Captures how chunks relate to subsystem documentation:
+    - "implements": chunk directly implements part of the subsystem
+    - "uses": chunk uses/depends on the subsystem
+    """
+
+    chunk_id: str  # format: {NNNN}-{short_name}
+    relationship: Literal["implements", "uses"]
+
+    @field_validator("chunk_id")
+    @classmethod
+    def validate_chunk_id(cls, v: str) -> str:
+        """Validate chunk_id matches {NNNN}-{short_name} pattern."""
+        if not v:
+            raise ValueError("chunk_id cannot be empty")
+        if not CHUNK_ID_PATTERN.match(v):
+            raise ValueError(
+                "chunk_id must match pattern {NNNN}-{short_name} "
+                "(4 digits, hyphen, name)"
+            )
+        # Ensure there's actually a name after the hyphen
+        parts = v.split("-", 1)
+        if len(parts) < 2 or not parts[1]:
+            raise ValueError("chunk_id must have a name after the hyphen")
+        return v
+
+
+# Forward reference for SymbolicReference used in SubsystemFrontmatter
+# (SymbolicReference is defined later in the file)
 
 
 def _require_valid_dir_name(value: str, field_name: str) -> str:
@@ -180,3 +229,14 @@ class SymbolicReference(BaseModel):
         if not v or not v.strip():
             raise ValueError("implements cannot be empty")
         return v
+
+
+class SubsystemFrontmatter(BaseModel):
+    """Frontmatter schema for subsystem OVERVIEW.md files.
+
+    Validates the YAML frontmatter in subsystem documentation.
+    """
+
+    status: SubsystemStatus
+    chunks: list[ChunkRelationship] = []
+    code_references: list[SymbolicReference] = []

@@ -264,6 +264,32 @@ class TestParseFrontmatterDependents:
         assert frontmatter.get("status") == "active"
 
 
+class TestTicketFrontmatter:
+    """Tests for ticket field rendering in GOAL.md frontmatter."""
+
+    def test_ticket_renders_null_when_ticket_id_is_none(self, temp_project):
+        """When ticket_id is None, GOAL.md frontmatter has 'ticket: null' (valid YAML)."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+
+        # Should render as YAML null, not Python None
+        assert "ticket: null" in content
+        assert "ticket: None" not in content
+
+    def test_ticket_renders_value_when_ticket_id_provided(self, temp_project):
+        """When ticket_id is provided, GOAL.md frontmatter has 'ticket: <value>'."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk("VE-123", "feature")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+
+        assert "ticket: VE-123" in content
+
+
 class TestSymbolicOverlap:
     """Tests for compute_symbolic_overlap function."""
 
