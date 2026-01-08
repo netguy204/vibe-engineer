@@ -19,6 +19,8 @@ CHUNKS:
 - Each entry records which prompt was refined and where the resulting chunk lives
 - prompt: The prompt text from this document that was used to create the chunk
 - chunk_directory: The created chunk directory (e.g., "0007-feature_name")
+- DO NOT POPULATE this array during narrative creation. It will be populated as
+  chunks are created.
 -->
 
 ## Advances Trunk Goal
