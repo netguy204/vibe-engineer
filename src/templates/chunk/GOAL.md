@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: {{ status | default('IMPLEMENTING') }}
 ticket: {{ ticket_id }}
 parent_chunk: null
 code_paths: []
@@ -13,7 +13,8 @@ This describes schema information that needs to be adhered
 to throughout the process. 
 
 STATUS VALUES:
-- IMPLEMENTING: This chunk is in the process of being implemented. 
+- FUTURE: This chunk is queued for future work and not yet being implemented
+- IMPLEMENTING: This chunk is in the process of being implemented.
 - ACTIVE: This chunk accurately describes current or recently-merged work
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only

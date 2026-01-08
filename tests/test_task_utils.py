@@ -12,6 +12,7 @@ from task_utils import (
     get_next_chunk_id,
     create_external_yaml,
     add_dependents_to_chunk,
+    update_frontmatter_field,
 )
 from models import TaskConfig, ExternalChunkRef
 
@@ -379,3 +380,92 @@ class TestAddDependentsToChunk:
                 chunk_path,
                 [{"repo": "acme/service-a", "chunk": "0003-feature"}],
             )
+
+
+class TestUpdateFrontmatterField:
+    """Tests for update_frontmatter_field utility."""
+
+    def test_updates_string_field(self, tmp_path):
+        """Updates a string field in frontmatter."""
+        goal_path = tmp_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: FUTURE\n"
+            "ticket: null\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+        content = goal_path.read_text()
+        assert "status: IMPLEMENTING" in content
+        assert "status: FUTURE" not in content
+
+    def test_preserves_other_fields(self, tmp_path):
+        """Preserves all other frontmatter fields when updating one."""
+        goal_path = tmp_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: FUTURE\n"
+            "ticket: ABC-123\n"
+            "parent_chunk: null\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+        content = goal_path.read_text()
+        assert "ticket: ABC-123" in content
+        assert "parent_chunk:" in content
+
+    def test_preserves_body_content(self, tmp_path):
+        """Preserves content after frontmatter."""
+        goal_path = tmp_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: FUTURE\n"
+            "---\n"
+            "# Goal\n"
+            "\n"
+            "Important content here.\n"
+            "\n"
+            "## Success Criteria\n"
+        )
+
+        update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+        content = goal_path.read_text()
+        assert "Important content here." in content
+        assert "## Success Criteria" in content
+
+    def test_adds_new_field_if_not_exists(self, tmp_path):
+        """Adds new field if it doesn't exist in frontmatter."""
+        goal_path = tmp_path / "GOAL.md"
+        goal_path.write_text(
+            "---\n"
+            "status: IMPLEMENTING\n"
+            "---\n"
+            "# Goal\n"
+        )
+
+        update_frontmatter_field(goal_path, "ticket", "VE-001")
+
+        content = goal_path.read_text()
+        assert "ticket: VE-001" in content
+
+    def test_raises_when_file_missing(self, tmp_path):
+        """Raises FileNotFoundError when file doesn't exist."""
+        goal_path = tmp_path / "GOAL.md"
+
+        with pytest.raises(FileNotFoundError):
+            update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+    def test_raises_when_no_frontmatter(self, tmp_path):
+        """Raises ValueError when file has no frontmatter."""
+        goal_path = tmp_path / "GOAL.md"
+        goal_path.write_text("# Goal\nNo frontmatter here.\n")
+
+        with pytest.raises(ValueError):
+            update_frontmatter_field(goal_path, "status", "IMPLEMENTING")

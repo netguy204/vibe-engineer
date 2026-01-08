@@ -266,3 +266,59 @@ class TestSuccessOutput:
         assert result.exit_code == 0
         assert "Created" in result.output
         assert "docs/chunks/0001-feature" in result.output
+
+
+class TestFutureFlag:
+    """Tests for --future flag on 've chunk start'."""
+
+    def test_future_flag_creates_future_chunk(self, runner, temp_project):
+        """--future flag creates chunk with status FUTURE."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--future", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+        goal_path = temp_project / "docs" / "chunks" / "0001-feature" / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: FUTURE" in content
+
+    def test_future_flag_outputs_created_path(self, runner, temp_project):
+        """--future flag still outputs the created path."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--future", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+        assert "docs/chunks/0001-feature" in result.output
+
+    def test_without_future_flag_creates_implementing(self, runner, temp_project):
+        """Without --future, chunk has status IMPLEMENTING."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        goal_path = temp_project / "docs" / "chunks" / "0001-feature" / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_future_flag_with_ticket_id(self, runner, temp_project):
+        """--future flag works with ticket_id argument."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "ve-001", "--future", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        goal_path = temp_project / "docs" / "chunks" / "0001-feature-ve-001" / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: FUTURE" in content
+
+    def test_help_shows_future_flag(self, runner):
+        """--help includes documentation for --future flag."""
+        result = runner.invoke(cli, ["chunk", "start", "--help"])
+        assert result.exit_code == 0
+        assert "--future" in result.output

@@ -1,5 +1,6 @@
 """Tests for the 'chunk list' CLI command."""
 
+from chunks import Chunks
 from ve import cli
 
 
@@ -90,3 +91,104 @@ class TestListCommand:
         )
         assert result.exit_code == 0
         assert "docs/chunks/0001-feature" in result.output
+
+
+class TestListStatusDisplay:
+    """Tests for status display in 've chunk list' output."""
+
+    def test_list_shows_status_for_each_chunk(self, runner, temp_project):
+        """Output includes status in brackets for each chunk."""
+        # Create chunks with different statuses
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future", "--future", "--project-dir", str(temp_project)]
+        )
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "[IMPLEMENTING]" in result.output
+        assert "[FUTURE]" in result.output
+
+    def test_list_format_includes_status_brackets(self, runner, temp_project):
+        """Status appears in brackets after the path."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Format should be: docs/chunks/0001-feature [IMPLEMENTING]
+        assert "docs/chunks/0001-feature [IMPLEMENTING]" in result.output
+
+
+class TestLatestFlagWithStatus:
+    """Tests for --latest flag using get_current_chunk()."""
+
+    def test_latest_returns_implementing_chunk_not_future(self, runner, temp_project):
+        """--latest returns IMPLEMENTING chunk, skipping higher-numbered FUTURE."""
+        # Create IMPLEMENTING chunk first
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk (higher number)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future", "--future", "--project-dir", str(temp_project)]
+        )
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Should return the IMPLEMENTING chunk, not the FUTURE one
+        assert "0001-implementing" in result.output
+        assert "0002-future" not in result.output
+
+    def test_latest_fails_when_no_implementing_chunks(self, runner, temp_project):
+        """--latest fails when only FUTURE chunks exist."""
+        # Create only FUTURE chunks
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future1", "--future", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future2", "--future", "--project-dir", str(temp_project)]
+        )
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert "No implementing chunk found" in result.output or "No chunks found" in result.output
+
+    def test_latest_with_active_and_future_chunks(self, runner, temp_project):
+        """--latest returns None when only ACTIVE and FUTURE chunks exist."""
+        # Create a chunk and manually set it to ACTIVE
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "active", status="IMPLEMENTING")
+        goal_path = chunk_mgr.get_chunk_goal_path("0001")
+        content = goal_path.read_text()
+        goal_path.write_text(content.replace("status: IMPLEMENTING", "status: ACTIVE"))
+
+        # Create a FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1

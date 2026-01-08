@@ -100,7 +100,7 @@ Examples: `0001-initial_setup`, `0002-auth-feature-PROJ-123`
 
 ```yaml
 ---
-status: IMPLEMENTING | ACTIVE | SUPERSEDED | HISTORICAL
+status: FUTURE | IMPLEMENTING | ACTIVE | SUPERSEDED | HISTORICAL
 ticket: {ticket_id} | null
 parent_chunk: {chunk_id} | null
 code_paths:
@@ -110,6 +110,13 @@ code_references:
     implements: "Description of what this code implements"
 ---
 ```
+
+**Status Values**:
+- `FUTURE`: Chunk is queued for future work but not yet being implemented
+- `IMPLEMENTING`: Chunk is actively being worked on (only one chunk can have this status at a time)
+- `ACTIVE`: Chunk accurately describes current or recently-merged work
+- `SUPERSEDED`: Another chunk has modified the code this chunk governed
+- `HISTORICAL`: Significant drift from current code; kept for archaeology only
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -169,7 +176,7 @@ Initialize a project with the vibe engineering document structure.
   - IOError if directories cannot be created
 - **Exit codes**: 0 on success
 
-#### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes]
+#### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
 
 Create a new chunk directory with goal and plan templates.
 
@@ -179,6 +186,7 @@ Create a new chunk directory with goal and plan templates.
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
   - `--yes`, `-y`: Skip duplicate confirmation prompts
+  - `--future`: Create chunk with `FUTURE` status instead of `IMPLEMENTING`
 - **Preconditions**:
   - `docs/chunks/` directory exists
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
@@ -186,7 +194,7 @@ Create a new chunk directory with goal and plan templates.
 - **Postconditions**:
   - New directory `docs/chunks/{NNNN}-{short_name}[-{ticket_id}]/` created
   - Directory contains GOAL.md and PLAN.md from templates
-  - GOAL.md frontmatter has `status: IMPLEMENTING`
+  - GOAL.md frontmatter has `status: IMPLEMENTING` (or `FUTURE` if `--future` flag used)
 - **Behavior**:
   - Chunk ID is auto-incremented from existing chunks
   - Inputs are normalized to lowercase
@@ -204,15 +212,40 @@ List existing chunks.
 
 - **Arguments**: None
 - **Options**:
-  - `--latest`: Show only the highest-numbered chunk
+  - `--latest`: Show only the current `IMPLEMENTING` chunk (not the highest-numbered)
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**: None
 - **Postconditions**: None (read-only operation)
 - **Output**:
-  - Relative paths in format `docs/chunks/{chunk_name}`
+  - Relative paths in format `docs/chunks/{chunk_name} [{status}]`
+  - Status shown in brackets after each path (e.g., `[IMPLEMENTING]`, `[FUTURE]`)
   - Sorted in descending order by chunk ID
+  - With `--latest`: shows only the path (no status bracket) for the current `IMPLEMENTING` chunk
 - **Errors**: None
-- **Exit codes**: 0 if chunks found, 1 if no chunks exist 
+- **Exit codes**: 0 if chunks found, 1 if no chunks exist (or no `IMPLEMENTING` chunk when using `--latest`)
+
+#### ve chunk activate CHUNK_ID [--project-dir PATH]
+
+Activate a `FUTURE` chunk by changing its status to `IMPLEMENTING`.
+
+- **Arguments**:
+  - `CHUNK_ID` (required): The 4-digit chunk ID or full directory name
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**:
+  - Target chunk exists
+  - Target chunk has status `FUTURE`
+  - No other chunk has status `IMPLEMENTING`
+- **Postconditions**:
+  - Target chunk's status changed from `FUTURE` to `IMPLEMENTING`
+- **Behavior**:
+  - Only one chunk can be `IMPLEMENTING` at a time
+  - To activate a `FUTURE` chunk, first complete or mark the current `IMPLEMENTING` chunk as `ACTIVE`
+- **Errors**:
+  - Error if chunk not found
+  - Error if chunk status is not `FUTURE`
+  - Error if another chunk is already `IMPLEMENTING`
+- **Exit codes**: 0 on success, 1 on error
 
 ## Guarantees
 

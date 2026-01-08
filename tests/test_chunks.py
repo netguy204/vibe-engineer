@@ -15,6 +15,33 @@ class TestChunksClass:
         assert result_path.is_dir()
         assert "0001-my_feature-VE-001" in result_path.name
 
+    def test_create_chunk_default_status_implementing(self, temp_project):
+        """Default status is IMPLEMENTING when no status param provided."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_create_chunk_with_future_status(self, temp_project):
+        """When status='FUTURE', the created GOAL.md has status: FUTURE."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature", status="FUTURE")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: FUTURE" in content
+
+    def test_create_chunk_with_implementing_status(self, temp_project):
+        """Explicit status='IMPLEMENTING' works correctly."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature", status="IMPLEMENTING")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+        assert "status: IMPLEMENTING" in content
+
     def test_enumerate_chunks_empty(self, temp_project):
         """Verify enumerate_chunks returns empty list for new project."""
         chunk_mgr = Chunks(temp_project)
@@ -92,6 +119,74 @@ class TestGetLatestChunk:
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.create_chunk("VE-003", "third")
         assert chunk_mgr.get_latest_chunk() == "0003-third-VE-003"
+
+
+class TestGetCurrentChunk:
+    """Tests for Chunks.get_current_chunk() method."""
+
+    def test_empty_project_returns_none(self, temp_project):
+        """Empty project returns None."""
+        chunk_mgr = Chunks(temp_project)
+        assert chunk_mgr.get_current_chunk() is None
+
+    def test_single_implementing_chunk_returns_that_chunk(self, temp_project):
+        """Single IMPLEMENTING chunk returns that chunk's name."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "feature", status="IMPLEMENTING")
+        assert chunk_mgr.get_current_chunk() == "0001-feature"
+
+    def test_returns_highest_implementing_chunk(self, temp_project):
+        """Multiple IMPLEMENTING chunks returns highest-numbered."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
+        chunk_mgr.create_chunk(None, "second", status="IMPLEMENTING")
+        assert chunk_mgr.get_current_chunk() == "0002-second"
+
+    def test_ignores_future_chunks(self, temp_project):
+        """FUTURE chunks are ignored, returns IMPLEMENTING chunk."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "implementing", status="IMPLEMENTING")
+        chunk_mgr.create_chunk(None, "future", status="FUTURE")
+        # Should return the IMPLEMENTING chunk, not the higher-numbered FUTURE one
+        assert chunk_mgr.get_current_chunk() == "0001-implementing"
+
+    def test_returns_none_when_only_future_chunks(self, temp_project):
+        """Returns None when only FUTURE chunks exist."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "future1", status="FUTURE")
+        chunk_mgr.create_chunk(None, "future2", status="FUTURE")
+        assert chunk_mgr.get_current_chunk() is None
+
+    def test_ignores_active_chunks(self, temp_project):
+        """ACTIVE chunks are ignored."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
+        # Manually change to ACTIVE status
+        goal_path = chunk_mgr.get_chunk_goal_path("0001")
+        content = goal_path.read_text()
+        content = content.replace("status: IMPLEMENTING", "status: ACTIVE")
+        goal_path.write_text(content)
+        # Create another FUTURE chunk
+        chunk_mgr.create_chunk(None, "future", status="FUTURE")
+        # Neither should be returned as current
+        assert chunk_mgr.get_current_chunk() is None
+
+    def test_ignores_superseded_and_historical(self, temp_project):
+        """SUPERSEDED and HISTORICAL chunks are ignored."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "superseded", status="IMPLEMENTING")
+        chunk_mgr.create_chunk(None, "historical", status="IMPLEMENTING")
+
+        # Manually change statuses
+        goal_path1 = chunk_mgr.get_chunk_goal_path("0001")
+        content1 = goal_path1.read_text()
+        goal_path1.write_text(content1.replace("status: IMPLEMENTING", "status: SUPERSEDED"))
+
+        goal_path2 = chunk_mgr.get_chunk_goal_path("0002")
+        content2 = goal_path2.read_text()
+        goal_path2.write_text(content2.replace("status: IMPLEMENTING", "status: HISTORICAL"))
+
+        assert chunk_mgr.get_current_chunk() is None
 
 
 class TestChunkDirectoryInTemplates:

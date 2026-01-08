@@ -174,6 +174,48 @@ def create_external_yaml(
     return external_yaml_path
 
 
+def update_frontmatter_field(
+    goal_path: Path,
+    field: str,
+    value,
+) -> None:
+    """Update a single field in GOAL.md frontmatter.
+
+    Args:
+        goal_path: Path to the GOAL.md file
+        field: The frontmatter field name to update
+        value: The new value for the field
+
+    Raises:
+        FileNotFoundError: If goal_path doesn't exist
+        ValueError: If the file has no frontmatter
+    """
+    if not goal_path.exists():
+        raise FileNotFoundError(f"File not found: {goal_path}")
+
+    content = goal_path.read_text()
+
+    # Parse frontmatter between --- markers
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
+    if not match:
+        raise ValueError(f"Could not parse frontmatter in {goal_path}")
+
+    frontmatter_text = match.group(1)
+    body = match.group(2)
+
+    # Parse YAML frontmatter
+    frontmatter = yaml.safe_load(frontmatter_text) or {}
+
+    # Update the field
+    frontmatter[field] = value
+
+    # Reconstruct the file
+    new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+    new_content = f"---\n{new_frontmatter}---\n{body}"
+
+    goal_path.write_text(new_content)
+
+
 def add_dependents_to_chunk(
     chunk_path: Path,
     dependents: list[dict],
@@ -191,27 +233,7 @@ def add_dependents_to_chunk(
     if not goal_path.exists():
         raise FileNotFoundError(f"GOAL.md not found in {chunk_path}")
 
-    content = goal_path.read_text()
-
-    # Parse frontmatter between --- markers
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-    if not match:
-        raise ValueError(f"Could not parse frontmatter in {goal_path}")
-
-    frontmatter_text = match.group(1)
-    body = match.group(2)
-
-    # Parse YAML frontmatter
-    frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-    # Add/update dependents field
-    frontmatter["dependents"] = dependents
-
-    # Reconstruct the file
-    new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-    new_content = f"---\n{new_frontmatter}---\n{body}"
-
-    goal_path.write_text(new_content)
+    update_frontmatter_field(goal_path, "dependents", dependents)
 
 
 class TaskChunkError(Exception):
@@ -224,6 +246,7 @@ def create_task_chunk(
     task_dir: Path,
     short_name: str,
     ticket_id: str | None = None,
+    status: str = "IMPLEMENTING",
 ) -> dict:
     """Create chunk in task directory context.
 
@@ -236,6 +259,7 @@ def create_task_chunk(
         task_dir: Path to the task directory containing .ve-task.yaml
         short_name: Short name for the chunk
         ticket_id: Optional ticket ID
+        status: Initial status for the chunk (default: "IMPLEMENTING")
 
     Returns:
         Dict with keys:
@@ -271,7 +295,7 @@ def create_task_chunk(
 
     # 4. Create chunk in external repo
     chunks = Chunks(external_repo_path)
-    external_chunk_path = chunks.create_chunk(ticket_id, short_name)
+    external_chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
     external_chunk_id = external_chunk_path.name  # e.g., "0001-auth_token"
 
     # 5-6. For each project: calculate next ID, create external.yaml, build dependents

@@ -79,8 +79,77 @@ class Chunks:
             return chunks[0][1]
         return None
 
-    def create_chunk(self, ticket_id: str | None, short_name: str):
-        """Instantiate the chunk templates for the given ticket and short name."""
+    def get_current_chunk(self) -> str | None:
+        """Return the highest-numbered chunk with status IMPLEMENTING.
+
+        This finds the "current" chunk that is actively being worked on,
+        ignoring FUTURE, ACTIVE, SUPERSEDED, and HISTORICAL chunks.
+
+        Returns:
+            The chunk directory name if an IMPLEMENTING chunk exists, None otherwise.
+        """
+        chunks = self.list_chunks()
+        for _, chunk_name in chunks:
+            frontmatter = self.parse_chunk_frontmatter(chunk_name)
+            if frontmatter and frontmatter.get("status") == "IMPLEMENTING":
+                return chunk_name
+        return None
+
+    def activate_chunk(self, chunk_id: str) -> str:
+        """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
+
+        Args:
+            chunk_id: The chunk ID (4-digit or full name) to activate.
+
+        Returns:
+            The activated chunk's directory name.
+
+        Raises:
+            ValueError: If chunk doesn't exist, isn't FUTURE, or another
+                       chunk is already IMPLEMENTING.
+        """
+        from task_utils import update_frontmatter_field
+
+        chunk_name = self.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            raise ValueError(f"Chunk '{chunk_id}' not found")
+
+        # Check if there's already an IMPLEMENTING chunk
+        current = self.get_current_chunk()
+        if current is not None:
+            raise ValueError(
+                f"Cannot activate: chunk '{current}' is already IMPLEMENTING. "
+                f"Complete or mark it as ACTIVE first."
+            )
+
+        # Check if target chunk is FUTURE
+        frontmatter = self.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is None:
+            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}'")
+
+        status = frontmatter.get("status")
+        if status != "FUTURE":
+            raise ValueError(
+                f"Cannot activate: chunk '{chunk_name}' has status '{status}', "
+                f"expected 'FUTURE'"
+            )
+
+        # Update status to IMPLEMENTING
+        goal_path = self.get_chunk_goal_path(chunk_name)
+        update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+        return chunk_name
+
+    def create_chunk(
+        self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
+    ):
+        """Instantiate the chunk templates for the given ticket and short name.
+
+        Args:
+            ticket_id: Optional ticket ID to include in chunk directory name.
+            short_name: Short name for the chunk.
+            status: Initial status for the chunk (default: "IMPLEMENTING").
+        """
         next_chunk_id = self.num_chunks + 1
         next_chunk_id_str = f"{next_chunk_id:04d}"
         if ticket_id:
@@ -95,6 +164,7 @@ class Chunks:
                 short_name=short_name,
                 next_chunk_id=next_chunk_id_str,
                 chunk_directory=chunk_path.name,
+                status=status,
             )
             with open(chunk_path / chunk_template.name, "w") as chunk_file:
                 chunk_file.write(rendered_template)

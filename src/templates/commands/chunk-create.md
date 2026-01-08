@@ -1,4 +1,4 @@
-Create a new chunk of work and refine its goal. 
+Create a new chunk of work and refine its goal.
 
 The operator wants to define a piece of work to do the following:
 
@@ -19,11 +19,30 @@ completely in order:
    ticket number is referenced, pass no argument to the command below in the
    <ticket number> placeholder.
 
-3. Run `ve chunk start <shortname> <ticket number>` and note the chunk
-   directory name that is returned by the command.  Substitute this name below
-   for the <chunk directory> placeholder.
+3. **Determine whether to create a FUTURE chunk.** Run `ve chunk list --latest`
+   to check if there's already an IMPLEMENTING chunk:
 
-4. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
+   - If there IS an IMPLEMENTING chunk, default to using `--future` when creating
+     this new chunk. Only skip `--future` if the user explicitly indicates they
+     want to work on this immediately instead of the current chunk.
+
+   - If there is NO IMPLEMENTING chunk (command exits with error or returns nothing),
+     create the chunk normally without `--future`.
+
+   - Also analyze the user's prompt for signals like "later", "next", "after this",
+     "future", "queue up" - these all suggest using `--future`.
+
+4. Run `ve chunk start <shortname> <ticket number> [--future]` and note the chunk
+   directory name that is returned by the command. Include `--future` based on
+   the determination in step 3. Substitute this name below for the <chunk
+   directory> placeholder.
+
+5. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
    the user has described, ask them any questions required to complete the
    template and cohesively and thoroughly define the goal of what they're trying
-   to accomplish. 
+   to accomplish.
+
+**Note on FUTURE chunks:** A FUTURE chunk is queued for later work. When the user
+is ready to start working on it, they can run `ve chunk activate <chunk_id>` to
+change its status from FUTURE to IMPLEMENTING. Only one chunk can be IMPLEMENTING
+at a time. 

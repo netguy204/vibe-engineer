@@ -56,7 +56,8 @@ def chunk():
 @click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
-def start(short_name, ticket_id, project_dir, yes):
+@click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
+def start(short_name, ticket_id, project_dir, yes, future):
     """Start a new chunk."""
     errors = validate_short_name(short_name)
     if ticket_id:
@@ -72,9 +73,12 @@ def start(short_name, ticket_id, project_dir, yes):
     if ticket_id:
         ticket_id = ticket_id.lower()
 
+    # Determine status based on --future flag
+    status = "FUTURE" if future else "IMPLEMENTING"
+
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _start_task_chunk(project_dir, short_name, ticket_id)
+        _start_task_chunk(project_dir, short_name, ticket_id, status)
         return
 
     # Single-repo mode
@@ -89,16 +93,18 @@ def start(short_name, ticket_id, project_dir, yes):
         if not click.confirm("Create another chunk with the same name?"):
             raise SystemExit(1)
 
-    chunk_path = chunks.create_chunk(ticket_id, short_name)
+    chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
 
 
-def _start_task_chunk(task_dir: pathlib.Path, short_name: str, ticket_id: str | None):
+def _start_task_chunk(
+    task_dir: pathlib.Path, short_name: str, ticket_id: str | None, status: str = "IMPLEMENTING"
+):
     """Handle chunk creation in task directory (cross-repo mode)."""
     try:
-        result = create_task_chunk(task_dir, short_name, ticket_id)
+        result = create_task_chunk(task_dir, short_name, ticket_id, status=status)
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -114,7 +120,7 @@ def _start_task_chunk(task_dir: pathlib.Path, short_name: str, ticket_id: str | 
 
 
 @chunk.command("list")
-@click.option("--latest", is_flag=True, help="Output only the most recent chunk")
+@click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_chunks(latest, project_dir):
     """List all chunks."""
@@ -126,11 +132,32 @@ def list_chunks(latest, project_dir):
         raise SystemExit(1)
 
     if latest:
-        latest_chunk = chunks.get_latest_chunk()
-        click.echo(f"docs/chunks/{latest_chunk}")
+        current_chunk = chunks.get_current_chunk()
+        if current_chunk is None:
+            click.echo("No implementing chunk found", err=True)
+            raise SystemExit(1)
+        click.echo(f"docs/chunks/{current_chunk}")
     else:
         for _, chunk_name in chunk_list:
-            click.echo(f"docs/chunks/{chunk_name}")
+            frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+            status = frontmatter.get("status", "UNKNOWN") if frontmatter else "UNKNOWN"
+            click.echo(f"docs/chunks/{chunk_name} [{status}]")
+
+
+@chunk.command()
+@click.argument("chunk_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def activate(chunk_id, project_dir):
+    """Activate a FUTURE chunk by changing its status to IMPLEMENTING."""
+    chunks = Chunks(project_dir)
+
+    try:
+        activated = chunks.activate_chunk(chunk_id)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Activated docs/chunks/{activated}")
 
 
 @chunk.command()
