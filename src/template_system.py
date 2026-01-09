@@ -1,11 +1,25 @@
 """Template system module - unified Jinja2 template rendering."""
 
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import jinja2
 
 from constants import template_dir
+
+
+@dataclass
+class RenderResult:
+    """Result of template rendering to a directory.
+
+    Tracks the outcome of rendering templates, categorizing files by
+    whether they were created, skipped (existed and not overwritten),
+    or overwritten (existed and replaced).
+    """
+
+    created: list[pathlib.Path] = field(default_factory=list)
+    skipped: list[pathlib.Path] = field(default_factory=list)
+    overwritten: list[pathlib.Path] = field(default_factory=list)
 
 
 @dataclass
@@ -158,8 +172,9 @@ def render_to_directory(
     collection: str,
     dest_dir: pathlib.Path,
     context: TemplateContext | None = None,
+    overwrite: bool = False,
     **kwargs,
-) -> list[pathlib.Path]:
+) -> RenderResult:
     """Render all templates in a collection to a destination directory.
 
     Files with .jinja2 suffix will have that suffix stripped in the output.
@@ -169,13 +184,14 @@ def render_to_directory(
         collection: Name of the template collection (e.g., "chunk", "narrative").
         dest_dir: Destination directory for rendered files.
         context: Optional TemplateContext providing project-level context.
+        overwrite: If True, replace existing files; if False, skip them.
         **kwargs: Additional variables to pass to each template.
 
     Returns:
-        List of created file paths.
+        RenderResult with created, skipped, and overwritten file paths.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
-    created = []
+    result = RenderResult()
 
     for template_name in list_templates(collection):
         # Strip .jinja2 suffix for output filename
@@ -183,9 +199,18 @@ def render_to_directory(
         if output_name.endswith(".jinja2"):
             output_name = output_name[:-7]  # Remove ".jinja2"
 
-        rendered = render_template(collection, template_name, context, **kwargs)
         output_path = dest_dir / output_name
-        output_path.write_text(rendered)
-        created.append(output_path)
 
-    return created
+        if output_path.exists():
+            if overwrite:
+                rendered = render_template(collection, template_name, context, **kwargs)
+                output_path.write_text(rendered)
+                result.overwritten.append(output_path)
+            else:
+                result.skipped.append(output_path)
+        else:
+            rendered = render_template(collection, template_name, context, **kwargs)
+            output_path.write_text(rendered)
+            result.created.append(output_path)
+
+    return result

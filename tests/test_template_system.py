@@ -460,6 +460,7 @@ class TestRenderToDirectory:
     def test_render_to_directory_renders_all_templates(self, temp_project):
         """render_to_directory renders all templates in collection to destination."""
         import template_system
+        from template_system import RenderResult
 
         # Setup source templates
         collection_dir = temp_project / "templates" / "test_collection"
@@ -473,15 +474,18 @@ class TestRenderToDirectory:
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            created = template_system.render_to_directory(
+            result = template_system.render_to_directory(
                 "test_collection", dest_dir, name="Test"
             )
+            assert isinstance(result, RenderResult)
             assert dest_dir.exists()
             assert (dest_dir / "file1.md").exists()
             assert (dest_dir / "file2.md").exists()
             assert (dest_dir / "file1.md").read_text() == "Content 1: Test"
             assert (dest_dir / "file2.md").read_text() == "Content 2: Test"
-            assert len(created) == 2
+            assert len(result.created) == 2
+            assert len(result.skipped) == 0
+            assert len(result.overwritten) == 0
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
@@ -500,10 +504,10 @@ class TestRenderToDirectory:
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            created = template_system.render_to_directory("test_collection", dest_dir)
+            result = template_system.render_to_directory("test_collection", dest_dir)
             assert (dest_dir / "template.md").exists()
             assert not (dest_dir / "template.md.jinja2").exists()
-            assert dest_dir / "template.md" in created
+            assert dest_dir / "template.md" in result.created
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
@@ -525,11 +529,11 @@ class TestRenderToDirectory:
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            created = template_system.render_to_directory("test_collection", dest_dir)
+            result = template_system.render_to_directory("test_collection", dest_dir)
             assert (dest_dir / "main.md").exists()
             assert not (dest_dir / "partial.md").exists()
             assert not (dest_dir / "partials").exists()
-            assert len(created) == 1
+            assert len(result.created) == 1
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
@@ -584,9 +588,10 @@ class TestRenderToDirectory:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
 
-    def test_render_to_directory_returns_created_paths(self, temp_project):
-        """render_to_directory returns list of created file paths."""
+    def test_render_to_directory_returns_render_result_with_created_paths(self, temp_project):
+        """render_to_directory returns RenderResult with created file paths."""
         import template_system
+        from template_system import RenderResult
 
         collection_dir = temp_project / "templates" / "test_collection"
         collection_dir.mkdir(parents=True)
@@ -599,12 +604,106 @@ class TestRenderToDirectory:
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            created = template_system.render_to_directory("test_collection", dest_dir)
-            assert isinstance(created, list)
-            assert all(isinstance(p, pathlib.Path) for p in created)
+            result = template_system.render_to_directory("test_collection", dest_dir)
+            assert isinstance(result, RenderResult)
+            assert isinstance(result.created, list)
+            assert all(isinstance(p, pathlib.Path) for p in result.created)
             # Check expected paths are in the created list
-            assert dest_dir / "file1.md" in created
-            assert dest_dir / "file2.md" in created  # .jinja2 stripped
+            assert dest_dir / "file1.md" in result.created
+            assert dest_dir / "file2.md" in result.created  # .jinja2 stripped
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_render_to_directory_skips_existing_files_by_default(self, temp_project):
+        """render_to_directory skips existing files when overwrite=False (default)."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "file.md").write_text("New content")
+
+        dest_dir = temp_project / "output"
+        dest_dir.mkdir(parents=True)
+        # Pre-create file with different content
+        (dest_dir / "file.md").write_text("Original content")
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            result = template_system.render_to_directory("test_collection", dest_dir)
+            # File should be skipped, not overwritten
+            assert len(result.created) == 0
+            assert len(result.skipped) == 1
+            assert len(result.overwritten) == 0
+            assert dest_dir / "file.md" in result.skipped
+            # Original content preserved
+            assert (dest_dir / "file.md").read_text() == "Original content"
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_render_to_directory_overwrites_existing_files_when_requested(self, temp_project):
+        """render_to_directory overwrites existing files when overwrite=True."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "file.md").write_text("New content")
+
+        dest_dir = temp_project / "output"
+        dest_dir.mkdir(parents=True)
+        # Pre-create file with different content
+        (dest_dir / "file.md").write_text("Original content")
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            result = template_system.render_to_directory(
+                "test_collection", dest_dir, overwrite=True
+            )
+            # File should be overwritten
+            assert len(result.created) == 0
+            assert len(result.skipped) == 0
+            assert len(result.overwritten) == 1
+            assert dest_dir / "file.md" in result.overwritten
+            # New content written
+            assert (dest_dir / "file.md").read_text() == "New content"
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_render_to_directory_mixed_create_skip_overwrite(self, temp_project):
+        """render_to_directory correctly categorizes mixed file states."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "new_file.md").write_text("New file")
+        (collection_dir / "existing_file.md").write_text("Updated content")
+
+        dest_dir = temp_project / "output"
+        dest_dir.mkdir(parents=True)
+        # Pre-create one file
+        (dest_dir / "existing_file.md").write_text("Original content")
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            # Test with overwrite=False (default)
+            result = template_system.render_to_directory("test_collection", dest_dir)
+            assert len(result.created) == 1
+            assert len(result.skipped) == 1
+            assert len(result.overwritten) == 0
+            assert dest_dir / "new_file.md" in result.created
+            assert dest_dir / "existing_file.md" in result.skipped
+            # Original content preserved for existing file
+            assert (dest_dir / "existing_file.md").read_text() == "Original content"
+            # New file created
+            assert (dest_dir / "new_file.md").read_text() == "New file"
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
@@ -653,12 +752,12 @@ Extra info: {{ extra_info }}
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            created = template_system.render_to_directory(
+            result = template_system.render_to_directory(
                 "integration_test", dest_dir, context=ctx, extra_info="Important details"
             )
 
             # Verify output
-            assert len(created) == 1
+            assert len(result.created) == 1
             output_file = dest_dir / "GOAL.md"  # .jinja2 suffix stripped
             assert output_file.exists()
             content = output_file.read_text()
@@ -681,6 +780,7 @@ Extra info: {{ extra_info }}
     def test_error_handling_for_invalid_collection(self, temp_project):
         """render_to_directory handles non-existent collection gracefully."""
         import template_system
+        from template_system import RenderResult
 
         dest_dir = temp_project / "output"
 
@@ -688,9 +788,12 @@ Extra info: {{ extra_info }}
         template_system.template_dir = temp_project / "templates"
         template_system._environments.clear()
         try:
-            # Non-existent collection should return empty list (no templates to render)
-            created = template_system.render_to_directory("nonexistent", dest_dir)
-            assert created == []
+            # Non-existent collection should return empty RenderResult
+            result = template_system.render_to_directory("nonexistent", dest_dir)
+            assert isinstance(result, RenderResult)
+            assert result.created == []
+            assert result.skipped == []
+            assert result.overwritten == []
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
@@ -709,14 +812,14 @@ Extra info: {{ extra_info }}
         from template_system import list_templates
 
         templates = list_templates("narrative")
-        assert "OVERVIEW.md" in templates
+        assert "OVERVIEW.md.jinja2" in templates
 
     def test_works_with_real_subsystem_templates(self):
         """Verify module can load and enumerate real subsystem templates."""
         from template_system import list_templates
 
         templates = list_templates("subsystem")
-        assert "OVERVIEW.md" in templates
+        assert "OVERVIEW.md.jinja2" in templates
 
     def test_all_context_types_work_in_templates(self, temp_project):
         """Test that all three context types work correctly in templates."""

@@ -21,7 +21,7 @@ code_references:
     implements: "Orchestrates all initialization, aggregates results"
   - ref: src/ve.py#init
     implements: "CLI init command - invokes Project.init() and displays results"
-  - ref: src/templates/CLAUDE.md
+  - ref: src/templates/claude/CLAUDE.md.jinja2
     implements: "CLAUDE.md template explaining vibe engineering workflow to agents"
   - ref: tests/test_project.py
     implements: "Tests Project class, init(), and idempotency"

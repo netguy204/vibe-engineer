@@ -25,8 +25,6 @@ code_references:
     implements: "Validate {NNNN}-{short_name} directory pattern"
   - ref: src/subsystems.py#Subsystems::parse_subsystem_frontmatter
     implements: "Parse and validate OVERVIEW.md frontmatter"
-  - ref: tests/test_subsystems.py#TestSubsystemStatus
-    implements: "Unit tests for SubsystemStatus enum"
   - ref: tests/test_subsystems.py#TestChunkRelationship
     implements: "Unit tests for ChunkRelationship validation"
   - ref: tests/test_subsystems.py#TestSubsystemFrontmatter

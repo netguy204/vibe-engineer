@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/ve.py
   - src/subsystems.py
-  - src/templates/subsystem/OVERVIEW.md
+  - src/templates/subsystem/OVERVIEW.md.jinja2
   - tests/test_subsystems.py
   - tests/test_subsystem_list.py
   - tests/test_subsystem_discover.py
@@ -20,7 +20,7 @@ code_references:
     implements: "ve subsystem list command - displays subsystems with status"
   - ref: src/ve.py#discover
     implements: "ve subsystem discover command - creates new subsystem with validation"
-  - ref: src/templates/subsystem/OVERVIEW.md
+  - ref: src/templates/subsystem/OVERVIEW.md.jinja2
     implements: "Minimal template with DISCOVERING status and section headers"
 narrative: 0002-subsystem_documentation
 ---

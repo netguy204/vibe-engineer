@@ -1,11 +1,10 @@
 """Project module - business logic for project initialization."""
 
 import pathlib
-import shutil
 from dataclasses import dataclass, field
 
 from chunks import Chunks
-from constants import template_dir
+from template_system import TemplateContext, render_template, render_to_directory
 
 
 @dataclass
@@ -32,44 +31,39 @@ class Project:
         """Initialize trunk documents from templates."""
         result = InitResult()
         trunk_dir = self.project_dir / "docs" / "trunk"
-        trunk_dir.mkdir(parents=True, exist_ok=True)
 
-        trunk_template_dir = template_dir / "trunk"
-        for template_file in trunk_template_dir.iterdir():
-            if template_file.is_file():
-                dest_file = trunk_dir / template_file.name
-                if dest_file.exists():
-                    result.skipped.append(f"docs/trunk/{template_file.name}")
-                else:
-                    shutil.copy(template_file, dest_file)
-                    result.created.append(f"docs/trunk/{template_file.name}")
+        # Use render_to_directory with overwrite=False to preserve user content
+        context = TemplateContext()
+        render_result = render_to_directory("trunk", trunk_dir, context=context, overwrite=False)
+
+        # Map RenderResult paths to relative path strings for InitResult
+        for path in render_result.created:
+            result.created.append(f"docs/trunk/{path.name}")
+        for path in render_result.skipped:
+            result.skipped.append(f"docs/trunk/{path.name}")
 
         return result
 
     def _init_commands(self) -> InitResult:
-        """Set up Claude commands as symlinks to templates."""
+        """Set up Claude commands by rendering templates.
+
+        Commands are always updated to the latest templates (overwrite=True)
+        because they are managed artifacts, not user content.
+        """
         result = InitResult()
         commands_dir = self.project_dir / ".claude" / "commands"
-        commands_dir.mkdir(parents=True, exist_ok=True)
 
-        commands_template_dir = template_dir / "commands"
-        for template_file in commands_template_dir.glob("*.md"):
-            dest_file = commands_dir / template_file.name
-            relative_path = f".claude/commands/{template_file.name}"
+        # Use render_to_directory with overwrite=True to always update commands
+        context = TemplateContext()
+        render_result = render_to_directory("commands", commands_dir, context=context, overwrite=True)
 
-            if dest_file.exists() or dest_file.is_symlink():
-                result.skipped.append(relative_path)
-            else:
-                try:
-                    dest_file.symlink_to(template_file.resolve())
-                    result.created.append(relative_path)
-                except OSError:
-                    # Symlink failed (e.g., Windows without dev mode), fall back to copy
-                    shutil.copy(template_file, dest_file)
-                    result.created.append(relative_path)
-                    result.warnings.append(
-                        f"Could not create symlink for {relative_path}, copied file instead"
-                    )
+        # Map RenderResult paths to relative path strings for InitResult
+        for path in render_result.created:
+            result.created.append(f".claude/commands/{path.name}")
+        for path in render_result.overwritten:
+            # Overwritten files were updated, but we report as "created" for simplicity
+            # since the user just sees that the file was written
+            result.created.append(f".claude/commands/{path.name}")
 
         return result
 
@@ -87,15 +81,20 @@ class Project:
         return result
 
     def _init_claude_md(self) -> InitResult:
-        """Create CLAUDE.md at project root from template."""
+        """Create CLAUDE.md at project root from template.
+
+        CLAUDE.md is never overwritten if it exists (user content).
+        """
         result = InitResult()
         dest_file = self.project_dir / "CLAUDE.md"
 
         if dest_file.exists():
             result.skipped.append("CLAUDE.md")
         else:
-            template_file = template_dir / "CLAUDE.md"
-            shutil.copy(template_file, dest_file)
+            # Render the CLAUDE.md template directly
+            context = TemplateContext()
+            rendered = render_template("claude", "CLAUDE.md.jinja2", context=context)
+            dest_file.write_text(rendered)
             result.created.append("CLAUDE.md")
 
         return result

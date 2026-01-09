@@ -1,7 +1,6 @@
 """Tests for the Project class."""
 
 from chunks import Chunks
-from constants import template_dir
 from project import Project, InitResult
 
 
@@ -63,8 +62,8 @@ class TestProjectInit:
         assert commands_dir.exists()
         assert commands_dir.is_dir()
 
-    def test_init_creates_command_symlinks(self, temp_project):
-        """init() creates symlinks for all command templates."""
+    def test_init_creates_command_files(self, temp_project):
+        """init() creates command files (rendered from templates)."""
         project = Project(temp_project)
         project.init()
         commands_dir = temp_project / ".claude" / "commands"
@@ -78,21 +77,19 @@ class TestProjectInit:
         for cmd in expected_commands:
             cmd_path = commands_dir / cmd
             assert cmd_path.exists(), f"Missing {cmd}"
-            assert cmd_path.is_symlink(), f"{cmd} should be a symlink"
+            assert cmd_path.is_file(), f"{cmd} should be a file"
 
-    def test_init_symlinks_point_to_templates(self, temp_project):
-        """init() symlinks point to the correct template files."""
+    def test_init_command_files_have_content(self, temp_project):
+        """init() command files have content rendered from templates."""
         project = Project(temp_project)
         project.init()
         commands_dir = temp_project / ".claude" / "commands"
 
-        expected_target_dir = template_dir / "commands"
-
+        # Check that command files are not empty
         for cmd_path in commands_dir.iterdir():
-            if cmd_path.is_symlink():
-                target = cmd_path.resolve()
-                assert target.parent == expected_target_dir.resolve()
-                assert target.name == cmd_path.name
+            if cmd_path.is_file():
+                content = cmd_path.read_text()
+                assert len(content) > 0, f"{cmd_path.name} should have content"
 
     def test_init_creates_claude_md(self, temp_project):
         """init() creates CLAUDE.md at project root."""
@@ -125,17 +122,29 @@ class TestProjectInit:
 
 
 class TestProjectInitIdempotency:
-    """Tests for Project.init() idempotency."""
+    """Tests for Project.init() idempotency.
 
-    def test_init_is_idempotent(self, temp_project):
-        """Running init() twice doesn't fail - second run skips all items."""
+    Note: Commands are always updated (overwrite=True) so they appear in
+    created on every run. Trunk docs and CLAUDE.md are never overwritten
+    (overwrite=False) so they appear in skipped on subsequent runs.
+    """
+
+    def test_init_preserves_user_content_skips_commands(self, temp_project):
+        """Running init() twice: trunk/CLAUDE.md skipped, commands always updated."""
         project = Project(temp_project)
         result1 = project.init()
         result2 = project.init()
-        # First run creates items, second run skips them all
+
+        # First run creates everything
         assert len(result1.created) > 0
-        assert len(result2.created) == 0
-        assert len(result2.skipped) == len(result1.created)
+
+        # Second run: trunk, CLAUDE.md, narratives are skipped (user content)
+        assert any("docs/trunk/" in f for f in result2.skipped)
+        assert "CLAUDE.md" in result2.skipped
+        assert "docs/narratives/" in result2.skipped
+
+        # Commands are always updated (in created, not skipped)
+        assert any(".claude/commands/" in f for f in result2.created)
 
     def test_init_skips_existing_trunk_files(self, temp_project):
         """init() skips existing trunk files without overwriting."""
@@ -152,20 +161,22 @@ class TestProjectInitIdempotency:
         # Custom content should be preserved
         assert (trunk_dir / "GOAL.md").read_text() == custom_content
 
-    def test_init_skips_existing_symlinks(self, temp_project):
-        """init() skips existing command symlinks."""
+    def test_init_overwrites_existing_commands(self, temp_project):
+        """init() always overwrites existing command files (managed templates)."""
         project = Project(temp_project)
 
-        # Create commands dir with existing symlink
+        # Create commands dir with existing file
         commands_dir = temp_project / ".claude" / "commands"
         commands_dir.mkdir(parents=True)
-        existing_symlink = commands_dir / "chunk-create.md"
-        existing_symlink.symlink_to("/tmp/fake-target")
+        existing_cmd = commands_dir / "chunk-create.md"
+        existing_cmd.write_text("Old content")
 
         result = project.init()
 
-        # Should skip the existing symlink
-        assert ".claude/commands/chunk-create.md" in result.skipped
+        # Command should be updated (in created), not skipped
+        assert ".claude/commands/chunk-create.md" in result.created
+        # Content should be updated from template
+        assert existing_cmd.read_text() != "Old content"
 
     def test_init_skips_existing_claude_md(self, temp_project):
         """init() skips existing CLAUDE.md without overwriting."""
@@ -181,8 +192,8 @@ class TestProjectInitIdempotency:
         assert (temp_project / "CLAUDE.md").read_text() == custom_content
         assert "CLAUDE.md" in result.skipped
 
-    def test_init_result_tracks_skipped_files(self, temp_project):
-        """init() result correctly tracks which files were skipped."""
+    def test_init_result_tracks_skipped_and_created(self, temp_project):
+        """init() result correctly tracks which files were skipped vs created."""
         project = Project(temp_project)
 
         # First run - all created, none skipped
@@ -190,10 +201,12 @@ class TestProjectInitIdempotency:
         assert len(result1.skipped) == 0
         assert len(result1.created) > 0
 
-        # Second run - all skipped, none created
+        # Second run - user content skipped, commands created (updated)
         result2 = project.init()
-        assert len(result2.skipped) == len(result1.created)
-        assert len(result2.created) == 0
+        # Trunk + CLAUDE.md + narratives should be skipped
+        assert len(result2.skipped) >= 5  # 4 trunk files + CLAUDE.md
+        # Commands should be in created (updated)
+        assert len(result2.created) > 0
 
     def test_init_restores_deleted_file(self, temp_project):
         """init() restores a deleted file on subsequent run."""

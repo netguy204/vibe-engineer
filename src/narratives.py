@@ -1,15 +1,6 @@
 """Narratives module - business logic for narrative management."""
 
-import jinja2
-
-from constants import template_dir
-
-
-def render_template(template_name, **kwargs):
-    template_path = template_dir / template_name
-    with open(template_path, "r") as template_file:
-        template = jinja2.Template(template_file.read())
-        return template.render(**kwargs)
+from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
 class Narratives:
@@ -48,16 +39,22 @@ class Narratives:
 
         # Create narrative directory
         narrative_path = self.narratives_dir / f"{next_id_str}-{short_name}"
-        narrative_path.mkdir(parents=True, exist_ok=True)
 
-        # Copy and expand templates
-        for template_file in (template_dir / "narrative").glob("*.md"):
-            rendered = render_template(
-                template_file.relative_to(template_dir),
-                short_name=short_name,
-                next_id=next_id_str,
-            )
-            with open(narrative_path / template_file.name, "w") as dest_file:
-                dest_file.write(rendered)
+        # Create narrative context
+        narrative = ActiveNarrative(
+            short_name=short_name,
+            id=narrative_path.name,
+            _project_dir=self.project_dir,
+        )
+        context = TemplateContext(active_narrative=narrative)
+
+        # Render templates to directory
+        render_to_directory(
+            "narrative",
+            narrative_path,
+            context=context,
+            short_name=short_name,
+            next_id=next_id_str,
+        )
 
         return narrative_path

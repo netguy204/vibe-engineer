@@ -6,13 +6,12 @@ import pathlib
 import re
 from typing import TYPE_CHECKING
 
-import jinja2
 from pydantic import ValidationError
 import yaml
 
-from constants import template_dir
 from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
 from symbols import is_parent_of, parse_reference
+from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
 if TYPE_CHECKING:
     from chunks import Chunks
@@ -20,14 +19,6 @@ if TYPE_CHECKING:
 
 # Regex for validating subsystem directory name pattern: {NNNN}-{short_name}
 SUBSYSTEM_DIR_PATTERN = re.compile(r"^\d{4}-.+$")
-
-
-def render_template(template_name, **kwargs):
-    """Render a Jinja2 template with the given context."""
-    template_path = template_dir / template_name
-    with open(template_path, "r") as template_file:
-        template = jinja2.Template(template_file.read())
-        return template.render(**kwargs)
 
 
 class Subsystems:
@@ -146,17 +137,23 @@ class Subsystems:
 
         # Create subsystem directory
         subsystem_path = self.subsystems_dir / f"{next_id_str}-{shortname}"
-        subsystem_path.mkdir(parents=True, exist_ok=True)
 
-        # Render and write template
-        for template_file in (template_dir / "subsystem").glob("*.md"):
-            rendered = render_template(
-                template_file.relative_to(template_dir),
-                short_name=shortname,
-                next_id=next_id_str,
-            )
-            with open(subsystem_path / template_file.name, "w") as dest_file:
-                dest_file.write(rendered)
+        # Create subsystem context
+        subsystem = ActiveSubsystem(
+            short_name=shortname,
+            id=subsystem_path.name,
+            _project_dir=self.project_dir,
+        )
+        context = TemplateContext(active_subsystem=subsystem)
+
+        # Render templates to directory
+        render_to_directory(
+            "subsystem",
+            subsystem_path,
+            context=context,
+            short_name=shortname,
+            next_id=next_id_str,
+        )
 
         return subsystem_path
 

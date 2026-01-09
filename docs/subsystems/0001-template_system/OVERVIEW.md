@@ -1,5 +1,5 @@
 ---
-status: REFACTORING
+status: STABLE
 chunks:
 - chunk_id: 0003-project_init_command
   relationship: implements
@@ -15,7 +15,12 @@ chunks:
   relationship: implements
 - chunk_id: 0025-migrate_chunks_template
   relationship: implements
+- chunk_id: 0027-template_system_consolidation
+  relationship: implements
 code_references:
+- ref: src/template_system.py#RenderResult
+  implements: Result dataclass tracking created/skipped/overwritten files
+  compliance: COMPLIANT
 - ref: src/template_system.py#ActiveChunk
   implements: Chunk context dataclass for template rendering
   compliance: COMPLIANT
@@ -38,29 +43,29 @@ code_references:
   implements: Canonical template rendering function
   compliance: COMPLIANT
 - ref: src/template_system.py#render_to_directory
-  implements: Canonical directory rendering with suffix stripping
+  implements: Canonical directory rendering with overwrite and suffix stripping
   compliance: COMPLIANT
 - ref: src/chunks.py#Chunks::create_chunk
   implements: Chunk creation using render_to_directory
   compliance: COMPLIANT
-- ref: src/subsystems.py#render_template
-  implements: Duplicate template rendering (subsystems)
-  compliance: NON_COMPLIANT
-- ref: src/narratives.py#render_template
-  implements: Duplicate template rendering (narratives)
-  compliance: NON_COMPLIANT
+- ref: src/subsystems.py#Subsystems::create_subsystem
+  implements: Subsystem creation using render_to_directory
+  compliance: COMPLIANT
+- ref: src/narratives.py#Narratives::create_narrative
+  implements: Narrative creation using render_to_directory
+  compliance: COMPLIANT
 - ref: src/project.py#Project::_init_trunk
-  implements: Template copying without rendering
-  compliance: NON_COMPLIANT
+  implements: Trunk initialization using render_to_directory (overwrite=False)
+  compliance: COMPLIANT
 - ref: src/project.py#Project::_init_commands
-  implements: Template symlinking without rendering
-  compliance: NON_COMPLIANT
+  implements: Commands initialization using render_to_directory (overwrite=True)
+  compliance: COMPLIANT
 - ref: src/project.py#Project::_init_claude_md
-  implements: Template copying without rendering
-  compliance: NON_COMPLIANT
+  implements: CLAUDE.md initialization using render_template
+  compliance: COMPLIANT
 - ref: src/constants.py#template_dir
   implements: Template directory location
-  compliance: PARTIAL
+  compliance: COMPLIANT
 ---
 <!--
 DO NOT DELETE THIS COMMENT until the subsystem reaches STABLE status.
@@ -196,41 +201,18 @@ The canonical implementation provides:
 
 ## Known Deviations
 
-### Duplicate render_template Functions
+*All known deviations have been resolved. The subsystem is now STABLE.*
 
-Two identical `render_template` functions remain in separate modules:
-- `src/subsystems.py#render_template`
-- `src/narratives.py#render_template`
+### Resolved Deviations
 
-Each creates a bare `jinja2.Template` from file contents and renders with kwargs.
-This approach:
-- Cannot support includes (no `Environment` configured)
-- Has no shared base context
-- Duplicates code across modules
+1. **Duplicate render_template functions** - Resolved in chunk 0027-template_system_consolidation.
+   `src/subsystems.py` and `src/narratives.py` now import from `template_system`.
 
-**Resolved**: `src/chunks.py#render_template` was migrated in chunk 0025-migrate_chunks_template.
+2. **Project initialization without rendering** - Resolved in chunk 0027-template_system_consolidation.
+   `src/project.py` now uses `render_to_directory` for trunk and commands initialization.
 
-**Impact**: Medium maintenance burden; enhancements must be made in two places.
-
-### Project Initialization Without Rendering
-
-`src/project.py` handles templates differently:
-- `_init_trunk`: Uses `shutil.copy` to copy templates verbatim
-- `_init_commands`: Creates symlinks (or copies as fallback)
-- `_init_claude_md`: Uses `shutil.copy`
-
-This predates the need for template rendering in these contexts, but prevents:
-- Command templates from using includes or shared partials
-- Trunk templates from having dynamic content
-
-**Impact**: Medium; limits what command and trunk templates can express.
-
-### Template Directory Constant (PARTIAL)
-
-`src/constants.py#template_dir` correctly centralizes the template location but
-will need to evolve to support:
-- The `.jinja2` suffix convention
-- Collection-based organization with partials
+3. **Template directory constant** - The `.jinja2` suffix convention is now fully adopted.
+   All templates use the `.jinja2` suffix and are rendered through the canonical system.
 
 ## Chunk Relationships
 
@@ -259,25 +241,9 @@ will need to evolve to support:
 
 ## Consolidation Chunks
 
-### Pending Consolidation
-
-1. **Migrate subsystems.py to use template_system** - Uses duplicate render_template
-   - Draft prompt: "Replace src/subsystems.py render_template with import from template_system.
-     Update Subsystems::create_subsystem to use render_to_directory."
-   - Status: Ready to schedule
-
-2. **Migrate narratives.py to use template_system** - Uses duplicate render_template
-   - Draft prompt: "Replace src/narratives.py render_template with import from template_system.
-     Update Narratives::create_narrative to use render_to_directory."
-   - Status: Ready to schedule
-
-3. **Migrate project.py to use template_system** - Uses shutil.copy instead of rendering
-   - Draft prompt: "Replace src/project.py _init_trunk, _init_commands, and _init_claude_md
-     to use template_system rendering instead of shutil.copy/symlink. This enables command
-     templates to use includes and dynamic content."
-   - Status: Ready to schedule
-
 ### Completed Consolidation
+
+All consolidation work is complete. The subsystem is now STABLE.
 
 1. **Create canonical template_system module** - Chunk 0023-canonical_template_module
    - Created `src/template_system.py` with Jinja2 Environment, render_template,
@@ -289,4 +255,13 @@ will need to evolve to support:
    - Replaced `src/chunks.py#render_template` with import from `template_system`.
      Updated `Chunks::create_chunk` to use `render_to_directory` with `ActiveChunk`
      and `TemplateContext`. Renamed chunk templates to `.jinja2` suffix.
+   - Status: Completed
+
+3. **Complete template_system consolidation** - Chunk 0027-template_system_consolidation
+   - Migrated `src/subsystems.py`, `src/narratives.py`, and `src/project.py` to use
+     the canonical `template_system` module.
+   - Added `RenderResult` dataclass and `overwrite` parameter to `render_to_directory`
+     for idempotent file handling.
+   - Renamed all templates to use `.jinja2` suffix (trunk, commands, claude, narrative, subsystem).
+   - Removed symlink approach for commands; all files now rendered from templates.
    - Status: Completed
