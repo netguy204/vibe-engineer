@@ -401,5 +401,23 @@ def status(subsystem_id, new_status, project_dir):
         raise SystemExit(1)
 
 
+@subsystem.command()
+@click.argument("chunk_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def overlap(chunk_id, project_dir):
+    """Find subsystems with code references overlapping a chunk's changes."""
+    subsystems = Subsystems(project_dir)
+    chunks = Chunks(project_dir)
+
+    try:
+        overlapping = subsystems.find_overlapping_subsystems(chunk_id, chunks)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    for item in overlapping:
+        click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
+
+
 if __name__ == "__main__":
     cli()

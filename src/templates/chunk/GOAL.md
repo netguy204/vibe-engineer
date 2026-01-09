@@ -46,6 +46,8 @@ NARRATIVE:
 - If this chunk was derived from a narrative document, reference the narrative directory name.
 - When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
   frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
+- If this is the final chunk of a narrative, the narrative status should be set to completed 
+  when this chunk is completed. 
 
 SUBSYSTEMS:
 - Optional list of subsystem references that this chunk relates to

@@ -1,7 +1,10 @@
 """Subsystems module - business logic for subsystem documentation management."""
 
+from __future__ import annotations
+
 import pathlib
 import re
+from typing import TYPE_CHECKING
 
 import jinja2
 from pydantic import ValidationError
@@ -9,6 +12,10 @@ import yaml
 
 from constants import template_dir
 from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
+from symbols import is_parent_of, parse_reference
+
+if TYPE_CHECKING:
+    from chunks import Chunks
 
 
 # Regex for validating subsystem directory name pattern: {NNNN}-{short_name}
@@ -284,3 +291,100 @@ class Subsystems:
         new_content = f"---\n{new_frontmatter}---\n{body}"
 
         overview_path.write_text(new_content)
+
+    def find_overlapping_subsystems(
+        self, chunk_id: str, chunks: Chunks
+    ) -> list[dict]:
+        """Find subsystems with code_references overlapping a chunk's changes.
+
+        A subsystem overlaps if any of its code_references are in a parent-child
+        or equal relationship with any of the chunk's code_references (or code_paths
+        as a fallback).
+
+        Args:
+            chunk_id: The chunk ID to check.
+            chunks: Chunks instance for parsing chunk frontmatter.
+
+        Returns:
+            List of dicts with keys: subsystem_id, status, overlapping_refs
+
+        Raises:
+            ValueError: If chunk_id doesn't exist.
+        """
+        # Resolve and validate chunk exists
+        chunk_name = chunks.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            raise ValueError(f"Chunk '{chunk_id}' not found")
+
+        # Get chunk frontmatter
+        frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            raise ValueError(f"Chunk '{chunk_id}' not found")
+
+        # Get chunk's code references (symbolic format)
+        code_refs = frontmatter.get("code_references", [])
+        chunk_refs: list[str] = []
+
+        if code_refs and chunks._is_symbolic_format(code_refs):
+            chunk_refs = chunks._extract_symbolic_refs(code_refs)
+
+        # Fall back to code_paths if no symbolic code_references
+        if not chunk_refs:
+            code_paths = frontmatter.get("code_paths", [])
+            # code_paths are file-only references
+            chunk_refs = code_paths if code_paths else []
+
+        # No references to check against
+        if not chunk_refs:
+            return []
+
+        # Check each subsystem for overlap
+        results: list[dict] = []
+
+        for subsystem_id in self.enumerate_subsystems():
+            if not self.is_subsystem_dir(subsystem_id):
+                continue
+
+            subsystem_fm = self.parse_subsystem_frontmatter(subsystem_id)
+            if subsystem_fm is None:
+                continue
+
+            # Get subsystem's code_references
+            subsystem_refs = [ref.ref for ref in subsystem_fm.code_references]
+            if not subsystem_refs:
+                continue
+
+            # Find overlapping references
+            overlapping = self._find_overlapping_refs(chunk_refs, subsystem_refs)
+
+            if overlapping:
+                results.append({
+                    "subsystem_id": subsystem_id,
+                    "status": subsystem_fm.status.value,
+                    "overlapping_refs": overlapping,
+                })
+
+        return results
+
+    def _find_overlapping_refs(
+        self, chunk_refs: list[str], subsystem_refs: list[str]
+    ) -> list[str]:
+        """Find subsystem references that overlap with chunk references.
+
+        Args:
+            chunk_refs: List of chunk reference strings.
+            subsystem_refs: List of subsystem reference strings.
+
+        Returns:
+            List of subsystem reference strings that overlap.
+        """
+        overlapping: list[str] = []
+
+        for subsystem_ref in subsystem_refs:
+            for chunk_ref in chunk_refs:
+                # Check both directions: chunk->subsystem and subsystem->chunk
+                if is_parent_of(chunk_ref, subsystem_ref) or is_parent_of(subsystem_ref, chunk_ref):
+                    overlapping.append(subsystem_ref)
+                    break  # Don't add the same ref multiple times
+
+        return overlapping

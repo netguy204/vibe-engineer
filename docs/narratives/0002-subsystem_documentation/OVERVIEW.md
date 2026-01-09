@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: COMPLETED
 advances_trunk_goal: "Required Properties: Following the workflow must maintain the health of documents over time and should not grow more difficult over time."
 chunks:
   - prompt: "Subsystem schemas and data model"
@@ -16,6 +16,8 @@ chunks:
     chunk_directory: "0020-agent_discovery_command"
   - prompt: "Specification and documentation updates"
     chunk_directory: "0021-spec_docs_update"
+  - prompt: "Subsystem impact resolution during chunk completion"
+    chunk_directory: "0022-subsystem_impact_resolution"
 ---
 
 ## Advances Trunk Goal

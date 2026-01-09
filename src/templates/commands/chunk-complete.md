@@ -47,12 +47,36 @@ Update code references in the current chunk and move both the PLAN.md and the GO
 5. Run `ve chunk overlap <chunk_id>` to find the previous chunks whose
    references and validity may have been impacted by this chunk's changes.
 
-5. In parallel sub-agents run /chunk-resolve-references for each of the returned
-   directories. 
+6. In parallel sub-agents run /chunk-resolve-references for each of the returned
+   directories.
 
-6. Report to the operator on updates made to previous chunk metadata or chunks that
+7. Report to the operator on updates made to previous chunk metadata or chunks that
    need to be investigated for continuing applicability.
 
-7. Mark the chunk status as active in the front matter and remove the comment
-   explaining the structure of the front matter from the <chunk
-   directory>/GOAL.md file
+8. Run `ve subsystem overlap <chunk_id>` to find subsystems whose code references
+   overlap with this chunk's changes.
+
+9. For each overlapping subsystem returned in step 8:
+   a. Read the subsystem's OVERVIEW.md to understand its intent, invariants, and scope
+   b. Analyze whether the chunk's changes are **semantic** (affecting behavior/contracts)
+      or **non-semantic** (refactoring, comments, formatting)
+   c. If non-semantic: no further action needed for this subsystem
+   d. If semantic: apply status-based behavior:
+      - **STABLE**: Verify changes align with existing patterns. Flag any deviations
+        for operator review before proceeding.
+      - **DOCUMENTED**: Report the overlap but do NOT expand scope to fix inconsistencies.
+        Recommend deferring documentation updates unless this chunk explicitly addresses
+        the subsystem.
+      - **REFACTORING**: MAY recommend documentation updates or scope expansion for
+        consistency. Propose next steps to operator for approval.
+      - **DISCOVERING**: Assist with documentation updates as part of ongoing discovery.
+      - **DEPRECATED**: Warn if chunk is using deprecated patterns. Suggest alternatives
+        documented in the subsystem's OVERVIEW.md.
+
+10. Report subsystem analysis results to operator with concrete next-step
+    recommendations based on each overlapping subsystem's status. For semantic changes,
+    always get operator confirmation before expanding scope or updating subsystem documentation.
+
+11. Mark the chunk status as active in the front matter and remove the comment
+    explaining the structure of the front matter from the <chunk
+    directory>/GOAL.md file
