@@ -4,11 +4,11 @@ ticket: null
 parent_chunk: null
 code_paths:
   - docs/trunk/SPEC.md
-  - src/templates/CLAUDE.md
+  - src/templates/claude/CLAUDE.md.jinja2
 code_references:
   - ref: docs/trunk/SPEC.md
     implements: "Subsystem terminology, directory structure, frontmatter schema, status values, CLI commands, and guarantees"
-  - ref: src/templates/CLAUDE.md
+  - ref: src/templates/claude/CLAUDE.md.jinja2
     implements: "Agent guidance for subsystems section and /subsystem-discover command"
 narrative: 0002-subsystem_documentation
 subsystems: []

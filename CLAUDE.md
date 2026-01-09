@@ -62,14 +62,37 @@ When a chunk references a subsystem with relationship `implements`, the chunk co
 
 ## Investigations (`docs/investigations/`)
 
-Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation contains an OVERVIEW.md with:
+Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation directory (e.g., `docs/investigations/0001-memory_leak/`) contains an OVERVIEW.md with:
 
-- **Trigger** - What prompted the investigation
-- **Success Criteria** - What "done" looks like
-- **Testable Hypotheses** - Beliefs to verify or falsify
-- **Proposed Chunks** - Work items that emerge from findings
+- **Trigger** - What prompted the investigation (the observed problem or question)
+- **Success Criteria** - What "done" looks like (specific, verifiable outcomes)
+- **Testable Hypotheses** - Beliefs to verify or falsify, each with a test approach
+- **Exploration Log** - Chronological record of what was tried and learned
+- **Findings** - Verified facts vs hypotheses/opinions, with supporting evidence
+- **Proposed Chunks** - Work items that emerge from findings (may be empty)
+- **Resolution Rationale** - Why the investigation was marked complete
 
-Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
+### Investigation Lifecycle
+
+1. **Create** - Use `/investigation-create` with a description of what you want to explore
+2. **Explore** - Work through hypotheses, documenting findings in the Exploration Log
+3. **Conclude** - Update Findings, add Proposed Chunks if action is needed
+4. **Resolve** - Set status to SOLVED, NOTED, or DEFERRED with rationale
+
+### Investigation Status Values
+
+| Status | Meaning | Use When |
+|--------|---------|----------|
+| `ONGOING` | Active exploration | Investigation is in progress |
+| `SOLVED` | Question answered or problem resolved | Root cause found, solution identified |
+| `NOTED` | Documented but no action needed | Findings useful for reference but don't warrant chunks |
+| `DEFERRED` | Paused for external reasons | Blocked on dependencies, time constraints, etc. |
+
+### When to Use Investigations vs Other Artifacts
+
+- **Investigation**: When you need to understand something before committing to action—unclear root cause, multiple hypotheses, exploration needed
+- **Chunk**: When you know what needs to be done and can proceed directly to implementation
+- **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
 
 ## Available Commands
 

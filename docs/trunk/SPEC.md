@@ -50,6 +50,7 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
 - **Narrative**: A high-level, multi-step goal that decomposes into multiple chunks. Stored in `docs/narratives/`.
 - **Subsystem**: A cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
+- **Investigation**: An exploratory document for understanding something before committing to action—diagnosing an issue or exploring a concept. Stored in `docs/investigations/`.
 
 ### Identifiers and Metadata
 
@@ -81,6 +82,9 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
     subsystems/
       {NNNN}-{short_name}/            # Subsystem directories
         OVERVIEW.md                   # Subsystem documentation with frontmatter
+    investigations/
+      {NNNN}-{short_name}/            # Investigation directories
+        OVERVIEW.md                   # Investigation documentation with frontmatter
   .claude/
     commands/                         # Agent command definitions
       chunk-create.md
@@ -234,6 +238,48 @@ chunks:
 ```
 
 These references are validated by `ve chunk validate` (for chunks) and `ve subsystem validate` (for subsystems) to ensure the referenced artifacts exist.
+
+### Investigation Directory Naming
+
+Format: `{investigation_id}-{short_name}`
+
+- `investigation_id`: 4-digit zero-padded integer (0001, 0002, ...)
+- `short_name`: lowercase alphanumeric with underscores/hyphens
+
+Examples: `0001-memory_leak`, `0002-graphql_migration`
+
+### Investigation OVERVIEW.md Frontmatter
+
+```yaml
+---
+status: ONGOING | SOLVED | NOTED | DEFERRED
+trigger: {description} | null
+proposed_chunks:
+  - prompt: "Description of proposed work"
+    chunk_directory: "{NNNN}-{short_name}" | null
+---
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| status | enum | Current lifecycle state of the investigation (see Investigation Status Values) |
+| trigger | string\|null | Brief description of what prompted this investigation |
+| proposed_chunks | object[] | Chunk prompts that emerge from investigation findings |
+
+**Investigation Status Values**:
+
+| Status | Meaning | Next Steps |
+|--------|---------|------------|
+| `ONGOING` | Investigation is active; exploration and analysis in progress | Continue exploring hypotheses, updating findings |
+| `SOLVED` | The question has been answered or the problem has been resolved | Create chunks from proposed_chunks if action needed |
+| `NOTED` | Findings documented but no action required; kept for future reference | No further action; may inform future decisions |
+| `DEFERRED` | Investigation paused; may be revisited later when conditions change | Document blocking conditions and revisit triggers |
+
+**Investigation vs Other Artifacts**:
+
+- Use **Investigation** when you need to understand something before committing to action—diagnosing an issue or exploring a concept with multiple hypotheses
+- Use **Chunk** when you know what needs to be done and can proceed directly to implementation
+- Use **Narrative** when you have a clear multi-step goal that can be decomposed upfront into planned chunks
 
 ## API Surface
 
@@ -415,6 +461,45 @@ Show or update a subsystem's lifecycle status.
   - Error if invalid status value
   - Error if invalid status transition (see Valid Status Transitions)
 - **Exit codes**: 0 on success, 1 on error
+
+#### ve investigation create SHORT_NAME [--project-dir PATH]
+
+Create a new investigation directory with OVERVIEW.md template.
+
+- **Arguments**:
+  - `SHORT_NAME` (required): Identifier for the investigation
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**:
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - No existing investigation with the same short name
+- **Postconditions**:
+  - New directory `docs/investigations/{NNNN}-{short_name}/` created
+  - Directory contains OVERVIEW.md from template with `ONGOING` status
+- **Behavior**:
+  - Investigation ID is auto-incremented from existing investigations
+  - Input is normalized to lowercase
+- **Errors**:
+  - ValidationError if SHORT_NAME contains invalid characters
+  - ValidationError if SHORT_NAME exceeds 31 characters
+  - Error if investigation with same short name already exists
+- **Exit codes**: 0 on success, 1 on validation error
+
+#### ve investigation list [--project-dir PATH]
+
+List existing investigations with their status.
+
+- **Arguments**: None
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**: None
+- **Postconditions**: None (read-only operation)
+- **Output**:
+  - Relative paths in format `docs/investigations/{investigation_name} [{status}]`
+  - Status shown in brackets after each path (e.g., `[ONGOING]`, `[SOLVED]`)
+  - Sorted in ascending order by investigation ID
+- **Errors**: None
+- **Exit codes**: 0 if investigations found, 1 if no investigations exist
 
 ## Guarantees
 
