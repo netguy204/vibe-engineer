@@ -70,20 +70,35 @@ class ActiveSubsystem:
 
 
 @dataclass
+class ActiveInvestigation:
+    """Represents an active investigation context for template rendering."""
+
+    short_name: str
+    id: str
+    _project_dir: pathlib.Path
+
+    @property
+    def overview_path(self) -> pathlib.Path:
+        """Return path to this investigation's OVERVIEW.md file."""
+        return self._project_dir / "docs" / "investigations" / self.id / "OVERVIEW.md"
+
+
+@dataclass
 class TemplateContext:
     """Holds project-level context for template rendering.
 
-    Only one active artifact (chunk, narrative, or subsystem) can be set at a time.
+    Only one active artifact (chunk, narrative, subsystem, or investigation) can be set at a time.
     """
 
     active_chunk: ActiveChunk | None = None
     active_narrative: ActiveNarrative | None = None
     active_subsystem: ActiveSubsystem | None = None
+    active_investigation: ActiveInvestigation | None = None
 
     def __post_init__(self):
         count = sum(
             1
-            for x in [self.active_chunk, self.active_narrative, self.active_subsystem]
+            for x in [self.active_chunk, self.active_narrative, self.active_subsystem, self.active_investigation]
             if x is not None
         )
         if count > 1:

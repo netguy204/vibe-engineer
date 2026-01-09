@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from models import SymbolicReference, SubsystemRelationship
+from models import SymbolicReference, SubsystemRelationship, InvestigationFrontmatter, InvestigationStatus
 
 
 class TestSymbolicReference:
@@ -87,3 +87,42 @@ class TestSubsystemRelationship:
         with pytest.raises(ValidationError) as exc_info:
             SubsystemRelationship(subsystem_id="0001-", relationship="implements")
         assert "subsystem_id" in str(exc_info.value).lower()
+
+
+class TestInvestigationFrontmatter:
+    """Tests for InvestigationFrontmatter model validation."""
+
+    def test_invalid_status_value_rejected(self):
+        """Invalid status value is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            InvestigationFrontmatter(status="INVALID_STATUS")
+        assert "status" in str(exc_info.value).lower()
+
+    def test_missing_status_rejected(self):
+        """Missing status field is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            InvestigationFrontmatter()
+        assert "status" in str(exc_info.value).lower()
+
+    def test_valid_frontmatter_parses_successfully(self):
+        """Valid frontmatter with all fields parses correctly."""
+        frontmatter = InvestigationFrontmatter(
+            status=InvestigationStatus.ONGOING,
+            trigger="Test failures after upgrade",
+            proposed_chunks=[
+                {"prompt": "Fix the memory leak", "chunk_directory": None}
+            ]
+        )
+        assert frontmatter.status == InvestigationStatus.ONGOING
+        assert frontmatter.trigger == "Test failures after upgrade"
+        assert len(frontmatter.proposed_chunks) == 1
+
+    def test_proposed_chunks_defaults_to_empty_list(self):
+        """proposed_chunks defaults to empty list when not provided."""
+        frontmatter = InvestigationFrontmatter(status=InvestigationStatus.SOLVED)
+        assert frontmatter.proposed_chunks == []
+
+    def test_trigger_defaults_to_none(self):
+        """trigger defaults to None when not provided."""
+        frontmatter = InvestigationFrontmatter(status=InvestigationStatus.NOTED)
+        assert frontmatter.trigger is None

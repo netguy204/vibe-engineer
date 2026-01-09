@@ -5,10 +5,11 @@ import pathlib
 import click
 
 from chunks import Chunks
+from investigations import Investigations
 from narratives import Narratives
 from project import Project
 from subsystems import Subsystems
-from models import SubsystemStatus
+from models import SubsystemStatus, InvestigationStatus
 from task_init import TaskInit
 from task_utils import is_task_directory, create_task_chunk, TaskChunkError
 from validation import validate_identifier
@@ -205,10 +206,10 @@ def narrative():
     pass
 
 
-@narrative.command()
+@narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def create(short_name, project_dir):
+def create_narrative(short_name, project_dir):
     """Create a new narrative."""
     errors = validate_short_name(short_name)
 
@@ -417,6 +418,79 @@ def overlap(chunk_id, project_dir):
 
     for item in overlapping:
         click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
+
+
+@cli.group()
+def investigation():
+    """Investigation commands"""
+    pass
+
+
+@investigation.command("create")
+@click.argument("short_name")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def create_investigation(short_name, project_dir):
+    """Create a new investigation."""
+    errors = validate_short_name(short_name)
+
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Normalize to lowercase
+    short_name = short_name.lower()
+
+    investigations = Investigations(project_dir)
+    investigation_path = investigations.create_investigation(short_name)
+
+    # Show path relative to project_dir
+    relative_path = investigation_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
+
+
+@investigation.command("list")
+@click.option("--state", type=str, default=None, help="Filter by investigation state")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_investigations(state, project_dir):
+    """List all investigations."""
+    # Validate state filter if provided
+    if state is not None:
+        try:
+            state_filter = InvestigationStatus(state)
+        except ValueError:
+            valid_states = ", ".join(s.value for s in InvestigationStatus)
+            click.echo(
+                f"Error: Invalid state '{state}'. Valid states: {valid_states}",
+                err=True
+            )
+            raise SystemExit(1)
+    else:
+        state_filter = None
+
+    investigations = Investigations(project_dir)
+    investigation_list = investigations.enumerate_investigations()
+
+    # Filter by state if requested
+    if state_filter is not None:
+        filtered_list = []
+        for inv_name in investigation_list:
+            frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+            if frontmatter and frontmatter.status == state_filter:
+                filtered_list.append(inv_name)
+        investigation_list = filtered_list
+
+    if not investigation_list:
+        click.echo("No investigations found", err=True)
+        raise SystemExit(1)
+
+    # Sort investigations (ascending order by directory name)
+    sorted_investigations = sorted(investigation_list)
+
+    for inv_name in sorted_investigations:
+        frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        click.echo(f"docs/investigations/{inv_name} [{status}]")
 
 
 if __name__ == "__main__":

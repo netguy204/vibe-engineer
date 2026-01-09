@@ -15,7 +15,7 @@ code_references:
     implements: "Creates docs/narratives/ during ve init"
   - ref: src/ve.py#narrative
     implements: "Narrative CLI command group"
-  - ref: src/ve.py#create
+  - ref: src/ve.py#create_narrative
     implements: "ve narrative create CLI command with validation"
 ---
 

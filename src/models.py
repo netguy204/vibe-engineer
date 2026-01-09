@@ -19,6 +19,15 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
+class InvestigationStatus(StrEnum):
+    """Status values for investigation lifecycle."""
+
+    ONGOING = "ONGOING"  # Investigation in progress
+    SOLVED = "SOLVED"  # Investigation led to action; chunks were proposed/created
+    NOTED = "NOTED"  # Findings documented but no action required
+    DEFERRED = "DEFERRED"  # Investigation paused; may be revisited later
+
+
 # Valid state transitions for subsystem status lifecycle
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
@@ -297,3 +306,14 @@ class SubsystemFrontmatter(BaseModel):
     status: SubsystemStatus
     chunks: list[ChunkRelationship] = []
     code_references: list[SymbolicReference] = []
+
+
+class InvestigationFrontmatter(BaseModel):
+    """Frontmatter schema for investigation OVERVIEW.md files.
+
+    Validates the YAML frontmatter in investigation documentation.
+    """
+
+    status: InvestigationStatus
+    trigger: str | None = None
+    proposed_chunks: list[dict] = []

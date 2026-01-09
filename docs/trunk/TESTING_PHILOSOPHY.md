@@ -7,13 +7,15 @@ It informs every chunk's testing strategy but doesn't prescribe specific tests.
 
 ### Test-Driven Development
 
-We practice test-driven development. The workflow is:
+We practice test-driven development for code with meaningful behavior. The workflow is:
 
-1. **Write failing tests first** - Before writing any implementation code, write tests that express what the code should do. These tests must fail initially.
+1. **Write failing tests first** - Before writing implementation code, write tests that express what the code should do. These tests must fail initially.
 2. **Write the implementation** - Write the minimum code necessary to make the tests pass.
 3. **See previously failing tests succeed** - The same tests that failed now pass, providing confidence that the implementation satisfies the requirements.
 
-This order is non-negotiable. Writing tests after implementation invites tests that merely describe what the code happens to do, rather than what it should do.
+This order applies to code that validates, transforms, computes, or has side effects. Writing tests after implementation invites tests that merely describe what the code happens to do, rather than what it should do.
+
+**When TDD doesn't apply**: Simple scaffolding code (classes with properties, data classes, enums) often has no meaningful behavior to test. If the only failing test you can write is a trivial test (see Anti-Pattern: Trivial Tests below), skip the red phase entirely. Write the scaffolding code, then add tests only for its behavioral aspects. The goal is signal, not ritual.
 
 ### Goal-Driven Test Design
 
