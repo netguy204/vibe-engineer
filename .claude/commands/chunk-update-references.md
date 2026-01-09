@@ -1,4 +1,6 @@
-Update the code references in the goal file of a chunk.
+---
+description: Update the code references in the goal file of a chunk.
+---
 
 The operator has requested that the following chunk have its code references refreshed:
 

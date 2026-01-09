@@ -1,4 +1,6 @@
-Update docs/trunk/DECISIONS.md with a new decision. 
+---
+description: Update docs/trunk/DECISIONS.md with a new decision.
+---
 
 The operator has requested that we add a decision based on:
 

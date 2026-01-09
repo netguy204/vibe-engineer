@@ -1,4 +1,6 @@
-Update code references across all chunks and resolve or notify the operator about ambiguities. 
+---
+description: Update code references across all chunks and resolve or notify the operator about ambiguities.
+---
 
 1. Identify all active chunks with `grep -l "status: ACTIVE" docs/chunks/*/GOAL.md`
 

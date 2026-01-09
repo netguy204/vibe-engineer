@@ -1,4 +1,13 @@
-Guide collaborative discovery of an emergent subsystem.
+---
+description: Guide collaborative discovery of an emergent subsystem.
+---
+
+## Tips
+
+- The ve command is an installed CLI tool, not a file in the repository. Do not
+search for it - run it directly via Bash.
+
+## Instructions
 
 The operator has provided the following input:
 
@@ -60,7 +69,7 @@ When `$ARGUMENTS` is a new description, derive and confirm a short name:
 
 3. **Accept confirmation or adjustment** from the operator
 
-4. **Create the subsystem directory**:
+4. **Register the subsystem**:
    ```
    ve subsystem discover <confirmed_name>
    ```
