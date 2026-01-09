@@ -1,0 +1,1 @@
+/Users/btaylor/Projects/vibe-engineer/src/templates/commands/subsystem-discover.md

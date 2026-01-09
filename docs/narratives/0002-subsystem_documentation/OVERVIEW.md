@@ -12,6 +12,8 @@ chunks:
     chunk_directory: "0018-bidirectional_refs"
   - prompt: "Subsystem status transitions"
     chunk_directory: "0019-subsystem_status_transitions"
+  - prompt: "Agent discovery command"
+    chunk_directory: "0020-agent_discovery_command"
 ---
 
 ## Advances Trunk Goal
