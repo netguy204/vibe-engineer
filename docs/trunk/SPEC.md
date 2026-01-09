@@ -49,6 +49,7 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Trunk**: The `docs/trunk/` directory containing stable, project-level documentation (GOAL.md, SPEC.md, DECISIONS.md, TESTING_PHILOSOPHY.md)
 - **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
 - **Narrative**: A high-level, multi-step goal that decomposes into multiple chunks. Stored in `docs/narratives/`.
+- **Subsystem**: A cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
 
 ### Identifiers and Metadata
 
@@ -77,6 +78,9 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
       {NNNN}-{short_name}[-{ticket}]/ # Chunk directories
         GOAL.md                       # Chunk goal with frontmatter
         PLAN.md                       # Implementation plan
+    subsystems/
+      {NNNN}-{short_name}/            # Subsystem directories
+        OVERVIEW.md                   # Subsystem documentation with frontmatter
   .claude/
     commands/                         # Agent command definitions
       chunk-create.md
@@ -108,6 +112,9 @@ code_paths:
 code_references:
   - ref: path/to/file.ext#ClassName::method_name
     implements: "Description of what this code implements"
+subsystems:
+  - subsystem_id: "{NNNN}-{short_name}"
+    relationship: implements | uses
 ---
 ```
 
@@ -125,6 +132,7 @@ code_references:
 | parent_chunk | string\|null | ID of chunk this modifies/corrects |
 | code_paths | string[] | Files created or modified by this chunk |
 | code_references | object[] | Symbolic references to implementation locations |
+| subsystems | object[] | Subsystem references this chunk relates to (see Chunk-Subsystem Relationships) |
 
 ### Code Reference Format
 
@@ -149,9 +157,87 @@ Code references use symbolic paths rather than line numbers for stability as cod
 - Validation uses AST-based symbol extraction for Python files
 - Non-Python files support file-level references only (no symbol validation)
 
+### Subsystem Directory Naming
+
+Format: `{subsystem_id}-{short_name}`
+
+- `subsystem_id`: 4-digit zero-padded integer (0001, 0002, ...)
+- `short_name`: lowercase alphanumeric with underscores/hyphens
+
+Examples: `0001-validation`, `0002-template_system`
+
+### Subsystem OVERVIEW.md Frontmatter
+
+```yaml
+---
+status: DISCOVERING | DOCUMENTED | REFACTORING | STABLE | DEPRECATED
+chunks:
+  - chunk_id: "{NNNN}-{short_name}"
+    relationship: implements | uses
+code_references:
+  - ref: path/to/file.ext#ClassName::method_name
+    implements: "Description of what this code implements"
+    compliance: COMPLIANT | PARTIAL | NON_COMPLIANT
+---
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| status | enum | Current lifecycle state of the subsystem (see Subsystem Status Values) |
+| chunks | object[] | Chunks that relate to this subsystem (inverse of chunk's `subsystems` field) |
+| code_references | object[] | Symbolic references with optional compliance tracking |
+
+**Subsystem Status Values**:
+
+| Status | Meaning | Agent Behavior |
+|--------|---------|----------------|
+| `DISCOVERING` | Exploring codebase, documenting pattern and inconsistencies | Agent assists with exploration and documentation |
+| `DOCUMENTED` | Inconsistencies known; consciously deferred | Agents should NOT expand chunk scope to fix inconsistencies |
+| `REFACTORING` | Actively consolidating via chunks | Agents MAY expand chunk scope for consistency improvements |
+| `STABLE` | Consistently implemented and documented | Subsystem is authoritative; agents should follow its patterns |
+| `DEPRECATED` | Being phased out | Agents should avoid using; may suggest alternatives |
+
+**Valid Status Transitions**:
+- `DISCOVERING` → `DOCUMENTED`, `DEPRECATED`
+- `DOCUMENTED` → `REFACTORING`, `DEPRECATED`
+- `REFACTORING` → `STABLE`, `DOCUMENTED`, `DEPRECATED`
+- `STABLE` → `DEPRECATED`, `REFACTORING`
+- `DEPRECATED` → (terminal state, no transitions)
+
+**Compliance Levels** (for code_references):
+
+| Level | Meaning |
+|-------|---------|
+| `COMPLIANT` | Fully follows the subsystem's patterns (canonical implementation) |
+| `PARTIAL` | Partially follows but has some deviations |
+| `NON_COMPLIANT` | Does not follow the patterns (deviation to be addressed) |
+
+### Chunk-Subsystem Relationships
+
+Chunks and subsystems have a bidirectional relationship. Both sides use the same relationship types:
+
+- **implements**: The chunk directly implements part of the subsystem's functionality
+- **uses**: The chunk depends on or uses the subsystem's functionality
+
+In chunk GOAL.md frontmatter:
+```yaml
+subsystems:
+  - subsystem_id: "0001-validation"
+    relationship: implements
+```
+
+In subsystem OVERVIEW.md frontmatter:
+```yaml
+chunks:
+  - chunk_id: "0014-subsystem_frontmatter"
+    relationship: implements
+```
+
+These references are validated by `ve chunk validate` (for chunks) and `ve subsystem validate` (for subsystems) to ensure the referenced artifacts exist.
+
 ## API Surface
 
-The only stable API provided by this package is the CLI. There is no guarantee of stability for internal methods that implement that CLI.
+The only stable API provided by this package is the CLI. There is no guarantee of stability for internal methods that implement that CLI. We do attempt to maintain backwards compatibility between the tools and the file formats so that users of this tooling can upgrade freely without fear.
 
 ### CLI
 
@@ -247,16 +333,101 @@ Activate a `FUTURE` chunk by changing its status to `IMPLEMENTING`.
   - Error if another chunk is already `IMPLEMENTING`
 - **Exit codes**: 0 on success, 1 on error
 
+#### ve subsystem discover SHORT_NAME [--project-dir PATH]
+
+Create a new subsystem directory with OVERVIEW.md template for guided discovery.
+
+- **Arguments**:
+  - `SHORT_NAME` (required): Identifier for the subsystem
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**:
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - No existing subsystem with the same short name
+- **Postconditions**:
+  - New directory `docs/subsystems/{NNNN}-{short_name}/` created
+  - Directory contains OVERVIEW.md from template with `DISCOVERING` status
+- **Behavior**:
+  - Subsystem ID is auto-incremented from existing subsystems
+  - Input is normalized to lowercase
+- **Errors**:
+  - ValidationError if SHORT_NAME contains invalid characters
+  - ValidationError if SHORT_NAME exceeds 31 characters
+  - Error if subsystem with same short name already exists
+- **Exit codes**: 0 on success, 1 on validation error
+
+#### ve subsystem list [--project-dir PATH]
+
+List existing subsystems with their status.
+
+- **Arguments**: None
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**: None
+- **Postconditions**: None (read-only operation)
+- **Output**:
+  - Relative paths in format `docs/subsystems/{subsystem_name} [{status}]`
+  - Status shown in brackets after each path (e.g., `[DISCOVERING]`, `[STABLE]`)
+  - Sorted in ascending order by subsystem ID
+- **Errors**: None
+- **Exit codes**: 0 if subsystems found, 1 if no subsystems exist
+
+#### ve subsystem validate SUBSYSTEM_ID [--project-dir PATH]
+
+Validate subsystem frontmatter and chunk references.
+
+- **Arguments**:
+  - `SUBSYSTEM_ID` (required): The subsystem directory name
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**:
+  - Subsystem directory exists
+  - OVERVIEW.md has valid frontmatter
+- **Postconditions**: None (read-only operation)
+- **Behavior**:
+  - Validates frontmatter against schema
+  - Checks that referenced chunks exist in `docs/chunks/`
+- **Errors**:
+  - Error if subsystem not found or has invalid frontmatter
+  - Error if referenced chunks don't exist
+- **Exit codes**: 0 if validation passes, 1 on error
+
+#### ve subsystem status SUBSYSTEM_ID [NEW_STATUS] [--project-dir PATH]
+
+Show or update a subsystem's lifecycle status.
+
+- **Arguments**:
+  - `SUBSYSTEM_ID` (required): The subsystem directory name or short name
+  - `NEW_STATUS` (optional): The new status to transition to
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**:
+  - Subsystem exists
+  - If transitioning: new status must be valid transition from current status
+- **Postconditions**:
+  - If transitioning: subsystem's status updated in OVERVIEW.md
+- **Behavior**:
+  - Without NEW_STATUS: displays current status as `{short_name}: {STATUS}`
+  - With NEW_STATUS: validates transition and updates status, displays `{short_name}: {OLD} -> {NEW}`
+  - Accepts full subsystem ID (e.g., `0001-validation`) or short name (e.g., `validation`)
+- **Errors**:
+  - Error if subsystem not found
+  - Error if invalid status value
+  - Error if invalid status transition (see Valid Status Transitions)
+- **Exit codes**: 0 on success, 1 on error
+
 ## Guarantees
 
 - **Idempotency**: Running `ve init` multiple times produces the same result as running it once. Existing files are never overwritten or modified.
 - **Ordering**: Chunk IDs are assigned sequentially. A chunk with ID N was created before any chunk with ID > N.
 - **Isolation**: Each chunk directory is self-contained. Deleting a chunk directory has no effect on other chunks (though code_references may become stale).
 - **Human-readable**: All generated artifacts are valid Markdown readable without special tooling.
+- **Subsystem isolation**: Each subsystem directory is self-contained. Subsystem documents reference chunks and code but don't affect chunk behavior.
 
 **Not guaranteed**:
 - **Referential integrity**: Code references in chunk frontmatter may become stale as code evolves. Maintaining references is an agent responsibility.
 - **Uniqueness enforcement**: Duplicate short_name + ticket_id combinations are permitted after user confirmation.
+- **Subsystem completeness**: A subsystem's code_references may not cover all code that follows or deviates from the pattern.
 
 ## Performance Requirements
 

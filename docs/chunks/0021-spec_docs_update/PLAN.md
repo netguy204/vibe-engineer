@@ -8,140 +8,178 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is purely documentation work—no code changes are required. The goal is to update SPEC.md and the CLAUDE.md template so that subsystems are documented as a first-class artifact type, capturing all the implementation work done in chunks 0014-0020 of this narrative.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach is:
+1. Update SPEC.md to add subsystem terminology, directory structure, frontmatter schema, lifecycle statuses, CLI commands, and guarantees
+2. Update the CLAUDE.md template to guide agents to check subsystems before implementing patterns
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/0021-spec_docs_update/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The documentation must accurately reflect the actual implementation in `src/models.py` and `src/subsystems.py`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add Subsystem to SPEC.md Terminology Section
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add "Subsystem" to the Artifacts section of the Terminology block in `docs/trunk/SPEC.md`.
 
-Example:
+**Definition**: A subsystem is a cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
 
-### Step 1: Define the SegmentHeader struct
+Location: `docs/trunk/SPEC.md`, Terminology > Artifacts section (around line 49-52)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add Subsystem Directory Structure to SPEC.md
 
-Location: src/segment/format.rs
+Add the subsystems directory to the Directory Structure diagram in `docs/trunk/SPEC.md`.
 
-### Step 2: Implement header serialization
+Add under `docs/`:
+```
+    subsystems/
+      {NNNN}-{short_name}/         # Subsystem directories
+        OVERVIEW.md                 # Subsystem documentation with frontmatter
+```
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `docs/trunk/SPEC.md`, Directory Structure section (around lines 67-87)
 
-### Step 3: ...
--->
+### Step 3: Document Subsystem OVERVIEW.md Frontmatter Schema
+
+Add a new section after "Chunk GOAL.md Frontmatter" documenting the subsystem frontmatter schema.
+
+**Section: Subsystem OVERVIEW.md Frontmatter**
+
+```yaml
+---
+status: DISCOVERING | DOCUMENTED | REFACTORING | STABLE | DEPRECATED
+chunks:
+  - chunk_id: "{NNNN}-{short_name}"
+    relationship: implements | uses
+code_references:
+  - ref: path/to/file.ext#ClassName::method_name
+    implements: "Description of what this code implements"
+    compliance: COMPLIANT | PARTIAL | NON_COMPLIANT
+---
+```
+
+Include a table documenting each field (status, chunks, code_references).
+
+Location: `docs/trunk/SPEC.md`, after Chunk GOAL.md Frontmatter section (after line 128)
+
+### Step 4: Document Subsystem Status Enum Values
+
+Add a subsection documenting the subsystem status values and their meanings.
+
+**Status Values**:
+| Status | Meaning | Agent Behavior |
+|--------|---------|----------------|
+| `DISCOVERING` | Exploring codebase, documenting pattern and inconsistencies | Agent assists with exploration and documentation |
+| `DOCUMENTED` | Inconsistencies known; consciously deferred | Agents should NOT expand chunk scope to fix inconsistencies |
+| `REFACTORING` | Actively consolidating via chunks | Agents MAY expand chunk scope for consistency improvements |
+| `STABLE` | Consistently implemented and documented | Subsystem is authoritative; agents should follow its patterns |
+| `DEPRECATED` | Being phased out | Agents should avoid using; may suggest alternatives |
+
+**Valid Status Transitions** (must match `VALID_STATUS_TRANSITIONS` in `src/models.py`):
+- DISCOVERING → DOCUMENTED, DEPRECATED
+- DOCUMENTED → REFACTORING, DEPRECATED
+- REFACTORING → STABLE, DOCUMENTED, DEPRECATED
+- STABLE → DEPRECATED, REFACTORING
+- DEPRECATED → (terminal state)
+
+Location: `docs/trunk/SPEC.md`, within the new subsystem frontmatter section
+
+### Step 5: Document Chunk-Subsystem Relationship Types
+
+Add documentation for the bidirectional relationship between chunks and subsystems.
+
+**In chunk GOAL.md frontmatter** (update existing documentation around line 99-112):
+- Add `subsystems` field to the frontmatter schema
+- Document `implements` vs `uses` relationship types
+
+**In subsystem OVERVIEW.md frontmatter** (new section):
+- Document `chunks` field with inverse relationship
+- Explain when to use each relationship type
+
+Location: `docs/trunk/SPEC.md`, update chunk frontmatter section and add to subsystem frontmatter section
+
+### Step 6: Add Subsystem CLI Commands to API Surface
+
+Add documentation for the subsystem CLI commands in the API Surface section.
+
+**Commands to document**:
+
+#### ve subsystem discover SHORT_NAME [--project-dir PATH]
+Create a new subsystem directory with OVERVIEW.md template for guided discovery.
+
+#### ve subsystem list [--project-dir PATH]
+List existing subsystems with their status.
+
+#### ve subsystem status SUBSYSTEM_ID NEW_STATUS [--project-dir PATH]
+Update a subsystem's status with transition validation.
+
+For each command, document:
+- Arguments and options
+- Preconditions
+- Postconditions
+- Behavior
+- Errors
+- Exit codes
+
+Location: `docs/trunk/SPEC.md`, API Surface > CLI section (after `ve chunk activate`)
+
+### Step 7: Update Guarantees Section
+
+Add subsystem-specific guarantees to the Guarantees section.
+
+**Add to guarantees**:
+- **Subsystem isolation**: Each subsystem directory is self-contained. Subsystem documents reference chunks and code but don't affect chunk behavior.
+
+**Add to "Not guaranteed"**:
+- **Subsystem completeness**: A subsystem's code_references may not cover all code that follows or deviates from the pattern.
+
+Location: `docs/trunk/SPEC.md`, Guarantees section (around lines 252-260)
+
+### Step 8: Add Subsystems Section to CLAUDE.md Template
+
+Add a new section to `src/templates/CLAUDE.md` explaining subsystems and when to check them.
+
+**Section: Subsystems (`docs/subsystems/`)**
+
+Content should cover:
+- What subsystems are (emergent cross-cutting patterns)
+- When to check them (before implementing patterns that might already exist)
+- How to read them (OVERVIEW.md contains intent, scope, invariants, implementation locations)
+- How subsystem status affects behavior (especially DOCUMENTED vs REFACTORING)
+
+Location: `src/templates/CLAUDE.md`, after the Chunks section and before Available Commands
+
+### Step 9: Add /subsystem-discover to CLAUDE.md Available Commands
+
+Add `/subsystem-discover` to the Available Commands section in `src/templates/CLAUDE.md`.
+
+```markdown
+- `/subsystem-discover` - Guide collaborative discovery of an emergent subsystem
+```
+
+Location: `src/templates/CLAUDE.md`, Available Commands section
+
+### Step 10: Verify Consistency with Implementation
+
+Final review step: verify that all documented schemas and behaviors match the actual implementation:
+
+1. Compare subsystem frontmatter schema in SPEC.md against `SubsystemFrontmatter` model in `src/models.py`
+2. Compare status enum values and transitions against `SubsystemStatus` and `VALID_STATUS_TRANSITIONS` in `src/models.py`
+3. Compare CLI command documentation against actual implementation in `src/ve.py` and `src/subsystems.py`
+
+Fix any discrepancies found.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+All prior chunks in the narrative (0014-0020) must be complete. This chunk documents what they implemented.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Schema drift risk**: If the implementation was modified since planning, the documentation may not match. Mitigated by Step 10's consistency verification.
+- **Template vs instance**: The CLAUDE.md template in `src/templates/` is what `ve init` copies. The project's own `CLAUDE.md` may differ. This chunk updates the template; the project's instance is a separate concern.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

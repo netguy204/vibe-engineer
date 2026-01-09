@@ -29,6 +29,20 @@ Chunks are numbered sequentially. To understand recent work, read the highest-nu
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
+## Subsystems (`docs/subsystems/`)
+
+Subsystems document cross-cutting patterns that emerged organically in the codebase. Each subsystem directory (e.g., `docs/subsystems/0001-validation/`) contains:
+
+- **OVERVIEW.md** - The pattern's intent, scope, invariants, and implementation locations
+
+**When to check subsystems**: Before implementing patterns that might already exist in the codebase, check `docs/subsystems/` for existing documentation. Subsystems capture how things *should* work, including known inconsistencies.
+
+**Subsystem status affects your behavior**:
+- `DISCOVERING` / `DOCUMENTED`: The pattern is documented but may have inconsistencies. Do NOT expand chunk scope to fix inconsistencies unless explicitly asked.
+- `REFACTORING`: Active consolidation work. You MAY expand scope for consistency improvements.
+- `STABLE`: The subsystem is authoritative. Follow its patterns for new code.
+- `DEPRECATED`: Avoid using this pattern; may suggest alternatives.
+
 ## Available Commands
 
 Use these slash commands for chunk management:
@@ -37,6 +51,7 @@ Use these slash commands for chunk management:
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-complete` - Mark a chunk complete and update references
 - `/chunk-update-references` - Update code references in a chunk's GOAL.md
+- `/subsystem-discover` - Guide collaborative discovery of an emergent subsystem
 
 ## Getting Started
 
