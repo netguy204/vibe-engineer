@@ -15,7 +15,7 @@ chunks:
   relationship: implements
 - chunk_id: 0025-migrate_chunks_template
   relationship: implements
-- chunk_id: 0027-template_system_consolidation
+- chunk_id: 0026-template_system_consolidation
   relationship: implements
 code_references:
 - ref: src/template_system.py#RenderResult
@@ -205,10 +205,10 @@ The canonical implementation provides:
 
 ### Resolved Deviations
 
-1. **Duplicate render_template functions** - Resolved in chunk 0027-template_system_consolidation.
+1. **Duplicate render_template functions** - Resolved in chunk 0026-template_system_consolidation.
    `src/subsystems.py` and `src/narratives.py` now import from `template_system`.
 
-2. **Project initialization without rendering** - Resolved in chunk 0027-template_system_consolidation.
+2. **Project initialization without rendering** - Resolved in chunk 0026-template_system_consolidation.
    `src/project.py` now uses `render_to_directory` for trunk and commands initialization.
 
 3. **Template directory constant** - The `.jinja2` suffix convention is now fully adopted.
@@ -257,7 +257,7 @@ All consolidation work is complete. The subsystem is now STABLE.
      and `TemplateContext`. Renamed chunk templates to `.jinja2` suffix.
    - Status: Completed
 
-3. **Complete template_system consolidation** - Chunk 0027-template_system_consolidation
+3. **Complete template_system consolidation** - Chunk 0026-template_system_consolidation
    - Migrated `src/subsystems.py`, `src/narratives.py`, and `src/project.py` to use
      the canonical `template_system` module.
    - Added `RenderResult` dataclass and `overwrite` parameter to `render_to_directory`
