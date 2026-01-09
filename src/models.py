@@ -63,6 +63,35 @@ class ChunkRelationship(BaseModel):
         return v
 
 
+class SubsystemRelationship(BaseModel):
+    """Relationship between a chunk and a subsystem.
+
+    Captures how a chunk relates to subsystem documentation (inverse of ChunkRelationship):
+    - "implements": chunk directly implements part of the subsystem
+    - "uses": chunk uses/depends on the subsystem
+    """
+
+    subsystem_id: str  # format: {NNNN}-{short_name}
+    relationship: Literal["implements", "uses"]
+
+    @field_validator("subsystem_id")
+    @classmethod
+    def validate_subsystem_id(cls, v: str) -> str:
+        """Validate subsystem_id matches {NNNN}-{short_name} pattern."""
+        if not v:
+            raise ValueError("subsystem_id cannot be empty")
+        if not CHUNK_ID_PATTERN.match(v):
+            raise ValueError(
+                "subsystem_id must match pattern {NNNN}-{short_name} "
+                "(4 digits, hyphen, name)"
+            )
+        # Ensure there's actually a name after the hyphen
+        parts = v.split("-", 1)
+        if len(parts) < 2 or not parts[1]:
+            raise ValueError("subsystem_id must have a name after the hyphen")
+        return v
+
+
 # Forward reference for SymbolicReference used in SubsystemFrontmatter
 # (SymbolicReference is defined later in the file)
 

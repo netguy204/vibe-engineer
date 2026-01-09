@@ -9,7 +9,7 @@ from pydantic import ValidationError
 import yaml
 
 from constants import template_dir
-from models import CodeReference, SymbolicReference
+from models import CodeReference, SymbolicReference, SubsystemRelationship, CHUNK_ID_PATTERN
 from symbols import is_parent_of, parse_reference, extract_symbols
 
 
@@ -384,6 +384,7 @@ class Chunks:
         2. Status is IMPLEMENTING or ACTIVE
         3. code_references conforms to schema and is non-empty
         4. (For symbolic refs) Referenced symbols exist (produces warnings, not errors)
+        5. Subsystem references are valid and exist
 
         Supports both old line-based format and new symbolic format.
 
@@ -466,6 +467,10 @@ class Chunks:
                             msg = err["msg"]
                             errors.append(f"{field_path}: {msg}")
 
+        # Validate subsystem references
+        subsystem_errors = self.validate_subsystem_refs(chunk_name)
+        errors.extend(subsystem_errors)
+
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
@@ -506,6 +511,55 @@ class Chunks:
             return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
 
         return []
+
+    def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
+        """Validate subsystem references in a chunk's frontmatter.
+
+        Checks:
+        1. Each subsystem_id matches the {NNNN}-{short_name} pattern
+        2. Each referenced subsystem directory exists in docs/subsystems/
+
+        Args:
+            chunk_id: The chunk ID to validate.
+
+        Returns:
+            List of error messages (empty if all refs valid or no refs).
+        """
+        errors: list[str] = []
+
+        # Get chunk frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            return []  # Chunk doesn't exist, nothing to validate
+
+        # Get subsystems field (may not exist in older chunks)
+        subsystems = frontmatter.get("subsystems", [])
+        if not subsystems:
+            return []
+
+        # Subsystems directory path
+        subsystems_dir = self.project_dir / "docs" / "subsystems"
+
+        for entry in subsystems:
+            subsystem_id = entry.get("subsystem_id", "")
+
+            # Validate format using SubsystemRelationship model
+            try:
+                SubsystemRelationship.model_validate(entry)
+            except ValidationError as e:
+                for err in e.errors():
+                    msg = err["msg"]
+                    errors.append(f"Invalid subsystem reference '{subsystem_id}': {msg}")
+                continue
+
+            # Check if subsystem directory exists
+            subsystem_path = subsystems_dir / subsystem_id
+            if not subsystem_path.exists():
+                errors.append(
+                    f"Subsystem '{subsystem_id}' does not exist in docs/subsystems/"
+                )
+
+        return errors
 
 
 def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:

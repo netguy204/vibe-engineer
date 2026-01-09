@@ -144,7 +144,7 @@ Code references use symbolic paths rather than line numbers for stability as cod
 - `src/models.py#Outer::Inner::method` - deeply nested symbol
 
 **Validation**:
-- When completing a chunk (`ve chunk complete`), symbolic references are validated
+- When validating a chunk (`ve chunk validate`), symbolic references are validated
 - Missing files or symbols produce **warnings** (not errors)
 - Validation uses AST-based symbol extraction for Python files
 - Non-Python files support file-level references only (no symbol validation)

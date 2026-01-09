@@ -172,7 +172,7 @@ Convert all existing chunks in this repository to use symbolic references.
 
 **Files to migrate** (based on current repository state):
 - `docs/chunks/0001-implement_chunk_start-ve-001/GOAL.md`
-- `docs/chunks/0005-chunk_complete_cmd/GOAL.md`
+- `docs/chunks/0005-chunk_validate/GOAL.md`
 - Any other chunks with `code_references` populated
 
 Location: `docs/chunks/*/GOAL.md`

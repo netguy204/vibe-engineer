@@ -41,7 +41,7 @@ Update code references in the current chunk and move both the PLAN.md and the GO
 3. Extract the sequential ID for the chunk from the prefix number in the chunk
    directory. We will call this <chunk_id> below.
 
-4. Run `ve chunk complete <chunk_id>` to verify that the metadata syntax for the
+4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct
 
 5. Run `ve chunk overlap <chunk_id>` to find the previous chunks whose

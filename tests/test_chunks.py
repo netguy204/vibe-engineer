@@ -359,3 +359,135 @@ class TestSymbolicOverlap:
         refs_a = ["src/foo.py#Bar", "src/baz.py#Qux"]
         refs_b = ["src/foo.py#Other", "src/baz.py#Different"]
         assert compute_symbolic_overlap(refs_a, refs_b) is False
+
+
+class TestValidateSubsystemRefs:
+    """Tests for Chunks.validate_subsystem_refs() method."""
+
+    def _write_chunk_with_subsystems(self, temp_project, chunk_name, subsystems):
+        """Helper to write a chunk GOAL.md with subsystems frontmatter."""
+        chunk_path = temp_project / "docs" / "chunks" / chunk_name
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        goal_path = chunk_path / "GOAL.md"
+
+        if subsystems:
+            subsystems_yaml = "subsystems:\n"
+            for sub in subsystems:
+                subsystems_yaml += f"  - subsystem_id: {sub['subsystem_id']}\n"
+                subsystems_yaml += f"    relationship: {sub['relationship']}\n"
+        else:
+            subsystems_yaml = "subsystems: []"
+
+        goal_path.write_text(f"""---
+status: IMPLEMENTING
+ticket: null
+code_paths: []
+code_references: []
+{subsystems_yaml}
+---
+
+# Chunk Goal
+""")
+
+    def _create_subsystem(self, temp_project, subsystem_name):
+        """Helper to create a subsystem directory with OVERVIEW.md."""
+        subsystem_path = temp_project / "docs" / "subsystems" / subsystem_name
+        subsystem_path.mkdir(parents=True, exist_ok=True)
+        overview_path = subsystem_path / "OVERVIEW.md"
+        overview_path.write_text("""---
+status: DISCOVERING
+chunks: []
+code_references: []
+---
+
+# Subsystem
+""")
+
+    def test_empty_subsystems_returns_no_errors(self, temp_project):
+        """Empty subsystems list returns no errors."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert errors == []
+
+    def test_missing_subsystems_field_returns_no_errors(self, temp_project):
+        """Missing subsystems field returns no errors (backward compat)."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        (chunk_path / "GOAL.md").write_text("""---
+status: IMPLEMENTING
+code_references: []
+---
+
+# Chunk Goal
+""")
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert errors == []
+
+    def test_valid_subsystem_reference_returns_no_errors(self, temp_project):
+        """Valid subsystem reference returns no errors."""
+        chunk_mgr = Chunks(temp_project)
+        self._create_subsystem(temp_project, "0001-validation")
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
+            {"subsystem_id": "0001-validation", "relationship": "implements"}
+        ])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert errors == []
+
+    def test_invalid_subsystem_id_format_returns_error(self, temp_project):
+        """Invalid subsystem_id format returns error message."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
+            {"subsystem_id": "invalid-format", "relationship": "implements"}
+        ])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert len(errors) == 1
+        assert "invalid-format" in errors[0]
+
+    def test_nonexistent_subsystem_returns_error(self, temp_project):
+        """Non-existent subsystem reference returns error message."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
+            {"subsystem_id": "0001-nonexistent", "relationship": "implements"}
+        ])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert len(errors) == 1
+        assert "0001-nonexistent" in errors[0]
+        assert "not found" in errors[0].lower() or "does not exist" in errors[0].lower()
+
+    def test_multiple_valid_references_returns_no_errors(self, temp_project):
+        """Multiple valid subsystem references returns no errors."""
+        chunk_mgr = Chunks(temp_project)
+        self._create_subsystem(temp_project, "0001-validation")
+        self._create_subsystem(temp_project, "0002-frontmatter")
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
+            {"subsystem_id": "0001-validation", "relationship": "implements"},
+            {"subsystem_id": "0002-frontmatter", "relationship": "uses"},
+        ])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert errors == []
+
+    def test_multiple_errors_collected(self, temp_project):
+        """Multiple invalid references return multiple errors."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
+            {"subsystem_id": "invalid", "relationship": "implements"},
+            {"subsystem_id": "0001-nonexistent", "relationship": "uses"},
+        ])
+
+        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
+        assert len(errors) == 2
+
+    def test_chunk_not_found_returns_none_or_empty(self, temp_project):
+        """Non-existent chunk returns empty list or None gracefully."""
+        chunk_mgr = Chunks(temp_project)
+        errors = chunk_mgr.validate_subsystem_refs("9999-nonexistent")
+        # Should return empty list (no errors possible if chunk doesn't exist)
+        assert errors == []

@@ -1,4 +1,4 @@
-"""Tests for the 'chunk complete' CLI command."""
+"""Tests for the 'chunk validate' CLI command."""
 
 import pathlib
 
@@ -87,12 +87,12 @@ Test chunk content.
     goal_path.write_text(frontmatter)
 
 
-class TestCompleteCommandInterface:
-    """Tests for 've chunk complete' command interface."""
+class TestValidateCommandInterface:
+    """Tests for 've chunk validate' command interface."""
 
     def test_help_shows_correct_usage(self, runner):
         """--help shows correct usage."""
-        result = runner.invoke(cli, ["chunk", "complete", "--help"])
+        result = runner.invoke(cli, ["chunk", "validate", "--help"])
         assert result.exit_code == 0
         assert "--project-dir" in result.output
 
@@ -111,7 +111,7 @@ class TestCompleteCommandInterface:
         # Invoke without chunk_id - should default to latest
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -128,13 +128,13 @@ class TestCompleteCommandInterface:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
 
 class TestStatusValidation:
-    """Tests for status validation in 've chunk complete'."""
+    """Tests for status validation in 've chunk validate'."""
 
     def test_fails_when_status_not_implementing_or_active(self, runner, temp_project):
         """Command fails if chunk status is not IMPLEMENTING or ACTIVE."""
@@ -149,7 +149,7 @@ class TestStatusValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -166,7 +166,7 @@ class TestStatusValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -183,7 +183,7 @@ class TestStatusValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert "COMPLETED" in result.output
 
@@ -200,7 +200,7 @@ class TestStatusValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         # Should explain that status must be IMPLEMENTING or ACTIVE
         assert "IMPLEMENTING" in result.output or "ACTIVE" in result.output
@@ -209,7 +209,7 @@ class TestStatusValidation:
         """Non-existent chunk ID exits non-zero with error message."""
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "9999", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "9999", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
@@ -218,13 +218,13 @@ class TestStatusValidation:
         """No chunks available exits non-zero with error message."""
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
 
 class TestCodeReferencesValidation:
-    """Tests for code_references validation in 've chunk complete'."""
+    """Tests for code_references validation in 've chunk validate'."""
 
     def test_valid_code_references_passes(self, runner, temp_project):
         """Valid code_references passes validation."""
@@ -239,7 +239,7 @@ class TestCodeReferencesValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -266,7 +266,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "file" in result.output.lower()
@@ -293,7 +293,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "lines" in result.output.lower()
@@ -320,7 +320,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "implements" in result.output.lower()
@@ -348,7 +348,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -376,7 +376,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Should mention both 'implements' (missing) and 'file' (missing)
@@ -395,7 +395,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Should explain that at least one reference is required
@@ -403,7 +403,7 @@ code_references:
 
 
 class TestSuccessOutput:
-    """Tests for success output in 've chunk complete'."""
+    """Tests for success output in 've chunk validate'."""
 
     def test_success_prints_confirmation(self, runner, temp_project):
         """Successful validation prints confirmation message."""
@@ -418,7 +418,7 @@ class TestSuccessOutput:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         # Should output some confirmation
@@ -437,7 +437,7 @@ class TestSuccessOutput:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -458,7 +458,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -475,7 +475,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -492,7 +492,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
@@ -511,7 +511,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
@@ -531,7 +531,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         # Should succeed but show warnings for both
         assert result.exit_code == 0
@@ -557,7 +557,152 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "complete", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "warning" not in result.output.lower()
+
+
+class TestSubsystemRefValidation:
+    """Tests for subsystem reference validation in 've chunk validate'."""
+
+    def _write_frontmatter_with_subsystems(
+        self,
+        chunk_path,
+        status: str,
+        code_references: list[dict],
+        subsystems: list[dict] | None = None,
+    ):
+        """Helper to write GOAL.md with subsystems field."""
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: {ref['ref']}")
+                refs_lines.append(f"    implements: \"{ref['implements']}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        if subsystems:
+            subsystems_yaml = "subsystems:\n"
+            for sub in subsystems:
+                subsystems_yaml += f"  - subsystem_id: {sub['subsystem_id']}\n"
+                subsystems_yaml += f"    relationship: {sub['relationship']}\n"
+        else:
+            subsystems_yaml = "subsystems: []"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+{subsystems_yaml}
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def _create_subsystem(self, temp_project, subsystem_name):
+        """Helper to create a subsystem directory with OVERVIEW.md."""
+        subsystem_path = temp_project / "docs" / "subsystems" / subsystem_name
+        subsystem_path.mkdir(parents=True, exist_ok=True)
+        overview_path = subsystem_path / "OVERVIEW.md"
+        overview_path.write_text("""---
+status: DISCOVERING
+chunks: []
+code_references: []
+---
+
+# Subsystem
+""")
+
+    def test_chunk_with_valid_subsystem_ref_passes(self, runner, temp_project):
+        """Chunk with valid subsystem reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+
+        # Create the subsystem
+        self._create_subsystem(temp_project, "0001-validation")
+
+        self._write_frontmatter_with_subsystems(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"subsystem_id": "0001-validation", "relationship": "implements"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_invalid_subsystem_ref_fails(self, runner, temp_project):
+        """Chunk with invalid subsystem reference fails validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+
+        self._write_frontmatter_with_subsystems(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"subsystem_id": "0001-nonexistent", "relationship": "implements"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "0001-nonexistent" in result.output
+
+    def test_chunk_with_invalid_subsystem_id_format_fails(self, runner, temp_project):
+        """Chunk with invalid subsystem_id format fails validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+
+        self._write_frontmatter_with_subsystems(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"subsystem_id": "invalid-format", "relationship": "implements"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "invalid-format" in result.output
+
+    def test_chunk_with_no_subsystems_passes(self, runner, temp_project):
+        """Chunk without subsystems field still passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/main.py", "implements": "Main module"}
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0

@@ -138,8 +138,8 @@ ve chunk list
 # Show only the latest chunk
 ve chunk list --latest
 
-# Check if a chunk is ready for completion
-ve chunk complete 0001-my-feature
+# Validate a chunk is ready for completion
+ve chunk validate 0001-my-feature
 
 # Find chunks with overlapping code references
 ve chunk overlap 0001-my-feature

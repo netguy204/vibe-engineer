@@ -384,3 +384,133 @@ class TestSubsystemsFindByShortname:
         assert subsystems.find_by_shortname("chunk_management") == "0002-chunk_management"
         assert subsystems.find_by_shortname("frontmatter") == "0003-frontmatter"
         assert subsystems.find_by_shortname("nonexistent") is None
+
+
+class TestValidateChunkRefs:
+    """Tests for Subsystems.validate_chunk_refs() method."""
+
+    def _write_subsystem_with_chunks(self, temp_project, subsystem_name, chunks):
+        """Helper to write subsystem OVERVIEW.md with chunks frontmatter."""
+        subsystem_path = temp_project / "docs" / "subsystems" / subsystem_name
+        subsystem_path.mkdir(parents=True, exist_ok=True)
+        overview_path = subsystem_path / "OVERVIEW.md"
+
+        if chunks:
+            chunks_yaml = "chunks:\n"
+            for chunk in chunks:
+                chunks_yaml += f"  - chunk_id: {chunk['chunk_id']}\n"
+                chunks_yaml += f"    relationship: {chunk['relationship']}\n"
+        else:
+            chunks_yaml = "chunks: []"
+
+        overview_path.write_text(f"""---
+status: DOCUMENTED
+{chunks_yaml}
+code_references: []
+---
+
+# Subsystem
+""")
+
+    def _create_chunk(self, temp_project, chunk_name):
+        """Helper to create a chunk directory with GOAL.md."""
+        chunk_path = temp_project / "docs" / "chunks" / chunk_name
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        (chunk_path / "GOAL.md").write_text("""---
+status: IMPLEMENTING
+code_references: []
+---
+
+# Chunk Goal
+""")
+
+    def test_empty_chunks_list_returns_no_errors(self, temp_project):
+        """Empty chunks list returns no errors."""
+        from subsystems import Subsystems
+
+        self._write_subsystem_with_chunks(temp_project, "0001-validation", [])
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert errors == []
+
+    def test_valid_chunk_reference_returns_no_errors(self, temp_project):
+        """Valid chunk reference returns no errors."""
+        from subsystems import Subsystems
+
+        self._create_chunk(temp_project, "0001-feature")
+        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
+            {"chunk_id": "0001-feature", "relationship": "implements"}
+        ])
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert errors == []
+
+    def test_nonexistent_chunk_reference_returns_error(self, temp_project):
+        """Non-existent chunk reference returns error message."""
+        from subsystems import Subsystems
+
+        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
+            {"chunk_id": "0001-nonexistent", "relationship": "implements"}
+        ])
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert len(errors) == 1
+        assert "0001-nonexistent" in errors[0]
+        assert "not found" in errors[0].lower() or "does not exist" in errors[0].lower()
+
+    def test_multiple_valid_references_returns_no_errors(self, temp_project):
+        """Multiple valid chunk references returns no errors."""
+        from subsystems import Subsystems
+
+        self._create_chunk(temp_project, "0001-feature")
+        self._create_chunk(temp_project, "0002-enhancement")
+        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
+            {"chunk_id": "0001-feature", "relationship": "implements"},
+            {"chunk_id": "0002-enhancement", "relationship": "uses"},
+        ])
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert errors == []
+
+    def test_multiple_errors_collected(self, temp_project):
+        """Multiple invalid references return multiple errors."""
+        from subsystems import Subsystems
+
+        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
+            {"chunk_id": "0001-nonexistent1", "relationship": "implements"},
+            {"chunk_id": "0002-nonexistent2", "relationship": "uses"},
+        ])
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert len(errors) == 2
+
+    def test_subsystem_not_found_returns_empty(self, temp_project):
+        """Non-existent subsystem returns empty list gracefully."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("9999-nonexistent")
+        assert errors == []
+
+    def test_subsystem_without_chunks_field_returns_no_errors(self, temp_project):
+        """Subsystem without chunks field returns no errors (backward compat)."""
+        from subsystems import Subsystems
+
+        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path.mkdir(parents=True, exist_ok=True)
+        (subsystem_path / "OVERVIEW.md").write_text("""---
+status: DOCUMENTED
+code_references: []
+---
+
+# Subsystem
+""")
+
+        subsystems = Subsystems(temp_project)
+        errors = subsystems.validate_chunk_refs("0001-validation")
+        assert errors == []

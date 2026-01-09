@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from models import SymbolicReference
+from models import SymbolicReference, SubsystemRelationship
 
 
 class TestSymbolicReference:
@@ -88,3 +88,59 @@ class TestSymbolicReference:
         with pytest.raises(ValidationError) as exc_info:
             SymbolicReference(ref="src/foo.py#Foo::", implements="Something")
         assert "empty component" in str(exc_info.value).lower()
+
+
+class TestSubsystemRelationship:
+    """Tests for SubsystemRelationship model (inverse of ChunkRelationship)."""
+
+    def test_valid_implements_relationship(self):
+        """Valid subsystem_id with 'implements' relationship passes."""
+        rel = SubsystemRelationship(subsystem_id="0001-validation", relationship="implements")
+        assert rel.subsystem_id == "0001-validation"
+        assert rel.relationship == "implements"
+
+    def test_valid_uses_relationship(self):
+        """Valid subsystem_id with 'uses' relationship passes."""
+        rel = SubsystemRelationship(subsystem_id="0003-chunk_management", relationship="uses")
+        assert rel.subsystem_id == "0003-chunk_management"
+        assert rel.relationship == "uses"
+
+    def test_invalid_relationship_type(self):
+        """Invalid relationship type (not 'implements' or 'uses') fails."""
+        with pytest.raises(ValidationError) as exc_info:
+            SubsystemRelationship(subsystem_id="0001-validation", relationship="extends")
+        assert "relationship" in str(exc_info.value).lower()
+
+    def test_empty_subsystem_id_fails(self):
+        """Empty subsystem_id fails."""
+        with pytest.raises(ValidationError) as exc_info:
+            SubsystemRelationship(subsystem_id="", relationship="implements")
+        assert "subsystem_id" in str(exc_info.value).lower()
+
+    def test_invalid_subsystem_id_format_no_hyphen(self):
+        """Invalid subsystem_id format (missing hyphen) fails."""
+        with pytest.raises(ValidationError) as exc_info:
+            SubsystemRelationship(subsystem_id="0001validation", relationship="implements")
+        assert "subsystem_id" in str(exc_info.value).lower()
+
+    def test_invalid_subsystem_id_format_short_number(self):
+        """Invalid subsystem_id format (less than 4 digits) fails."""
+        with pytest.raises(ValidationError) as exc_info:
+            SubsystemRelationship(subsystem_id="001-validation", relationship="implements")
+        assert "subsystem_id" in str(exc_info.value).lower()
+
+    def test_invalid_subsystem_id_format_no_name(self):
+        """Invalid subsystem_id format (missing short name after hyphen) fails."""
+        with pytest.raises(ValidationError) as exc_info:
+            SubsystemRelationship(subsystem_id="0001-", relationship="implements")
+        assert "subsystem_id" in str(exc_info.value).lower()
+
+    def test_subsystem_id_with_underscores(self):
+        """Subsystem ID with underscores in name is valid."""
+        rel = SubsystemRelationship(subsystem_id="0002-chunk_management", relationship="implements")
+        assert rel.subsystem_id == "0002-chunk_management"
+
+    def test_subsystem_id_with_multiple_hyphens(self):
+        """Subsystem ID with multiple hyphens in name is valid."""
+        rel = SubsystemRelationship(subsystem_id="0001-multi-part-name", relationship="uses")
+        assert rel.subsystem_id == "0001-multi-part-name"

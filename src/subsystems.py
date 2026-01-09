@@ -152,3 +152,42 @@ class Subsystems:
                 dest_file.write(rendered)
 
         return subsystem_path
+
+    def validate_chunk_refs(self, subsystem_id: str) -> list[str]:
+        """Validate chunk references in a subsystem's frontmatter.
+
+        Checks that each chunk_id referenced in the subsystem's `chunks` field
+        exists as a directory in docs/chunks/.
+
+        Args:
+            subsystem_id: The subsystem directory name to validate.
+
+        Returns:
+            List of error messages (empty if all refs valid or no refs).
+        """
+        errors: list[str] = []
+
+        # Get subsystem frontmatter
+        frontmatter = self.parse_subsystem_frontmatter(subsystem_id)
+        if frontmatter is None:
+            return []  # Subsystem doesn't exist or invalid, nothing to validate
+
+        # Get chunks from validated frontmatter
+        chunks = frontmatter.chunks
+        if not chunks:
+            return []
+
+        # Chunks directory path
+        chunks_dir = self.project_dir / "docs" / "chunks"
+
+        for chunk_rel in chunks:
+            chunk_id = chunk_rel.chunk_id
+
+            # Check if chunk directory exists
+            chunk_path = chunks_dir / chunk_id
+            if not chunk_path.exists():
+                errors.append(
+                    f"Chunk '{chunk_id}' does not exist in docs/chunks/"
+                )
+
+        return errors

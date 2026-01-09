@@ -13,7 +13,7 @@ code_paths:
   - tests/test_models.py
   - tests/test_symbols.py
   - tests/test_chunks.py
-  - tests/test_chunk_complete.py
+  - tests/test_chunk_validate.py
   - docs/trunk/SPEC.md
 code_references:
   - ref: src/models.py#SymbolicReference
@@ -46,7 +46,7 @@ code_references:
     implements: "Tests for hierarchical containment"
   - ref: tests/test_chunks.py#TestSymbolicOverlap
     implements: "Tests for symbolic overlap detection"
-  - ref: tests/test_chunk_complete.py#TestSymbolicReferenceValidation
+  - ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
     implements: "Tests for symbolic validation warnings in CLI"
 narrative: null
 ---

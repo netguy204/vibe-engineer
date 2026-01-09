@@ -8,6 +8,8 @@ chunks:
     chunk_directory: "0016-subsystem_cli_scaffolding"
   - prompt: "Subsystem OVERVIEW.md template"
     chunk_directory: "0017-subsystem_template"
+  - prompt: "Chunk-subsystem bidirectional references"
+    chunk_directory: "0018-bidirectional_refs"
 ---
 
 ## Advances Trunk Goal

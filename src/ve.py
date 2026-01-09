@@ -181,7 +181,7 @@ def overlap(chunk_id, project_dir):
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def complete(chunk_id, project_dir):
+def validate(chunk_id, project_dir):
     """Validate chunk is ready for completion."""
     chunks = Chunks(project_dir)
     result = chunks.validate_chunk_complete(chunk_id)
@@ -320,6 +320,30 @@ def discover(shortname, project_dir):
     # Show path relative to project_dir
     relative_path = subsystem_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+
+@subsystem.command()
+@click.argument("subsystem_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def validate(subsystem_id, project_dir):
+    """Validate subsystem frontmatter and chunk references."""
+    subsystems = Subsystems(project_dir)
+
+    # Check if subsystem exists
+    frontmatter = subsystems.parse_subsystem_frontmatter(subsystem_id)
+    if frontmatter is None:
+        click.echo(f"Error: Subsystem '{subsystem_id}' not found or has invalid frontmatter", err=True)
+        raise SystemExit(1)
+
+    # Validate chunk references
+    errors = subsystems.validate_chunk_refs(subsystem_id)
+
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Subsystem {subsystem_id} validation passed")
 
 
 if __name__ == "__main__":

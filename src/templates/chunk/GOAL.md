@@ -5,12 +5,13 @@ parent_chunk: null
 code_paths: []
 code_references: []
 narrative: null
+subsystems: []
 ---
 
 <!--
 DO NOT DELETE THIS COMMENT until the chunk complete command is run.
 This describes schema information that needs to be adhered
-to throughout the process. 
+to throughout the process.
 
 STATUS VALUES:
 - FUTURE: This chunk is queued for future work and not yet being implemented
@@ -45,6 +46,19 @@ NARRATIVE:
 - If this chunk was derived from a narrative document, reference the narrative directory name.
 - When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
   frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
+
+SUBSYSTEMS:
+- Optional list of subsystem references that this chunk relates to
+- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
+- "implements": This chunk directly implements part of the subsystem's functionality
+- "uses": This chunk depends on or uses the subsystem's functionality
+- Example:
+  subsystems:
+    - subsystem_id: "0001-validation"
+      relationship: implements
+    - subsystem_id: "0002-frontmatter"
+      relationship: uses
+- Validated by `ve chunk validate` to ensure referenced subsystems exist
 -->
 
 # Chunk Goal

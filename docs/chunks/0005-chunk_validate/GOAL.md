@@ -6,7 +6,7 @@ code_paths:
   - src/ve.py
   - src/chunks.py
   - src/models.py
-  - tests/test_chunk_complete.py
+  - tests/test_chunk_validate.py
 code_references:
   - ref: src/models.py#CodeRange
     implements: "Pydantic model for line-based code range"
@@ -16,9 +16,9 @@ code_references:
     implements: "Dataclass for structured error reporting"
   - ref: src/chunks.py#Chunks::validate_chunk_complete
     implements: "Status and code_references validation"
-  - ref: src/ve.py#complete
-    implements: "CLI command interface - chunk complete command"
-  - ref: tests/test_chunk_complete.py
+  - ref: src/ve.py#validate
+    implements: "CLI command interface - chunk validate command"
+  - ref: tests/test_chunk_validate.py
     implements: "Test coverage for all success criteria"
 ---
 
