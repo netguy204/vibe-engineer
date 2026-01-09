@@ -11,7 +11,33 @@ chunks:
   relationship: implements
 - chunk_id: 0017-subsystem_template
   relationship: uses
+- chunk_id: 0023-canonical_template_module
+  relationship: implements
 code_references:
+- ref: src/template_system.py#ActiveChunk
+  implements: Chunk context dataclass for template rendering
+  compliance: COMPLIANT
+- ref: src/template_system.py#ActiveNarrative
+  implements: Narrative context dataclass for template rendering
+  compliance: COMPLIANT
+- ref: src/template_system.py#ActiveSubsystem
+  implements: Subsystem context dataclass for template rendering
+  compliance: COMPLIANT
+- ref: src/template_system.py#TemplateContext
+  implements: Project context holder for unified template context
+  compliance: COMPLIANT
+- ref: src/template_system.py#list_templates
+  implements: Canonical template enumeration
+  compliance: COMPLIANT
+- ref: src/template_system.py#get_environment
+  implements: Canonical Jinja2 Environment with include support
+  compliance: COMPLIANT
+- ref: src/template_system.py#render_template
+  implements: Canonical template rendering function
+  compliance: COMPLIANT
+- ref: src/template_system.py#render_to_directory
+  implements: Canonical directory rendering with suffix stripping
+  compliance: COMPLIANT
 - ref: src/chunks.py#render_template
   implements: Duplicate template rendering (chunks)
   compliance: NON_COMPLIANT
@@ -156,15 +182,15 @@ template fragments.
 
 ## Implementation Locations
 
-*No canonical implementation exists yet.* This subsystem is in DISCOVERING status
-and all current template handling code is non-compliant. The canonical implementation
-will be created during consolidation work.
+**Canonical location**: `src/template_system.py` - Created by chunk 0023-canonical_template_module
 
-**Target location**: A new `src/templates.py` module (or similar) that provides:
-- A configured Jinja2 `Environment` with include support
-- A `render_template(collection, template_name, **context)` function
-- A `render_to_directory(collection, dest_dir, **context)` function
-- Template enumeration helpers
+The canonical implementation provides:
+- `ActiveChunk`, `ActiveNarrative`, `ActiveSubsystem` - Context dataclasses with path properties
+- `TemplateContext` - Project context holder (ensures only one active artifact at a time)
+- `get_environment(collection)` - Cached Jinja2 Environment with include support
+- `render_template(collection, template_name, context, **kwargs)` - Core rendering
+- `render_to_directory(collection, dest_dir, context, **kwargs)` - Batch rendering with suffix stripping
+- `list_templates(collection)` - Template enumeration (excludes partials and hidden files)
 
 ## Known Deviations
 
@@ -219,6 +245,10 @@ will need to evolve to support:
 - **0016-subsystem_cli_scaffolding** - Created `src/subsystems.py` with `render_template`
   function and `Subsystems::create_subsystem` for subsystem directory creation
 
+- **0023-canonical_template_module** - Created canonical `src/template_system.py` module
+  with unified Jinja2 Environment, TemplateContext for project-level context, and
+  render_template/render_to_directory functions with include support
+
 ### Uses
 
 - **0017-subsystem_template** - Modified template files (`src/templates/subsystem/OVERVIEW.md`,
@@ -228,34 +258,31 @@ will need to evolve to support:
 
 ### Pending Consolidation
 
-1. **Create canonical template_system module** - No canonical implementation exists yet
-   - Draft prompt: "Create src/templates_system.py (or src/rendering.py) with a Jinja2
-     Environment, render_template function, render_to_directory function, and template
-     enumeration. Support includes via partials/ subdirectories. Rename existing template
-     files to use .jinja2 suffix."
-   - Status: Not yet scheduled (foundational work - should be done first)
-
-2. **Migrate chunks.py to use template_system** - Uses duplicate render_template
+1. **Migrate chunks.py to use template_system** - Uses duplicate render_template
    - Draft prompt: "Replace src/chunks.py render_template with import from template_system.
      Update Chunks::create_chunk to use render_to_directory."
-   - Status: Blocked on #1
+   - Status: Ready to schedule
 
-3. **Migrate subsystems.py to use template_system** - Uses duplicate render_template
+2. **Migrate subsystems.py to use template_system** - Uses duplicate render_template
    - Draft prompt: "Replace src/subsystems.py render_template with import from template_system.
      Update Subsystems::create_subsystem to use render_to_directory."
-   - Status: Blocked on #1
+   - Status: Ready to schedule
 
-4. **Migrate narratives.py to use template_system** - Uses duplicate render_template
+3. **Migrate narratives.py to use template_system** - Uses duplicate render_template
    - Draft prompt: "Replace src/narratives.py render_template with import from template_system.
      Update Narratives::create_narrative to use render_to_directory."
-   - Status: Blocked on #1
+   - Status: Ready to schedule
 
-5. **Migrate project.py to use template_system** - Uses shutil.copy instead of rendering
+4. **Migrate project.py to use template_system** - Uses shutil.copy instead of rendering
    - Draft prompt: "Replace src/project.py _init_trunk, _init_commands, and _init_claude_md
      to use template_system rendering instead of shutil.copy/symlink. This enables command
      templates to use includes and dynamic content."
-   - Status: Blocked on #1
+   - Status: Ready to schedule
 
 ### Completed Consolidation
 
-*None yet.*
+1. **Create canonical template_system module** - Chunk 0023-canonical_template_module
+   - Created `src/template_system.py` with Jinja2 Environment, render_template,
+     render_to_directory, and template enumeration. Supports includes via partials/
+     subdirectories.
+   - Status: Completed

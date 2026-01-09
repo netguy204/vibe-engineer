@@ -1,8 +1,10 @@
 ---
-status: {{ status | default('IMPLEMENTING') }}
-ticket: {{ ticket_id | default('null', true) }}
+status: FUTURE
+ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - tests/  # Audit all test files
+  - docs/trunk/TESTING_PHILOSOPHY.md
 code_references: []
 narrative: null
 subsystems: []
@@ -69,37 +71,51 @@ SUBSYSTEMS:
 
 ## Minor Goal
 
-<!--
-What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
-Why is this the right next step? What does completing this enable?
+Audit the entire test suite for trivial tests, remove them, and update the
+testing philosophy with generalizable guidance to prevent this class of mistake
+in the future.
 
-Keep this focused. If you're describing multiple independent outcomes,
-you may need multiple chunks.
--->
+A **trivial test** verifies something that cannot meaningfully fail—it tests the
+language or framework rather than the system's behavior. The most common form is
+the "attribute echo test": set a value, then assert it equals what you just set.
+
+```python
+# TRIVIAL: Tests that Python assignment works
+def test_has_name(self):
+    obj = Thing(name="foo")
+    assert obj.name == "foo"  # Can this ever fail?
+```
+
+These tests add noise without adding confidence. They pass when the code is
+wrong and never catch real bugs.
+
+This work improves signal-to-noise ratio in the test suite and establishes
+clearer, generalizable guidance for future test writing.
 
 ## Success Criteria
 
-<!--
-How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of docs/trunk/SPEC.md where applicable.
+1. **Codebase audit completed**: All test files in `tests/` are reviewed to
+   identify trivial tests. Document findings (which files, how many tests,
+   patterns observed).
 
-Example:
-- SegmentWriter correctly encodes messages per SPEC.md Section 3.2
-- fsync is called after each write, satisfying durability guarantee
-- Write throughput meets SPEC.md performance requirements (>50K msg/sec)
-- All tests in TESTS.md pass
--->
+2. **Trivial tests removed**: All identified trivial tests are removed from the
+   test suite. A test is trivial if:
+   - It asserts that an attribute equals the value it was just assigned
+   - It cannot fail unless Python/the framework itself is broken
+   - It tests no computed properties, transformations, side effects, or behavior
 
-## Relationship to Parent
+3. **Testing philosophy updated**: `docs/trunk/TESTING_PHILOSOPHY.md` includes
+   generalizable guidance on trivial tests as an anti-pattern. The guidance
+   should:
+   - Define the general principle (test behavior, not language semantics)
+   - Provide abstract criteria for identifying trivial tests
+   - Include examples, but frame them as illustrations of the principle rather
+     than the exhaustive definition
+   - Help future contributors recognize novel forms of this mistake
 
-<!--
-DELETE THIS SECTION if parent_chunk is null.
+4. **Test suite still passes**: After removing trivial tests, `pytest tests/`
+   passes with no failures.
 
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
-
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->
+5. **Meaningful coverage preserved**: Tests for actual behavior (computed
+   properties, validation, error conditions, side effects) remain intact. The
+   removal targets only tests that provide no real verification.

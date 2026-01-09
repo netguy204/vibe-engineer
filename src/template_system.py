@@ -1,0 +1,191 @@
+"""Template system module - unified Jinja2 template rendering."""
+
+import pathlib
+from dataclasses import dataclass
+
+import jinja2
+
+from constants import template_dir
+
+
+@dataclass
+class ActiveChunk:
+    """Represents an active chunk context for template rendering."""
+
+    short_name: str
+    id: str
+    _project_dir: pathlib.Path
+
+    @property
+    def goal_path(self) -> pathlib.Path:
+        """Return path to this chunk's GOAL.md file."""
+        return self._project_dir / "docs" / "chunks" / self.id / "GOAL.md"
+
+    @property
+    def plan_path(self) -> pathlib.Path:
+        """Return path to this chunk's PLAN.md file."""
+        return self._project_dir / "docs" / "chunks" / self.id / "PLAN.md"
+
+
+@dataclass
+class ActiveNarrative:
+    """Represents an active narrative context for template rendering."""
+
+    short_name: str
+    id: str
+    _project_dir: pathlib.Path
+
+    @property
+    def overview_path(self) -> pathlib.Path:
+        """Return path to this narrative's OVERVIEW.md file."""
+        return self._project_dir / "docs" / "narratives" / self.id / "OVERVIEW.md"
+
+
+@dataclass
+class ActiveSubsystem:
+    """Represents an active subsystem context for template rendering."""
+
+    short_name: str
+    id: str
+    _project_dir: pathlib.Path
+
+    @property
+    def overview_path(self) -> pathlib.Path:
+        """Return path to this subsystem's OVERVIEW.md file."""
+        return self._project_dir / "docs" / "subsystems" / self.id / "OVERVIEW.md"
+
+
+@dataclass
+class TemplateContext:
+    """Holds project-level context for template rendering.
+
+    Only one active artifact (chunk, narrative, or subsystem) can be set at a time.
+    """
+
+    active_chunk: ActiveChunk | None = None
+    active_narrative: ActiveNarrative | None = None
+    active_subsystem: ActiveSubsystem | None = None
+
+    def __post_init__(self):
+        count = sum(
+            1
+            for x in [self.active_chunk, self.active_narrative, self.active_subsystem]
+            if x is not None
+        )
+        if count > 1:
+            raise ValueError("Only one active artifact allowed")
+
+    def as_dict(self) -> dict:
+        """Return context as dict suitable for Jinja2 rendering."""
+        return {"project": self}
+
+
+def list_templates(collection: str) -> list[str]:
+    """List template files in a collection (excludes partials/ and hidden files).
+
+    Args:
+        collection: Name of the template collection (e.g., "chunk", "narrative").
+
+    Returns:
+        List of template filenames. Empty list if collection doesn't exist.
+    """
+    collection_dir = template_dir / collection
+    if not collection_dir.exists():
+        return []
+    return [
+        f.name
+        for f in collection_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".")
+    ]
+
+
+# Cache for Jinja2 environments per collection
+_environments: dict[str, jinja2.Environment] = {}
+
+
+def get_environment(collection: str) -> jinja2.Environment:
+    """Get or create a Jinja2 Environment for a template collection.
+
+    The Environment is configured with a FileSystemLoader pointing to the
+    collection directory, allowing templates to include files from the
+    same collection (e.g., partials/).
+
+    Args:
+        collection: Name of the template collection (e.g., "chunk", "narrative").
+
+    Returns:
+        Jinja2 Environment configured for the collection.
+    """
+    if collection not in _environments:
+        collection_dir = template_dir / collection
+        loader = jinja2.FileSystemLoader(str(collection_dir))
+        _environments[collection] = jinja2.Environment(loader=loader)
+    return _environments[collection]
+
+
+def render_template(
+    collection: str,
+    template_name: str,
+    context: TemplateContext | None = None,
+    **kwargs,
+) -> str:
+    """Render a template from a collection with the given context.
+
+    Args:
+        collection: Name of the template collection (e.g., "chunk", "narrative").
+        template_name: Name of the template file within the collection.
+        context: Optional TemplateContext providing project-level context.
+        **kwargs: Additional variables to pass to the template.
+
+    Returns:
+        Rendered template content as a string.
+
+    Raises:
+        jinja2.TemplateNotFound: If the template doesn't exist.
+    """
+    env = get_environment(collection)
+    template = env.get_template(template_name)
+
+    render_context = {}
+    if context:
+        render_context.update(context.as_dict())
+    render_context.update(kwargs)
+
+    return template.render(**render_context)
+
+
+def render_to_directory(
+    collection: str,
+    dest_dir: pathlib.Path,
+    context: TemplateContext | None = None,
+    **kwargs,
+) -> list[pathlib.Path]:
+    """Render all templates in a collection to a destination directory.
+
+    Files with .jinja2 suffix will have that suffix stripped in the output.
+    Files in partials/ subdirectories are excluded (they're meant to be included).
+
+    Args:
+        collection: Name of the template collection (e.g., "chunk", "narrative").
+        dest_dir: Destination directory for rendered files.
+        context: Optional TemplateContext providing project-level context.
+        **kwargs: Additional variables to pass to each template.
+
+    Returns:
+        List of created file paths.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    created = []
+
+    for template_name in list_templates(collection):
+        # Strip .jinja2 suffix for output filename
+        output_name = template_name
+        if output_name.endswith(".jinja2"):
+            output_name = output_name[:-7]  # Remove ".jinja2"
+
+        rendered = render_template(collection, template_name, context, **kwargs)
+        output_path = dest_dir / output_name
+        output_path.write_text(rendered)
+        created.append(output_path)
+
+    return created
