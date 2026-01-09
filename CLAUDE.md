@@ -29,17 +29,66 @@ Chunks are numbered sequentially. To understand recent work, read the highest-nu
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
+### Chunk Frontmatter References
+
+Chunk GOAL.md files may reference other artifact types in their frontmatter:
+
+- **narrative**: References a narrative directory (e.g., `0003-investigations`) that this chunk helps implement
+- **subsystems**: List of subsystem relationships indicating which subsystems this chunk implements or uses
+
+When you see these references, read the referenced artifact to understand the broader context.
+
+## Narratives (`docs/narratives/`)
+
+Narratives are multi-chunk initiatives that capture a high-level ambition decomposed into implementation steps. Each narrative directory contains an OVERVIEW.md with:
+
+- **Advances Trunk Goal** - How this narrative advances the project's goals
+- **Chunks** - List of chunk prompts and their corresponding chunk directories
+
+When a chunk references a narrative, read the narrative's OVERVIEW.md to understand the larger initiative the chunk belongs to.
+
+## Subsystems (`docs/subsystems/`)
+
+Subsystems document emergent architectural patterns discovered in the codebase. Each subsystem directory contains an OVERVIEW.md describing:
+
+- **Intent** - What the subsystem accomplishes
+- **Scope** - What's in and out of scope
+- **Invariants** - Rules that must always hold
+- **Code References** - Symbolic references to implementations
+
+Subsystem status values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
+
+When a chunk references a subsystem with relationship `implements`, the chunk contributes code to that subsystem. When the relationship is `uses`, the chunk depends on the subsystem's patterns.
+
+## Investigations (`docs/investigations/`)
+
+Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation contains an OVERVIEW.md with:
+
+- **Trigger** - What prompted the investigation
+- **Success Criteria** - What "done" looks like
+- **Testable Hypotheses** - Beliefs to verify or falsify
+- **Proposed Chunks** - Work items that emerge from findings
+
+Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
+
 ## Available Commands
 
-Use these slash commands for chunk management:
+Use these slash commands for artifact management:
 
 - `/chunk-create` - Create a new chunk and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
+- `/chunk-implement` - Implement the current chunk
 - `/chunk-complete` - Mark a chunk complete and update references
-- `/chunk-update-references` - Update code references in a chunk's GOAL.md
+- `/narrative-create` - Create a new narrative for multi-chunk initiatives
+- `/subsystem-discover` - Document an emergent architectural pattern
+- `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
 
 ## Getting Started
 
 1. Read `docs/trunk/GOAL.md` to understand the project
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
+
+## Development
+
+This project uses UV for package management. Run tests with `uv run pytest tests/`. 
