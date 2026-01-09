@@ -8,123 +8,107 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk creates a single new template file following the established patterns
+in `src/templates/`. The approach is straightforward:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Study the existing `narrative/OVERVIEW.md.jinja2` and `subsystem/OVERVIEW.md.jinja2`
+   templates to understand the structural conventions
+2. Design the investigation template with its unique sections per the GOAL.md
+3. Write tests that verify the template renders correctly
+4. Create the template file
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Per DEC-004, all file references in the template will be relative to the project root.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/0027-investigation_template/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The template will use the same Jinja2 patterns as existing templates:
+- YAML frontmatter with schema documentation in HTML comments
+- Section headers with discovery/guidance prompts in HTML comments
+- Guidance that helps agents understand when sections are complete
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for investigation template rendering
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Following docs/trunk/TESTING_PHILOSOPHY.md's TDD requirements, first write tests
+that verify:
+- The template file exists at `src/templates/investigation/OVERVIEW.md.jinja2`
+- The template renders without error
+- The rendered output contains required frontmatter fields (status, trigger, proposed_chunks)
+- The rendered output contains required sections (Trigger, Success Criteria,
+  Testable Hypotheses, Exploration Log, Findings, Proposed Chunks, Resolution Rationale)
 
-Example:
+Location: `tests/test_investigation_template.py`
 
-### Step 1: Define the SegmentHeader struct
+These tests should fail initially because the template doesn't exist yet.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Create the investigation template directory
 
-Location: src/segment/format.rs
+Create the directory structure:
+```
+src/templates/investigation/
+```
 
-### Step 2: Implement header serialization
+Location: `src/templates/investigation/`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Create the investigation OVERVIEW.md.jinja2 template
 
-### Step 3: ...
--->
+Create the template with:
 
-## Dependencies
+**Frontmatter schema:**
+- `status`: ONGOING | SOLVED | NOTED | DEFERRED (with schema documentation)
+- `trigger`: Brief description of what prompted the investigation
+- `proposed_chunks`: Array for chunk prompts (mirrors narrative pattern)
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**Sections with guidance comments:**
 
-If there are no dependencies, delete this section.
--->
+1. **Trigger** - What prompted this investigation
+   - Guidance: Describe the problem or opportunity clearly
+   - Note: Natural language captures issue vs concept distinction
+
+2. **Success Criteria** - How we'll know the investigation is complete
+   - Guidance: What questions must be answered? What evidence is needed?
+
+3. **Testable Hypotheses** - Encourages objective verification
+   - Guidance: Frame beliefs as hypotheses that can be verified
+   - Prompt agents to identify how each hypothesis could be tested
+
+4. **Exploration Log** - Timestamped record
+   - Guidance: Document exploration steps and findings chronologically
+   - Format suggestion for entries: `### YYYY-MM-DD: [Summary]`
+
+5. **Findings** - Distinction between verified and unverified
+   - Guidance: Separate "Verified Findings" from "Hypotheses/Opinions"
+   - Emphasize: What do we now KNOW vs what do we BELIEVE?
+
+6. **Proposed Chunks** - Like narrative chunks array
+   - Guidance: If action is warranted, list chunk prompts here
+   - Mirror the frontmatter `proposed_chunks` array structure
+
+7. **Resolution Rationale** - Why the chosen outcome
+   - Guidance: Explain the decision to mark SOLVED/NOTED/DEFERRED
+   - What evidence supports this resolution?
+
+Location: `src/templates/investigation/OVERVIEW.md.jinja2`
+
+### Step 4: Verify tests pass
+
+Run the test suite to confirm the template renders correctly and contains
+all required elements.
+
+```bash
+pytest tests/test_investigation_template.py -v
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Template variable requirements**: Need to verify what variables (if any) the
+  template expects from the template rendering system. The narrative template uses
+  no variables, but subsystem uses `{{ short_name }}`. The investigation template
+  likely needs no variables since investigations don't have a computed name in
+  the same way.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Proposed chunks vs chunks naming**: The narrative uses `chunks` in frontmatter;
+  investigations use `proposed_chunks` to emphasize the speculative nature. Need
+  to ensure the naming is consistent with the GOAL.md specification.
 
 ## Deviations
 

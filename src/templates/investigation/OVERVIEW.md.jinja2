@@ -1,0 +1,225 @@
+---
+status: ONGOING
+trigger: null
+proposed_chunks: []
+---
+
+<!--
+DO NOT DELETE THIS COMMENT until the investigation reaches a terminal status.
+This documents the frontmatter schema and guides investigation workflow.
+
+STATUS VALUES:
+- ONGOING: Investigation is active; exploration and analysis in progress
+- SOLVED: The question has been answered or the problem has been resolved
+- NOTED: Findings documented but no action required; kept for future reference
+- DEFERRED: Investigation paused; may be revisited later when conditions change
+
+TRIGGER:
+- Brief description of what prompted this investigation
+- Examples:
+  - "Test failures in CI after dependency upgrade"
+  - "User reported slow response times on dashboard"
+  - "Exploring whether GraphQL would simplify our API"
+- The trigger naturally captures whether this is an issue (problem to solve)
+  or a concept (opportunity to explore)
+
+PROPOSED_CHUNKS:
+- Starts empty; entries are added if investigation reveals actionable work
+- Each entry records a chunk prompt for work that should be done
+- Format: list of {prompt, chunk_directory} where:
+  - prompt: The proposed chunk prompt text
+  - chunk_directory: Populated when/if the chunk is actually created via /chunk-create
+- Unlike narrative chunks (which are planned upfront), these emerge from investigation findings
+-->
+
+## Trigger
+
+<!--
+GUIDANCE:
+
+Describe what prompted this investigation. Be specific about:
+- What was observed or questioned?
+- Why does this warrant investigation (vs immediate action or ignoring)?
+- What's at stake if we don't investigate?
+
+The trigger naturally distinguishes investigation types:
+- **Issue investigations**: "Tests are flaky on CI" or "Memory usage spikes during batch jobs"
+- **Concept investigations**: "Should we migrate to async/await?" or "Could we use WASM for this?"
+
+Keep this section factual. Hypotheses about causes or solutions belong in later sections.
+-->
+
+## Success Criteria
+
+<!--
+GUIDANCE:
+
+Define what "done" looks like for this investigation. Consider:
+- What questions must be answered?
+- What evidence or measurements are needed?
+- What would allow us to mark this SOLVED, NOTED, or DEFERRED with confidence?
+
+Good success criteria are specific and verifiable:
+- "Identify the root cause of the memory leak"
+- "Determine whether GraphQL migration is feasible within our constraints"
+- "Measure baseline and post-change latency under load"
+
+Avoid vague criteria like "understand the problem" or "explore options."
+-->
+
+## Testable Hypotheses
+
+<!--
+GUIDANCE:
+
+Frame your beliefs as hypotheses that can be verified or falsified. This encourages
+objective investigation rather than confirmation bias.
+
+For each hypothesis, consider:
+1. **Statement**: What do you believe might be true?
+2. **Test**: How could this hypothesis be verified or disproven?
+3. **Status**: UNTESTED | VERIFIED | FALSIFIED | INCONCLUSIVE
+
+Example format:
+
+### H1: The memory leak is in the image processing pipeline
+
+- **Rationale**: Memory issues correlate with image-heavy requests
+- **Test**: Profile memory allocation during image processing vs other operations
+- **Status**: UNTESTED
+
+### H2: Switching to streaming would reduce memory pressure
+
+- **Rationale**: Current implementation loads entire files into memory
+- **Test**: Prototype streaming approach and compare peak memory usage
+- **Status**: UNTESTED
+
+Update status as you explore. A falsified hypothesis is still valuable - it
+eliminates possibilities and focuses the investigation.
+-->
+
+## Exploration Log
+
+<!--
+GUIDANCE:
+
+Document your exploration steps and findings chronologically. This creates a
+valuable record of:
+- What was tried
+- What was learned
+- What led to dead ends (and why)
+
+Use timestamped entries to track progress over time.
+
+Format suggestion: `### YYYY-MM-DD: [Summary]`
+
+Example:
+
+### 2024-01-15: Initial profiling
+
+Ran memory profiler on production-like workload. Observed:
+- Peak memory 2.3GB during image batch processing
+- Memory not released after batch completes
+- GC logs show objects held by `ImageCache` singleton
+
+### 2024-01-16: ImageCache analysis
+
+Reviewed ImageCache implementation. Found:
+- Cache has no eviction policy
+- References held indefinitely
+- Easy fix: add LRU eviction with configurable limit
+
+This differs from Findings in that it captures the journey, not just conclusions.
+-->
+
+## Findings
+
+<!--
+GUIDANCE:
+
+Summarize what was learned, distinguishing between what you KNOW and what you BELIEVE.
+
+### Verified Findings
+
+Facts established through evidence (measurements, code analysis, reproduction steps).
+Each finding should reference the evidence that supports it.
+
+Example:
+- **Root cause identified**: The ImageCache singleton holds references indefinitely,
+  preventing garbage collection. (Evidence: heap dump analysis, see Exploration Log 2024-01-16)
+
+### Hypotheses/Opinions
+
+Beliefs that haven't been fully verified, or interpretations that reasonable people
+might disagree with. Be honest about uncertainty.
+
+Example:
+- Adding LRU eviction is likely the simplest fix, but we haven't verified it won't
+  cause cache thrashing under our workload.
+- The 100MB cache limit is a guess; actual optimal size needs load testing.
+
+This distinction matters for decision-making. Verified findings can be acted on
+with confidence. Hypotheses may need more investigation or carry accepted risk.
+-->
+
+## Proposed Chunks
+
+<!--
+GUIDANCE:
+
+If investigation reveals work that should be done, list chunk prompts here.
+These are candidates for `/chunk-create` - the investigation equivalent of a
+narrative's chunks section.
+
+Not every investigation produces chunks:
+- SOLVED investigations may produce implementation chunks
+- NOTED investigations typically don't produce chunks (that's why they're noted, not acted on)
+- DEFERRED investigations may produce chunks later when revisited
+
+Format:
+1. **[Chunk title]**: Brief description of the work
+   - Priority: High/Medium/Low
+   - Dependencies: What must happen first (if any)
+   - Notes: Context that would help when creating the chunk
+
+Example:
+1. **Add LRU eviction to ImageCache**: Implement configurable cache eviction to prevent
+   memory leaks during batch processing.
+   - Priority: High
+   - Dependencies: None
+   - Notes: See Exploration Log 2024-01-16 for implementation approach
+
+Update the frontmatter `proposed_chunks` array as prompts are defined here.
+When a chunk is created via `/chunk-create`, update the array entry with the
+chunk_directory.
+-->
+
+## Resolution Rationale
+
+<!--
+GUIDANCE:
+
+When marking this investigation as SOLVED, NOTED, or DEFERRED, explain why.
+This captures the decision-making for future reference.
+
+Questions to answer:
+- What evidence supports this resolution?
+- If SOLVED: What was the answer or solution?
+- If NOTED: Why is no action warranted? What would change this assessment?
+- If DEFERRED: What conditions would trigger revisiting? What's the cost of delay?
+
+Example (SOLVED):
+Root cause was identified (unbounded ImageCache) and fix is straightforward (LRU eviction).
+Chunk created to implement the fix. Investigation complete.
+
+Example (NOTED):
+GraphQL migration would require significant investment (estimated 3-4 weeks) with
+marginal benefits for our use case. Our REST API adequately serves current needs.
+Would revisit if: (1) we add mobile clients needing flexible queries, or
+(2) API versioning becomes unmanageable.
+
+Example (DEFERRED):
+Investigation blocked pending vendor response on their API rate limits. Cannot
+determine feasibility of proposed integration without this information.
+Expected response by 2024-02-01; will revisit then.
+-->
