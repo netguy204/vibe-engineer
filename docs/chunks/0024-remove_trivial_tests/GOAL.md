@@ -1,71 +1,16 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - tests/  # Audit all test files
-  - docs/trunk/TESTING_PHILOSOPHY.md
-code_references: []
+- tests/
+- docs/trunk/TESTING_PHILOSOPHY.md
+code_references:
+  - ref: docs/trunk/TESTING_PHILOSOPHY.md
+    implements: "Anti-pattern documentation for trivial tests with identification criteria and examples"
 narrative: null
 subsystems: []
 ---
-
-<!--
-DO NOT DELETE THIS COMMENT until the chunk complete command is run.
-This describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed 
-  when this chunk is completed. 
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section. 
--->
 
 # Chunk Goal
 

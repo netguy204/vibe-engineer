@@ -103,6 +103,66 @@ Interactive prompts (e.g., "Create another chunk with the same name?") are teste
 - **Help text wording**: We verify help exists, not its exact phrasing
 - **Output formatting**: We verify key information is present, not exact formatting
 
+## Anti-Pattern: Trivial Tests
+
+A **trivial test** verifies something that cannot meaningfully fail. It tests the language or framework rather than the system's behavior. These tests add noise without adding confidence—they pass when the code is wrong and never catch real bugs.
+
+### The Principle
+
+**Test behavior, not language semantics.** A test is trivial if the only way it can fail is if Python, Pydantic, or the underlying framework is broken. If Python's assignment operator works, if Pydantic stores values, if dataclasses have attributes—these are not things your tests should verify.
+
+### Identifying Trivial Tests
+
+A test is trivial if:
+
+1. **It asserts that a value equals what was just assigned.** Setting `obj.name = "foo"` and then asserting `obj.name == "foo"` tests Python's assignment operator, not your code.
+
+2. **It cannot fail unless the runtime is broken.** If the test would only fail due to a Python interpreter bug, it provides no value.
+
+3. **It tests no transformation, computation, side effect, or rejection.** Meaningful tests verify that something *happens*: a computation produces a result, a side effect occurs, invalid input is rejected. A test that only checks storage adds nothing.
+
+### Examples
+
+**Trivial** (do not write these):
+```python
+def test_has_name(self):
+    obj = Thing(name="foo")
+    assert obj.name == "foo"  # Tests Python assignment
+
+def test_config_stores_value(self):
+    config = Config(value="x")
+    assert config.value == "x"  # Tests Pydantic storage
+
+def test_list_is_empty(self):
+    items = Container(items=[])
+    assert items.items == []  # Tests that [] equals []
+```
+
+**Meaningful** (write these instead):
+```python
+def test_rejects_empty_name(self):
+    with pytest.raises(ValidationError):
+        Thing(name="")  # Tests validation behavior
+
+def test_computed_path_includes_id(self):
+    chunk = Chunk(id="0001-feature")
+    assert "0001-feature" in str(chunk.path)  # Tests computed property
+
+def test_create_writes_file(self, temp_dir):
+    create_thing(temp_dir, "test")
+    assert (temp_dir / "test.txt").exists()  # Tests side effect
+```
+
+### Recognizing Novel Forms
+
+The examples above illustrate common patterns, but trivial tests can take many forms. Ask yourself:
+
+- **What could make this test fail?** If the answer is "only a Python bug" or "only if the framework is broken," the test is trivial.
+- **What behavior does this test verify?** If you can't point to a computation, transformation, validation, or side effect, the test is trivial.
+- **Would a bug in my code cause this test to fail?** If your code could be completely wrong and the test would still pass, it's trivial.
+
+The goal is signal, not coverage. A test suite with fewer, meaningful tests is more valuable than a test suite padded with trivial assertions.
+
 ## Test Organization
 
 ```

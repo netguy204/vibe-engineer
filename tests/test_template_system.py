@@ -7,28 +7,6 @@ import pytest
 class TestActiveChunk:
     """Tests for ActiveChunk dataclass."""
 
-    def test_active_chunk_has_short_name(self, temp_project):
-        """ActiveChunk stores short_name property."""
-        from template_system import ActiveChunk
-
-        chunk = ActiveChunk(
-            short_name="canonical_template_module",
-            id="0023-canonical_template_module",
-            _project_dir=temp_project,
-        )
-        assert chunk.short_name == "canonical_template_module"
-
-    def test_active_chunk_has_id(self, temp_project):
-        """ActiveChunk stores full chunk ID."""
-        from template_system import ActiveChunk
-
-        chunk = ActiveChunk(
-            short_name="canonical_template_module",
-            id="0023-canonical_template_module",
-            _project_dir=temp_project,
-        )
-        assert chunk.id == "0023-canonical_template_module"
-
     def test_active_chunk_goal_path_returns_path(self, temp_project):
         """ActiveChunk.goal_path returns Path to GOAL.md."""
         from template_system import ActiveChunk
@@ -59,28 +37,6 @@ class TestActiveChunk:
 class TestActiveNarrative:
     """Tests for ActiveNarrative dataclass."""
 
-    def test_active_narrative_has_short_name(self, temp_project):
-        """ActiveNarrative stores short_name property."""
-        from template_system import ActiveNarrative
-
-        narrative = ActiveNarrative(
-            short_name="feature_name",
-            id="0002-feature_name",
-            _project_dir=temp_project,
-        )
-        assert narrative.short_name == "feature_name"
-
-    def test_active_narrative_has_id(self, temp_project):
-        """ActiveNarrative stores full narrative ID."""
-        from template_system import ActiveNarrative
-
-        narrative = ActiveNarrative(
-            short_name="feature_name",
-            id="0002-feature_name",
-            _project_dir=temp_project,
-        )
-        assert narrative.id == "0002-feature_name"
-
     def test_active_narrative_overview_path_returns_path(self, temp_project):
         """ActiveNarrative.overview_path returns Path to OVERVIEW.md."""
         from template_system import ActiveNarrative
@@ -97,28 +53,6 @@ class TestActiveNarrative:
 
 class TestActiveSubsystem:
     """Tests for ActiveSubsystem dataclass."""
-
-    def test_active_subsystem_has_short_name(self, temp_project):
-        """ActiveSubsystem stores short_name property."""
-        from template_system import ActiveSubsystem
-
-        subsystem = ActiveSubsystem(
-            short_name="template_system",
-            id="0001-template_system",
-            _project_dir=temp_project,
-        )
-        assert subsystem.short_name == "template_system"
-
-    def test_active_subsystem_has_id(self, temp_project):
-        """ActiveSubsystem stores full subsystem ID."""
-        from template_system import ActiveSubsystem
-
-        subsystem = ActiveSubsystem(
-            short_name="template_system",
-            id="0001-template_system",
-            _project_dir=temp_project,
-        )
-        assert subsystem.id == "0001-template_system"
 
     def test_active_subsystem_overview_path_returns_path(self, temp_project):
         """ActiveSubsystem.overview_path returns Path to OVERVIEW.md."""

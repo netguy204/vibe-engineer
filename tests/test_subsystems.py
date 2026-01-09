@@ -11,38 +11,8 @@ from models import (
 )
 
 
-class TestSubsystemStatus:
-    """Tests for SubsystemStatus enum."""
-
-    def test_all_status_values_exist(self):
-        """Verify all five status values exist."""
-        assert SubsystemStatus.DISCOVERING.value == "DISCOVERING"
-        assert SubsystemStatus.DOCUMENTED.value == "DOCUMENTED"
-        assert SubsystemStatus.REFACTORING.value == "REFACTORING"
-        assert SubsystemStatus.STABLE.value == "STABLE"
-        assert SubsystemStatus.DEPRECATED.value == "DEPRECATED"
-
-    def test_enum_is_string_enum(self):
-        """Verify the enum is a string enum for YAML serialization."""
-        # StrEnum values should be strings
-        assert isinstance(SubsystemStatus.DISCOVERING.value, str)
-        assert str(SubsystemStatus.DISCOVERING) == "DISCOVERING"
-
-
 class TestChunkRelationship:
     """Tests for ChunkRelationship model."""
-
-    def test_valid_implements_relationship(self):
-        """Valid chunk_id with 'implements' relationship passes."""
-        rel = ChunkRelationship(chunk_id="0003-feature_name", relationship="implements")
-        assert rel.chunk_id == "0003-feature_name"
-        assert rel.relationship == "implements"
-
-    def test_valid_uses_relationship(self):
-        """Valid chunk_id with 'uses' relationship passes."""
-        rel = ChunkRelationship(chunk_id="0001-initial_setup", relationship="uses")
-        assert rel.chunk_id == "0001-initial_setup"
-        assert rel.relationship == "uses"
 
     def test_invalid_relationship_type(self):
         """Invalid relationship type (not 'implements' or 'uses') fails."""
@@ -77,47 +47,6 @@ class TestChunkRelationship:
 
 class TestSubsystemFrontmatter:
     """Tests for SubsystemFrontmatter model."""
-
-    def test_valid_frontmatter_all_fields(self):
-        """Valid frontmatter with all fields passes."""
-        frontmatter = SubsystemFrontmatter(
-            status=SubsystemStatus.DOCUMENTED,
-            chunks=[
-                ChunkRelationship(chunk_id="0001-setup", relationship="implements"),
-                ChunkRelationship(chunk_id="0002-feature", relationship="uses"),
-            ],
-            code_references=[
-                SymbolicReference(ref="src/foo.py#Bar", implements="Bar class"),
-            ],
-        )
-        assert frontmatter.status == SubsystemStatus.DOCUMENTED
-        assert len(frontmatter.chunks) == 2
-        assert len(frontmatter.code_references) == 1
-
-    def test_valid_frontmatter_empty_chunks(self):
-        """Valid frontmatter with empty chunks list passes."""
-        frontmatter = SubsystemFrontmatter(
-            status=SubsystemStatus.DISCOVERING,
-            chunks=[],
-            code_references=[],
-        )
-        assert frontmatter.status == SubsystemStatus.DISCOVERING
-        assert frontmatter.chunks == []
-
-    def test_valid_frontmatter_empty_code_references(self):
-        """Valid frontmatter with empty code_references list passes."""
-        frontmatter = SubsystemFrontmatter(
-            status=SubsystemStatus.STABLE,
-            chunks=[ChunkRelationship(chunk_id="0001-test", relationship="implements")],
-            code_references=[],
-        )
-        assert frontmatter.code_references == []
-
-    def test_valid_frontmatter_defaults(self):
-        """Valid frontmatter with only required field (status) uses defaults."""
-        frontmatter = SubsystemFrontmatter(status=SubsystemStatus.DISCOVERING)
-        assert frontmatter.chunks == []
-        assert frontmatter.code_references == []
 
     def test_invalid_status_value(self):
         """Invalid status value fails."""

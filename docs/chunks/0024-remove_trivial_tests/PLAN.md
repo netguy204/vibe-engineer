@@ -1,147 +1,180 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk removes trivial tests from the test suite and updates the testing
+philosophy with guidance to prevent future trivial tests. The approach is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Systematic audit**: Review each test file and identify trivial tests using
+   the criteria in the chunk GOAL.md
+2. **Categorize findings**: Document which tests are trivial and why
+3. **Remove trivial tests**: Delete identified tests, preserving meaningful ones
+4. **Update testing philosophy**: Add generalizable guidance as an anti-pattern
+5. **Verify test suite**: Run pytest to confirm no regressions
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+### What Makes a Test Trivial
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/0024-remove_trivial_tests/GOAL.md)
-with references to the files that you expect to touch.
--->
+A test is trivial if it:
+- Asserts that an attribute equals the value it was just assigned
+- Cannot fail unless Python/the framework itself is broken
+- Tests no computed properties, transformations, side effects, or behavior
 
-## Subsystem Considerations
+Examples of trivial patterns:
+```python
+# TRIVIAL: Tests Python assignment works
+obj = Thing(name="foo")
+assert obj.name == "foo"
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+# TRIVIAL: Tests Pydantic stores values
+config = Config(value="x")
+assert config.value == "x"
+```
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+### Audit Results
 
-If no subsystems are relevant, delete this section.
+After reviewing all 27 test files, I identified the following trivial tests:
 
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
+**test_models.py - TestSymbolicReference**
+- `test_valid_file_only_reference`: Asserts `ref.ref == "src/chunks.py"` after
+  setting it - trivial
+- `test_valid_class_reference`: Same pattern - trivial
+- `test_valid_method_reference`: Same pattern - trivial
+- `test_valid_nested_class_reference`: Same pattern - trivial
+- `test_valid_standalone_function`: Same pattern - trivial
 
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
+**test_models.py - TestSubsystemRelationship**
+- `test_valid_implements_relationship`: Asserts values equal what was just
+  assigned - trivial
+- `test_valid_uses_relationship`: Same pattern - trivial
+- `test_subsystem_id_with_underscores`: Asserts value equals assigned - trivial
+- `test_subsystem_id_with_multiple_hyphens`: Same pattern - trivial
 
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
+**test_subsystems.py - TestSubsystemStatus**
+- `test_all_status_values_exist`: Asserts enum values equal their string
+  representations - tests language/enum mechanics - trivial
+- `test_enum_is_string_enum`: Asserts isinstance and str() work - trivial
 
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
+**test_subsystems.py - TestChunkRelationship**
+- `test_valid_implements_relationship`: Asserts values equal what was assigned - trivial
+- `test_valid_uses_relationship`: Same pattern - trivial
 
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
+**test_subsystems.py - TestSubsystemFrontmatter**
+- `test_valid_frontmatter_empty_chunks`: Asserts `chunks == []` after setting
+  to `[]` - trivial
+- `test_valid_frontmatter_empty_code_references`: Same pattern - trivial
+- `test_valid_frontmatter_defaults`: Asserts defaults equal documented defaults - trivial
 
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+**test_task_models.py - TestTaskConfig**
+- `test_task_config_valid_minimal`: Asserts values equal what was assigned - trivial
+- `test_task_config_valid_multiple_projects`: Asserts `len(projects) == 3` - trivial
+
+**test_task_models.py - TestExternalChunkRef**
+- `test_external_chunk_ref_valid_minimal`: Asserts values equal what was assigned - trivial
+- `test_external_chunk_ref_valid_with_versioning`: Same pattern - trivial
+- `test_external_chunk_ref_accepts_valid_pinned`: Same pattern - trivial
+
+**test_task_models.py - TestChunkDependent**
+- `test_chunk_dependent_valid_single`: Asserts `len(dependents) == 1` - trivial
+- `test_chunk_dependent_valid_multiple`: Asserts `len(dependents) == 2` - trivial
+- `test_chunk_dependent_accepts_empty_list`: Asserts `dependents == []` - trivial
+- `test_chunk_dependent_accepts_dict_syntax`: Asserts Pydantic coercion works - trivial
+
+**test_project.py - TestProjectClass**
+- `test_project_dir_stored`: Asserts `project_dir == temp_project` after
+  `Project(temp_project)` - trivial
+
+**test_template_system.py - TestActiveChunk**
+- `test_active_chunk_has_short_name`: Asserts value equals what was assigned - trivial
+- `test_active_chunk_has_id`: Same pattern - trivial
+
+**test_template_system.py - TestActiveNarrative**
+- `test_active_narrative_has_short_name`: Asserts value equals what was assigned - trivial
+- `test_active_narrative_has_id`: Same pattern - trivial
+
+**test_template_system.py - TestActiveSubsystem**
+- `test_active_subsystem_has_short_name`: Asserts value equals what was assigned - trivial
+- `test_active_subsystem_has_id`: Same pattern - trivial
+
+### Tests That Are NOT Trivial
+
+Many tests that look superficially similar are actually meaningful:
+
+- **Validation tests** (e.g., `test_invalid_empty_ref`): Test that the system
+  _rejects_ bad input - this is behavior
+- **Computed property tests** (e.g., `test_active_chunk_goal_path_returns_path`):
+  Test a property that computes a path from other data
+- **Side effect tests** (e.g., `test_create_chunk_creates_directory`): Test that
+  an operation produces expected filesystem changes
+- **Error condition tests**: Test that specific errors are raised with expected
+  messages
+- **Business logic tests** (e.g., overlap detection, symbolic reference parsing):
+  Test actual algorithms
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Remove trivial tests from test_models.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Remove the 9 trivial tests identified in TestSymbolicReference and
+TestSubsystemRelationship classes. Keep all validation error tests.
 
-Example:
+Location: tests/test_models.py
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Remove trivial tests from test_subsystems.py
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Remove the 7 trivial tests identified in TestSubsystemStatus, TestChunkRelationship,
+and TestSubsystemFrontmatter classes. Keep all validation and parsing tests.
 
-Location: src/segment/format.rs
+Location: tests/test_subsystems.py
 
-### Step 2: Implement header serialization
+### Step 3: Remove trivial tests from test_task_models.py
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Remove the 9 trivial tests identified in TestTaskConfig, TestExternalChunkRef,
+and TestChunkDependent classes. Keep all validation error tests.
 
-### Step 3: ...
--->
+Location: tests/test_task_models.py
 
-## Dependencies
+### Step 4: Remove trivial test from test_project.py
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Remove `test_project_dir_stored` from TestProjectClass. Keep all other tests
+which verify actual behavior (file creation, idempotency, etc.).
 
-If there are no dependencies, delete this section.
--->
+Location: tests/test_project.py
+
+### Step 5: Remove trivial tests from test_template_system.py
+
+Remove the 6 trivial tests from TestActiveChunk, TestActiveNarrative, and
+TestActiveSubsystem that only verify attribute storage. Keep tests that verify
+computed paths and actual template rendering behavior.
+
+Location: tests/test_template_system.py
+
+### Step 6: Run test suite to verify no regressions
+
+Run `pytest tests/` to confirm all remaining tests pass.
+
+### Step 7: Update TESTING_PHILOSOPHY.md
+
+Add a new section documenting the "trivial test" anti-pattern with:
+- Definition of the general principle (test behavior, not language semantics)
+- Abstract criteria for identifying trivial tests
+- Examples illustrating the principle
+- Guidance for recognizing novel forms of this mistake
+
+Location: docs/trunk/TESTING_PHILOSOPHY.md
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Risk**: Some tests that appear trivial might be catching real bugs in edge
+  cases. Mitigation: Carefully review each test's purpose before removal and run
+  the full test suite afterward.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Risk**: Removing "valid input" tests might reduce confidence that the models
+  work. Response: The validation error tests provide the same confidence - if
+  invalid input is rejected correctly, valid input must be working. The trivial
+  tests add noise without adding value.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

@@ -8,11 +8,6 @@ from project import Project, InitResult
 class TestProjectClass:
     """Tests for the Project class."""
 
-    def test_project_dir_stored(self, temp_project):
-        """Project stores project_dir correctly."""
-        project = Project(temp_project)
-        assert project.project_dir == temp_project
-
     def test_chunks_property_returns_chunks_instance(self, temp_project):
         """Project.chunks returns a Chunks instance."""
         project = Project(temp_project)
