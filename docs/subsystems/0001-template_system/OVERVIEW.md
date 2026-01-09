@@ -13,6 +13,8 @@ chunks:
   relationship: uses
 - chunk_id: 0023-canonical_template_module
   relationship: implements
+- chunk_id: 0025-migrate_chunks_template
+  relationship: implements
 code_references:
 - ref: src/template_system.py#ActiveChunk
   implements: Chunk context dataclass for template rendering
@@ -38,9 +40,9 @@ code_references:
 - ref: src/template_system.py#render_to_directory
   implements: Canonical directory rendering with suffix stripping
   compliance: COMPLIANT
-- ref: src/chunks.py#render_template
-  implements: Duplicate template rendering (chunks)
-  compliance: NON_COMPLIANT
+- ref: src/chunks.py#Chunks::create_chunk
+  implements: Chunk creation using render_to_directory
+  compliance: COMPLIANT
 - ref: src/subsystems.py#render_template
   implements: Duplicate template rendering (subsystems)
   compliance: NON_COMPLIANT
@@ -196,8 +198,7 @@ The canonical implementation provides:
 
 ### Duplicate render_template Functions
 
-Three identical `render_template` functions exist in separate modules:
-- `src/chunks.py#render_template`
+Two identical `render_template` functions remain in separate modules:
 - `src/subsystems.py#render_template`
 - `src/narratives.py#render_template`
 
@@ -207,7 +208,9 @@ This approach:
 - Has no shared base context
 - Duplicates code across modules
 
-**Impact**: High maintenance burden; any enhancement must be made in three places.
+**Resolved**: `src/chunks.py#render_template` was migrated in chunk 0025-migrate_chunks_template.
+
+**Impact**: Medium maintenance burden; enhancements must be made in two places.
 
 ### Project Initialization Without Rendering
 
@@ -258,22 +261,17 @@ will need to evolve to support:
 
 ### Pending Consolidation
 
-1. **Migrate chunks.py to use template_system** - Uses duplicate render_template
-   - Draft prompt: "Replace src/chunks.py render_template with import from template_system.
-     Update Chunks::create_chunk to use render_to_directory."
-   - Status: Ready to schedule
-
-2. **Migrate subsystems.py to use template_system** - Uses duplicate render_template
+1. **Migrate subsystems.py to use template_system** - Uses duplicate render_template
    - Draft prompt: "Replace src/subsystems.py render_template with import from template_system.
      Update Subsystems::create_subsystem to use render_to_directory."
    - Status: Ready to schedule
 
-3. **Migrate narratives.py to use template_system** - Uses duplicate render_template
+2. **Migrate narratives.py to use template_system** - Uses duplicate render_template
    - Draft prompt: "Replace src/narratives.py render_template with import from template_system.
      Update Narratives::create_narrative to use render_to_directory."
    - Status: Ready to schedule
 
-4. **Migrate project.py to use template_system** - Uses shutil.copy instead of rendering
+3. **Migrate project.py to use template_system** - Uses shutil.copy instead of rendering
    - Draft prompt: "Replace src/project.py _init_trunk, _init_commands, and _init_claude_md
      to use template_system rendering instead of shutil.copy/symlink. This enables command
      templates to use includes and dynamic content."
@@ -285,4 +283,10 @@ will need to evolve to support:
    - Created `src/template_system.py` with Jinja2 Environment, render_template,
      render_to_directory, and template enumeration. Supports includes via partials/
      subdirectories.
+   - Status: Completed
+
+2. **Migrate chunks.py to use template_system** - Chunk 0025-migrate_chunks_template
+   - Replaced `src/chunks.py#render_template` with import from `template_system`.
+     Updated `Chunks::create_chunk` to use `render_to_directory` with `ActiveChunk`
+     and `TemplateContext`. Renamed chunk templates to `.jinja2` suffix.
    - Status: Completed

@@ -4,13 +4,12 @@ from dataclasses import dataclass, field
 import pathlib
 import re
 
-import jinja2
 from pydantic import ValidationError
 import yaml
 
-from constants import template_dir
 from models import CodeReference, SymbolicReference, SubsystemRelationship, CHUNK_ID_PATTERN
 from symbols import is_parent_of, parse_reference, extract_symbols
+from template_system import ActiveChunk, TemplateContext, render_to_directory
 
 
 @dataclass
@@ -21,13 +20,6 @@ class ValidationResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     chunk_name: str | None = None
-
-
-def render_template(template_name, **kwargs):
-    template_path = template_dir / template_name
-    with open(template_path, "r") as template_file:
-        template = jinja2.Template(template_file.read())
-        return template.render(**kwargs)
 
 
 class Chunks:
@@ -156,18 +148,19 @@ class Chunks:
             chunk_path = self.chunk_dir / f"{next_chunk_id_str}-{short_name}-{ticket_id}"
         else:
             chunk_path = self.chunk_dir / f"{next_chunk_id_str}-{short_name}"
-        chunk_path.mkdir(parents=True, exist_ok=True)
-        for chunk_template in template_dir.glob("chunk/*.md"):
-            rendered_template = render_template(
-                chunk_template.relative_to(template_dir),
-                ticket_id=ticket_id,
-                short_name=short_name,
-                next_chunk_id=next_chunk_id_str,
-                chunk_directory=chunk_path.name,
-                status=status,
-            )
-            with open(chunk_path / chunk_template.name, "w") as chunk_file:
-                chunk_file.write(rendered_template)
+        chunk = ActiveChunk(
+            short_name=short_name,
+            id=chunk_path.name,
+            _project_dir=self.project_dir,
+        )
+        context = TemplateContext(active_chunk=chunk)
+        render_to_directory(
+            "chunk",
+            chunk_path,
+            context=context,
+            ticket_id=ticket_id,
+            status=status,
+        )
         return chunk_path
 
     def resolve_chunk_id(self, chunk_id: str) -> str | None:

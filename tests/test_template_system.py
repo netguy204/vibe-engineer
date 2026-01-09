@@ -163,10 +163,10 @@ class TestListTemplates:
         """list_templates returns template files in a collection."""
         from template_system import list_templates
 
-        # chunk collection exists with GOAL.md and PLAN.md
+        # chunk collection exists with GOAL.md.jinja2 and PLAN.md.jinja2
         result = list_templates("chunk")
-        assert "GOAL.md" in result
-        assert "PLAN.md" in result
+        assert "GOAL.md.jinja2" in result
+        assert "PLAN.md.jinja2" in result
 
     def test_list_templates_returns_empty_for_nonexistent(self):
         """list_templates returns empty list for non-existent collection."""
@@ -701,8 +701,8 @@ Extra info: {{ extra_info }}
 
         # Use the real template directory
         templates = list_templates("chunk")
-        assert "GOAL.md" in templates
-        assert "PLAN.md" in templates
+        assert "GOAL.md.jinja2" in templates
+        assert "PLAN.md.jinja2" in templates
 
     def test_works_with_real_narrative_templates(self):
         """Verify module can load and enumerate real narrative templates."""

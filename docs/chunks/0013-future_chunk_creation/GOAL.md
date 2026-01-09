@@ -6,7 +6,7 @@ code_paths:
   - src/chunks.py
   - src/ve.py
   - src/task_utils.py
-  - src/templates/chunk/GOAL.md
+  - src/templates/chunk/GOAL.md.jinja2
   - src/templates/commands/chunk-create.md
   - tests/test_chunks.py
   - tests/test_chunk_start.py
@@ -30,7 +30,7 @@ code_references:
     implements: "Reusable utility for modifying YAML frontmatter fields"
   - ref: src/task_utils.py#create_task_chunk
     implements: "Extended to pass status parameter for cross-repo chunk creation"
-  - ref: src/templates/chunk/GOAL.md
+  - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Template with FUTURE status documentation and Jinja status variable"
   - ref: src/templates/commands/chunk-create.md
     implements: "Skill updated to check for IMPLEMENTING chunk and default to --future"
