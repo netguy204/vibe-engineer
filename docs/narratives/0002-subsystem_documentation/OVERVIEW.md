@@ -4,6 +4,8 @@ advances_trunk_goal: "Required Properties: Following the workflow must maintain 
 chunks:
   - prompt: "Subsystem schemas and data model"
     chunk_directory: "0014-subsystem_schemas_and_model"
+  - prompt: "Subsystem directory structure and CLI scaffolding"
+    chunk_directory: "0016-subsystem_cli_scaffolding"
 ---
 
 ## Advances Trunk Goal

@@ -278,3 +278,109 @@ status: INVALID_STATUS
         subsystems = Subsystems(temp_project)
         result = subsystems.parse_subsystem_frontmatter("0001-validation")
         assert result is None
+
+
+class TestSubsystemsCreateSubsystem:
+    """Tests for Subsystems.create_subsystem() method."""
+
+    def test_create_subsystem_first_subsystem(self, temp_project):
+        """First subsystem gets 0001- prefix."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        result = subsystems.create_subsystem("validation")
+
+        expected_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        assert result == expected_path
+        assert expected_path.exists()
+        assert (expected_path / "OVERVIEW.md").exists()
+
+    def test_create_subsystem_increments_correctly(self, temp_project):
+        """Subsequent subsystems increment correctly."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+
+        # Create first subsystem
+        subsystems.create_subsystem("validation")
+
+        # Create second subsystem
+        result = subsystems.create_subsystem("frontmatter_updates")
+
+        expected_path = temp_project / "docs" / "subsystems" / "0002-frontmatter_updates"
+        assert result == expected_path
+        assert expected_path.exists()
+
+    def test_create_subsystem_creates_directory_if_not_exists(self, temp_project):
+        """Creates docs/subsystems/ directory if it doesn't exist."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        # Ensure subsystems directory doesn't exist
+        subsystems_dir = temp_project / "docs" / "subsystems"
+        assert not subsystems_dir.exists()
+
+        subsystems.create_subsystem("validation")
+
+        assert subsystems_dir.exists()
+
+    def test_create_subsystem_overview_has_correct_frontmatter(self, temp_project):
+        """Created OVERVIEW.md has correct frontmatter with DISCOVERING status."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        result = subsystems.create_subsystem("validation")
+
+        overview_path = result / "OVERVIEW.md"
+        frontmatter = subsystems.parse_subsystem_frontmatter("0001-validation")
+
+        assert frontmatter is not None
+        assert frontmatter.status == SubsystemStatus.DISCOVERING
+        assert frontmatter.chunks == []
+        assert frontmatter.code_references == []
+
+
+class TestSubsystemsFindByShortname:
+    """Tests for Subsystems.find_by_shortname() method."""
+
+    def test_find_by_shortname_returns_directory_name(self, temp_project):
+        """Returns subsystem directory name if shortname exists."""
+        from subsystems import Subsystems
+
+        # Create a subsystem directory
+        subsystems_dir = temp_project / "docs" / "subsystems"
+        subsystems_dir.mkdir(parents=True)
+        (subsystems_dir / "0001-validation").mkdir()
+        (subsystems_dir / "0001-validation" / "OVERVIEW.md").touch()
+
+        subsystems = Subsystems(temp_project)
+        result = subsystems.find_by_shortname("validation")
+
+        assert result == "0001-validation"
+
+    def test_find_by_shortname_returns_none_if_not_found(self, temp_project):
+        """Returns None if shortname doesn't exist."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        result = subsystems.find_by_shortname("nonexistent")
+
+        assert result is None
+
+    def test_find_by_shortname_handles_multiple_subsystems(self, temp_project):
+        """Handles multiple subsystems correctly."""
+        from subsystems import Subsystems
+
+        # Create multiple subsystem directories
+        subsystems_dir = temp_project / "docs" / "subsystems"
+        subsystems_dir.mkdir(parents=True)
+        (subsystems_dir / "0001-validation").mkdir()
+        (subsystems_dir / "0002-chunk_management").mkdir()
+        (subsystems_dir / "0003-frontmatter").mkdir()
+
+        subsystems = Subsystems(temp_project)
+
+        assert subsystems.find_by_shortname("validation") == "0001-validation"
+        assert subsystems.find_by_shortname("chunk_management") == "0002-chunk_management"
+        assert subsystems.find_by_shortname("frontmatter") == "0003-frontmatter"
+        assert subsystems.find_by_shortname("nonexistent") is None

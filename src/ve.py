@@ -7,6 +7,7 @@ import click
 from chunks import Chunks
 from narratives import Narratives
 from project import Project
+from subsystems import Subsystems
 from task_init import TaskInit
 from task_utils import is_task_directory, create_task_chunk, TaskChunkError
 from validation import validate_identifier
@@ -262,6 +263,63 @@ def init(external, projects):
     click.echo(f"Created {result.config_path.name}")
     click.echo(f"  External: {result.external_repo}")
     click.echo(f"  Projects: {', '.join(result.projects)}")
+
+
+@cli.group()
+def subsystem():
+    """Subsystem commands"""
+    pass
+
+
+@subsystem.command("list")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_subsystems(project_dir):
+    """List all subsystems."""
+    subsystems = Subsystems(project_dir)
+    subsystem_list = subsystems.enumerate_subsystems()
+
+    if not subsystem_list:
+        click.echo("No subsystems found", err=True)
+        raise SystemExit(1)
+
+    # Sort subsystems (ascending order by directory name)
+    sorted_subsystems = sorted(subsystem_list)
+
+    for subsystem_name in sorted_subsystems:
+        frontmatter = subsystems.parse_subsystem_frontmatter(subsystem_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        click.echo(f"docs/subsystems/{subsystem_name} [{status}]")
+
+
+@subsystem.command()
+@click.argument("shortname")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def discover(shortname, project_dir):
+    """Create a new subsystem."""
+    errors = validate_short_name(shortname)
+
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Normalize to lowercase
+    shortname = shortname.lower()
+
+    subsystems = Subsystems(project_dir)
+
+    # Check for duplicates
+    existing = subsystems.find_by_shortname(shortname)
+    if existing:
+        click.echo(f"Error: Subsystem '{shortname}' already exists at docs/subsystems/{existing}", err=True)
+        raise SystemExit(1)
+
+    # Create the subsystem
+    subsystem_path = subsystems.create_subsystem(shortname)
+
+    # Show path relative to project_dir
+    relative_path = subsystem_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
 
 
 if __name__ == "__main__":
