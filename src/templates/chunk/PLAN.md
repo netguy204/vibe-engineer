@@ -24,6 +24,52 @@ Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/{{ chunk
 with references to the files that you expect to touch.
 -->
 
+## Subsystem Considerations
+
+<!--
+Before designing your implementation, check docs/subsystems/ for relevant
+cross-cutting patterns.
+
+QUESTIONS TO CONSIDER:
+- Does this chunk touch any existing subsystem's scope?
+- Will this chunk implement part of a subsystem (contribute code) or use it
+  (depend on it)?
+- Did you discover code during exploration that should be part of a subsystem
+  but doesn't follow its patterns?
+
+If no subsystems are relevant, delete this section.
+
+WHEN SUBSYSTEMS ARE RELEVANT:
+List each relevant subsystem with its status and your relationship:
+- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
+  subsystem to check input
+- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
+  new error type following the subsystem's patterns
+
+HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
+
+DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
+being actively fixed. If you discover code that deviates from the subsystem's
+patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
+fixing those deviations—your chunk has its own goals.
+
+REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
+work touches code that deviates from the subsystem's patterns, attempt to bring it
+into compliance as part of your work. This is "opportunistic improvement"—improve
+what you touch, but don't expand scope to fix unrelated deviations.
+
+WHEN YOU DISCOVER DEVIATING CODE:
+- Add it to the subsystem's Known Deviations section
+- Note whether you will address it (REFACTORING status + relevant to your work)
+  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
+
+Example:
+- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
+  validation instead of using the validation subsystem
+  - Added to docs/subsystems/0001-validation Known Deviations
+  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
+-->
+
 ## Sequence
 
 <!--

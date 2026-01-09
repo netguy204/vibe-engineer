@@ -4,14 +4,282 @@ chunks: []
 code_references: []
 ---
 
+<!--
+DO NOT DELETE THIS COMMENT until the subsystem reaches STABLE status.
+This documents the frontmatter schema and guides subsystem discovery.
+
+STATUS VALUES:
+- DISCOVERING: Initial exploration phase; boundaries and invariants being identified
+- DOCUMENTED: Core patterns captured; deviations tracked but not actively prioritized
+- REFACTORING: Active consolidation work in progress; agents should improve compliance
+- STABLE: Subsystem well-understood; changes should be rare and deliberate
+- DEPRECATED: Subsystem being phased out; see notes for migration guidance
+
+AGENT BEHAVIOR BY STATUS:
+- DOCUMENTED: When working on a chunk that touches this subsystem, document any new
+  deviations you discover in the Known Deviations section below. Do NOT prioritize
+  fixing deviations as part of your chunk work—your chunk has its own goals.
+- REFACTORING: When working on a chunk that touches this subsystem, attempt to leave
+  the subsystem better than you found it. If your chunk work touches code that deviates
+  from the subsystem's patterns, improve that code as part of your work (where relevant
+  to your chunk's scope). This is "opportunistic improvement"—not a mandate to fix
+  everything, but to improve what you touch.
+
+STATUS TRANSITIONS:
+- DISCOVERING -> DOCUMENTED: When Intent, Scope, and Invariants sections are populated
+  and the operator confirms they capture the essential pattern
+- DOCUMENTED -> REFACTORING: When the operator decides to prioritize consolidation work
+- REFACTORING -> STABLE: When all known deviations have been resolved
+- REFACTORING -> DOCUMENTED: When consolidation is paused (deviations remain but are
+  no longer being actively prioritized)
+- Any -> DEPRECATED: When the subsystem is being replaced or removed
+
+CHUNKS:
+- Records chunks that relate to this subsystem
+- Format: list of {chunk_id, relationship} where:
+  - chunk_id: The chunk directory name (e.g., "0005-validation_enhancements")
+  - relationship: "implements" (contributed code) or "uses" (depends on the subsystem)
+- This array grows over time as chunks reference this subsystem
+- Example:
+  chunks:
+    - chunk_id: "0005-validation_enhancements"
+      relationship: implements
+    - chunk_id: "0008-chunk_completion"
+      relationship: uses
+
+CODE_REFERENCES:
+- Symbolic references to code related to this subsystem
+- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
+- Each reference includes a compliance level:
+  - COMPLIANT: Fully follows the subsystem's patterns (canonical implementation)
+  - PARTIAL: Partially follows but has some deviations
+  - NON_COMPLIANT: Does not follow the patterns (deviation to be addressed)
+- Example:
+  code_references:
+    - ref: src/validation.py#validate_frontmatter
+      implements: "Core validation logic"
+      compliance: COMPLIANT
+    - ref: src/validation.py#ValidationError
+      implements: "Error type for validation failures"
+      compliance: COMPLIANT
+    - ref: src/legacy/old_validator.py#validate
+      implements: "Legacy validation (uses string matching instead of regex)"
+      compliance: NON_COMPLIANT
+    - ref: src/api/handler.py#process_input
+      implements: "Input processing with inline validation"
+      compliance: PARTIAL
+-->
+
 # {{ short_name }}
 
 ## Intent
 
+<!--
+DISCOVERY PROMPTS:
+
+Ask the operator:
+- "What recurring problem does this subsystem address?"
+- "What would go wrong if this pattern didn't exist?"
+- "What's the 1-2 sentence summary of why this subsystem exists?"
+
+GUIDANCE:
+Distinguish between the symptom (what led to discovering this pattern) and the
+underlying need (the problem it solves). For example:
+- Symptom: "We kept finding validation bugs in different places"
+- Underlying need: "Consistent validation rules applied at system boundaries"
+
+The Intent should capture the underlying need, not just the symptom.
+Delete this comment block once the Intent is populated.
+-->
+
 ## Scope
+
+<!--
+DISCOVERY PROMPTS:
+
+Explore boundaries with the operator:
+- "Is X part of this subsystem or separate?" (for each related concept)
+- "Can you give me an example of something that seems related but is NOT part of this subsystem?"
+- "What edge cases are you unsure about?"
+
+GUIDANCE:
+Document both what's IN scope and what's explicitly OUT of scope. Negative
+boundaries are often more clarifying than positive ones.
+
+Surface ambiguous cases where the operator is unsure - these are candidates for
+follow-up discussion or may reveal that the subsystem's scope needs refinement.
+
+Example structure:
+### In Scope
+- Input validation at API boundaries
+- Type coercion rules for external data
+
+### Out of Scope
+- Business rule validation (belongs to domain layer)
+- Authorization checks (separate subsystem)
+
+### Ambiguous (needs discussion)
+- Sanitization of user-generated content - validation or security concern?
+
+Delete this comment block once the Scope is populated.
+-->
 
 ## Invariants
 
+<!--
+DISCOVERY PROMPTS:
+
+Ask the operator:
+- "What must ALWAYS be true about this subsystem?"
+- "What would break if this invariant was violated?"
+- "If I were to modify code in this subsystem, what rules should I never break?"
+- "Are there any conventions that are strongly preferred but not strictly required?"
+
+GUIDANCE:
+Distinguish between hard invariants (must never be violated) and soft conventions
+(strongly preferred but flexible in edge cases).
+
+Hard invariants should be specific and testable. Soft conventions should explain
+the reasoning so agents can make informed tradeoffs.
+
+Example structure:
+### Hard Invariants
+1. All external input must be validated before use (security requirement)
+2. Validation errors must include the field path (debuggability)
+
+### Soft Conventions
+1. Prefer early returns over nested conditionals (readability)
+2. Use descriptive error messages (helpful but not always possible)
+
+Delete this comment block once the Invariants are populated.
+-->
+
 ## Implementation Locations
 
+<!--
+GUIDANCE:
+
+This section provides prose context for COMPLIANT code references—the canonical
+implementations that other code should emulate. The authoritative list is in
+the code_references frontmatter (entries with compliance: COMPLIANT).
+
+DISCOVERY PROMPTS:
+- "Where does the canonical implementation live?"
+- "What code exemplifies the subsystem's patterns?"
+- "Why is this the right way to do it?"
+
+Use this section to explain:
+- Why certain implementations are canonical
+- Key design decisions in the canonical code
+- How to recognize compliant vs non-compliant approaches
+
+Example:
+### Core Validation (src/validation.py)
+The `validate_frontmatter` function is the canonical entry point. It uses regex
+patterns rather than string matching for consistency and better error messages.
+New validation should follow this pattern.
+
+Delete this comment block once context is provided.
+-->
+
+## Known Deviations
+
+<!--
+GUIDANCE:
+
+This section provides prose context for NON_COMPLIANT and PARTIAL code references—
+code that should follow the subsystem's patterns but doesn't yet. The authoritative
+list is in the code_references frontmatter.
+
+These are not bugs—the code works—but it deviates from the subsystem's approach.
+
+WHEN TO ADD ENTRIES:
+- During initial subsystem discovery, as you identify existing non-compliant code
+- During chunk work, when you discover code that deviates from this subsystem's patterns
+- After code review identifies inconsistencies
+
+For each deviation, add an entry to code_references with compliance: NON_COMPLIANT
+or compliance: PARTIAL, then optionally add prose context here explaining:
+- Why the deviation exists (historical reasons, constraints, etc.)
+- Impact of the deviation (urgency, risk, maintenance burden)
+- Any blockers to fixing it
+
+HOW STATUS AFFECTS BEHAVIOR:
+- DOCUMENTED status: Add deviations as you discover them, but don't fix them
+  as part of unrelated chunk work. Your chunk has its own goals.
+- REFACTORING status: When your chunk work touches deviating code, attempt to
+  bring it into compliance. Update code_references when deviations are resolved.
+
+Example:
+### Legacy Validator (src/legacy/old_validator.py)
+Uses string matching instead of regex patterns. This predates the subsystem and
+was never migrated. Impact is low (only used by deprecated API) but creates
+maintenance burden when validation rules change.
+
+Delete this comment block once deviation tracking is underway.
+-->
+
 ## Chunk Relationships
+
+<!--
+GUIDANCE:
+
+This section tracks which chunks relate to this subsystem and how. There are
+two relationship types:
+
+- **implements**: Chunk directly modifies/extends the subsystem (contributed code).
+  Read these chunks to understand the subsystem's internals.
+
+- **uses**: Chunk depends on the subsystem (consumes its API/patterns).
+  Read these chunks to understand the subsystem's interface and usage patterns.
+
+This section gets populated over time as chunks reference this subsystem.
+When creating or completing a chunk that touches this subsystem, update both:
+1. The chunks array in this document's frontmatter
+2. The list below (mirroring the frontmatter for readability)
+
+Example:
+### Implements
+- **0005-validation_enhancements** - Added the `validate_frontmatter()` function
+
+### Uses
+- **0008-chunk_completion** - Calls `validate_frontmatter()` to check GOAL.md
+
+Delete this comment block once chunk relationships begin to accumulate.
+-->
+
+## Consolidation Chunks
+
+<!--
+GUIDANCE:
+
+This section tracks discovered out-of-compliance code awaiting migration. Each
+entry should include:
+- Location: Where the non-compliant code lives
+- Issue: What's wrong or different from the canonical approach
+- Draft prompt: A seed for `/chunk-create` when work is scheduled
+- Status: Not yet scheduled / Planned / Blocked on X
+
+When consolidation work is planned, use the draft prompt to create a real chunk
+via `/chunk-create`. Update this section to reference the created chunk.
+
+This differs from narrative chunks:
+- Narrative chunks are forward-planned from an ambition
+- Consolidation chunks are backward-discovered from inconsistencies
+
+Example:
+### Pending Consolidation
+
+1. **src/legacy/old_validator.py** - Uses string matching instead of regex patterns
+   - Draft prompt: "Migrate old_validator.py to use the validation subsystem's regex patterns"
+   - Status: Not yet scheduled
+
+2. **src/external/third_party.py** - Bypasses validation entirely
+   - Draft prompt: "Add validation subsystem integration to third_party.py"
+   - Status: Blocked on upstream changes
+
+### Completed Consolidation
+- **src/api/handler.py** - Migrated in chunk 0012-api_validation
+
+Delete this comment block once consolidation tracking is underway.
+-->

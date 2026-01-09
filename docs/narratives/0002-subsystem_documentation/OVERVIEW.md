@@ -6,6 +6,8 @@ chunks:
     chunk_directory: "0014-subsystem_schemas_and_model"
   - prompt: "Subsystem directory structure and CLI scaffolding"
     chunk_directory: "0016-subsystem_cli_scaffolding"
+  - prompt: "Subsystem OVERVIEW.md template"
+    chunk_directory: "0017-subsystem_template"
 ---
 
 ## Advances Trunk Goal
@@ -75,9 +77,9 @@ This distinction helps agents prioritize: read "implements" chunks to understand
                               │
 [3. Template] ────────────────┼──> [6. Agent command]
                               │
-[4. Bidirectional refs] ──────┘
+[4. Bidirectional refs] ──────┼──> [8. Impact resolution]
                               │
-[5, 6] ───────────────────────┴──> [7. Spec & docs]
+[5, 6, 8] ────────────────────┴──> [7. Spec & docs]
 ```
 
 ### Chunk Prompts
@@ -96,6 +98,8 @@ This distinction helps agents prioritize: read "implements" chunks to understand
 
 7. **Specification and documentation updates**: Update SPEC.md to document subsystems as a new artifact type including directory structure, frontmatter schema, lifecycle statuses, and relationship semantics. Update CLAUDE.md template to include subsystems in the workflow overview.
 
+8. **Subsystem impact resolution during chunk completion**: Integrate subsystem code references into the chunk completion impact resolution process. Add `ve subsystem overlap <chunk_id>` to find subsystems whose code_references overlap with a chunk's changes. Update the `/chunk-complete` workflow to verify subsystem documentation accuracy and chunk-subsystem alignment when overlap is detected.
+
 ## Completion Criteria
 
 When complete, an operator and agent can:
@@ -109,5 +113,7 @@ When complete, an operator and agent can:
 4. **Guide agents away from reinvention** - Agents reading CLAUDE.md are directed to check `docs/subsystems/` before implementing patterns that might already exist
 
 5. **Plan consolidation work** - Draft chunk prompts within a subsystem's OVERVIEW.md to address discovered inconsistencies, then create those chunks when ready to refactor
+
+6. **Maintain subsystem documentation health** - During chunk completion, automatically detect when changes touch subsystem code and verify documentation remains accurate. Subsystem invariants are validated, and any drift is surfaced for operator review.
 
 The archaeological property is preserved: subsystem documents capture point-in-time knowledge about cross-cutting concerns, and their relationship to chunks provides traceability for how patterns evolved.

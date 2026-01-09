@@ -19,6 +19,17 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
+class ComplianceLevel(StrEnum):
+    """Compliance level for code references in subsystem documentation.
+
+    Indicates how well referenced code follows the subsystem's patterns.
+    """
+
+    COMPLIANT = "COMPLIANT"  # Fully follows the subsystem's patterns
+    PARTIAL = "PARTIAL"  # Partially follows but has some deviations
+    NON_COMPLIANT = "NON_COMPLIANT"  # Does not follow the patterns
+
+
 # Regex for validating chunk ID format: {NNNN}-{short_name}
 CHUNK_ID_PATTERN = re.compile(r"^\d{4}-.+$")
 
@@ -191,10 +202,17 @@ class SymbolicReference(BaseModel):
         - src/chunks.py#Chunks (class)
         - src/chunks.py#Chunks::create_chunk (method)
         - src/ve.py#validate_short_name (standalone function)
+
+    For subsystem documentation, the optional compliance field indicates how well
+    the referenced code follows the subsystem's patterns:
+        - COMPLIANT: Fully follows the subsystem's patterns (canonical implementation)
+        - PARTIAL: Partially follows but has some deviations
+        - NON_COMPLIANT: Does not follow the patterns (deviation to be addressed)
     """
 
     ref: str  # format: {file_path} or {file_path}#{symbol_path}
     implements: str  # description of what this reference implements
+    compliance: ComplianceLevel | None = None  # optional, used in subsystem docs
 
     @field_validator("ref")
     @classmethod
