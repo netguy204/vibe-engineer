@@ -8,6 +8,7 @@ from chunks import Chunks
 from narratives import Narratives
 from project import Project
 from subsystems import Subsystems
+from models import SubsystemStatus
 from task_init import TaskInit
 from task_utils import is_task_directory, create_task_chunk, TaskChunkError
 from validation import validate_identifier
@@ -344,6 +345,60 @@ def validate(subsystem_id, project_dir):
         raise SystemExit(1)
 
     click.echo(f"Subsystem {subsystem_id} validation passed")
+
+
+@subsystem.command()
+@click.argument("subsystem_id")
+@click.argument("new_status", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def status(subsystem_id, new_status, project_dir):
+    """Show or update subsystem status."""
+    subsystems = Subsystems(project_dir)
+
+    # Resolve subsystem_id (could be shortname or full ID)
+    resolved_id = subsystem_id
+    if not subsystems.is_subsystem_dir(subsystem_id):
+        # Try to resolve as shortname
+        found = subsystems.find_by_shortname(subsystem_id)
+        if found:
+            resolved_id = found
+        # If not found, keep the original ID for error message
+
+    # Extract shortname for display
+    if "-" in resolved_id:
+        shortname = resolved_id.split("-", 1)[1]
+    else:
+        shortname = resolved_id
+
+    # Display mode: just show current status
+    if new_status is None:
+        try:
+            current_status = subsystems.get_status(resolved_id)
+            click.echo(f"{shortname}: {current_status.value}")
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+        return
+
+    # Transition mode: validate and update status
+    # First validate new_status is a valid SubsystemStatus value
+    try:
+        new_status_enum = SubsystemStatus(new_status)
+    except ValueError:
+        valid_statuses = ", ".join(s.value for s in SubsystemStatus)
+        click.echo(
+            f"Error: Invalid status '{new_status}'. Valid statuses: {valid_statuses}",
+            err=True
+        )
+        raise SystemExit(1)
+
+    # Attempt the transition
+    try:
+        old_status, updated_status = subsystems.update_status(resolved_id, new_status_enum)
+        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

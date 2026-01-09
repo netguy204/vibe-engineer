@@ -10,6 +10,8 @@ chunks:
     chunk_directory: "0017-subsystem_template"
   - prompt: "Chunk-subsystem bidirectional references"
     chunk_directory: "0018-bidirectional_refs"
+  - prompt: "Subsystem status transitions"
+    chunk_directory: "0019-subsystem_status_transitions"
 ---
 
 ## Advances Trunk Goal

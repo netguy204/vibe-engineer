@@ -8,7 +8,7 @@ from pydantic import ValidationError
 import yaml
 
 from constants import template_dir
-from models import SubsystemFrontmatter
+from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
 
 
 # Regex for validating subsystem directory name pattern: {NNNN}-{short_name}
@@ -191,3 +191,96 @@ class Subsystems:
                 )
 
         return errors
+
+    def get_status(self, subsystem_id: str) -> SubsystemStatus:
+        """Get the current status of a subsystem.
+
+        Args:
+            subsystem_id: The subsystem directory name.
+
+        Returns:
+            The current SubsystemStatus.
+
+        Raises:
+            ValueError: If subsystem not found or has invalid frontmatter.
+        """
+        frontmatter = self.parse_subsystem_frontmatter(subsystem_id)
+        if frontmatter is None:
+            raise ValueError(f"Subsystem '{subsystem_id}' not found in docs/subsystems/")
+        return frontmatter.status
+
+    def update_status(
+        self, subsystem_id: str, new_status: SubsystemStatus
+    ) -> tuple[SubsystemStatus, SubsystemStatus]:
+        """Update subsystem status with transition validation.
+
+        Args:
+            subsystem_id: The subsystem directory name.
+            new_status: The new status to transition to.
+
+        Returns:
+            Tuple of (old_status, new_status) on success.
+
+        Raises:
+            ValueError: If subsystem not found, invalid status, or invalid transition.
+        """
+        # Get current status
+        current_status = self.get_status(subsystem_id)
+
+        # Validate the transition
+        valid_transitions = VALID_STATUS_TRANSITIONS.get(current_status, set())
+        if new_status not in valid_transitions:
+            valid_names = sorted(s.value for s in valid_transitions)
+            if valid_names:
+                valid_str = ", ".join(valid_names)
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"Valid transitions: {valid_str}"
+                )
+            else:
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"{current_status.value} is a terminal state with no valid transitions"
+                )
+
+        # Update the frontmatter
+        self._update_overview_frontmatter(subsystem_id, "status", new_status.value)
+
+        return (current_status, new_status)
+
+    def _update_overview_frontmatter(
+        self, subsystem_id: str, field: str, value
+    ) -> None:
+        """Update a single field in OVERVIEW.md frontmatter.
+
+        Args:
+            subsystem_id: The subsystem directory name.
+            field: The frontmatter field name to update.
+            value: The new value for the field.
+
+        Raises:
+            ValueError: If the file has no frontmatter.
+        """
+        overview_path = self.subsystems_dir / subsystem_id / "OVERVIEW.md"
+
+        content = overview_path.read_text()
+
+        # Parse frontmatter between --- markers
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
+        if not match:
+            raise ValueError(f"Could not parse frontmatter in {overview_path}")
+
+        frontmatter_text = match.group(1)
+        body = match.group(2)
+
+        # Parse YAML frontmatter
+        frontmatter = yaml.safe_load(frontmatter_text) or {}
+
+        # Update the field
+        frontmatter[field] = value
+
+        # Reconstruct the file
+        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+        new_content = f"---\n{new_frontmatter}---\n{body}"
+
+        overview_path.write_text(new_content)

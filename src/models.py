@@ -19,6 +19,16 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
+# Valid state transitions for subsystem status lifecycle
+VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
+    SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
+    SubsystemStatus.DOCUMENTED: {SubsystemStatus.REFACTORING, SubsystemStatus.DEPRECATED},
+    SubsystemStatus.REFACTORING: {SubsystemStatus.STABLE, SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
+    SubsystemStatus.STABLE: {SubsystemStatus.DEPRECATED, SubsystemStatus.REFACTORING},
+    SubsystemStatus.DEPRECATED: set(),  # Terminal state
+}
+
+
 class ComplianceLevel(StrEnum):
     """Compliance level for code references in subsystem documentation.
 
