@@ -11,7 +11,7 @@ code_references:
     implements: "Template rendering with chunk_directory variable"
   - ref: src/templates/chunk/PLAN.md
     implements: "Jinja2 template using chunk_directory for GOAL.md path reference"
-  - ref: tests/test_chunks.py
+  - ref: tests/test_chunks.py#TestChunkDirectoryInTemplates
     implements: "Tests for chunk_directory in rendered templates"
 ---
 

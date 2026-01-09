@@ -14,6 +14,8 @@ chunks:
     chunk_directory: "0019-subsystem_status_transitions"
   - prompt: "Agent discovery command"
     chunk_directory: "0020-agent_discovery_command"
+  - prompt: "Specification and documentation updates"
+    chunk_directory: "0021-spec_docs_update"
 ---
 
 ## Advances Trunk Goal
