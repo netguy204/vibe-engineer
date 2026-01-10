@@ -7,10 +7,10 @@ class TestStartCommand:
     """Tests for the 'chunk start' command."""
 
     def test_start_command_exists(self, runner):
-        """Verify the start command is registered."""
+        """Verify the start command is registered (as alias for create)."""
         result = runner.invoke(cli, ["chunk", "start", "--help"])
         assert result.exit_code == 0
-        assert "Start a new chunk" in result.output
+        assert "Create a new chunk" in result.output
 
     def test_start_accepts_short_name_only(self, runner, temp_project):
         """Command accepts short_name without ticket_id."""

@@ -25,7 +25,7 @@ After installation, the `ve` command is available from anywhere:
 ```bash
 ve --help
 ve init
-ve chunk start my-feature
+ve chunk create my-feature
 ```
 
 To upgrade to the latest version:
@@ -126,11 +126,11 @@ These commands guide Claude through the documentation-driven workflow, ensuring 
 The `ve` CLI provides the underlying commands used by the slash commands:
 
 ```bash
-# Start a new chunk
-ve chunk start my-feature
+# Create a new chunk
+ve chunk create my-feature
 
-# Start a chunk with a ticket ID
-ve chunk start my-feature TICKET-123
+# Create a chunk with a ticket ID
+ve chunk create my-feature TICKET-123
 
 # List all chunks
 ve chunk list
