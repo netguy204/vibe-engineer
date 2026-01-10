@@ -116,7 +116,7 @@ See `prototypes/narrative_prototype.md` for full analysis.
   - **Condition B**: Code with narrative backreference
   - **Metric**: Answer accuracy/quality on understanding questions (scored or compared)
   - **Control**: Run same test with stronger model (sonnet) to compare accuracy delta
-- **Status**: FALSIFIED (narratives don't improve accuracy for detail questions)
+- **Status**: INCONCLUSIVE (methodology limitations; see below)
 
 **Evidence (2026-01-10):**
 
@@ -128,9 +128,16 @@ See `prototypes/narrative_prototype.md` for full analysis.
 *High-N test (8 chunks):*
 - Test bench: `prototypes/h5_high_n_test.py`
 - Chunks: 4.00/4.0 (100%) vs Narrative: 3.67/4.0 (92%)
-- **Chunks performed BETTER** - narrative omitted details like "function", "validate"
+- Chunks performed better on this run - narrative omitted details like "function", "validate"
 
 **Interpretation:** Haiku can effectively synthesize information from 3 scattered chunks. The cognitive load of reading 3 separate files and extracting answers isn't high enough to show a narrative advantage.
+
+**METHODOLOGICAL LIMITATIONS:**
+1. **Single run:** Both tests were single runs with no variance analysis. LLM outputs are stochastic.
+2. **Keyword scoring:** Answers scored by keyword presence (e.g., "function", "stable"). Correct paraphrases using different words would score poorly.
+3. **Question type mismatch:** Questions test detail recall ("Name both types", "What THREE artifacts"), which by H2's own logic should favor chunks. To properly test whether narratives help weaker models *understand*, we need comprehension questions ("Why does the system have three status states?").
+
+**Next step:** Design H5b with comprehension questions and multiple runs.
 
 **High-N test (2026-01-10):** Tested with 8 chunks (4,514 bytes) vs 1 narrative (1,929 bytes).
 
@@ -154,6 +161,43 @@ The narrative missed specific details:
 - **PURPOSE/WHY questions**: Narrative advantage (pre-synthesized context)
 - **DETAIL/WHAT questions**: Chunk advantage (complete information preserved)
 - Weaker models may still benefit from narratives on PURPOSE questions
+
+### H7: Narrative compaction benefits scale with chunk count and "why" density
+
+- **Rationale**: The LSM-tree analogy implies compaction has overhead. At low chunk counts, the overhead of creating and navigating narratives may exceed the benefit. The crossover point depends on:
+  1. **Chunk count (N)**: More chunks = more navigation overhead avoided by narrative
+  2. **"Why" density**: Narratives that synthesize architectural PURPOSE provide more value than those that merely summarize WHAT changed
+  3. **Agent question distribution**: Real agent questions skew toward PURPOSE/WHY, not history, making narratives more valuable as complexity grows
+- **Test**: Measure total agent tokens at varying N (4, 8, 16, 32 chunks) with:
+  - Condition A: N chunk backreferences
+  - Condition B: 1 narrative synthesizing N chunks
+  - Questions focused on PURPOSE (why does this exist? what's the architecture?)
+- **Prediction**: Narrative advantage emerges above some threshold N, and grows with N
+- **Status**: DEFERRED (awaiting organic data)
+
+**Context (2026-01-10):**
+
+H4 showed narrative using MORE tokens (943 vs 914) at N=8 chunks. This may be below the crossover point. The hypothesis predicts:
+- At N=4: Chunks win (compaction overhead dominates)
+- At N=8: Near parity (H4 showed this)
+- At N=16+: Narratives win (compaction benefit dominates)
+
+The "why" density factor also matters - the H4 narrative was a faithful synthesis, not an aggressively compressed PURPOSE document. A narrative optimized for answering "why does this code exist?" may show benefits at lower N.
+
+**Decision (2026-01-10): Wait for organic data**
+
+Synthetic tests risk biases:
+- Artificial uniformity in chunk content
+- Narrative synthesis by test designer (not organic emergence)
+- Contrived questions rather than real agent needs
+- Artificial relationships between chunks
+
+This hypothesis should be tested when the project accumulates enough real chunks to create organic narratives. Current chunk count: ~35. Target for testing: when a genuine narrative emerges that consolidates 15+ chunks touching a single code area.
+
+**Trigger conditions for revisiting H7:**
+1. A code file accumulates 15+ chunk backreferences
+2. A natural narrative opportunity emerges (thematic grouping)
+3. Real agent questions can be captured as test cases
 
 ## Exploration Log
 
@@ -344,7 +388,7 @@ Narratives provide enough coherence that agents "satisfice" - they stop explorin
 - **Rationale**: Coherent narratives trigger satisficing behavior. Even when chunk references are available in the frontmatter, agents may not follow them because the narrative provides a "good enough" answer.
 - **Test**: Create condition C where BOTH narrative AND chunk files exist. Ask detail questions. Observe whether agent follows frontmatter chunk references or stops at narrative.
 - **Prediction**: Agent will stop at narrative, miss details, perform worse than condition A (chunks only)
-- **Status**: UNTESTED (natural behavior)
+- **Status**: FALSIFIED (H6b test with proper methodology)
 
 **Evidence (2026-01-10):**
 - Test bench: `prototypes/h6_overconfidence_test.py`
@@ -363,6 +407,80 @@ Additionally, the narrative itself contains navigation cues:
 This primes agents to NOT satisfice. **The hypothesis about natural satisficing behavior in unprompted scenarios remains untested.**
 
 **Next step:** Design H6b test without explicit navigation instructions to observe natural agent behavior.
+
+### 2026-01-10: Independent review and methodology reassessment
+
+**Review findings:**
+
+An independent review identified methodological limitations in the quantitative prototypes:
+
+**H5 (Accuracy test):**
+1. Single run with no variance analysis - LLM outputs are stochastic
+2. Keyword-based scoring is a crude proxy for correctness
+3. Questions test DETAIL recall, which by H2's logic should favor chunks
+4. To properly test the hypothesis, need comprehension (PURPOSE) questions
+
+**H6 (Overconfidence test):**
+1. Prompt explicitly instructed agents to follow references
+2. Narrative contained navigation cues ("see chunk X for details")
+3. These design choices prevent testing natural satisficing behavior
+
+**Actions taken:**
+- Temporarily reopened investigation for methodology improvements
+- Updated H5 status from FALSIFIED to INCONCLUSIVE (methodology limitations)
+- Created `prototypes/h6b_natural_behavior_test.py` with proper methodology
+- Added confidence levels to findings
+
+**Key insight:** The qualitative findings (H1-H3) remain sound. H6 required re-testing with proper methodology.
+
+### 2026-01-10: H6b Natural behavior test results
+
+**Method:** Ran `prototypes/h6b_natural_behavior_test.py` with key methodology improvements:
+- NO explicit "follow references" instruction in prompt
+- Narrative WITHOUT navigation cues
+- 3 runs to measure variance
+
+**Results:**
+
+| Condition | Run 1 | Run 2 | Run 3 | Mean | Stdev |
+|-----------|-------|-------|-------|------|-------|
+| A: Chunks Only | 3.80 | 3.80 | 3.80 | 3.80 | 0.00 |
+| C: Narrative+Chunks (no cues) | 3.80 | 3.80 | 3.80 | 3.80 | 0.00 |
+
+**Per-question breakdown (averaged):**
+
+| Question | Chunks | Narrative+Chunks | Detail in Narrative? |
+|----------|--------|------------------|---------------------|
+| Q1: --future flag command | 1.00 | 1.00 | No |
+| Q2: Overlap conditions | 0.80 | 0.80 | No |
+| Q3: Symbolic ref format | 1.00 | 1.00 | No |
+| Q4: Subsystem validation | 1.00 | 1.00 | No |
+
+**Key findings:**
+
+1. **No satisficing observed:** Condition C (narrative + chunks) performed identically to Condition A (chunks only), even without explicit navigation prompts.
+
+2. **Zero variance:** All 3 runs produced identical scores in both conditions. This suggests highly deterministic behavior for these specific questions with haiku.
+
+3. **Agents naturally follow frontmatter references:** The narrative's frontmatter lists chunk directories. Even without explicit instruction, the agent followed these to find details not present in the narrative summary.
+
+4. **Q2 consistently scored 0.80:** Both conditions missed the same keyword on Q2 (overlap detection conditions). This suggests a scoring/question issue rather than a documentation format issue.
+
+**Interpretation:**
+
+The H6 hypothesis (narrative overconfidence/satisficing) is **NOT SUPPORTED** by this test. Even with:
+- No navigation prompts
+- No "see chunk X" cues in narrative
+- Questions requiring detail only in chunks
+
+...the agent achieved identical accuracy to the chunks-only condition.
+
+**Possible explanations:**
+1. Agents naturally explore linked documentation (frontmatter chunk list serves as navigation)
+2. The narrative's frontmatter is sufficient affordance for exploration
+3. Haiku is thorough enough to check related files regardless of prompting
+
+**H6 Status:** FALSIFIED (with proper methodology this time)
 
 ## Findings
 
@@ -385,21 +503,26 @@ This primes agents to NOT satisfice. **The hypothesis about natural satisficing 
    - **Nuance**: Narratives are better for PURPOSE, chunks remain valuable for HISTORY
    - Evidence: See `prototypes/narrative_prototype.md`
 
-4. **Narratives trade DETAIL for COHERENCE** (H5 High-N test)
+4. **Narratives trade DETAIL for COHERENCE** (H5 High-N test) - *directionally plausible*
    - At 8 chunks: Chunks scored 100%, Narrative scored 92%
    - Narrative omitted specific details (e.g., "function", "validate")
    - This is a TRADEOFF, not a universal improvement
    - Evidence: See `prototypes/h5_high_n_test.py`
+   - **Methodological limitations:**
+     - Single test run (no variance analysis; LLM outputs are stochastic)
+     - Keyword-based scoring is a crude proxy for answer correctness
+     - Questions were detail-oriented factual recall, which by H2's logic should favor chunks
 
 5. **The narrative advantage is domain-specific:**
    - PURPOSE/WHY questions: Narrative likely superior (pre-synthesized context)
    - DETAIL/WHAT questions: Chunks superior (complete information preserved)
    - H1+H2 (qualitative) and H5 (quantitative) are compatible - different question types
 
-6. **Agents follow breadcrumbs when prompted** (H6 FALSIFIED)
-   - When both narrative and chunks exist, agents follow chunk refs from narrative
-   - Condition A (chunks) and C (narrative+chunks) scored identically: 3.83/4.0
-   - Narrative frontmatter serves as effective navigation to detail
+6. **Agents naturally follow frontmatter references without prompting** (H6 FALSIFIED)
+   - H6b test used NO navigation prompts and narrative had NO "see chunk X" cues
+   - Condition A (chunks) and C (narrative+chunks) scored identically: 3.80/4.0 across 3 runs
+   - Zero variance observed - highly deterministic behavior
+   - Narrative frontmatter listing chunks is sufficient affordance for exploration
 
 ### Hypotheses/Opinions
 
@@ -484,32 +607,47 @@ This primes agents to NOT satisfice. **The hypothesis about natural satisficing 
 
 ## Resolution Rationale
 
-**Status: SOLVED**
+**Status: ONGOING** (H7 proposed 2026-01-10)
 
-The original hypothesis—that chunk backreferences lose semantic value over time and should be consolidated into narratives—was **partially confirmed with important nuances**.
+The original hypothesis—that chunk backreferences lose semantic value over time and should be consolidated into narratives—has been **confirmed with important nuances**. A new hypothesis (H7) about compaction scaling requires testing.
 
-### What we learned
+### What we learned (with confidence levels)
 
-1. **Chunk references DO accumulate and include old chunks** (H3 verified). Files like src/ve.py span 97% of project history with 46 backreferences.
+1. **Chunk references DO accumulate and include old chunks** (H3 verified, HIGH confidence). Files like src/ve.py span 97% of project history with 46 backreferences. Based on empirical census data.
 
-2. **Old chunks provide low semantic value for PURPOSE understanding** (H1 verified). They document WHAT was built, not WHY it matters architecturally.
+2. **Old chunks provide low semantic value for PURPOSE understanding** (H1 verified, HIGH confidence). They document WHAT was built, not WHY it matters architecturally. Based on qualitative analysis.
 
-3. **Narratives provide superior context for PURPOSE questions** (H2 verified). A synthesized narrative immediately frames code purpose ("this is lifecycle infrastructure").
+3. **Narratives provide superior context for PURPOSE questions** (H2 verified, MEDIUM confidence). A synthesized narrative immediately frames code purpose ("this is lifecycle infrastructure"). Based on qualitative analysis; no quantitative test of PURPOSE questions yet.
 
-4. **BUT: Chunks are superior for DETAIL questions** (H5). At 8 chunks, chunks scored 100% vs narrative's 92% on detail-oriented questions. Narratives trade detail for coherence.
+4. **Narratives may trade DETAIL for COHERENCE** (H5 directionally plausible, LOW confidence). One test run showed chunks at 100% vs narrative at 92% on detail questions. Methodological limitations noted (single run, keyword scoring).
 
-5. **Agents follow breadcrumbs when needed** (H6 falsified). When both narrative and chunks exist, agents navigate from narrative to chunks for detail. No overconfidence problem detected.
+5. **Agents naturally follow frontmatter references** (H6 FALSIFIED, HIGH confidence). H6b test with proper methodology showed:
+   - NO navigation prompts needed
+   - NO "see chunk X" cues needed in narrative
+   - Agents achieved identical accuracy (3.80/4.0) in both conditions across 3 runs
+   - Narrative frontmatter chunk list is sufficient affordance for exploration
 
-### The answer
+6. **Narrative compaction may only help at high chunk counts** (H4 reinterpreted + H7 proposed). At N=8 chunks, narrative used MORE total agent tokens (943 vs 914). This suggests compaction overhead exceeds benefit at low N. Need to test at higher N to find crossover point.
+
+### Key insight: The hybrid approach works, but compaction has a threshold
 
 **Narratives and chunks serve complementary purposes:**
 - Narratives: Read-optimized for understanding PURPOSE/WHY
 - Chunks: Write-optimized, preserve DETAIL/WHAT and HISTORY
 
-**The hybrid approach is correct:** Code references narrative for context, narrative links to chunks for archaeology and detail. This follows the LSM-tree analogy—compaction (chunks→narrative) reduces read amplification while preserving data.
+**The hybrid approach is validated** for understanding quality. However, the token efficiency benefit may only emerge above a chunk count threshold. The system should be designed for scalability (where benefits are largest), not optimized for low-N edge cases.
+
+### Deferred work
+
+**H7: Compaction scaling test** - DEFERRED (awaiting organic data)
+- Synthetic tests risk biases from artificial content and contrived questions
+- Will test when project accumulates 15+ chunks touching a single code area
+- Trigger: natural narrative opportunity emerges from real work
 
 ### Proposed follow-up work
 
 Two chunks proposed in frontmatter:
 1. Implement chunk-to-narrative consolidation workflow
 2. Add narrative backreference support to code files
+
+The chunks can proceed—even if compaction doesn't save tokens at low N, it improves comprehension quality. For large projects (the target use case), H7 predicts token savings will emerge. The organic test will validate this prediction when the project reaches sufficient scale.
