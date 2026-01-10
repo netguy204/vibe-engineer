@@ -45,6 +45,8 @@ chunks:
   relationship: implements
 - chunk_id: rename_chunk_start_to_create
   relationship: implements
+- chunk_id: valid_transitions
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -88,6 +90,15 @@ code_references:
 - ref: src/models.py#VALID_STATUS_TRANSITIONS
   implements: Subsystem state transition rules
   compliance: COMPLIANT
+- ref: src/models.py#VALID_CHUNK_TRANSITIONS
+  implements: Chunk state transition rules
+  compliance: COMPLIANT
+- ref: src/models.py#VALID_NARRATIVE_TRANSITIONS
+  implements: Narrative state transition rules
+  compliance: COMPLIANT
+- ref: src/models.py#VALID_INVESTIGATION_TRANSITIONS
+  implements: Investigation state transition rules
+  compliance: COMPLIANT
 - ref: src/models.py#ExternalChunkRef
   implements: External chunk reference schema with created_after for local causal ordering
   compliance: COMPLIANT
@@ -120,7 +131,7 @@ proposed_chunks:
     dicts to models.py. Follow the pattern established by VALID_STATUS_TRANSITIONS
     for subsystems. Update the respective manager classes to validate transitions
     when status changes.
-  chunk_directory: null
+  chunk_directory: valid_transitions
 - prompt: Rename ve chunk start to ve chunk create for CLI consistency. Update src/ve.py
     to rename the 'start' command to 'create' while maintaining backward compatibility
     via an alias. Update all documentation and slash commands that reference 'chunk
@@ -450,18 +461,15 @@ Cached ordering system for workflow artifacts based on causal DAG ordering.
 Chunk status is validated at frontmatter parse time, and all call sites use typed
 model access (`frontmatter.status == ChunkStatus.IMPLEMENTING`).
 
-### No Code-Level State Transitions for Chunks, Narratives, Investigations
+### ~~No Code-Level State Transitions for Chunks, Narratives, Investigations~~ (RESOLVED)
 
-**Location**: `src/models.py` (missing)
+**Resolved by**: chunk valid_transitions
 
-Only subsystems have `VALID_STATUS_TRANSITIONS` in code. The other workflow types
-have transitions documented only in template comments:
-- Chunks: FUTURE→IMPLEMENTING→ACTIVE→SUPERSEDED/HISTORICAL
-- Narratives: DRAFTING→ACTIVE→COMPLETED
-- Investigations: ONGOING→SOLVED/NOTED/DEFERRED
-
-**Impact**: Medium. Violates hard invariant #9. No runtime validation of lifecycle
-transitions for these types. Enables invalid state changes that could confuse agents.
+`VALID_CHUNK_TRANSITIONS`, `VALID_NARRATIVE_TRANSITIONS`, and `VALID_INVESTIGATION_TRANSITIONS`
+dicts now exist in `models.py`. Each manager class (Chunks, Narratives, Investigations) has
+`get_status()` and `update_status()` methods that validate transitions. CLI commands
+(`ve chunk status`, `ve narrative status`, `ve investigation status`) provide user interface
+for status management with transition validation.
 
 ### ~~CLI Command Inconsistency: `chunk start` vs `create`~~ (RESOLVED)
 
@@ -585,6 +593,14 @@ External chunk references now participate in local causal ordering:
   create`, `ve investigation create`). The `start` command remains as a backward-compatible
   alias via Click's `add_command()`. Updated slash command templates and documentation.
 
+- **valid_transitions** - Added code-level state transition validation for chunks,
+  narratives, and investigations. Added `VALID_CHUNK_TRANSITIONS`,
+  `VALID_NARRATIVE_TRANSITIONS`, and `VALID_INVESTIGATION_TRANSITIONS` dicts to
+  `models.py`. Added `get_status()` and `update_status()` methods to Chunks, Narratives,
+  and Investigations manager classes. Added `ve chunk status`, `ve narrative status`,
+  and `ve investigation status` CLI commands. Updated `/chunk-complete` and
+  `/investigation-create` slash commands to reference the new status commands.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -595,11 +611,10 @@ External chunk references now participate in local causal ordering:
    0036-chunk_frontmatter_model. `ChunkStatus` StrEnum and `ChunkFrontmatter` Pydantic
    model now exist in `models.py`.
 
-2. **State transition dicts for chunks, narratives, investigations** - Only subsystems
-   have code-level transition validation. Add `VALID_CHUNK_TRANSITIONS`,
-   `VALID_NARRATIVE_TRANSITIONS`, `VALID_INVESTIGATION_TRANSITIONS` to models.py.
-   - Impact: Medium
-   - Status: Not yet scheduled
+2. ~~**State transition dicts for chunks, narratives, investigations**~~ - **RESOLVED** by
+   chunk valid_transitions. `VALID_CHUNK_TRANSITIONS`, `VALID_NARRATIVE_TRANSITIONS`, and
+   `VALID_INVESTIGATION_TRANSITIONS` dicts now exist in `models.py` with corresponding
+   `get_status()` and `update_status()` methods in manager classes and CLI commands.
 
 3. ~~**CLI command rename: `chunk start` → `chunk create`**~~ - **RESOLVED** by chunk
    rename_chunk_start_to_create. `ve chunk create` is now the primary command with
