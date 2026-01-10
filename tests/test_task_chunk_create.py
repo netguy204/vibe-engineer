@@ -111,10 +111,11 @@ class TestChunkCreateInTaskDirectory:
             external_yaml = chunk_dir / "external.yaml"
             assert external_yaml.exists()
 
-            # Verify content
+            # Verify content (updated for ExternalArtifactRef format)
+            # Chunk: docs/chunks/consolidate_ext_refs - Use artifact_id instead of chunk
             ref = load_external_ref(chunk_dir)
             assert ref.repo == "acme/ext"
-            assert ref.chunk == "auth_token"
+            assert ref.artifact_id == "auth_token"
             assert ref.track == "main"
             assert len(ref.pinned) == 40  # SHA length
 

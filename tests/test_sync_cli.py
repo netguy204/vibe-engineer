@@ -127,8 +127,9 @@ def task_directory(tmp_path, tmp_path_factory):
         chunks_dir.mkdir(parents=True)
         outdated_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-shared_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0001-shared_feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"
         )
@@ -270,8 +271,9 @@ class TestSyncCommand:
         )
         outdated_sha = "0" * 40
         service_b_yaml.write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: nonexistent/repo\n"
-            f"chunk: 0001-feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"
         )
@@ -295,8 +297,9 @@ class TestSyncCommandSingleRepo:
         chunks_dir.mkdir(parents=True)
         old_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: octocat/Hello-World\n"
-            f"chunk: 0001-feature\n"
             f"track: master\n"
             f"pinned: '{old_sha}'\n"
         )

@@ -68,6 +68,17 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
 }
 
 
+# Chunk: docs/chunks/artifact_ordering_index - Artifact type enum for ordering
+# Chunk: docs/chunks/consolidate_ext_refs - Moved from artifact_ordering.py
+class ArtifactType(StrEnum):
+    """Types of workflow artifacts that can be ordered."""
+
+    CHUNK = "chunk"
+    NARRATIVE = "narrative"
+    INVESTIGATION = "investigation"
+    SUBSYSTEM = "subsystem"
+
+
 # Chunk: docs/chunks/subsystem_status_transitions - Valid state transitions
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
@@ -302,11 +313,51 @@ class ExternalChunkRef(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference
+class ExternalArtifactRef(BaseModel):
+    """Reference to a workflow artifact in another repository.
+
+    Used for external.yaml files that reference artifacts (chunks, narratives,
+    investigations, subsystems) in an external repository. This is a type-agnostic
+    replacement for ExternalChunkRef that supports all workflow artifact types.
+    """
+
+    artifact_type: ArtifactType
+    artifact_id: str  # Short name of the referenced artifact
+    repo: str  # GitHub-style org/repo format
+    track: str | None = None  # Branch to follow (optional)
+    pinned: str | None = None  # 40-char SHA (optional)
+    created_after: list[str] = []  # Local causal ordering
+
+    @field_validator("repo")
+    @classmethod
+    def validate_repo(cls, v: str) -> str:
+        """Validate repo is in org/repo format."""
+        return _require_valid_repo_ref(v, "repo")
+
+    @field_validator("artifact_id")
+    @classmethod
+    def validate_artifact_id(cls, v: str) -> str:
+        """Validate artifact_id is a valid directory name."""
+        return _require_valid_dir_name(v, "artifact_id")
+
+    @field_validator("pinned")
+    @classmethod
+    def validate_pinned(cls, v: str | None) -> str | None:
+        """Validate pinned is a 40-character hex SHA if provided."""
+        if v is None:
+            return v
+        if not SHA_PATTERN.match(v):
+            raise ValueError("pinned must be a 40-character lowercase hex SHA")
+        return v
+
+
 # Chunk: docs/chunks/cross_repo_schemas - Chunk dependents schema
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 class ChunkDependent(BaseModel):
     """Frontmatter schema for chunk GOAL.md files with dependents."""
 
-    dependents: list[ExternalChunkRef] = []
+    dependents: list[ExternalArtifactRef] = []
 
 
 # Chunk: docs/chunks/chunk_validate - Line range for code references
@@ -467,6 +518,7 @@ class InvestigationFrontmatter(BaseModel):
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk frontmatter schema
 # Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -481,5 +533,5 @@ class ChunkFrontmatter(BaseModel):
     narrative: str | None = None
     subsystems: list[SubsystemRelationship] = []
     proposed_chunks: list[ProposedChunk] = []
-    dependents: list[ExternalChunkRef] = []  # For cross-repo chunks
+    dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []

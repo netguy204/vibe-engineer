@@ -112,8 +112,9 @@ def full_task_directory(tmp_path, tmp_path_factory):
         chunks_dir.mkdir(parents=True)
         outdated_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-shared_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0001-shared_feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"
         )
@@ -217,12 +218,13 @@ class TestEndToEndTaskDirectory:
             content = yaml.safe_load(external_yaml.read_text())
 
             # Should only have the expected fields
-            expected_keys = {"repo", "chunk", "track", "pinned"}
+            expected_keys = {"artifact_type", "artifact_id", "repo", "track", "pinned"}
             assert set(content.keys()) == expected_keys
 
             # Values should be correct types
+            assert isinstance(content["artifact_type"], str)
+            assert isinstance(content["artifact_id"], str)
             assert isinstance(content["repo"], str)
-            assert isinstance(content["chunk"], str)
             assert isinstance(content["track"], str)
             assert isinstance(content["pinned"], str)
             assert len(content["pinned"]) == 40
@@ -261,8 +263,9 @@ class TestEndToEndSingleRepo:
         chunks_dir.mkdir(parents=True)
         old_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: octocat/Hello-World\n"
-            f"chunk: 0001-feature\n"
             f"track: master\n"
             f"pinned: '{old_sha}'\n"
         )

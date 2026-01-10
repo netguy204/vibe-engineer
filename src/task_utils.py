@@ -2,16 +2,17 @@
 # Chunk: docs/chunks/chunk_create_task_aware - Cross-repo task utilities
 # Chunk: docs/chunks/future_chunk_creation - Status support
 # Chunk: docs/chunks/external_chunk_causal - Causal ordering for external chunks
+# Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef for external.yaml
 
 import re
 from pathlib import Path
 
 import yaml
 
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 from chunks import Chunks
 from git_utils import get_current_sha
-from models import TaskConfig, ExternalChunkRef
+from models import TaskConfig, ExternalArtifactRef, ArtifactType
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Detect task directory
@@ -100,14 +101,15 @@ def load_task_config(path: Path) -> TaskConfig:
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Load external chunk reference
-def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to return ExternalArtifactRef
+def load_external_ref(chunk_path: Path) -> ExternalArtifactRef:
     """Load and validate external.yaml from chunk path.
 
     Args:
         chunk_path: Directory containing external.yaml
 
     Returns:
-        Validated ExternalChunkRef
+        Validated ExternalArtifactRef
 
     Raises:
         FileNotFoundError: If external.yaml doesn't exist
@@ -120,7 +122,7 @@ def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
     with open(ref_file) as f:
         data = yaml.safe_load(f)
 
-    return ExternalChunkRef.model_validate(data)
+    return ExternalArtifactRef.model_validate(data)
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Get next chunk ID
@@ -162,38 +164,51 @@ def get_next_chunk_id(project_path: Path) -> str:
 # Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Support created_after for causal ordering
+# Chunk: docs/chunks/consolidate_ext_refs - Use artifact_type and artifact_id fields
 def create_external_yaml(
     project_path: Path,
     short_name: str,
     external_repo_ref: str,
-    external_chunk_id: str,
+    external_artifact_id: str,
     pinned_sha: str,
     track: str = "main",
     created_after: list[str] | None = None,
+    artifact_type: ArtifactType = ArtifactType.CHUNK,
 ) -> Path:
-    """Create external.yaml in project's chunk directory.
+    """Create external.yaml in project's artifact directory.
 
     Args:
         project_path: Path to the project directory
-        short_name: Short name for the chunk directory
-        external_repo_ref: External chunk repo identifier (org/repo format)
-        external_chunk_id: Chunk ID in the external repo
+        short_name: Short name for the artifact directory
+        external_repo_ref: External repo identifier (org/repo format)
+        external_artifact_id: Artifact ID in the external repo
         pinned_sha: 40-character SHA to pin
         track: Branch to track (default "main")
-        created_after: List of local artifact names this external chunk depends on
+        created_after: List of local artifact names this external artifact depends on
                        (for local causal ordering)
+        artifact_type: Type of artifact (default CHUNK)
 
     Returns:
         Path to the created external.yaml file
     """
-    # Use short_name only (no sequence prefix)
-    chunk_dir = project_path / "docs" / "chunks" / short_name
-    chunk_dir.mkdir(parents=True, exist_ok=True)
+    # Determine the artifact directory based on type
+    artifact_dirs = {
+        ArtifactType.CHUNK: "chunks",
+        ArtifactType.NARRATIVE: "narratives",
+        ArtifactType.INVESTIGATION: "investigations",
+        ArtifactType.SUBSYSTEM: "subsystems",
+    }
+    artifact_dir_name = artifact_dirs[artifact_type]
 
-    external_yaml_path = chunk_dir / "external.yaml"
+    # Use short_name only (no sequence prefix)
+    artifact_dir = project_path / "docs" / artifact_dir_name / short_name
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    external_yaml_path = artifact_dir / "external.yaml"
     data = {
+        "artifact_type": artifact_type.value,
+        "artifact_id": external_artifact_id,
         "repo": external_repo_ref,
-        "chunk": external_chunk_id,
         "track": track,
         "pinned": pinned_sha,
     }
@@ -282,6 +297,7 @@ class TaskChunkError(Exception):
 # Chunk: docs/chunks/future_chunk_creation - Status parameter support
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Pass current tips to external.yaml
+# Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef format
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -336,7 +352,7 @@ def create_task_chunk(
     # 4. Create chunk in external repo
     chunks = Chunks(external_repo_path)
     external_chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
-    external_chunk_id = external_chunk_path.name  # Now short_name format
+    external_artifact_id = external_chunk_path.name  # Now short_name format
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
     dependents = []
@@ -351,11 +367,11 @@ def create_task_chunk(
                 f"Project directory '{project_ref}' not found or not accessible"
             )
 
-        # Build project chunk ID (short_name only, with ticket if provided)
+        # Build project artifact ID (short_name only, with ticket if provided)
         if ticket_id:
-            project_chunk_id = f"{short_name}-{ticket_id}"
+            project_artifact_id = f"{short_name}-{ticket_id}"
         else:
-            project_chunk_id = short_name
+            project_artifact_id = short_name
 
         # Get current tips for this project's causal ordering
         try:
@@ -367,15 +383,20 @@ def create_task_chunk(
         # Create external.yaml with created_after
         external_yaml_path = create_external_yaml(
             project_path=project_path,
-            short_name=project_chunk_id,
+            short_name=project_artifact_id,
             external_repo_ref=config.external_chunk_repo,
-            external_chunk_id=external_chunk_id,
+            external_artifact_id=external_artifact_id,
             pinned_sha=pinned_sha,
             created_after=tips,
+            artifact_type=ArtifactType.CHUNK,
         )
 
-        # Build dependent entry
-        dependents.append({"repo": project_ref, "chunk": project_chunk_id})
+        # Build dependent entry using ExternalArtifactRef format
+        dependents.append({
+            "artifact_type": ArtifactType.CHUNK.value,
+            "artifact_id": project_artifact_id,
+            "repo": project_ref,
+        })
 
         # Track created path
         project_refs[project_ref] = external_yaml_path
@@ -391,6 +412,7 @@ def create_task_chunk(
 
 
 # Chunk: docs/chunks/list_task_aware - Task-aware chunk listing
+# Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef format
 def list_task_chunks(task_dir: Path) -> list[dict]:
     """List chunks from external repo with their dependents.
 
@@ -429,8 +451,11 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
     for chunk_name in chunk_list:
         frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        # Convert ExternalChunkRef objects to dicts for API compatibility
-        dependents = [{"repo": d.repo, "chunk": d.chunk} for d in frontmatter.dependents] if frontmatter else []
+        # Convert ExternalArtifactRef objects to dicts for API compatibility
+        dependents = [
+            {"artifact_type": d.artifact_type.value, "artifact_id": d.artifact_id, "repo": d.repo}
+            for d in frontmatter.dependents
+        ] if frontmatter else []
         results.append({
             "name": chunk_name,
             "status": status,

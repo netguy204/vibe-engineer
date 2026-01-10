@@ -300,14 +300,16 @@ class TestParseFrontmatterDependents:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "feature")
 
-        # Write GOAL.md with dependents in frontmatter (valid ExternalChunkRef format)
+        # Write GOAL.md with dependents in frontmatter (valid ExternalArtifactRef format)
+        # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
         goal_path = chunk_mgr.get_chunk_goal_path("feature")
         goal_path.write_text(
             "---\n"
             "status: ACTIVE\n"
             "dependents:\n"
-            "  - repo: acme/other-repo\n"
-            "    chunk: integration\n"
+            "  - artifact_type: chunk\n"
+            "    artifact_id: integration\n"
+            "    repo: acme/other-repo\n"
             "---\n"
             "# Goal\n"
         )
@@ -316,7 +318,7 @@ class TestParseFrontmatterDependents:
         assert frontmatter is not None
         assert len(frontmatter.dependents) == 1
         assert frontmatter.dependents[0].repo == "acme/other-repo"
-        assert frontmatter.dependents[0].chunk == "integration"
+        assert frontmatter.dependents[0].artifact_id == "integration"
 
     def test_parse_frontmatter_without_dependents(self, temp_project):
         """Existing chunks without dependents continue to work."""

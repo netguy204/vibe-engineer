@@ -2,6 +2,7 @@
 
 # Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
 # Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
+# Chunk: docs/chunks/consolidate_ext_refs - Import ArtifactType from models
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
@@ -12,11 +13,12 @@ Works in any directory without requiring git.
 import json
 import re
 from collections import defaultdict
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from models import ArtifactType
 
 
 def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
@@ -61,15 +63,6 @@ def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
                 queue.append(child)
 
     return result
-
-
-class ArtifactType(StrEnum):
-    """Types of workflow artifacts that can be ordered."""
-
-    CHUNK = "chunk"
-    NARRATIVE = "narrative"
-    INVESTIGATION = "investigation"
-    SUBSYSTEM = "subsystem"
 
 
 # Map artifact type to the file that defines ordering (GOAL.md or OVERVIEW.md)
