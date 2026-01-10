@@ -21,7 +21,7 @@ proposed_chunks:
     list to use ArtifactIndex for ordering instead of sequence number parsing. Fall
     back to sequence order when created_after not populated. Display tip indicators
     for artifacts with no dependents."
-  chunk_directory: null
+  chunk_directory: 0041-artifact_list_ordering
 - prompt: "Create ve migrate causal-ordering command that migrates ALL artifact types
     (chunks, narratives, investigations, subsystems). For each type, sort existing
     artifacts by sequence number and set each artifact's created_after to [previous

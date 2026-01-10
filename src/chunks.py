@@ -74,39 +74,41 @@ class Chunks:
         return [name for name in self.enumerate_chunks() if name.endswith(suffix)]
 
     # Chunk: docs/chunks/0002-chunk_list_command - Sorted chunk listing
-    def list_chunks(self) -> list[tuple[int, str]]:
-        """List all chunks sorted by numeric prefix descending.
+    # Chunk: docs/chunks/0041-artifact_list_ordering - Use ArtifactIndex for causal ordering
+    def list_chunks(self) -> list[str]:
+        """List all chunks in causal order (newest first).
+
+        Uses ArtifactIndex for topological ordering based on created_after
+        dependencies. Falls back to sequence number order when created_after
+        is not populated.
 
         Returns:
-            List of (chunk_number, chunk_name) tuples, sorted by chunk_number
-            descending. Returns empty list if no chunks exist.
+            List of chunk directory names, ordered newest first.
+            Returns empty list if no chunks exist.
         """
-        chunks = []
-        pattern = re.compile(r"^(\d{4})-")
-        for name in self.enumerate_chunks():
-            match = pattern.match(name)
-            if match:
-                chunk_number = int(match.group(1))
-                chunks.append((chunk_number, name))
-        chunks.sort(key=lambda x: x[0], reverse=True)
-        return chunks
+        artifact_index = ArtifactIndex(self.project_dir)
+        ordered = artifact_index.get_ordered(ArtifactType.CHUNK)
+        # Reverse to get newest first (ArtifactIndex returns oldest first)
+        return list(reversed(ordered))
 
     # Chunk: docs/chunks/0002-chunk_list_command - Get highest-numbered chunk
+    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new list_chunks signature
     def get_latest_chunk(self) -> str | None:
-        """Return the highest-numbered chunk directory name.
+        """Return the first chunk in causal order (newest).
 
         Returns:
             The chunk directory name if chunks exist, None otherwise.
         """
         chunks = self.list_chunks()
         if chunks:
-            return chunks[0][1]
+            return chunks[0]
         return None
 
     # Chunk: docs/chunks/0013-future_chunk_creation - Get active IMPLEMENTING chunk
     # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed status comparison
+    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new list_chunks signature
     def get_current_chunk(self) -> str | None:
-        """Return the highest-numbered chunk with status IMPLEMENTING.
+        """Return the first IMPLEMENTING chunk in causal order.
 
         This finds the "current" chunk that is actively being worked on,
         ignoring FUTURE, ACTIVE, SUPERSEDED, and HISTORICAL chunks.
@@ -115,7 +117,7 @@ class Chunks:
             The chunk directory name if an IMPLEMENTING chunk exists, None otherwise.
         """
         chunks = self.list_chunks()
-        for _, chunk_name in chunks:
+        for chunk_name in chunks:
             frontmatter = self.parse_chunk_frontmatter(chunk_name)
             if frontmatter and frontmatter.status == ChunkStatus.IMPLEMENTING:
                 return chunk_name

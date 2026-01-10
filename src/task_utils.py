@@ -122,6 +122,7 @@ def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
 
 
 # Chunk: docs/chunks/0010-chunk_create_task_aware - Get next chunk ID
+# Chunk: docs/chunks/0041-artifact_list_ordering - Use enumerate_chunks for directory-based ID
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
 
@@ -131,14 +132,24 @@ def get_next_chunk_id(project_path: Path) -> str:
     Returns:
         4-digit zero-padded string for the next chunk ID
     """
-    chunks = Chunks(project_path)
-    chunk_list = chunks.list_chunks()
+    import re
 
-    if not chunk_list:
+    chunks = Chunks(project_path)
+    # Use enumerate_chunks() which just lists directories (doesn't require GOAL.md)
+    chunk_dirs = chunks.enumerate_chunks()
+
+    if not chunk_dirs:
         return "0001"
 
-    # list_chunks() returns (chunk_number, chunk_name) sorted descending
-    highest_number = chunk_list[0][0]
+    # Extract highest chunk number by parsing directory names
+    pattern = re.compile(r"^(\d{4})-")
+    highest_number = 0
+    for chunk_name in chunk_dirs:
+        match = pattern.match(chunk_name)
+        if match:
+            chunk_number = int(match.group(1))
+            if chunk_number > highest_number:
+                highest_number = chunk_number
     return f"{highest_number + 1:04d}"
 
 
@@ -387,11 +398,12 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
         )
 
     # List chunks from external repo
+    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new list_chunks return type
     chunks = Chunks(external_repo_path)
     chunk_list = chunks.list_chunks()
 
     results = []
-    for _, chunk_name in chunk_list:
+    for chunk_name in chunk_list:
         frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         # Convert ExternalChunkRef objects to dicts for API compatibility

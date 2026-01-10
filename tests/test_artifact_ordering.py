@@ -766,3 +766,89 @@ class TestPerformance:
         # Allow generous headroom for CI environments
         # Goal says <20ms, we allow 50ms for test stability
         assert elapsed_ms < 50, f"Warm query took {elapsed_ms:.1f}ms, expected <50ms"
+
+
+# Chunk: docs/chunks/0041-artifact_list_ordering - Backward compatibility tests
+class TestBackwardCompatibility:
+    """Tests for backward compatibility with mixed created_after scenarios.
+
+    These tests verify that artifacts without created_after fields (pre-migration)
+    work correctly alongside artifacts that have created_after populated.
+    """
+
+    def test_mixed_created_after_preserves_sequence_fallback(self, git_temp_dir):
+        """Artifacts without created_after fall back to sequence order.
+
+        This simulates the current repository state where chunks 0001-0036
+        don't have created_after, and newer chunks do.
+        """
+        chunks_dir = git_temp_dir / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Legacy chunks without created_after (simulating 0001-0036)
+        _create_chunk(chunks_dir, "0001-legacy_a")
+        _create_chunk(chunks_dir, "0002-legacy_b")
+        _create_chunk(chunks_dir, "0003-legacy_c")
+
+        # New chunks with created_after (simulating 0037+)
+        _create_chunk(chunks_dir, "0037-new_a", created_after=["0003-legacy_c"])
+        _create_chunk(chunks_dir, "0038-new_b", created_after=["0037-new_a"])
+        _create_chunk(chunks_dir, "0039-new_c", created_after=["0038-new_b"])
+
+        index = ArtifactIndex(git_temp_dir)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # All chunks should be present
+        assert len(ordered) == 6
+
+        # Legacy chunks should be in sequence order (they're all roots)
+        legacy_chunks = [c for c in ordered if c.startswith("000")]
+        assert legacy_chunks == ["0001-legacy_a", "0002-legacy_b", "0003-legacy_c"]
+
+        # New chunks should come after legacy and in dependency order
+        assert ordered.index("0003-legacy_c") < ordered.index("0037-new_a")
+        assert ordered.index("0037-new_a") < ordered.index("0038-new_b")
+        assert ordered.index("0038-new_b") < ordered.index("0039-new_c")
+
+    def test_mixed_with_branching_dependencies(self, git_temp_dir):
+        """Mixed scenario with branching in new chunks."""
+        chunks_dir = git_temp_dir / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Legacy chunks (roots)
+        _create_chunk(chunks_dir, "0001-foundation")
+        _create_chunk(chunks_dir, "0002-core")
+
+        # New chunks with branches
+        _create_chunk(chunks_dir, "0003-feature_a", created_after=["0002-core"])
+        _create_chunk(chunks_dir, "0004-feature_b", created_after=["0002-core"])
+        _create_chunk(chunks_dir, "0005-merge", created_after=["0003-feature_a", "0004-feature_b"])
+
+        index = ArtifactIndex(git_temp_dir)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # Verify dependencies are respected
+        assert ordered.index("0002-core") < ordered.index("0003-feature_a")
+        assert ordered.index("0002-core") < ordered.index("0004-feature_b")
+        assert ordered.index("0003-feature_a") < ordered.index("0005-merge")
+        assert ordered.index("0004-feature_b") < ordered.index("0005-merge")
+
+    def test_tips_with_mixed_created_after(self, git_temp_dir):
+        """Tips are correctly identified with mixed created_after."""
+        chunks_dir = git_temp_dir / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Legacy chunks - all are tips since none reference them
+        _create_chunk(chunks_dir, "0001-legacy_a")
+        _create_chunk(chunks_dir, "0002-legacy_b")
+
+        # New chunk that references one legacy chunk
+        _create_chunk(chunks_dir, "0003-new_a", created_after=["0001-legacy_a"])
+
+        index = ArtifactIndex(git_temp_dir)
+        tips = sorted(index.find_tips(ArtifactType.CHUNK))
+
+        # 0002-legacy_b is a tip (no one references it)
+        # 0003-new_a is a tip (no one references it)
+        # 0001-legacy_a is NOT a tip (0003-new_a references it)
+        assert tips == ["0002-legacy_b", "0003-new_a"]

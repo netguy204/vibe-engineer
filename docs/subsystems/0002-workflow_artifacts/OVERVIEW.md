@@ -27,6 +27,8 @@ chunks:
   relationship: implements
 - chunk_id: 0039-populate_created_after
   relationship: implements
+- chunk_id: 0041-artifact_list_ordering
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -439,6 +441,14 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
 
 - **0038-artifact_ordering_index** - Created `src/artifact_ordering.py` with `ArtifactIndex`
   class for cached topological sorting and tip identification using git-hash staleness
+
+- **0039-populate_created_after** - Automatically populates `created_after` field when
+  creating new artifacts, tracking current tips for causal ordering
+
+- **0041-artifact_list_ordering** - Updated all list commands (`ve chunk list`,
+  `ve narrative list`, `ve subsystem list`, `ve investigation list`) to use `ArtifactIndex`
+  for causal ordering instead of sequence number parsing. Added new `ve narrative list`
+  command. Displays tip indicators for artifacts with no dependents
 
 ## Consolidation Chunks
 

@@ -60,7 +60,10 @@ class TestChunksClass:
 
 
 class TestListChunks:
-    """Tests for Chunks.list_chunks() method."""
+    """Tests for Chunks.list_chunks() method.
+
+    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new return type
+    """
 
     def test_empty_project_returns_empty_list(self, temp_project):
         """Empty project returns empty list."""
@@ -73,19 +76,20 @@ class TestListChunks:
         chunk_mgr.create_chunk("VE-001", "feature")
         result = chunk_mgr.list_chunks()
         assert len(result) == 1
-        assert result[0] == (1, "0001-feature-VE-001")
+        assert result[0] == "0001-feature-VE-001"
 
     def test_multiple_chunks_descending_order(self, temp_project):
-        """Multiple chunks returned in descending numeric order."""
+        """Multiple chunks returned in causal order (newest first)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.create_chunk("VE-003", "third")
         result = chunk_mgr.list_chunks()
         assert len(result) == 3
-        assert result[0][0] == 3  # highest first
-        assert result[1][0] == 2
-        assert result[2][0] == 1
+        # Newest first (each depends on previous via created_after)
+        assert result[0] == "0003-third-VE-003"
+        assert result[1] == "0002-second-VE-002"
+        assert result[2] == "0001-first-VE-001"
 
     def test_chunks_with_and_without_ticket_id(self, temp_project):
         """Chunks with different name formats all parsed correctly."""
@@ -94,8 +98,8 @@ class TestListChunks:
         chunk_mgr.create_chunk(None, "without_ticket")
         result = chunk_mgr.list_chunks()
         assert len(result) == 2
-        assert result[0] == (2, "0002-without_ticket")
-        assert result[1] == (1, "0001-with_ticket-VE-001")
+        assert result[0] == "0002-without_ticket"
+        assert result[1] == "0001-with_ticket-VE-001"
 
 
 class TestGetLatestChunk:

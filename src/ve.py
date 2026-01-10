@@ -162,11 +162,14 @@ def _start_task_chunk(
 # Chunk: docs/chunks/0002-chunk_list_command - List all chunks
 # Chunk: docs/chunks/0013-future_chunk_creation - Current chunk filtering
 # Chunk: docs/chunks/0033-list_task_aware - Task-aware chunk listing
+# Chunk: docs/chunks/0041-artifact_list_ordering - Use ArtifactIndex for causal ordering
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_chunks(latest, project_dir):
     """List all chunks."""
+    from artifact_ordering import ArtifactIndex, ArtifactType
+
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
         _list_task_chunks(latest, project_dir)
@@ -187,10 +190,15 @@ def list_chunks(latest, project_dir):
             raise SystemExit(1)
         click.echo(f"docs/chunks/{current_chunk}")
     else:
-        for _, chunk_name in chunk_list:
+        # Get tips for indicator display
+        artifact_index = ArtifactIndex(project_dir)
+        tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
+
+        for chunk_name in chunk_list:
             frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
             status = frontmatter.status.value if frontmatter else "UNKNOWN"
-            click.echo(f"docs/chunks/{chunk_name} [{status}]")
+            tip_indicator = " *" if chunk_name in tips else ""
+            click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
 
 # Chunk: docs/chunks/0033-list_task_aware - Task directory chunk listing handler
@@ -347,6 +355,34 @@ def create_narrative(short_name, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/0041-artifact_list_ordering - List narratives command
+@narrative.command("list")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_narratives(project_dir):
+    """List all narratives."""
+    from artifact_ordering import ArtifactIndex, ArtifactType
+
+    narratives = Narratives(project_dir)
+    artifact_index = ArtifactIndex(project_dir)
+
+    # Get narratives in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.NARRATIVE)
+    narrative_list = list(reversed(ordered))
+
+    if not narrative_list:
+        click.echo("No narratives found", err=True)
+        raise SystemExit(1)
+
+    # Get tips for indicator display
+    tips = set(artifact_index.find_tips(ArtifactType.NARRATIVE))
+
+    for narrative_name in narrative_list:
+        frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        tip_indicator = " *" if narrative_name in tips else ""
+        click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
+
+
 # Chunk: docs/chunks/0009-task_init - Task command group
 @cli.group()
 def task():
@@ -395,24 +431,32 @@ def subsystem():
 
 
 # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - List subsystems command
+# Chunk: docs/chunks/0041-artifact_list_ordering - Use ArtifactIndex for causal ordering
 @subsystem.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_subsystems(project_dir):
     """List all subsystems."""
+    from artifact_ordering import ArtifactIndex, ArtifactType
+
     subsystems = Subsystems(project_dir)
-    subsystem_list = subsystems.enumerate_subsystems()
+    artifact_index = ArtifactIndex(project_dir)
+
+    # Get subsystems in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.SUBSYSTEM)
+    subsystem_list = list(reversed(ordered))
 
     if not subsystem_list:
         click.echo("No subsystems found", err=True)
         raise SystemExit(1)
 
-    # Sort subsystems (ascending order by directory name)
-    sorted_subsystems = sorted(subsystem_list)
+    # Get tips for indicator display
+    tips = set(artifact_index.find_tips(ArtifactType.SUBSYSTEM))
 
-    for subsystem_name in sorted_subsystems:
+    for subsystem_name in subsystem_list:
         frontmatter = subsystems.parse_subsystem_frontmatter(subsystem_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        click.echo(f"docs/subsystems/{subsystem_name} [{status}]")
+        tip_indicator = " *" if subsystem_name in tips else ""
+        click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
 
 
 # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem command
@@ -578,11 +622,14 @@ def create_investigation(short_name, project_dir):
 
 
 # Chunk: docs/chunks/0029-investigation_commands - List investigations command
+# Chunk: docs/chunks/0041-artifact_list_ordering - Use ArtifactIndex for causal ordering
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_investigations(state, project_dir):
     """List all investigations."""
+    from artifact_ordering import ArtifactIndex, ArtifactType
+
     # Validate state filter if provided
     if state is not None:
         try:
@@ -598,7 +645,11 @@ def list_investigations(state, project_dir):
         state_filter = None
 
     investigations = Investigations(project_dir)
-    investigation_list = investigations.enumerate_investigations()
+    artifact_index = ArtifactIndex(project_dir)
+
+    # Get investigations in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.INVESTIGATION)
+    investigation_list = list(reversed(ordered))
 
     # Filter by state if requested
     if state_filter is not None:
@@ -613,13 +664,14 @@ def list_investigations(state, project_dir):
         click.echo("No investigations found", err=True)
         raise SystemExit(1)
 
-    # Sort investigations (ascending order by directory name)
-    sorted_investigations = sorted(investigation_list)
+    # Get tips for indicator display
+    tips = set(artifact_index.find_tips(ArtifactType.INVESTIGATION))
 
-    for inv_name in sorted_investigations:
+    for inv_name in investigation_list:
         frontmatter = investigations.parse_investigation_frontmatter(inv_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        click.echo(f"docs/investigations/{inv_name} [{status}]")
+        tip_indicator = " *" if inv_name in tips else ""
+        click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
 
 
 # Chunk: docs/chunks/0034-ve_sync_command - Sync external references
