@@ -245,6 +245,7 @@ class TaskConfig(BaseModel):
 
 
 # Chunk: docs/chunks/cross_repo_schemas - External chunk reference
+# Chunk: docs/chunks/external_chunk_causal - Local causal ordering for external refs
 class ExternalChunkRef(BaseModel):
     """Reference to a chunk in another repository.
 
@@ -257,6 +258,7 @@ class ExternalChunkRef(BaseModel):
     chunk: str  # Chunk directory name
     track: str | None = None  # Branch to follow (optional)
     pinned: str | None = None  # 40-char SHA (optional)
+    created_after: list[str] = []  # Local causal ordering (for external.yaml)
 
     @field_validator("repo")
     @classmethod

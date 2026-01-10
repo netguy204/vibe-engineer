@@ -468,3 +468,81 @@ class TestUpdateFrontmatterField:
 
         with pytest.raises(ValueError):
             update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
+
+
+# Chunk: docs/chunks/external_chunk_causal - Tests for created_after in external.yaml
+class TestCreateExternalYamlCreatedAfter:
+    """Tests for create_external_yaml created_after parameter."""
+
+    def test_create_external_yaml_with_created_after(self, tmp_path):
+        """create_external_yaml includes created_after when provided."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            short_name="test_chunk",
+            external_repo_ref="org/repo",
+            external_chunk_id="ext_chunk",
+            pinned_sha="a" * 40,
+            created_after=["previous_chunk"],
+        )
+
+        ref = load_external_ref(result.parent)
+        assert ref.created_after == ["previous_chunk"]
+
+    def test_create_external_yaml_with_multiple_created_after(self, tmp_path):
+        """create_external_yaml handles multiple created_after entries."""
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            short_name="test_chunk",
+            external_repo_ref="org/repo",
+            external_chunk_id="ext_chunk",
+            pinned_sha="a" * 40,
+            created_after=["chunk_a", "chunk_b", "chunk_c"],
+        )
+
+        ref = load_external_ref(result.parent)
+        assert ref.created_after == ["chunk_a", "chunk_b", "chunk_c"]
+
+    def test_create_external_yaml_without_created_after(self, tmp_path):
+        """create_external_yaml omits created_after when not provided."""
+        import yaml
+
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            short_name="test_chunk",
+            external_repo_ref="org/repo",
+            external_chunk_id="ext_chunk",
+            pinned_sha="a" * 40,
+        )
+
+        # Read raw YAML to verify created_after is not present
+        with open(result) as f:
+            data = yaml.safe_load(f)
+
+        assert "created_after" not in data
+
+    def test_create_external_yaml_with_empty_created_after(self, tmp_path):
+        """create_external_yaml omits created_after when empty list provided."""
+        import yaml
+
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            short_name="test_chunk",
+            external_repo_ref="org/repo",
+            external_chunk_id="ext_chunk",
+            pinned_sha="a" * 40,
+            created_after=[],
+        )
+
+        # Read raw YAML to verify created_after is not present (empty list is falsy)
+        with open(result) as f:
+            data = yaml.safe_load(f)
+
+        assert "created_after" not in data

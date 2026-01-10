@@ -1,12 +1,14 @@
 """Utility functions for cross-repository task management."""
 # Chunk: docs/chunks/chunk_create_task_aware - Cross-repo task utilities
 # Chunk: docs/chunks/future_chunk_creation - Status support
+# Chunk: docs/chunks/external_chunk_causal - Causal ordering for external chunks
 
 import re
 from pathlib import Path
 
 import yaml
 
+from artifact_ordering import ArtifactIndex, ArtifactType
 from chunks import Chunks
 from git_utils import get_current_sha
 from models import TaskConfig, ExternalChunkRef
@@ -159,6 +161,7 @@ def get_next_chunk_id(project_path: Path) -> str:
 
 # Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/external_chunk_causal - Support created_after for causal ordering
 def create_external_yaml(
     project_path: Path,
     short_name: str,
@@ -166,6 +169,7 @@ def create_external_yaml(
     external_chunk_id: str,
     pinned_sha: str,
     track: str = "main",
+    created_after: list[str] | None = None,
 ) -> Path:
     """Create external.yaml in project's chunk directory.
 
@@ -176,6 +180,8 @@ def create_external_yaml(
         external_chunk_id: Chunk ID in the external repo
         pinned_sha: 40-character SHA to pin
         track: Branch to track (default "main")
+        created_after: List of local artifact names this external chunk depends on
+                       (for local causal ordering)
 
     Returns:
         Path to the created external.yaml file
@@ -191,6 +197,8 @@ def create_external_yaml(
         "track": track,
         "pinned": pinned_sha,
     }
+    if created_after:
+        data["created_after"] = created_after
 
     with open(external_yaml_path, "w") as f:
         yaml.dump(data, f, default_flow_style=False)
@@ -273,6 +281,7 @@ class TaskChunkError(Exception):
 # Chunk: docs/chunks/chunk_create_task_aware - Orchestrate multi-repo chunk
 # Chunk: docs/chunks/future_chunk_creation - Status parameter support
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/external_chunk_causal - Pass current tips to external.yaml
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -283,7 +292,7 @@ def create_task_chunk(
 
     Orchestrates multi-repo chunk creation:
     1. Creates chunk in external repo
-    2. Creates external.yaml in each project
+    2. Creates external.yaml in each project with causal ordering
     3. Updates external chunk's GOAL.md with dependents
 
     Args:
@@ -329,7 +338,7 @@ def create_task_chunk(
     external_chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
     external_chunk_id = external_chunk_path.name  # Now short_name format
 
-    # 5-6. For each project: create external.yaml, build dependents
+    # 5-6. For each project: create external.yaml with causal ordering, build dependents
     dependents = []
     project_refs = {}
 
@@ -348,13 +357,21 @@ def create_task_chunk(
         else:
             project_chunk_id = short_name
 
-        # Create external.yaml
+        # Get current tips for this project's causal ordering
+        try:
+            index = ArtifactIndex(project_path)
+            tips = index.find_tips(ArtifactType.CHUNK)
+        except Exception:
+            tips = []
+
+        # Create external.yaml with created_after
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=project_chunk_id,
             external_repo_ref=config.external_chunk_repo,
             external_chunk_id=external_chunk_id,
             pinned_sha=pinned_sha,
+            created_after=tips,
         )
 
         # Build dependent entry

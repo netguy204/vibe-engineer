@@ -41,6 +41,8 @@ chunks:
   relationship: implements
 - chunk_id: tip_detection_active_only
   relationship: implements
+- chunk_id: external_chunk_causal
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -85,11 +87,11 @@ code_references:
   implements: Subsystem state transition rules
   compliance: COMPLIANT
 - ref: src/models.py#ExternalChunkRef
-  implements: External chunk reference schema
-  compliance: PARTIAL
+  implements: External chunk reference schema with created_after for local causal ordering
+  compliance: COMPLIANT
 - ref: src/task_utils.py#create_external_yaml
-  implements: External reference creation (chunks only)
-  compliance: PARTIAL
+  implements: External reference creation with causal ordering support
+  compliance: COMPLIANT
 - ref: src/ve.py#start
   implements: Chunk creation CLI command
   compliance: NON_COMPLIANT
@@ -418,11 +420,18 @@ Cached ordering system for workflow artifacts based on causal DAG ordering.
 - After a merge, multiple tips may exist until new work is created
 - `ArtifactIndex.find_tips()` returns all current tips for an artifact type
 - **Status-aware filtering**: Tips are filtered by status to exclude "future/queued" artifacts:
-  - Chunks: Only ACTIVE or IMPLEMENTING chunks are tips (excludes FUTURE, SUPERSEDED, HISTORICAL)
+  - Chunks: Only ACTIVE, IMPLEMENTING, or EXTERNAL chunks are tips (excludes FUTURE, SUPERSEDED, HISTORICAL)
   - Narratives: Only ACTIVE narratives are tips (excludes DRAFTING, COMPLETED)
   - Investigations: No filtering (all statuses are tip-eligible)
   - Subsystems: No filtering (all statuses are tip-eligible)
 - This ensures `created_after` captures causal ordering of actual work, not planned work
+
+**External chunk support:**
+- External chunks (directories with `external.yaml` but no `GOAL.md`) participate in causal ordering
+- `external.yaml` contains `created_after` field for local ordering (separate from the external repo's ordering)
+- External chunks use "EXTERNAL" pseudo-status (always tip-eligible)
+- `_parse_yaml_created_after()` reads `created_after` from plain YAML (not markdown frontmatter)
+- `create_task_chunk()` automatically populates `created_after` with current tips when creating references
 
 **Performance optimization:**
 - Directory-enumeration-based staleness detection (no git required per DEC-002)
@@ -472,31 +481,17 @@ span repositories.
 **Impact**: High. Violates hard invariant #7. Cross-repo work involving non-chunk
 artifacts is not supported, limiting the system's utility for multi-repo workflows.
 
-### External Chunk References Not in Causal Ordering
+### ~~External Chunk References Not in Causal Ordering~~ (RESOLVED)
 
-**Location**: `src/artifact_ordering.py`, `src/models.py#ExternalChunkRef`
+**Resolved by**: chunk external_chunk_causal
 
-`ArtifactIndex` only processes directories containing GOAL.md. External chunk directories
-have `external.yaml` instead, so they are completely excluded from:
-- The ordered artifact list
-- Tip identification
-- Staleness detection
-
-The `ExternalChunkRef` model also lacks a `created_after` field. An external chunk's
-GOAL.md `created_after` tracks its position in the *external repo's* causal chain,
-but we need a separate field to track where the reference fits in the *local* causal
-ordering.
-
-**Impact**: High. Violates hard invariant #2. External chunks are invisible to causal
-ordering and always appear as orphans. The same external chunk could be referenced
-from multiple projects at different points in their respective causal chains, but
-currently this is not tracked.
-
-**Proposed fix**: Add `created_after: list[str]` to `ExternalChunkRef` model. Update
-`ArtifactIndex` to enumerate directories with `external.yaml` when GOAL.md doesn't
-exist, and read `created_after` from external.yaml (plain YAML, not markdown frontmatter).
-See investigation 0001-artifact_sequence_numbering proposed chunks for implementation
-details.
+External chunk references now participate in local causal ordering:
+- `ExternalChunkRef` model has `created_after: list[str]` field for local ordering
+- `ArtifactIndex._enumerate_artifacts()` includes directories with `external.yaml` (no GOAL.md)
+- `ArtifactIndex._build_index_for_type()` reads `created_after` from `external.yaml`
+- External chunks use "EXTERNAL" pseudo-status for tip eligibility (always tip-eligible)
+- `create_task_chunk()` automatically populates `created_after` with current tips
+- Staleness detection triggers on external.yaml directory changes
 
 ## Chunk Relationships
 
@@ -576,6 +571,14 @@ details.
   have no filtering. Added `_parse_status()` helper and `_TIP_ELIGIBLE_STATUSES` constant.
   This ensures multiple FUTURE chunks created in sequence all reference the same active tip,
   rather than forming an implied causal chain among themselves.
+
+- **external_chunk_causal** - Extended causal ordering system to include external chunk
+  references. Added `created_after` field to `ExternalChunkRef` model for local ordering.
+  Updated `ArtifactIndex` to enumerate directories with `external.yaml` (no GOAL.md),
+  read `created_after` from external.yaml, and include external chunks in topological
+  ordering and tip identification. External chunks use "EXTERNAL" pseudo-status for
+  tip eligibility. `create_task_chunk()` now automatically populates `created_after`
+  with current tips when creating external references.
 
 ## Consolidation Chunks
 

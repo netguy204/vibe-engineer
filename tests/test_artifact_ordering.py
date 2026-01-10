@@ -1162,3 +1162,261 @@ created_after: []
         # Tips should exclude FUTURE
         tips = sorted(index.find_tips(ArtifactType.CHUNK))
         assert tips == ["0003-implementing"]
+
+
+# Chunk: docs/chunks/external_chunk_causal - External chunk ordering tests
+class TestExternalChunkOrdering:
+    """Tests for external chunk handling in causal ordering.
+
+    External chunks are referenced via external.yaml (no GOAL.md) and should
+    participate in local causal ordering with their own created_after field.
+    """
+
+    def _create_external_chunk(
+        self,
+        chunks_dir: Path,
+        name: str,
+        repo: str = "org/external-repo",
+        chunk: str = "external_chunk_name",
+        created_after: list[str] | None = None,
+    ):
+        """Helper to create an external chunk reference."""
+        import yaml
+
+        chunk_dir = chunks_dir / name
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "repo": repo,
+            "chunk": chunk,
+            "track": "main",
+            "pinned": "a" * 40,
+        }
+        if created_after:
+            data["created_after"] = created_after
+
+        with open(chunk_dir / "external.yaml", "w") as f:
+            yaml.dump(data, f)
+
+    def test_external_chunks_included_in_enumeration(self, tmp_path):
+        """External chunks are included when enumerating artifacts."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Local chunk
+        _create_chunk(chunks_dir, "0001-local")
+
+        # External chunk reference
+        self._create_external_chunk(chunks_dir, "0002-external")
+
+        result = _enumerate_artifacts(chunks_dir, ArtifactType.CHUNK)
+
+        assert result == {"0001-local", "0002-external"}
+
+    def test_external_chunks_included_in_ordered_list(self, tmp_path):
+        """External chunks appear in get_ordered() output."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-local")
+        self._create_external_chunk(chunks_dir, "0002-external")
+
+        index = ArtifactIndex(tmp_path)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        assert "0001-local" in ordered
+        assert "0002-external" in ordered
+        assert len(ordered) == 2
+
+    def test_external_chunk_can_be_tip(self, tmp_path):
+        """External chunk with no dependents is identified as tip."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-local")
+        self._create_external_chunk(
+            chunks_dir, "0002-external", created_after=["0001-local"]
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # External chunk is the tip (nothing references it)
+        assert tips == ["0002-external"]
+
+    def test_mixed_local_and_external_ordering(self, tmp_path):
+        """Local and external chunks are correctly ordered together."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Create a chain: local_a -> external -> local_b
+        _create_chunk(chunks_dir, "0001-local_a")
+        self._create_external_chunk(
+            chunks_dir, "0002-external", created_after=["0001-local_a"]
+        )
+        _create_chunk(chunks_dir, "0003-local_b", created_after=["0002-external"])
+
+        index = ArtifactIndex(tmp_path)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # Verify ordering constraints
+        assert ordered.index("0001-local_a") < ordered.index("0002-external")
+        assert ordered.index("0002-external") < ordered.index("0003-local_b")
+
+    def test_external_chunk_created_after_respected(self, tmp_path):
+        """External chunk's created_after field is used for ordering."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-first")
+        _create_chunk(chunks_dir, "0002-second")
+        # External chunk depends on both local chunks
+        self._create_external_chunk(
+            chunks_dir, "0003-external", created_after=["0001-first", "0002-second"]
+        )
+
+        index = ArtifactIndex(tmp_path)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # External chunk must come after both locals
+        assert ordered.index("0001-first") < ordered.index("0003-external")
+        assert ordered.index("0002-second") < ordered.index("0003-external")
+
+    def test_staleness_detects_external_yaml_addition(self, tmp_path):
+        """Adding external chunks triggers index rebuild."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-local")
+
+        index = ArtifactIndex(tmp_path)
+        result1 = index.get_ordered(ArtifactType.CHUNK)
+        assert result1 == ["0001-local"]
+
+        # Add external chunk
+        self._create_external_chunk(chunks_dir, "0002-external")
+
+        result2 = index.get_ordered(ArtifactType.CHUNK)
+        assert len(result2) == 2
+        assert "0002-external" in result2
+
+    def test_staleness_detects_external_yaml_removal(self, tmp_path):
+        """Removing external chunks triggers index rebuild."""
+        import shutil
+
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-local")
+        self._create_external_chunk(chunks_dir, "0002-external")
+
+        index = ArtifactIndex(tmp_path)
+        result1 = index.get_ordered(ArtifactType.CHUNK)
+        assert len(result1) == 2
+
+        # Remove external chunk
+        shutil.rmtree(chunks_dir / "0002-external")
+
+        result2 = index.get_ordered(ArtifactType.CHUNK)
+        assert result2 == ["0001-local"]
+
+    def test_external_chunks_always_tip_eligible(self, tmp_path):
+        """External chunks are always eligible to be tips (EXTERNAL pseudo-status)."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Active local chunk
+        _create_chunk(chunks_dir, "0001-active", status="ACTIVE")
+        # External chunk (no explicit status, uses EXTERNAL pseudo-status)
+        self._create_external_chunk(
+            chunks_dir, "0002-external", created_after=["0001-active"]
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # External chunk is a tip (it's tip-eligible)
+        assert tips == ["0002-external"]
+
+    def test_external_chunk_referenced_excludes_from_tips(self, tmp_path):
+        """External chunk referenced by another tip-eligible artifact is not a tip."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-active", status="ACTIVE")
+        self._create_external_chunk(
+            chunks_dir, "0002-external", created_after=["0001-active"]
+        )
+        # Local chunk references the external chunk
+        _create_chunk(
+            chunks_dir, "0003-current", created_after=["0002-external"], status="IMPLEMENTING"
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # Only 0003-current is a tip
+        assert tips == ["0003-current"]
+
+    def test_external_chunk_without_created_after_is_root(self, tmp_path):
+        """External chunk without created_after is a root in the causal graph."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # External chunk with no created_after (legacy or intentional root)
+        self._create_external_chunk(chunks_dir, "external_root")
+        _create_chunk(
+            chunks_dir, "0001-local", created_after=["external_root"]
+        )
+
+        index = ArtifactIndex(tmp_path)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # External root comes first
+        assert ordered.index("external_root") < ordered.index("0001-local")
+
+    def test_external_chunk_in_get_ancestors(self, tmp_path):
+        """get_ancestors correctly handles external chunks in the ancestry."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-root")
+        self._create_external_chunk(
+            chunks_dir, "0002-external", created_after=["0001-root"]
+        )
+        _create_chunk(chunks_dir, "0003-leaf", created_after=["0002-external"])
+
+        index = ArtifactIndex(tmp_path)
+        ancestors = index.get_ancestors(ArtifactType.CHUNK, "0003-leaf")
+
+        # Both root and external chunk are ancestors
+        assert ancestors == {"0001-root", "0002-external"}
+
+    def test_multiple_external_chunks_ordering(self, tmp_path):
+        """Multiple external chunks are correctly ordered."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-base")
+        self._create_external_chunk(
+            chunks_dir, "ext_a", created_after=["0001-base"]
+        )
+        self._create_external_chunk(
+            chunks_dir, "ext_b", created_after=["0001-base"]
+        )
+        self._create_external_chunk(
+            chunks_dir, "ext_merge", created_after=["ext_a", "ext_b"]
+        )
+
+        index = ArtifactIndex(tmp_path)
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+
+        # Verify ordering
+        assert ordered.index("0001-base") < ordered.index("ext_a")
+        assert ordered.index("0001-base") < ordered.index("ext_b")
+        assert ordered.index("ext_a") < ordered.index("ext_merge")
+        assert ordered.index("ext_b") < ordered.index("ext_merge")
+
+        # Tips should only include ext_merge
+        tips = index.find_tips(ArtifactType.CHUNK)
+        assert tips == ["ext_merge"]

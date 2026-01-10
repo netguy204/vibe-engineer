@@ -54,7 +54,7 @@ proposed_chunks:
     Update chunk creation flow (task_utils.py) to set created_after when creating
     external.yaml references. This ensures external chunks participate in local causal
     ordering.'
-  chunk_directory: null
+  chunk_directory: external_chunk_causal
 created_after: []
 ---
 

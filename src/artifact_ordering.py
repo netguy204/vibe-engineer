@@ -81,6 +81,7 @@ _ARTIFACT_MAIN_FILE: dict[ArtifactType, str] = {
 }
 
 
+# Chunk: docs/chunks/external_chunk_causal - Include external chunks in enumeration
 def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
     """Enumerate artifact directory names.
 
@@ -89,18 +90,31 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
         artifact_type: Type of artifact to determine main file name.
 
     Returns:
-        Set of artifact directory names (only includes directories that
-        have the required main file, e.g., GOAL.md or OVERVIEW.md).
+        Set of artifact directory names. Includes directories that have:
+        - The required main file (e.g., GOAL.md or OVERVIEW.md), OR
+        - For chunks only: external.yaml (external chunk reference)
     """
     if not artifact_dir.exists():
         return set()
 
     main_file = _ARTIFACT_MAIN_FILE[artifact_type]
-    return {
-        item.name
-        for item in artifact_dir.iterdir()
-        if item.is_dir() and (item / main_file).exists()
-    }
+    result = set()
+
+    for item in artifact_dir.iterdir():
+        if not item.is_dir():
+            continue
+
+        main_path = item / main_file
+        external_path = item / "external.yaml"
+
+        if main_path.exists():
+            # Local artifact
+            result.add(item.name)
+        elif artifact_type == ArtifactType.CHUNK and external_path.exists():
+            # External chunk reference
+            result.add(item.name)
+
+    return result
 
 
 # Regex to extract YAML frontmatter from markdown files
@@ -167,6 +181,45 @@ def _parse_created_after(file_path: Path) -> list[str]:
     return []
 
 
+# Chunk: docs/chunks/external_chunk_causal - Parse created_after from external.yaml
+def _parse_yaml_created_after(file_path: Path) -> list[str]:
+    """Parse created_after from a plain YAML file (e.g., external.yaml).
+
+    Args:
+        file_path: Path to a plain YAML file (not markdown frontmatter).
+
+    Returns:
+        List of artifact names from created_after field.
+        Returns empty list if file doesn't exist, has invalid YAML,
+        or missing created_after field.
+    """
+    if not file_path.exists():
+        return []
+
+    try:
+        data = yaml.safe_load(file_path.read_text())
+        if not data:
+            return []
+
+        created_after = data.get("created_after", [])
+
+        # Handle null/None
+        if created_after is None:
+            return []
+
+        # Handle legacy single string format
+        if isinstance(created_after, str):
+            return [created_after]
+
+        # Should be a list
+        if isinstance(created_after, list):
+            return created_after
+
+        return []
+    except (yaml.YAMLError, OSError):
+        return []
+
+
 # Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
 def _parse_status(file_path: Path) -> str | None:
     """Parse the status field from a file's frontmatter.
@@ -198,10 +251,11 @@ _ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
 }
 
 # Chunk: docs/chunks/tip_detection_active_only - Tip-eligible statuses per artifact type
+# Chunk: docs/chunks/external_chunk_causal - Added EXTERNAL pseudo-status for external chunks
 # Statuses that are considered "active" for tip detection purposes.
 # None means no status filtering (all statuses are tip-eligible).
 _TIP_ELIGIBLE_STATUSES: dict[ArtifactType, set[str] | None] = {
-    ArtifactType.CHUNK: {"ACTIVE", "IMPLEMENTING"},
+    ArtifactType.CHUNK: {"ACTIVE", "IMPLEMENTING", "EXTERNAL"},
     ArtifactType.NARRATIVE: {"ACTIVE"},
     ArtifactType.INVESTIGATION: None,  # No filtering - all statuses are tips
     ArtifactType.SUBSYSTEM: None,  # No filtering - all statuses are tips
@@ -276,6 +330,7 @@ class ArtifactIndex:
         return stored_directories != current_directories
 
     # Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
+    # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in index building
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
         artifact_dir = self._get_artifact_dir(artifact_type)
@@ -296,9 +351,23 @@ class ArtifactIndex:
         statuses: dict[str, str | None] = {}
         for artifact_name in artifacts:
             main_path = artifact_dir / artifact_name / main_file
-            created_after = _parse_created_after(main_path)
+            external_path = artifact_dir / artifact_name / "external.yaml"
+
+            if main_path.exists():
+                # Local artifact
+                created_after = _parse_created_after(main_path)
+                status = _parse_status(main_path)
+            elif external_path.exists():
+                # External chunk reference
+                created_after = _parse_yaml_created_after(external_path)
+                status = "EXTERNAL"  # Pseudo-status, always tip-eligible
+            else:
+                # Should not happen given _enumerate_artifacts logic
+                created_after = []
+                status = None
+
             deps[artifact_name] = created_after
-            statuses[artifact_name] = _parse_status(main_path)
+            statuses[artifact_name] = status
 
         # Topological sort
         ordered = _topological_sort_multi_parent(deps)
@@ -403,6 +472,7 @@ class ArtifactIndex:
         self._save_index(self._cache)
 
     # Chunk: docs/chunks/remove_sequence_prefix - Get all ancestors of an artifact
+    # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in ancestor lookup
     def get_ancestors(self, artifact_type: ArtifactType, artifact_name: str) -> set[str]:
         """Get all ancestors (artifacts created before) of the given artifact.
 
@@ -425,7 +495,15 @@ class ArtifactIndex:
         deps: dict[str, list[str]] = {}
         for name in artifacts:
             main_path = artifact_dir / name / main_file
-            created_after = _parse_created_after(main_path)
+            external_path = artifact_dir / name / "external.yaml"
+
+            if main_path.exists():
+                created_after = _parse_created_after(main_path)
+            elif external_path.exists():
+                created_after = _parse_yaml_created_after(external_path)
+            else:
+                created_after = []
+
             deps[name] = created_after
 
         if artifact_name not in deps:
