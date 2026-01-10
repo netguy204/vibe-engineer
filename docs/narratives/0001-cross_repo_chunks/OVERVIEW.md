@@ -15,7 +15,7 @@ proposed_chunks:
   - prompt: "ve sync command: Implement ve sync to update pinned fields in external chunk references. When run from a task directory: iterate all projects, find external.yaml files, resolve current SHA from external chunk repo, update pinned if changed. When run from a single repo: update only that repo's external references. Report which references were updated."
     chunk_directory: "0034-ve_sync_command"
   - prompt: "ve external resolve command: Implement ve external resolve <local-chunk-id> [--at-pinned] to display an external chunk's content. Locate the external.yaml, resolve the external chunk location, display GOAL.md and PLAN.md. By default show content at current HEAD of external repo; with --at-pinned show content at the pinned SHA. Works from both task directory and single repo contexts."
-    chunk_directory: null
+    chunk_directory: "0035-external_resolve"
 ---
 
 ## Advances Trunk Goal
