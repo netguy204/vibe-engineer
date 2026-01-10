@@ -29,6 +29,8 @@ chunks:
   relationship: implements
 - chunk_id: 0041-artifact_list_ordering
   relationship: implements
+- chunk_id: 0040-artifact_index_no_git
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -355,7 +357,8 @@ Cross-repo pattern (currently chunks only):
 Cached ordering system for workflow artifacts:
 - `ArtifactType` enum defining all workflow artifact types
 - `ArtifactIndex` class providing topological sorting and tip identification
-- Git-hash-based staleness detection for efficient caching
+- Directory-enumeration-based staleness detection (no git required)
+- Since `created_after` is immutable after creation, only directory adds/removes trigger rebuild
 - Parses `created_after` field from frontmatter to build dependency DAG
 - Supports multi-parent DAGs (merged branches) via Kahn's algorithm
 - Index stored as gitignored JSON (`.artifact-order.json`)
@@ -440,7 +443,10 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
   frontmatter models for causal ordering
 
 - **0038-artifact_ordering_index** - Created `src/artifact_ordering.py` with `ArtifactIndex`
-  class for cached topological sorting and tip identification using git-hash staleness
+  class for cached topological sorting and tip identification
+
+- **0040-artifact_index_no_git** - Simplified `ArtifactIndex` staleness detection to use
+  directory enumeration instead of git-hash based detection, aligning with DEC-002
 
 - **0039-populate_created_after** - Automatically populates `created_after` field when
   creating new artifacts, tracking current tips for causal ordering

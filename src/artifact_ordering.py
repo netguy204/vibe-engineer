@@ -1,15 +1,16 @@
 """Cached ordering system for workflow artifacts.
 
 # Chunk: docs/chunks/0038-artifact_ordering_index - Causal ordering infrastructure
+# Chunk: docs/chunks/0040-artifact_index_no_git - Directory-based staleness detection
 # Subsystem: docs/subsystems/0002-workflow_artifacts - Artifact ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
-listings using git-hash-based staleness detection and topological sorting.
+listings using directory enumeration for staleness detection and topological sorting.
+Works in any directory without requiring git.
 """
 
 import json
 import re
-import subprocess
 from collections import defaultdict
 from enum import StrEnum
 from pathlib import Path
@@ -80,77 +81,26 @@ _ARTIFACT_MAIN_FILE: dict[ArtifactType, str] = {
 }
 
 
-def _get_git_hash(file_path: Path) -> str | None:
-    """Get the git blob hash for a file.
-
-    Returns the hash of the file's current content (working tree),
-    or None if git is not available or file does not exist.
-
-    Args:
-        file_path: Path to the file to hash.
-
-    Returns:
-        40-character hex hash string, or None on failure.
-    """
-    if not file_path.exists():
-        return None
-    try:
-        result = subprocess.run(
-            ["git", "hash-object", str(file_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-
-
-def _get_all_artifact_hashes(
-    artifact_dir: Path, artifact_type: ArtifactType
-) -> dict[str, str]:
-    """Get git hashes for all main files in artifact directories.
-
-    Uses a single batched git command for efficiency.
+def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
+    """Enumerate artifact directory names.
 
     Args:
         artifact_dir: Directory containing artifact subdirectories.
         artifact_type: Type of artifact to determine main file name.
 
     Returns:
-        Dict mapping artifact directory name to git hash.
+        Set of artifact directory names (only includes directories that
+        have the required main file, e.g., GOAL.md or OVERVIEW.md).
     """
     if not artifact_dir.exists():
-        return {}
+        return set()
 
     main_file = _ARTIFACT_MAIN_FILE[artifact_type]
-    artifacts: list[tuple[str, Path]] = []
-
-    for item in artifact_dir.iterdir():
-        if item.is_dir():
-            main_path = item / main_file
-            if main_path.exists():
-                artifacts.append((item.name, main_path))
-
-    if not artifacts:
-        return {}
-
-    # Sort for deterministic ordering
-    artifacts.sort(key=lambda x: x[0])
-
-    # Hash all files in one git command
-    files = [str(path) for _, path in artifacts]
-    try:
-        result = subprocess.run(
-            ["git", "hash-object", "--"] + files,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        hashes = result.stdout.strip().split("\n")
-        return {name: h for (name, _), h in zip(artifacts, hashes)}
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return {}
+    return {
+        item.name
+        for item in artifact_dir.iterdir()
+        if item.is_dir() and (item / main_file).exists()
+    }
 
 
 # Regex to extract YAML frontmatter from markdown files
@@ -211,19 +161,20 @@ _ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
 }
 
 # Index format version for compatibility checks
-_INDEX_VERSION = 1
+_INDEX_VERSION = 2
 
 
 class ArtifactIndex:
     """Cached ordering system for workflow artifacts.
 
     Provides ordered artifact listings and tip identification using:
-    - Git blob hashes for staleness detection
+    - Directory enumeration for staleness detection (no git required)
     - Topological sort (Kahn's algorithm) for causal ordering
     - Fallback to sequence number order when created_after is empty
 
-    The index is stored as gitignored JSON (.artifact-order.json) and
-    automatically rebuilds when artifacts change.
+    The index is stored as JSON (.artifact-order.json) and automatically
+    rebuilds when artifacts are added or removed. Since created_after is
+    immutable after artifact creation, content changes don't require rebuild.
     """
 
     def __init__(self, project_root: Path | None = None):
@@ -256,7 +207,12 @@ class ArtifactIndex:
     def _is_index_stale(
         self, index: dict[str, Any], artifact_type: ArtifactType
     ) -> bool:
-        """Check if the index is stale for the given artifact type."""
+        """Check if the index is stale for the given artifact type.
+
+        Staleness is determined by comparing directory sets. Since created_after
+        is immutable after creation, we only need to detect when artifacts are
+        added or removed - not when contents change.
+        """
         type_key = artifact_type.value
         type_index = index.get(type_key, {})
 
@@ -267,66 +223,25 @@ class ArtifactIndex:
             return True
 
         artifact_dir = self._get_artifact_dir(artifact_type)
-        if not artifact_dir.exists():
-            # No artifacts exist; stale if index has any
-            return bool(type_index.get("hashes"))
+        stored_directories = set(type_index.get("directories", []))
+        current_directories = _enumerate_artifacts(artifact_dir, artifact_type)
 
-        # Get current artifact set
-        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
-        current_artifacts = {
-            item.name
-            for item in artifact_dir.iterdir()
-            if item.is_dir() and (item / main_file).exists()
-        }
-
-        indexed_artifacts = set(type_index.get("hashes", {}).keys())
-
-        # New or deleted artifacts
-        if current_artifacts != indexed_artifacts:
-            return True
-
-        # Get current hashes
-        current_hashes = _get_all_artifact_hashes(artifact_dir, artifact_type)
-
-        # Check for modified artifacts
-        for artifact_name, indexed_hash in type_index.get("hashes", {}).items():
-            current_hash = current_hashes.get(artifact_name)
-            if current_hash != indexed_hash:
-                return True
-
-        return False
+        return stored_directories != current_directories
 
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
         artifact_dir = self._get_artifact_dir(artifact_type)
-
-        if not artifact_dir.exists():
-            return {
-                "ordered": [],
-                "tips": [],
-                "hashes": {},
-                "version": _INDEX_VERSION,
-            }
-
-        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
-
-        # Get all artifact directories
-        artifacts = [
-            item.name
-            for item in artifact_dir.iterdir()
-            if item.is_dir() and (item / main_file).exists()
-        ]
+        artifacts = _enumerate_artifacts(artifact_dir, artifact_type)
 
         if not artifacts:
             return {
                 "ordered": [],
                 "tips": [],
-                "hashes": {},
+                "directories": [],
                 "version": _INDEX_VERSION,
             }
 
-        # Get hashes
-        hashes = _get_all_artifact_hashes(artifact_dir, artifact_type)
+        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
 
         # Build dependency graph
         deps: dict[str, list[str]] = {}
@@ -347,7 +262,7 @@ class ArtifactIndex:
         return {
             "ordered": ordered,
             "tips": tips,
-            "hashes": hashes,
+            "directories": sorted(artifacts),
             "version": _INDEX_VERSION,
         }
 

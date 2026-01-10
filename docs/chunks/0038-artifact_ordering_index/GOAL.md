@@ -18,14 +18,10 @@ code_references:
     implements: "Forces index regeneration for specified artifact type"
   - ref: src/artifact_ordering.py#_topological_sort_multi_parent
     implements: "Kahn's algorithm for multi-parent DAG topological sorting"
-  - ref: src/artifact_ordering.py#_get_git_hash
-    implements: "Single file git blob hash for staleness detection"
-  - ref: src/artifact_ordering.py#_get_all_artifact_hashes
-    implements: "Batched git hash-object for efficient staleness checking"
   - ref: src/artifact_ordering.py#_parse_created_after
     implements: "Extracts created_after field from YAML frontmatter"
   - ref: tests/test_artifact_ordering.py
-    implements: "Comprehensive test suite (43 tests) for artifact ordering"
+    implements: "Comprehensive test suite for artifact ordering"
 narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"

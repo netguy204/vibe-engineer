@@ -1,175 +1,206 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The current `ArtifactIndex` uses git hash-object to detect staleness:
+1. `_get_git_hash()` - gets hash of a single file
+2. `_get_all_artifact_hashes()` - batches hash-object calls for all artifacts
+3. `_is_index_stale()` - compares stored hashes against current hashes
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+This approach violates DEC-002 (git not assumed) and is unnecessary since `created_after`
+is immutable after artifact creation. We only need to detect when artifacts are **added**
+or **removed**, not when their contents change.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**New approach**: Replace file content hashing with directory set comparison:
+1. Store the set of artifact directory names in the index (instead of hashes)
+2. On access, enumerate current directories via `pathlib`
+3. If the sets differ, rebuild; otherwise use cached values
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/0040-artifact_index_no_git/GOAL.md)
-with references to the files that you expect to touch.
--->
+This is simpler, faster (no subprocess calls), and works without git.
+
+**Key insight**: The only way the ordering can change is if:
+- A new artifact is added (detected by set membership)
+- An artifact is deleted (detected by set membership)
+
+Content changes don't affect ordering because `created_after` is immutable.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/0002-workflow_artifacts** (REFACTORING): This chunk IMPLEMENTS
+  the artifact ordering component, removing git dependency per DEC-002.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Since the subsystem is in REFACTORING status, I will ensure changes align with
+the subsystem's patterns (manager class interface, index file format conventions).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Remove git hash utility functions
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Delete `_get_git_hash()` and `_get_all_artifact_hashes()` functions from
+`src/artifact_ordering.py`. These are no longer needed.
 
-Example:
+Also remove the `subprocess` import since it won't be used.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/artifact_ordering.py` (lines 10, 83-153)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add directory enumeration helper
 
-Location: src/segment/format.rs
+Create a new helper function `_enumerate_artifacts()` that returns a set of
+artifact directory names for a given artifact type directory.
 
-### Step 2: Implement header serialization
+```python
+def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
+    """Enumerate artifact directory names.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+    Args:
+        artifact_dir: Directory containing artifact subdirectories.
+        artifact_type: Type of artifact to determine main file name.
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/NNNN-short_name - Brief description of what this chunk does
+    Returns:
+        Set of artifact directory names (only includes directories that
+        have the required main file, e.g., GOAL.md or OVERVIEW.md).
+    """
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/0018-bidirectional_refs - Bidirectional chunk-subsystem linking
+This uses pure `pathlib` operations: `artifact_dir.iterdir()`, `item.is_dir()`,
+and `(item / main_file).exists()`.
+
+Location: `src/artifact_ordering.py`
+
+### Step 3: Update index format - replace "hashes" with "directories"
+
+Modify `_build_index_for_type()` to store `directories` (a list of directory names)
+instead of `hashes`. The list format preserves JSON serialization compatibility.
+
+Update the index data structure:
+```python
+return {
+    "ordered": ordered,
+    "tips": tips,
+    "directories": sorted(artifacts),  # Was "hashes"
+    "version": _INDEX_VERSION,
+}
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+Bump `_INDEX_VERSION` from 1 to 2 to force rebuild of existing indexes.
+
+Location: `src/artifact_ordering.py` (lines 299-352)
+
+### Step 4: Update staleness check logic
+
+Modify `_is_index_stale()` to compare directory sets instead of checking hashes:
+
+1. Extract `directories` from stored index (instead of `hashes`)
+2. Use `_enumerate_artifacts()` to get current directories
+3. Compare sets: if different, index is stale
+
+The new logic:
+```python
+stored_directories = set(type_index.get("directories", []))
+current_directories = _enumerate_artifacts(artifact_dir, artifact_type)
+return stored_directories != current_directories
 ```
-# Chunk: docs/chunks/NNNN-short_name - Brief description
-# Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
+
+No more hash comparison loop needed.
+
+Location: `src/artifact_ordering.py` (`_is_index_stale` method, lines 256-297)
+
+### Step 5: Update module docstring and class docstring
+
+Update the module docstring to reflect the new approach (directory enumeration
+instead of git-hash-based staleness).
+
+Update the `ArtifactIndex` class docstring similarly.
+
+Location: `src/artifact_ordering.py` (lines 1-8, 217-227)
+
+### Step 6: Update tests - replace git_temp_dir fixture with tmp_path
+
+Many tests use the `git_temp_dir` fixture which initializes a git repo. Replace
+these with `tmp_path` (pytest built-in) for tests that don't need git.
+
+Key changes:
+- `TestArtifactIndex` tests should use `tmp_path` (proves non-git works)
+- `TestArtifactIndexIntegration` tests should use `tmp_path`
+- `TestPerformance` tests should use `tmp_path`
+- `TestBackwardCompatibility` tests should use `tmp_path`
+
+Location: `tests/test_artifact_ordering.py`
+
+### Step 7: Remove or update git hash utility tests
+
+The `TestGitHashUtilities` test class tests `_get_git_hash` and
+`_get_all_artifact_hashes` which will be deleted. Remove this entire test class.
+
+Location: `tests/test_artifact_ordering.py` (class `TestGitHashUtilities`)
+
+### Step 8: Update test imports
+
+Remove `_get_git_hash` and `_get_all_artifact_hashes` from the test imports.
+Add `_enumerate_artifacts` to test imports if we want to unit test it.
+
+Location: `tests/test_artifact_ordering.py` (lines 12-19)
+
+### Step 9: Add tests for non-git directory operation
+
+Add a new test class `TestNonGitOperation` that explicitly verifies:
+- `ArtifactIndex` works in a directory that is not a git repository
+- Directory enumeration correctly detects added artifacts
+- Directory enumeration correctly detects deleted artifacts
+
+```python
+class TestNonGitOperation:
+    """Tests that verify ArtifactIndex works without git."""
+
+    def test_works_in_non_git_directory(self, tmp_path):
+        """ArtifactIndex works in a directory that is not a git repo."""
+
+    def test_detects_new_artifact_without_git(self, tmp_path):
+        """New artifact is detected and index rebuilds without git."""
+
+    def test_detects_deleted_artifact_without_git(self, tmp_path):
+        """Deleted artifact is detected and index rebuilds without git."""
 ```
--->
+
+Location: `tests/test_artifact_ordering.py`
+
+### Step 10: Update test_index_file_format test
+
+The `test_index_file_format` test verifies JSON structure. Update it to check
+for `directories` instead of `hashes`, and verify the version number is 2.
+
+Location: `tests/test_artifact_ordering.py` (`test_index_file_format`)
+
+### Step 11: Verify all tests pass
+
+Run the full test suite to ensure:
+- All existing tests pass (or are appropriately updated)
+- No subprocess calls remain in artifact_ordering.py
+- ArtifactIndex works correctly in non-git environments
+
+```bash
+uv run pytest tests/test_artifact_ordering.py -v
+uv run pytest tests/ -v
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **0038-artifact_ordering_index**: Parent chunk that created `ArtifactIndex`
+  (must be complete - it is ACTIVE)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Performance impact of directory enumeration vs hash checking**: Directory
+   enumeration via `pathlib` should be faster than subprocess calls to git, but
+   should verify in performance tests.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Index file format migration**: Bumping version to 2 will force rebuild of
+   all existing indexes. This is intentional and safe since rebuild is fast.
+
+3. **Edge case: artifact directory exists but main file is missing**: Current
+   behavior treats this as "artifact doesn't exist". New approach should
+   maintain this behavior (check for main file existence in enumeration).
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->
