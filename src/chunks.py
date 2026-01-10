@@ -644,6 +644,73 @@ class Chunks:
 
         return results
 
+    # Chunk: docs/chunks/valid_transitions - State transition validation
+    def get_status(self, chunk_id: str) -> ChunkStatus:
+        """Get the current status of a chunk.
+
+        Args:
+            chunk_id: The chunk ID to get status for.
+
+        Returns:
+            The current ChunkStatus.
+
+        Raises:
+            ValueError: If chunk not found or has invalid frontmatter.
+        """
+        chunk_name = self.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            raise ValueError(f"Chunk '{chunk_id}' not found in docs/chunks/")
+
+        frontmatter = self.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is None:
+            raise ValueError(f"Chunk '{chunk_id}' has invalid frontmatter")
+
+        return frontmatter.status
+
+    # Chunk: docs/chunks/valid_transitions - State transition validation
+    def update_status(
+        self, chunk_id: str, new_status: ChunkStatus
+    ) -> tuple[ChunkStatus, ChunkStatus]:
+        """Update chunk status with transition validation.
+
+        Args:
+            chunk_id: The chunk ID to update.
+            new_status: The new status to transition to.
+
+        Returns:
+            Tuple of (old_status, new_status) on success.
+
+        Raises:
+            ValueError: If chunk not found, invalid status, or invalid transition.
+        """
+        from task_utils import update_frontmatter_field
+        from models import VALID_CHUNK_TRANSITIONS
+
+        # Get current status
+        current_status = self.get_status(chunk_id)
+
+        # Validate the transition
+        valid_transitions = VALID_CHUNK_TRANSITIONS.get(current_status, set())
+        if new_status not in valid_transitions:
+            valid_names = sorted(s.value for s in valid_transitions)
+            if valid_names:
+                valid_str = ", ".join(valid_names)
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"Valid transitions: {valid_str}"
+                )
+            else:
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"{current_status.value} is a terminal state with no valid transitions"
+                )
+
+        # Update the frontmatter
+        goal_path = self.get_chunk_goal_path(chunk_id)
+        update_frontmatter_field(goal_path, "status", new_status.value)
+
+        return (current_status, new_status)
+
     # Chunk: docs/chunks/bidirectional_refs - Validate subsystem references
     # Chunk: docs/chunks/chunk_frontmatter_model - Use typed frontmatter access
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:

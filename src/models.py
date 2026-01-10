@@ -38,6 +38,15 @@ class InvestigationStatus(StrEnum):
     DEFERRED = "DEFERRED"  # Investigation paused; may be revisited later
 
 
+# Chunk: docs/chunks/valid_transitions - State transition validation
+VALID_INVESTIGATION_TRANSITIONS: dict[InvestigationStatus, set[InvestigationStatus]] = {
+    InvestigationStatus.ONGOING: {InvestigationStatus.SOLVED, InvestigationStatus.NOTED, InvestigationStatus.DEFERRED},
+    InvestigationStatus.SOLVED: set(),  # Terminal state
+    InvestigationStatus.NOTED: set(),  # Terminal state
+    InvestigationStatus.DEFERRED: {InvestigationStatus.ONGOING},  # Can resume
+}
+
+
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk lifecycle states
 class ChunkStatus(StrEnum):
     """Status values for chunk lifecycle."""
@@ -47,6 +56,16 @@ class ChunkStatus(StrEnum):
     ACTIVE = "ACTIVE"  # Accurately describes current or recently-merged work
     SUPERSEDED = "SUPERSEDED"  # Another chunk has modified the code this chunk governed
     HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
+
+
+# Chunk: docs/chunks/valid_transitions - State transition validation
+VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
+    ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
+    ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
+    ChunkStatus.ACTIVE: {ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL},
+    ChunkStatus.SUPERSEDED: {ChunkStatus.HISTORICAL},
+    ChunkStatus.HISTORICAL: set(),  # Terminal state
+}
 
 
 # Chunk: docs/chunks/artifact_ordering_index - Artifact type enum for ordering
@@ -458,6 +477,14 @@ class NarrativeStatus(StrEnum):
     DRAFTING = "DRAFTING"  # Narrative is being refined; chunks not yet created
     ACTIVE = "ACTIVE"  # Chunks are being created and implemented
     COMPLETED = "COMPLETED"  # All chunks created and narrative's ambition realized
+
+
+# Chunk: docs/chunks/valid_transitions - State transition validation
+VALID_NARRATIVE_TRANSITIONS: dict[NarrativeStatus, set[NarrativeStatus]] = {
+    NarrativeStatus.DRAFTING: {NarrativeStatus.ACTIVE},
+    NarrativeStatus.ACTIVE: {NarrativeStatus.COMPLETED},
+    NarrativeStatus.COMPLETED: set(),  # Terminal state
+}
 
 
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter schema

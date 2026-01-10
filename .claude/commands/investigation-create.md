@@ -105,7 +105,7 @@ If the task warrants investigation:
    > **To continue exploring**: Work through hypotheses in the Exploration Log
    > **To document findings**: Update the Findings section as you verify/falsify
    > **To propose work**: Add chunk prompts to Proposed Chunks when action items emerge
-   > **To resolve**: Update status to SOLVED, NOTED, or DEFERRED when complete"
+   > **To resolve**: Use `ve investigation status <investigation_id> <STATUS>` where STATUS is SOLVED, NOTED, or DEFERRED"
 
 ---
 

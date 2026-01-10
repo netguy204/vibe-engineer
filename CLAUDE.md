@@ -148,3 +148,10 @@ Source code may contain backreference comments that link code back to the docume
 ## Development
 
 This project uses UV for package management. Run tests with `uv run pytest tests/`.
+
+As a developer of ve, When running a ve command in this repository, you should
+always use `uv run ve` to ensure that you're running the version of the code
+that you're editing.
+ 
+Users of ve use a globally installed version of ve, but sincd you're developing
+the project itself, you should make sure you use the local version.
