@@ -100,6 +100,34 @@ Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
 Use little-endian encoding per SPEC.md Section 3.1.
 
 ### Step 3: ...
+
+---
+
+**BACKREFERENCE COMMENTS**
+
+When implementing code, add backreference comments to help future agents trace code
+back to the documentation that motivated it. Place comments at the appropriate level:
+
+- **Module-level**: If this chunk creates the entire file
+- **Class-level**: If this chunk creates or significantly modifies a class
+- **Method-level**: If this chunk adds nuance to a specific method
+
+Format (place immediately before the symbol):
+```
+# Chunk: docs/chunks/NNNN-short_name - Brief description of what this chunk does
+```
+
+When multiple chunks have touched the same code, list all relevant chunks:
+```
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference format
+# Chunk: docs/chunks/0018-bidirectional_refs - Bidirectional chunk-subsystem linking
+```
+
+If the code also relates to a subsystem, include subsystem backreferences:
+```
+# Chunk: docs/chunks/NNNN-short_name - Brief description
+# Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
+```
 -->
 
 ## Dependencies

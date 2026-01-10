@@ -1,4 +1,18 @@
 """Vibe Engineer CLI - view layer for chunk management."""
+# Chunk: docs/chunks/0001-implement_chunk_start - Core CLI and chunk start
+# Chunk: docs/chunks/0002-chunk_list_command - List chunks command
+# Chunk: docs/chunks/0003-project_init_command - Project init command
+# Chunk: docs/chunks/0004-chunk_overlap_command - Chunk overlap command
+# Chunk: docs/chunks/0005-chunk_validate - Chunk validate command
+# Chunk: docs/chunks/0006-narrative_cli_commands - Narrative commands
+# Chunk: docs/chunks/0009-task_init - Task init command
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Task-aware chunk creation
+# Chunk: docs/chunks/0013-future_chunk_creation - Future chunks and activate
+# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Subsystem commands
+# Chunk: docs/chunks/0018-bidirectional_refs - Subsystem validation
+# Chunk: docs/chunks/0019-subsystem_status_transitions - Status transitions
+# Chunk: docs/chunks/0022-subsystem_impact_resolution - Subsystem overlap
+# Chunk: docs/chunks/0029-investigation_commands - Investigation commands
 
 import pathlib
 
@@ -15,11 +29,13 @@ from task_utils import is_task_directory, create_task_chunk, TaskChunkError
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/0001-implement_chunk_start - Validate short name input
 def validate_short_name(short_name: str) -> list[str]:
     """Validate short_name and return list of error messages."""
     return validate_identifier(short_name, "short_name", max_length=31)
 
 
+# Chunk: docs/chunks/0001-implement_chunk_start - Validate ticket ID input
 def validate_ticket_id(ticket_id: str) -> list[str]:
     """Validate ticket_id and return list of error messages."""
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
@@ -31,6 +47,7 @@ def cli():
     pass
 
 
+# Chunk: docs/chunks/0003-project_init_command - Project initialization command
 @cli.command()
 @click.option("--project-dir", type=click.Path(path_type=pathlib.Path), default=".")
 def init(project_dir):
@@ -54,6 +71,8 @@ def chunk():
     pass
 
 
+# Chunk: docs/chunks/0001-implement_chunk_start - Create new chunk command
+# Chunk: docs/chunks/0013-future_chunk_creation - Future chunks support
 @chunk.command()
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
@@ -102,6 +121,7 @@ def start(short_name, ticket_id, project_dir, yes, future):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Task directory chunk creation
 def _start_task_chunk(
     task_dir: pathlib.Path, short_name: str, ticket_id: str | None, status: str = "IMPLEMENTING"
 ):
@@ -122,6 +142,8 @@ def _start_task_chunk(
         click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/0002-chunk_list_command - List all chunks
+# Chunk: docs/chunks/0013-future_chunk_creation - Current chunk filtering
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -147,6 +169,7 @@ def list_chunks(latest, project_dir):
             click.echo(f"docs/chunks/{chunk_name} [{status}]")
 
 
+# Chunk: docs/chunks/0013-future_chunk_creation - Activate FUTURE chunk
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -163,6 +186,7 @@ def activate(chunk_id, project_dir):
     click.echo(f"Activated docs/chunks/{activated}")
 
 
+# Chunk: docs/chunks/0004-chunk_overlap_command - Find overlapping chunks
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -180,6 +204,8 @@ def overlap(chunk_id, project_dir):
         click.echo(f"docs/chunks/{name}")
 
 
+# Chunk: docs/chunks/0005-chunk_validate - Validate chunk for completion
+# Chunk: docs/chunks/0018-bidirectional_refs - Subsystem ref validation
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -200,12 +226,14 @@ def validate(chunk_id, project_dir):
     click.echo(f"Chunk {result.chunk_name} is ready for completion")
 
 
+# Chunk: docs/chunks/0006-narrative_cli_commands - Narrative command group
 @cli.group()
 def narrative():
     """Narrative commands"""
     pass
 
 
+# Chunk: docs/chunks/0006-narrative_cli_commands - Create narrative command
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -229,12 +257,14 @@ def create_narrative(short_name, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/0009-task_init - Task command group
 @cli.group()
 def task():
     """Task directory commands."""
     pass
 
 
+# Chunk: docs/chunks/0009-task_init - Initialize task directory
 @task.command()
 @click.option(
     "--external",
@@ -267,12 +297,14 @@ def init(external, projects):
     click.echo(f"  Projects: {', '.join(result.projects)}")
 
 
+# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Subsystem command group
 @cli.group()
 def subsystem():
     """Subsystem commands"""
     pass
 
 
+# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - List subsystems command
 @subsystem.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_subsystems(project_dir):
@@ -293,6 +325,7 @@ def list_subsystems(project_dir):
         click.echo(f"docs/subsystems/{subsystem_name} [{status}]")
 
 
+# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem command
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -324,6 +357,7 @@ def discover(shortname, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/0018-bidirectional_refs - Validate subsystem command
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -348,6 +382,7 @@ def validate(subsystem_id, project_dir):
     click.echo(f"Subsystem {subsystem_id} validation passed")
 
 
+# Chunk: docs/chunks/0019-subsystem_status_transitions - Status command
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.argument("new_status", required=False, default=None)
@@ -402,6 +437,7 @@ def status(subsystem_id, new_status, project_dir):
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/0022-subsystem_impact_resolution - Subsystem overlap command
 @subsystem.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -420,12 +456,14 @@ def overlap(chunk_id, project_dir):
         click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
 
 
+# Chunk: docs/chunks/0029-investigation_commands - Investigation command group
 @cli.group()
 def investigation():
     """Investigation commands"""
     pass
 
 
+# Chunk: docs/chunks/0029-investigation_commands - Create investigation command
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -449,6 +487,7 @@ def create_investigation(short_name, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/0029-investigation_commands - List investigations command
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")

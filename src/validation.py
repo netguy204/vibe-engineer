@@ -1,8 +1,10 @@
 """Shared validation utilities."""
+# Chunk: docs/chunks/0001-implement_chunk_start - Shared validation
 
 import re
 
 
+# Chunk: docs/chunks/0001-implement_chunk_start - Identifier validation
 def validate_identifier(
     value: str,
     field_name: str,

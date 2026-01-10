@@ -112,6 +112,23 @@ Use these slash commands for artifact management:
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
 
+## Code Backreferences
+
+Source code may contain backreference comments that link code back to the documentation that created or governs it:
+
+```python
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference format
+# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+```
+
+**What backreferences mean:**
+- `# Chunk: ...` - This code was created or modified by the referenced chunk. Read the chunk's GOAL.md for business context.
+- `# Subsystem: ...` - This code is part of a documented subsystem. Read the subsystem's OVERVIEW.md for patterns and invariants.
+
+**When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations.
+
+**When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
+
 ## Development
 
-This project uses UV for package management. Run tests with `uv run pytest tests/`. 
+This project uses UV for package management. Run tests with `uv run pytest tests/`.

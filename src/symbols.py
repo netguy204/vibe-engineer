@@ -4,11 +4,13 @@ This module provides utilities for extracting symbol definitions from Python
 source files using the ast module, and for parsing/manipulating symbolic
 references in the {file_path}#{symbol_path} format.
 """
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbol extraction and parsing
 
 import ast
 from pathlib import Path
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Extract symbols from Python files
 def extract_symbols(file_path: Path) -> set[str]:
     """Extract all symbol definitions from a Python source file.
 
@@ -48,6 +50,7 @@ def extract_symbols(file_path: Path) -> set[str]:
     return symbols
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Recursive AST traversal
 def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> None:
     """Recursively extract symbols from an AST node.
 
@@ -78,6 +81,7 @@ def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> N
             _extract_from_node(child, prefix + [class_name], symbols)
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Parse reference into components
 def parse_reference(ref: str) -> tuple[str, str | None]:
     """Parse a symbolic reference into file path and symbol path.
 
@@ -94,6 +98,7 @@ def parse_reference(ref: str) -> tuple[str, str | None]:
     return ref, None
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Hierarchical containment check
 def is_parent_of(parent: str, child: str) -> bool:
     """Check if parent reference hierarchically contains child reference.
 

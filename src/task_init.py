@@ -1,4 +1,5 @@
 """Business logic for ve task init command."""
+# Chunk: docs/chunks/0009-task_init - Task directory initialization
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +9,7 @@ import yaml
 from git_utils import is_git_repository
 
 
+# Chunk: docs/chunks/0009-task_init - Result of task init
 @dataclass
 class TaskInitResult:
     """Result of a successful task init."""
@@ -17,6 +19,7 @@ class TaskInitResult:
     projects: list[str]
 
 
+# Chunk: docs/chunks/0009-task_init - Resolve repo reference to path
 def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
     """Resolve a repo reference to a filesystem path.
 
@@ -49,6 +52,7 @@ def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
     return None
 
 
+# Chunk: docs/chunks/0009-task_init - Task initialization class
 class TaskInit:
     """Initialize a task directory for cross-repository work."""
 

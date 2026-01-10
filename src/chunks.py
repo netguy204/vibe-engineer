@@ -1,4 +1,11 @@
 """Chunks module - business logic for chunk management."""
+# Chunk: docs/chunks/0001-implement_chunk_start - Initial chunk management
+# Chunk: docs/chunks/0002-chunk_list_command - List and latest chunk operations
+# Chunk: docs/chunks/0004-chunk_overlap_command - Overlap detection
+# Chunk: docs/chunks/0005-chunk_validate - Validation framework
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic reference support
+# Chunk: docs/chunks/0013-future_chunk_creation - Current/activate chunk operations
+# Chunk: docs/chunks/0018-bidirectional_refs - Subsystem validation
 
 from dataclasses import dataclass, field
 import pathlib
@@ -12,6 +19,7 @@ from symbols import is_parent_of, parse_reference, extract_symbols
 from template_system import ActiveChunk, TemplateContext, render_to_directory
 
 
+# Chunk: docs/chunks/0005-chunk_validate - Validation result dataclass
 @dataclass
 class ValidationResult:
     """Result of chunk completion validation."""
@@ -22,19 +30,24 @@ class ValidationResult:
     chunk_name: str | None = None
 
 
+# Chunk: docs/chunks/0001-implement_chunk_start - Core chunk class
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 class Chunks:
     def __init__(self, project_dir):
         self.project_dir = project_dir
         self.chunk_dir = project_dir / "docs" / "chunks"
         self.chunk_dir.mkdir(parents=True, exist_ok=True)
 
+    # Chunk: docs/chunks/0001-implement_chunk_start - List chunk directories
     def enumerate_chunks(self):
         return [f.name for f in self.chunk_dir.iterdir() if f.is_dir()]
 
+    # Chunk: docs/chunks/0001-implement_chunk_start - Count of chunks
     @property
     def num_chunks(self):
         return len(self.enumerate_chunks())
 
+    # Chunk: docs/chunks/0001-implement_chunk_start - Detect duplicate chunk names
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name and ticket_id."""
         if ticket_id:
@@ -43,6 +56,7 @@ class Chunks:
             suffix = f"-{short_name}"
         return [name for name in self.enumerate_chunks() if name.endswith(suffix)]
 
+    # Chunk: docs/chunks/0002-chunk_list_command - Sorted chunk listing
     def list_chunks(self) -> list[tuple[int, str]]:
         """List all chunks sorted by numeric prefix descending.
 
@@ -60,6 +74,7 @@ class Chunks:
         chunks.sort(key=lambda x: x[0], reverse=True)
         return chunks
 
+    # Chunk: docs/chunks/0002-chunk_list_command - Get highest-numbered chunk
     def get_latest_chunk(self) -> str | None:
         """Return the highest-numbered chunk directory name.
 
@@ -71,6 +86,7 @@ class Chunks:
             return chunks[0][1]
         return None
 
+    # Chunk: docs/chunks/0013-future_chunk_creation - Get active IMPLEMENTING chunk
     def get_current_chunk(self) -> str | None:
         """Return the highest-numbered chunk with status IMPLEMENTING.
 
@@ -87,6 +103,7 @@ class Chunks:
                 return chunk_name
         return None
 
+    # Chunk: docs/chunks/0013-future_chunk_creation - Activate FUTURE chunks
     def activate_chunk(self, chunk_id: str) -> str:
         """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
 
@@ -132,6 +149,10 @@ class Chunks:
 
         return chunk_name
 
+    # Chunk: docs/chunks/0001-implement_chunk_start - Create chunk directories
+    # Chunk: docs/chunks/0011-chunk_template_expansion - Template context
+    # Chunk: docs/chunks/0025-migrate_chunks_template - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_chunk(
         self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
     ):
@@ -163,6 +184,7 @@ class Chunks:
         )
         return chunk_path
 
+    # Chunk: docs/chunks/0004-chunk_overlap_command - Resolve chunk ID to name
     def resolve_chunk_id(self, chunk_id: str) -> str | None:
         """Resolve a chunk ID (4-digit or full name) to its directory name.
 
@@ -179,6 +201,7 @@ class Chunks:
                 return name
         return None
 
+    # Chunk: docs/chunks/0004-chunk_overlap_command - Get path to GOAL.md
     def get_chunk_goal_path(self, chunk_id: str) -> pathlib.Path | None:
         """Resolve chunk ID to GOAL.md path.
 
@@ -190,6 +213,7 @@ class Chunks:
             return None
         return self.chunk_dir / chunk_name / "GOAL.md"
 
+    # Chunk: docs/chunks/0004-chunk_overlap_command - Parse YAML frontmatter
     def parse_chunk_frontmatter(self, chunk_id: str) -> dict | None:
         """Parse YAML frontmatter from a chunk's GOAL.md.
 
@@ -213,6 +237,7 @@ class Chunks:
         except yaml.YAMLError:
             return {}
 
+    # Chunk: docs/chunks/0004-chunk_overlap_command - Parse line-based code refs
     def parse_code_references(self, refs: list) -> dict[str, tuple[int, int]]:
         """Parse code_references from frontmatter into file -> (earliest, latest) mapping.
 
@@ -248,6 +273,7 @@ class Chunks:
 
         return result
 
+    # Chunk: docs/chunks/0012-symbolic_code_refs - Extract symbolic refs
     def _extract_symbolic_refs(self, code_refs: list) -> list[str]:
         """Extract symbolic reference strings from code_references list.
 
@@ -263,10 +289,13 @@ class Chunks:
                 refs.append(ref["ref"])
         return refs
 
+    # Chunk: docs/chunks/0012-symbolic_code_refs - Detect reference format
     def _is_symbolic_format(self, code_refs: list) -> bool:
         """Check if code_references use symbolic format (has 'ref' key)."""
         return any("ref" in ref for ref in code_refs)
 
+    # Chunk: docs/chunks/0004-chunk_overlap_command - Find overlapping chunks
+    # Chunk: docs/chunks/0012-symbolic_code_refs - Added symbolic overlap support
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
         """Find ACTIVE chunks with lower IDs that have overlapping code references.
 
@@ -369,6 +398,8 @@ class Chunks:
 
         return sorted(affected)
 
+    # Chunk: docs/chunks/0005-chunk_validate - Validate chunk for completion
+    # Chunk: docs/chunks/0012-symbolic_code_refs - Added symbolic ref validation
     def validate_chunk_complete(self, chunk_id: str | None = None) -> ValidationResult:
         """Validate that a chunk is ready for completion.
 
@@ -471,6 +502,7 @@ class Chunks:
             chunk_name=chunk_name,
         )
 
+    # Chunk: docs/chunks/0012-symbolic_code_refs - Validate symbol existence
     def _validate_symbol_exists(self, ref: str) -> list[str]:
         """Validate that a symbolic reference points to an existing symbol.
 
@@ -505,6 +537,7 @@ class Chunks:
 
         return []
 
+    # Chunk: docs/chunks/0018-bidirectional_refs - Validate subsystem references
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
@@ -555,6 +588,7 @@ class Chunks:
         return errors
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic reference overlap logic
 def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:
     """Determine if two lists of symbolic references have any overlap.
 

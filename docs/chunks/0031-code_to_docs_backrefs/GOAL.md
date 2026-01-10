@@ -1,71 +1,23 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_references:
+- ref: src/templates/chunk/PLAN.md.jinja2
+  implements: "Backreference guidance in chunk PLAN.md template"
+- ref: src/templates/subsystem/OVERVIEW.md.jinja2
+  implements: "Backreference guidance in subsystem OVERVIEW.md template"
+- ref: src/templates/claude/CLAUDE.md.jinja2
+  implements: "Code Backreferences section documenting the convention"
+- ref: src/templates/commands/chunk-update-references.md.jinja2
+  implements: "Backreference maintenance during reference reconciliation"
+- ref: CLAUDE.md
+  implements: "Code Backreferences section in project CLAUDE.md"
 narrative: null
 subsystems:
-  - subsystem_id: "0001-template_system"
-    relationship: uses
+- subsystem_id: 0001-template_system
+  relationship: uses
 ---
-
-<!--
-DO NOT DELETE THIS COMMENT until the chunk complete command is run.
-This describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed
-  when this chunk is completed.
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
--->
 
 # Chunk Goal
 
@@ -101,8 +53,8 @@ describes:
 
 Format (Python):
 ```python
-# Chunk: 0031-code_to_docs_backrefs - Bidirectional code-to-docs references
-# Subsystem: 0001-template_system - Unified template rendering
+# Chunk: docs/chunks/0031-code_to_docs_backrefs - Bidirectional code-to-docs references
+# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
 ```
 
 The format includes the ID and a brief description to provide immediate context
@@ -115,9 +67,9 @@ later refinement), **all relevant chunks should be listed** in the backreference
 comments:
 
 ```python
-# Chunk: 0012-symbolic_code_refs - Symbolic code reference format
-# Chunk: 0018-bidirectional_refs - Bidirectional chunk-subsystem linking
-# Subsystem: 0001-template_system - Unified template rendering
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference format
+# Chunk: docs/chunks/0018-bidirectional_refs - Bidirectional chunk-subsystem linking
+# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
 ```
 
 If a chunk's contribution to that code has been truly superseded (the code no longer

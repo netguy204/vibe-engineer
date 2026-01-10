@@ -1,4 +1,8 @@
 """Project module - business logic for project initialization."""
+# Chunk: docs/chunks/0003-project_init_command - Project initialization
+# Chunk: docs/chunks/0006-narrative_cli_commands - Narratives initialization
+# Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 import pathlib
 from dataclasses import dataclass, field
@@ -7,6 +11,7 @@ from chunks import Chunks
 from template_system import TemplateContext, render_template, render_to_directory
 
 
+# Chunk: docs/chunks/0003-project_init_command - Initialization result tracking
 @dataclass
 class InitResult:
     """Result of an initialization operation."""
@@ -15,6 +20,8 @@ class InitResult:
     warnings: list[str] = field(default_factory=list)
 
 
+# Chunk: docs/chunks/0003-project_init_command - Core project class
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 class Project:
     def __init__(self, project_dir: pathlib.Path):
         self.project_dir = project_dir
@@ -27,6 +34,9 @@ class Project:
             self._chunks = Chunks(self.project_dir)
         return self._chunks
 
+    # Chunk: docs/chunks/0003-project_init_command - Trunk document initialization
+    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def _init_trunk(self) -> InitResult:
         """Initialize trunk documents from templates."""
         result = InitResult()
@@ -44,6 +54,9 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/0003-project_init_command - Claude commands initialization
+    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def _init_commands(self) -> InitResult:
         """Set up Claude commands by rendering templates.
 
@@ -67,6 +80,7 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/0006-narrative_cli_commands - Narratives directory creation
     def _init_narratives(self) -> InitResult:
         """Create docs/narratives/ directory for narrative documents."""
         result = InitResult()
@@ -80,6 +94,9 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/0003-project_init_command - CLAUDE.md creation
+    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_template
     def _init_claude_md(self) -> InitResult:
         """Create CLAUDE.md at project root from template.
 
@@ -99,6 +116,7 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/0003-project_init_command - Main initialization entry point
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 

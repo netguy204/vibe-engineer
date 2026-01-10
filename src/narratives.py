@@ -1,8 +1,13 @@
 """Narratives module - business logic for narrative management."""
+# Chunk: docs/chunks/0006-narrative_cli_commands - Narrative creation and management
+# Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
+# Chunk: docs/chunks/0006-narrative_cli_commands - Core narrative class
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 class Narratives:
     def __init__(self, project_dir):
         self.project_dir = project_dir
@@ -21,6 +26,9 @@ class Narratives:
     def num_narratives(self):
         return len(self.enumerate_narratives())
 
+    # Chunk: docs/chunks/0006-narrative_cli_commands - Create narrative directory
+    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
 

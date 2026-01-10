@@ -5,24 +5,24 @@ parent_chunk: null
 code_paths:
   - src/ve.py
   - src/project.py
-  - src/templates/CLAUDE.md
+  - src/templates/claude/CLAUDE.md.jinja2
 code_references:
   - ref: src/project.py#InitResult
     implements: "Tracks created/skipped/warnings for idempotent operations"
   - ref: src/project.py#Project
     implements: "Project class with lazy Chunks property"
   - ref: src/project.py#Project::_init_trunk
-    implements: "Creates docs/trunk/ and copies template documents"
+    implements: "Renders trunk templates to docs/trunk/ directory"
   - ref: src/project.py#Project::_init_commands
-    implements: "Creates .claude/commands/ symlinks with copy fallback"
+    implements: "Renders command templates to .claude/commands/ directory"
   - ref: src/project.py#Project::_init_claude_md
-    implements: "Copies CLAUDE.md template to project root"
+    implements: "Renders CLAUDE.md Jinja2 template to project root"
   - ref: src/project.py#Project::init
     implements: "Orchestrates all initialization, aggregates results"
   - ref: src/ve.py#init
     implements: "CLI init command - invokes Project.init() and displays results"
   - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "CLAUDE.md template explaining vibe engineering workflow to agents"
+    implements: "Jinja2 template for CLAUDE.md explaining vibe engineering workflow to agents"
   - ref: tests/test_project.py
     implements: "Tests Project class, init(), and idempotency"
   - ref: tests/test_init.py

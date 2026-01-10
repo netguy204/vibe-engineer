@@ -1,4 +1,6 @@
 """Utility functions for cross-repository task management."""
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Cross-repo task utilities
+# Chunk: docs/chunks/0013-future_chunk_creation - Status support
 
 import re
 from pathlib import Path
@@ -10,11 +12,13 @@ from git_utils import get_current_sha
 from models import TaskConfig, ExternalChunkRef
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Detect task directory
 def is_task_directory(path: Path) -> bool:
     """Detect if path contains a .ve-task.yaml file."""
     return (path / ".ve-task.yaml").exists()
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Resolve org/repo to path
 def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     """Resolve a GitHub-style org/repo reference to a filesystem path.
 
@@ -58,6 +62,7 @@ def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     )
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Detect external chunk
 def is_external_chunk(chunk_path: Path) -> bool:
     """Detect if chunk_path is an external chunk reference.
 
@@ -68,6 +73,7 @@ def is_external_chunk(chunk_path: Path) -> bool:
     return has_external and not has_goal
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Load task configuration
 def load_task_config(path: Path) -> TaskConfig:
     """Load and validate .ve-task.yaml from path.
 
@@ -91,6 +97,7 @@ def load_task_config(path: Path) -> TaskConfig:
     return TaskConfig.model_validate(data)
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Load external chunk reference
 def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
     """Load and validate external.yaml from chunk path.
 
@@ -114,6 +121,7 @@ def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
     return ExternalChunkRef.model_validate(data)
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Get next chunk ID
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
 
@@ -134,6 +142,7 @@ def get_next_chunk_id(project_path: Path) -> str:
     return f"{highest_number + 1:04d}"
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Create external.yaml
 def create_external_yaml(
     project_path: Path,
     chunk_id: str,
@@ -174,6 +183,8 @@ def create_external_yaml(
     return external_yaml_path
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Update frontmatter field
+# Chunk: docs/chunks/0013-future_chunk_creation - Used for status updates
 def update_frontmatter_field(
     goal_path: Path,
     field: str,
@@ -216,6 +227,7 @@ def update_frontmatter_field(
     goal_path.write_text(new_content)
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Add dependents to chunk
 def add_dependents_to_chunk(
     chunk_path: Path,
     dependents: list[dict],
@@ -236,12 +248,15 @@ def add_dependents_to_chunk(
     update_frontmatter_field(goal_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Task chunk error class
 class TaskChunkError(Exception):
     """Error during task chunk creation with user-friendly message."""
 
     pass
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Orchestrate multi-repo chunk
+# Chunk: docs/chunks/0013-future_chunk_creation - Status parameter support
 def create_task_chunk(
     task_dir: Path,
     short_name: str,

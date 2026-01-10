@@ -1,4 +1,12 @@
 """Pydantic models for chunk validation."""
+# Chunk: docs/chunks/0005-chunk_validate - Code reference models
+# Chunk: docs/chunks/0007-cross_repo_schemas - Cross-repository schemas
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic reference model
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystem schemas
+# Chunk: docs/chunks/0017-subsystem_template - Compliance levels
+# Chunk: docs/chunks/0018-bidirectional_refs - Subsystem relationship
+# Chunk: docs/chunks/0019-subsystem_status_transitions - Status transitions
+# Chunk: docs/chunks/0029-investigation_commands - Investigation schemas
 
 import re
 from enum import StrEnum
@@ -9,6 +17,7 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystem lifecycle states
 class SubsystemStatus(StrEnum):
     """Status values for subsystem documentation lifecycle."""
 
@@ -19,6 +28,7 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
+# Chunk: docs/chunks/0029-investigation_commands - Investigation lifecycle states
 class InvestigationStatus(StrEnum):
     """Status values for investigation lifecycle."""
 
@@ -28,7 +38,7 @@ class InvestigationStatus(StrEnum):
     DEFERRED = "DEFERRED"  # Investigation paused; may be revisited later
 
 
-# Valid state transitions for subsystem status lifecycle
+# Chunk: docs/chunks/0019-subsystem_status_transitions - Valid state transitions
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
     SubsystemStatus.DOCUMENTED: {SubsystemStatus.REFACTORING, SubsystemStatus.DEPRECATED},
@@ -38,6 +48,7 @@ VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
 }
 
 
+# Chunk: docs/chunks/0017-subsystem_template - Code reference compliance levels
 class ComplianceLevel(StrEnum):
     """Compliance level for code references in subsystem documentation.
 
@@ -53,6 +64,7 @@ class ComplianceLevel(StrEnum):
 CHUNK_ID_PATTERN = re.compile(r"^\d{4}-.+$")
 
 
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Chunk-to-subsystem relationship
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -82,6 +94,7 @@ class ChunkRelationship(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/0018-bidirectional_refs - Subsystem-to-chunk relationship
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
@@ -115,6 +128,7 @@ class SubsystemRelationship(BaseModel):
 # (SymbolicReference is defined later in the file)
 
 
+# Chunk: docs/chunks/0007-cross_repo_schemas - Directory name validation
 def _require_valid_dir_name(value: str, field_name: str) -> str:
     """Validate a directory name, raising ValueError if invalid."""
     errors = validate_identifier(value, field_name, allow_dot=True, max_length=31)
@@ -123,6 +137,7 @@ def _require_valid_dir_name(value: str, field_name: str) -> str:
     return value
 
 
+# Chunk: docs/chunks/0010-chunk_create_task_aware - Repository ref validation
 def _require_valid_repo_ref(value: str, field_name: str) -> str:
     """Validate a GitHub-style org/repo reference.
 
@@ -158,6 +173,7 @@ def _require_valid_repo_ref(value: str, field_name: str) -> str:
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
+# Chunk: docs/chunks/0007-cross_repo_schemas - Cross-repo task configuration
 class TaskConfig(BaseModel):
     """Configuration for cross-repository chunk management.
 
@@ -184,6 +200,7 @@ class TaskConfig(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/0007-cross_repo_schemas - External chunk reference
 class ExternalChunkRef(BaseModel):
     """Reference to a chunk in another repository.
 
@@ -220,12 +237,14 @@ class ExternalChunkRef(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/0007-cross_repo_schemas - Chunk dependents schema
 class ChunkDependent(BaseModel):
     """Frontmatter schema for chunk GOAL.md files with dependents."""
 
     dependents: list[ExternalChunkRef] = []
 
 
+# Chunk: docs/chunks/0005-chunk_validate - Line range for code references
 class CodeRange(BaseModel):
     """A range of lines in a file that implements a specific requirement."""
 
@@ -233,6 +252,7 @@ class CodeRange(BaseModel):
     implements: str
 
 
+# Chunk: docs/chunks/0005-chunk_validate - File-based code reference
 class CodeReference(BaseModel):
     """A file with code ranges that implement requirements."""
 
@@ -240,6 +260,7 @@ class CodeReference(BaseModel):
     ranges: list[CodeRange]
 
 
+# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
@@ -297,6 +318,7 @@ class SymbolicReference(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystem frontmatter schema
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -308,6 +330,7 @@ class SubsystemFrontmatter(BaseModel):
     code_references: list[SymbolicReference] = []
 
 
+# Chunk: docs/chunks/0029-investigation_commands - Investigation frontmatter schema
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 

@@ -1,4 +1,11 @@
 """Subsystems module - business logic for subsystem documentation management."""
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Core subsystem management
+# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - CLI and creation logic
+# Chunk: docs/chunks/0018-bidirectional_refs - Chunk reference validation
+# Chunk: docs/chunks/0019-subsystem_status_transitions - Status management
+# Chunk: docs/chunks/0022-subsystem_impact_resolution - Overlap detection
+# Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 from __future__ import annotations
 
@@ -21,6 +28,8 @@ if TYPE_CHECKING:
 SUBSYSTEM_DIR_PATTERN = re.compile(r"^\d{4}-.+$")
 
 
+# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Core subsystem class
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 class Subsystems:
     """Utility class for managing subsystem documentation.
 
@@ -36,11 +45,13 @@ class Subsystems:
         """
         self.project_dir = project_dir
 
+    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystems directory path
     @property
     def subsystems_dir(self):
         """Return the path to the subsystems directory."""
         return self.project_dir / "docs" / "subsystems"
 
+    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - List subsystem directories
     def enumerate_subsystems(self) -> list[str]:
         """List subsystem directory names.
 
@@ -51,6 +62,7 @@ class Subsystems:
             return []
         return [f.name for f in self.subsystems_dir.iterdir() if f.is_dir()]
 
+    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Validate directory pattern
     def is_subsystem_dir(self, name: str) -> bool:
         """Check if a directory name matches the subsystem pattern.
 
@@ -66,6 +78,7 @@ class Subsystems:
         parts = name.split("-", 1)
         return len(parts) == 2 and bool(parts[1])
 
+    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Parse OVERVIEW.md frontmatter
     def parse_subsystem_frontmatter(self, subsystem_id: str) -> SubsystemFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a subsystem.
 
@@ -97,6 +110,7 @@ class Subsystems:
         except (yaml.YAMLError, ValidationError):
             return None
 
+    # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Find subsystem by name
     def find_by_shortname(self, shortname: str) -> str | None:
         """Find subsystem directory by shortname.
 
@@ -119,6 +133,9 @@ class Subsystems:
         """Return the number of subsystems."""
         return len(self.enumerate_subsystems())
 
+    # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem directory
+    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
 
@@ -157,6 +174,7 @@ class Subsystems:
 
         return subsystem_path
 
+    # Chunk: docs/chunks/0018-bidirectional_refs - Validate chunk references
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:
         """Validate chunk references in a subsystem's frontmatter.
 
@@ -196,6 +214,7 @@ class Subsystems:
 
         return errors
 
+    # Chunk: docs/chunks/0019-subsystem_status_transitions - Get current status
     def get_status(self, subsystem_id: str) -> SubsystemStatus:
         """Get the current status of a subsystem.
 
@@ -213,6 +232,7 @@ class Subsystems:
             raise ValueError(f"Subsystem '{subsystem_id}' not found in docs/subsystems/")
         return frontmatter.status
 
+    # Chunk: docs/chunks/0019-subsystem_status_transitions - Update status with validation
     def update_status(
         self, subsystem_id: str, new_status: SubsystemStatus
     ) -> tuple[SubsystemStatus, SubsystemStatus]:
@@ -252,6 +272,7 @@ class Subsystems:
 
         return (current_status, new_status)
 
+    # Chunk: docs/chunks/0019-subsystem_status_transitions - Update frontmatter field
     def _update_overview_frontmatter(
         self, subsystem_id: str, field: str, value
     ) -> None:
@@ -289,6 +310,7 @@ class Subsystems:
 
         overview_path.write_text(new_content)
 
+    # Chunk: docs/chunks/0022-subsystem_impact_resolution - Find overlapping subsystems
     def find_overlapping_subsystems(
         self, chunk_id: str, chunks: Chunks
     ) -> list[dict]:
@@ -363,6 +385,7 @@ class Subsystems:
 
         return results
 
+    # Chunk: docs/chunks/0022-subsystem_impact_resolution - Compute reference overlap
     def _find_overlapping_refs(
         self, chunk_refs: list[str], subsystem_refs: list[str]
     ) -> list[str]:

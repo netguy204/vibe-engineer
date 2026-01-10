@@ -179,6 +179,22 @@ The `validate_frontmatter` function is the canonical entry point. It uses regex
 patterns rather than string matching for consistency and better error messages.
 New validation should follow this pattern.
 
+**BACKREFERENCE COMMENTS**
+
+When documenting canonical implementation code, add backreference comments to help
+future agents trace code back to this subsystem. Place comments immediately before
+the symbol:
+
+```
+# Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
+```
+
+If the code was also created by a specific chunk, include both:
+```
+# Chunk: docs/chunks/NNNN-short_name - Brief chunk description
+# Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
+```
+
 Delete this comment block once context is provided.
 -->
 

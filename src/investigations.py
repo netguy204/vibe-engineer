@@ -1,4 +1,6 @@
 """Investigations module - business logic for investigation management."""
+# Chunk: docs/chunks/0029-investigation_commands - Investigation management
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 import pathlib
 import re
@@ -10,6 +12,8 @@ from models import InvestigationFrontmatter
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
+# Chunk: docs/chunks/0029-investigation_commands - Core investigation class
+# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 class Investigations:
     """Utility class for managing investigation documentation."""
 
@@ -41,6 +45,8 @@ class Investigations:
         """Return the number of investigations."""
         return len(self.enumerate_investigations())
 
+    # Chunk: docs/chunks/0029-investigation_commands - Create investigation directory
+    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
 
@@ -79,6 +85,7 @@ class Investigations:
 
         return investigation_path
 
+    # Chunk: docs/chunks/0029-investigation_commands - Parse investigation frontmatter
     def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for an investigation.
 
