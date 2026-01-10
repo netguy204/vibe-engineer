@@ -354,3 +354,85 @@ def create_task_chunk(
         "external_chunk_path": external_chunk_path,
         "project_refs": project_refs,
     }
+
+
+# Chunk: docs/chunks/0033-list_task_aware - Task-aware chunk listing
+def list_task_chunks(task_dir: Path) -> list[dict]:
+    """List chunks from external repo with their dependents.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        List of dicts with keys: name, status, dependents
+        Sorted by chunk number descending.
+
+    Raises:
+        TaskChunkError: If external repo not accessible
+    """
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"External chunk repository '{config.external_chunk_repo}' not found or not accessible"
+        )
+
+    # List chunks from external repo
+    chunks = Chunks(external_repo_path)
+    chunk_list = chunks.list_chunks()
+
+    results = []
+    for _, chunk_name in chunk_list:
+        frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+        status = frontmatter.get("status", "UNKNOWN") if frontmatter else "UNKNOWN"
+        dependents = frontmatter.get("dependents", []) if frontmatter else []
+        results.append({
+            "name": chunk_name,
+            "status": status,
+            "dependents": dependents,
+        })
+
+    return results
+
+
+# Chunk: docs/chunks/0033-list_task_aware - Task-aware current chunk
+def get_current_task_chunk(task_dir: Path) -> str | None:
+    """Get the current (IMPLEMENTING) chunk from external repo.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        The chunk directory name if an IMPLEMENTING chunk exists, None otherwise.
+
+    Raises:
+        TaskChunkError: If external repo not accessible
+    """
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"External chunk repository '{config.external_chunk_repo}' not found or not accessible"
+        )
+
+    # Get current chunk from external repo
+    chunks = Chunks(external_repo_path)
+    return chunks.get_current_chunk()

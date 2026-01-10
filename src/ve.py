@@ -25,7 +25,13 @@ from project import Project
 from subsystems import Subsystems
 from models import SubsystemStatus, InvestigationStatus
 from task_init import TaskInit
-from task_utils import is_task_directory, create_task_chunk, TaskChunkError
+from task_utils import (
+    is_task_directory,
+    create_task_chunk,
+    list_task_chunks,
+    get_current_task_chunk,
+    TaskChunkError,
+)
 from validation import validate_identifier
 
 
@@ -144,11 +150,18 @@ def _start_task_chunk(
 
 # Chunk: docs/chunks/0002-chunk_list_command - List all chunks
 # Chunk: docs/chunks/0013-future_chunk_creation - Current chunk filtering
+# Chunk: docs/chunks/0033-list_task_aware - Task-aware chunk listing
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_chunks(latest, project_dir):
     """List all chunks."""
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _list_task_chunks(latest, project_dir)
+        return
+
+    # Single-repo mode
     chunks = Chunks(project_dir)
     chunk_list = chunks.list_chunks()
 
@@ -167,6 +180,37 @@ def list_chunks(latest, project_dir):
             frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
             status = frontmatter.get("status", "UNKNOWN") if frontmatter else "UNKNOWN"
             click.echo(f"docs/chunks/{chunk_name} [{status}]")
+
+
+# Chunk: docs/chunks/0033-list_task_aware - Task directory chunk listing handler
+def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
+    """Handle chunk listing in task directory (cross-repo mode)."""
+    try:
+        if latest:
+            current_chunk = get_current_task_chunk(task_dir)
+            if current_chunk is None:
+                click.echo("No implementing chunk found", err=True)
+                raise SystemExit(1)
+            click.echo(f"docs/chunks/{current_chunk}")
+        else:
+            chunk_list = list_task_chunks(task_dir)
+            if not chunk_list:
+                click.echo("No chunks found", err=True)
+                raise SystemExit(1)
+
+            for chunk_info in chunk_list:
+                name = chunk_info["name"]
+                status = chunk_info["status"]
+                dependents = chunk_info["dependents"]
+
+                click.echo(f"docs/chunks/{name} [{status}]")
+                if dependents:
+                    # Format dependents as: repo (chunk_id), repo (chunk_id)
+                    dep_strs = [f"{d['repo']} ({d['chunk']})" for d in dependents]
+                    click.echo(f"  dependents: {', '.join(dep_strs)}")
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - List proposed chunks command
