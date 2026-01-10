@@ -46,6 +46,7 @@ code_references:
     implements: "CLI integration tests for ve external resolve"
 narrative: 0001-cross_repo_chunks
 subsystems: []
+created_after: ["0034-ve_sync_command"]
 ---
 
 # Chunk Goal

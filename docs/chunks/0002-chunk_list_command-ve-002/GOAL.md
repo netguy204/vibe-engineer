@@ -17,6 +17,7 @@ code_references:
     implements: "Unit tests for list_chunks() and get_latest_chunk() methods"
   - ref: tests/test_chunk_list.py
     implements: "CLI integration tests for ve chunk list"
+created_after: ["0001-implement_chunk_start-ve-001"]
 ---
 
 # Chunk Goal

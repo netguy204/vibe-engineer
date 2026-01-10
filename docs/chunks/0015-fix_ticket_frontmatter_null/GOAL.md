@@ -15,6 +15,7 @@ code_references:
   - ref: tests/test_chunks.py#TestTicketFrontmatter::test_ticket_renders_value_when_ticket_id_provided
     implements: "Test that provided ticket_id renders correctly"
 narrative: null
+created_after: ["0014-subsystem_schemas_and_model"]
 ---
 
 # Chunk Goal

@@ -18,6 +18,7 @@ proposed_chunks:
     chunk_directory: "0021-spec_docs_update"
   - prompt: "Subsystem impact resolution during chunk completion"
     chunk_directory: "0022-subsystem_impact_resolution"
+created_after: ["0001-cross_repo_chunks"]
 ---
 
 ## Advances Trunk Goal

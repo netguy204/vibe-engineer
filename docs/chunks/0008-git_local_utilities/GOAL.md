@@ -13,6 +13,7 @@ code_references:
   - ref: tests/test_git_utils.py
     implements: "Tests for SHA retrieval, ref resolution, worktree support"
 narrative: 0001-cross_repo_chunks
+created_after: ["0007-cross_repo_schemas"]
 ---
 
 <!--

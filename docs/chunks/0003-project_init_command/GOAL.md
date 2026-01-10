@@ -27,6 +27,7 @@ code_references:
     implements: "Tests Project class, init(), and idempotency"
   - ref: tests/test_init.py
     implements: "CLI integration tests for 've init'"
+created_after: ["0002-chunk_list_command-ve-002"]
 ---
 
 # Chunk Goal

@@ -49,6 +49,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0001-template_system"
     relationship: implements
+created_after: ["0025-migrate_chunks_template"]
 ---
 
 # Chunk Goal

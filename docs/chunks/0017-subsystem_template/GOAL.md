@@ -15,6 +15,7 @@ code_references:
   - ref: src/models.py#SymbolicReference
     implements: "Extended with optional compliance field for tracking how well code follows subsystem patterns"
 narrative: 0002-subsystem_documentation
+created_after: ["0016-subsystem_cli_scaffolding"]
 ---
 
 # Chunk Goal

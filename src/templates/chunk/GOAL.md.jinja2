@@ -71,7 +71,14 @@ SUBSYSTEMS:
       relationship: uses
 - Validated by `ve chunk validate` to ensure referenced subsystems exist
 - When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section. 
+  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
+
+CHUNK ARTIFACTS:
+- Single-use scripts, migration tools, or one-time utilities created for this chunk
+  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
+- These artifacts help future archaeologists understand what the chunk did
+- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
+- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
 -->
 
 # Chunk Goal

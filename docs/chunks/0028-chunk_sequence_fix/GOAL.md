@@ -6,6 +6,7 @@ code_paths: []
 code_references: []
 narrative: null
 subsystems: []
+created_after: ["0027-investigation_template"]
 ---
 
 <!--

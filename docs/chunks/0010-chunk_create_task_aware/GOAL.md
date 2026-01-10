@@ -38,6 +38,7 @@ code_references:
   - ref: tests/test_task_utils.py
     implements: "Unit tests for task utility functions"
 narrative: 0001-cross_repo_chunks
+created_after: ["0009-task_init"]
 ---
 
 # Chunk Goal

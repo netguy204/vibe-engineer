@@ -23,6 +23,7 @@ code_references:
     implements: "Expanded investigations section with lifecycle, status values, and usage guidance"
 narrative: 0003-investigations
 subsystems: []
+created_after: ["0029-investigation_commands"]
 ---
 
 # Chunk Goal

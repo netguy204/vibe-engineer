@@ -20,6 +20,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0001-template_system"
     relationship: implements
+created_after: ["0024-remove_trivial_tests"]
 ---
 
 # Chunk Goal

@@ -17,6 +17,7 @@ code_references:
     implements: "Task-aware chunk listing output handler"
 narrative: 0001-cross_repo_chunks
 subsystems: []
+created_after: ["0032-proposed_chunks_frontmatter"]
 ---
 
 # Chunk Goal

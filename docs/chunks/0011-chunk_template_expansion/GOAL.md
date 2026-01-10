@@ -13,6 +13,7 @@ code_references:
     implements: "Jinja2 template using chunk_directory for GOAL.md path reference"
   - ref: tests/test_chunks.py#TestChunkDirectoryInTemplates
     implements: "Tests for chunk_directory in rendered templates"
+created_after: ["0010-chunk_create_task_aware"]
 ---
 
 # Chunk Goal

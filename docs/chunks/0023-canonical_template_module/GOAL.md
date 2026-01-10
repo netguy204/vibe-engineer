@@ -28,6 +28,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0001-template_system"
     relationship: implements
+created_after: ["0022-subsystem_impact_resolution"]
 ---
 
 # Chunk Goal

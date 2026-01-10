@@ -22,6 +22,7 @@ code_references:
     implements: "Comprehensive test coverage for all success criteria"
 narrative: 0002-subsystem_documentation
 subsystems: []
+created_after: ["0018-bidirectional_refs"]
 ---
 
 <!--

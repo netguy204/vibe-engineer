@@ -25,6 +25,7 @@ code_references:
     implements: "Directory creation with correct path format, template rendering"
   - ref: tests/test_chunk_start.py
     implements: "Comprehensive test suite covering chunk start command"
+created_after: []
 ---
 
 <!--

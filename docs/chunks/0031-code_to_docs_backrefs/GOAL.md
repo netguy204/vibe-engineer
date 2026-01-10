@@ -17,6 +17,7 @@ narrative: null
 subsystems:
 - subsystem_id: 0001-template_system
   relationship: uses
+created_after: ["0030-document_investigations"]
 ---
 
 # Chunk Goal

@@ -26,6 +26,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"
     relationship: implements
+created_after: ["0037-created_after_field"]
 ---
 
 # Chunk Goal

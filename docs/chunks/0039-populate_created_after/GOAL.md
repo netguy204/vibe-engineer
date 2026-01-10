@@ -44,6 +44,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"
     relationship: implements
+created_after: ["0038-artifact_ordering_index"]
 ---
 
 # Chunk Goal

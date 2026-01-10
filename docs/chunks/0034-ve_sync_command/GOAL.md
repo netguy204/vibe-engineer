@@ -35,6 +35,7 @@ code_references:
     implements: "Output formatting for sync results"
 narrative: 0001-cross_repo_chunks
 subsystems: []
+created_after: ["0033-list_task_aware"]
 ---
 
 # Chunk Goal

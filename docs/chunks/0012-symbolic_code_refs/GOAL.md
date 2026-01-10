@@ -49,6 +49,7 @@ code_references:
   - ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
     implements: "Tests for symbolic validation warnings in CLI"
 narrative: null
+created_after: ["0011-chunk_template_expansion"]
 ---
 
 # Chunk Goal

@@ -17,6 +17,7 @@ code_references:
     implements: "Narrative CLI command group"
   - ref: src/ve.py#create_narrative
     implements: "ve narrative create CLI command with validation"
+created_after: ["0005-chunk_validate"]
 ---
 
 # Chunk Goal

@@ -23,6 +23,7 @@ code_references:
     implements: "Tests for ve subsystem overlap CLI command"
 narrative: 0002-subsystem_documentation
 subsystems: []
+created_after: ["0021-spec_docs_update"]
 ---
 
 # Chunk Goal

@@ -20,6 +20,7 @@ code_references:
     implements: "CLI command interface - chunk validate command"
   - ref: tests/test_chunk_validate.py
     implements: "Test coverage for all success criteria"
+created_after: ["0004-chunk_overlap_command"]
 ---
 
 # Chunk Goal

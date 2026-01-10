@@ -39,7 +39,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"
     relationship: implements
-created_after: ["0001-implement_chunk_start-ve-001", "0002-chunk_list_command-ve-002", "0003-project_init_command", "0004-chunk_overlap_command", "0005-chunk_validate", "0006-narrative_cli_commands", "0007-cross_repo_schemas", "0008-git_local_utilities", "0009-task_init", "0010-chunk_create_task_aware", "0011-chunk_template_expansion", "0012-symbolic_code_refs", "0013-future_chunk_creation", "0014-subsystem_schemas_and_model", "0015-fix_ticket_frontmatter_null", "0016-subsystem_cli_scaffolding", "0017-subsystem_template", "0018-bidirectional_refs", "0019-subsystem_status_transitions", "0020-agent_discovery_command", "0021-spec_docs_update", "0022-subsystem_impact_resolution", "0023-canonical_template_module", "0024-remove_trivial_tests", "0025-migrate_chunks_template", "0026-template_system_consolidation", "0027-investigation_template", "0028-chunk_sequence_fix", "0029-investigation_commands", "0030-document_investigations", "0031-code_to_docs_backrefs", "0032-proposed_chunks_frontmatter", "0033-list_task_aware", "0034-ve_sync_command", "0035-external_resolve", "0036-chunk_frontmatter_model", "0037-created_after_field", "0038-artifact_ordering_index", "0039-populate_created_after", "0040-artifact_index_no_git"]
+created_after: ["0040-artifact_index_no_git"]
 ---
 
 # Chunk Goal

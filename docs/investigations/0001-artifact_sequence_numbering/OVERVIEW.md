@@ -28,7 +28,7 @@ proposed_chunks:
     artifact's short name]. First artifact of each type gets empty created_after.
     Short names only need to be unique within their artifact type. See investigation
     prototypes for migration strategy."
-  chunk_directory: null
+  chunk_directory: 0042-causal_ordering_migration
 - prompt: "Update docs/subsystems/0002-workflow_artifacts/OVERVIEW.md to revise Hard
     Invariant #1 for new naming pattern, document created_after field and causal ordering
     semantics, add ArtifactIndex to Implementation Locations, note sequence prefixes
@@ -55,6 +55,7 @@ proposed_chunks:
     external.yaml references. This ensures external chunks participate in local
     causal ordering."
   chunk_directory: null
+created_after: []
 ---
 
 <!--

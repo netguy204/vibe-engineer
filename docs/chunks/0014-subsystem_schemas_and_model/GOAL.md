@@ -32,6 +32,7 @@ code_references:
   - ref: tests/test_subsystems.py#TestSubsystems
     implements: "Unit tests for Subsystems utility class"
 narrative: 0002-subsystem_documentation
+created_after: ["0013-future_chunk_creation"]
 ---
 
 # Chunk Goal

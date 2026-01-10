@@ -38,6 +38,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"
     relationship: implements
+created_after: ["0035-external_resolve"]
 ---
 
 # Chunk Goal

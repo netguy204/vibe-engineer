@@ -18,6 +18,7 @@ narrative: null
 subsystems:
   - subsystem_id: "0002-workflow_artifacts"
     relationship: implements
+created_after: ["0036-chunk_frontmatter_model"]
 ---
 
 # Chunk Goal

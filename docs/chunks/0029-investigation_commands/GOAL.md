@@ -33,6 +33,7 @@ code_references:
     implements: "Slash command with scale assessment for investigation vs chunk decision"
 narrative: 0003-investigations
 subsystems: []
+created_after: ["0028-chunk_sequence_fix"]
 ---
 
 # Chunk Goal

@@ -8,6 +8,7 @@ proposed_chunks:
     chunk_directory: "0029-investigation_commands"
   - prompt: "Update CLAUDE.md and docs/trunk/SPEC.md to document investigations as a workflow artifact, including when to use investigations vs narratives vs subsystems."
     chunk_directory: "0030-document_investigations"
+created_after: ["0002-subsystem_documentation"]
 ---
 
 ## Advances Trunk Goal

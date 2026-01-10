@@ -12,6 +12,7 @@ code_references:
     implements: "Agent guidance for subsystems section and /subsystem-discover command"
 narrative: 0002-subsystem_documentation
 subsystems: []
+created_after: ["0020-agent_discovery_command"]
 ---
 
 # Chunk Goal

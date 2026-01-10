@@ -37,6 +37,7 @@ code_references:
   - ref: docs/trunk/SPEC.md
     implements: "Specification updated with FUTURE status, --future flag, and ve chunk activate"
 narrative: null
+created_after: ["0012-symbolic_code_refs"]
 ---
 
 # Chunk Goal

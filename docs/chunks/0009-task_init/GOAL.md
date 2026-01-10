@@ -31,6 +31,7 @@ code_references:
   - ref: README.md
     implements: "Cross-Repository Work documentation section"
 narrative: 0001-cross_repo_chunks
+created_after: ["0008-git_local_utilities"]
 ---
 
 # Chunk Goal

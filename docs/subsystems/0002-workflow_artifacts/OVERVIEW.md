@@ -31,6 +31,8 @@ chunks:
   relationship: implements
 - chunk_id: 0040-artifact_index_no_git
   relationship: implements
+- chunk_id: 0042-causal_ordering_migration
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -151,6 +153,7 @@ proposed_chunks:
     external repo showing dependents. Follow the pattern established by chunk task-aware
     commands.'
   chunk_directory: null
+created_after: ["0001-template_system"]
 ---
 <!--
 DO NOT DELETE THIS COMMENT until the subsystem reaches STABLE status.
@@ -455,6 +458,11 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
   `ve narrative list`, `ve subsystem list`, `ve investigation list`) to use `ArtifactIndex`
   for causal ordering instead of sequence number parsing. Added new `ve narrative list`
   command. Displays tip indicators for artifacts with no dependents
+
+- **0042-causal_ordering_migration** - One-time migration script to populate `created_after`
+  fields for all existing artifacts (chunks, narratives, investigations, subsystems).
+  Creates linear causal chain based on sequence number order, enabling `ArtifactIndex`
+  to correctly identify single tips for each artifact type
 
 ## Consolidation Chunks
 

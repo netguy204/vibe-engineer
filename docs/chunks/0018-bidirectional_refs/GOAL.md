@@ -32,6 +32,7 @@ code_references:
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Template updated with subsystems field and documentation"
 narrative: 0002-subsystem_documentation
+created_after: ["0017-subsystem_template"]
 ---
 
 # Chunk Goal

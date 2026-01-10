@@ -6,6 +6,7 @@ proposed_chunks:
     chunk_directory: null
   - prompt: "Add narrative backreference support to code files (# Narrative: docs/narratives/NNNN-name format)"
     chunk_directory: null
+created_after: ["0001-artifact_sequence_numbering"]
 ---
 
 <!--

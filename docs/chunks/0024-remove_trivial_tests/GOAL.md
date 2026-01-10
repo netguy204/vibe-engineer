@@ -10,6 +10,7 @@ code_references:
     implements: "Anti-pattern documentation for trivial tests with identification criteria and examples"
 narrative: null
 subsystems: []
+created_after: ["0023-canonical_template_module"]
 ---
 
 # Chunk Goal

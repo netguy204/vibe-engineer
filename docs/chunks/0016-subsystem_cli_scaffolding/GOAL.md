@@ -23,6 +23,7 @@ code_references:
   - ref: src/templates/subsystem/OVERVIEW.md.jinja2
     implements: "Minimal template with DISCOVERING status and section headers"
 narrative: 0002-subsystem_documentation
+created_after: ["0015-fix_ticket_frontmatter_null"]
 ---
 
 # Chunk Goal

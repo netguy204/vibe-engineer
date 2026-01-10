@@ -33,6 +33,7 @@ code_references:
   - ref: tests/test_chunks.py
     implements: "Frontmatter dependents parsing tests"
 narrative: 0001-cross_repo_chunks
+created_after: ["0006-narrative_cli_commands"]
 ---
 
 # Chunk Goal

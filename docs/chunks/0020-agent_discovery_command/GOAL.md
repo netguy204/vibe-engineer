@@ -9,6 +9,7 @@ code_references:
     implements: "Agent command template guiding collaborative subsystem discovery through 7 phases: name derivation, pattern identification, boundary exploration, invariant discovery, implementation mapping, chunk relationship mapping, and consolidation planning"
 narrative: 0002-subsystem_documentation
 subsystems: []
+created_after: ["0019-subsystem_status_transitions"]
 ---
 
 # Chunk Goal

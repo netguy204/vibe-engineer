@@ -20,6 +20,7 @@ code_references:
     implements: "Integration tests for rendering template to directory"
 narrative: 0003-investigations
 subsystems: []
+created_after: ["0026-template_system_consolidation"]
 ---
 
 # Chunk Goal
