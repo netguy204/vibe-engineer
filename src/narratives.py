@@ -3,6 +3,7 @@
 # Chunk: docs/chunks/template_system_consolidation - Template system integration
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter parsing
 # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+# Chunk: docs/chunks/valid_transitions - State transition validation
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import re
@@ -11,7 +12,7 @@ from pydantic import ValidationError
 import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import NarrativeFrontmatter, extract_short_name
+from models import NarrativeFrontmatter, NarrativeStatus, VALID_NARRATIVE_TRANSITIONS, extract_short_name
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
@@ -139,3 +140,99 @@ class Narratives:
             return NarrativeFrontmatter.model_validate(frontmatter_data)
         except (yaml.YAMLError, ValidationError):
             return None
+
+    # Chunk: docs/chunks/valid_transitions - State transition validation
+    def get_status(self, narrative_id: str) -> NarrativeStatus:
+        """Get the current status of a narrative.
+
+        Args:
+            narrative_id: The narrative directory name.
+
+        Returns:
+            The current NarrativeStatus.
+
+        Raises:
+            ValueError: If narrative not found or has invalid frontmatter.
+        """
+        frontmatter = self.parse_narrative_frontmatter(narrative_id)
+        if frontmatter is None:
+            raise ValueError(f"Narrative '{narrative_id}' not found in docs/narratives/")
+        return frontmatter.status
+
+    # Chunk: docs/chunks/valid_transitions - State transition validation
+    def update_status(
+        self, narrative_id: str, new_status: NarrativeStatus
+    ) -> tuple[NarrativeStatus, NarrativeStatus]:
+        """Update narrative status with transition validation.
+
+        Args:
+            narrative_id: The narrative directory name.
+            new_status: The new status to transition to.
+
+        Returns:
+            Tuple of (old_status, new_status) on success.
+
+        Raises:
+            ValueError: If narrative not found, invalid status, or invalid transition.
+        """
+        # Get current status
+        current_status = self.get_status(narrative_id)
+
+        # Validate the transition
+        valid_transitions = VALID_NARRATIVE_TRANSITIONS.get(current_status, set())
+        if new_status not in valid_transitions:
+            valid_names = sorted(s.value for s in valid_transitions)
+            if valid_names:
+                valid_str = ", ".join(valid_names)
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"Valid transitions: {valid_str}"
+                )
+            else:
+                raise ValueError(
+                    f"Cannot transition from {current_status.value} to {new_status.value}. "
+                    f"{current_status.value} is a terminal state with no valid transitions"
+                )
+
+        # Update the frontmatter
+        self._update_overview_frontmatter(narrative_id, "status", new_status.value)
+
+        return (current_status, new_status)
+
+    # Chunk: docs/chunks/valid_transitions - State transition validation
+    def _update_overview_frontmatter(
+        self, narrative_id: str, field: str, value
+    ) -> None:
+        """Update a single field in OVERVIEW.md frontmatter.
+
+        Args:
+            narrative_id: The narrative directory name.
+            field: The frontmatter field name to update.
+            value: The new value for the field.
+
+        Raises:
+            ValueError: If the file has no frontmatter.
+        """
+        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
+
+        content = overview_path.read_text()
+
+        # Parse frontmatter between --- markers
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
+        if not match:
+            raise ValueError(f"Could not parse frontmatter in {overview_path}")
+
+        frontmatter_text = match.group(1)
+        body = match.group(2)
+
+        # Parse YAML frontmatter
+        frontmatter = yaml.safe_load(frontmatter_text) or {}
+
+        # Update the field
+        frontmatter[field] = value
+
+        # Reconstruct the file
+        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+        new_content = f"---\n{new_frontmatter}---\n{body}"
+
+        overview_path.write_text(new_content)

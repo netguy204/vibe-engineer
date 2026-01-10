@@ -24,7 +24,7 @@ from investigations import Investigations
 from narratives import Narratives
 from project import Project
 from subsystems import Subsystems
-from models import SubsystemStatus, InvestigationStatus
+from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus
 from task_init import TaskInit
 from task_utils import (
     is_task_directory,
@@ -289,6 +289,57 @@ def activate(chunk_id, project_dir):
     click.echo(f"Activated docs/chunks/{activated}")
 
 
+# Chunk: docs/chunks/valid_transitions - Status command
+@chunk.command()
+@click.argument("chunk_id")
+@click.argument("new_status", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def status(chunk_id, new_status, project_dir):
+    """Show or update chunk status."""
+    from models import extract_short_name
+
+    chunks = Chunks(project_dir)
+
+    # Resolve chunk_id
+    resolved_id = chunks.resolve_chunk_id(chunk_id)
+    if resolved_id is None:
+        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        raise SystemExit(1)
+
+    # Extract shortname for display
+    shortname = extract_short_name(resolved_id)
+
+    # Display mode: just show current status
+    if new_status is None:
+        try:
+            current_status = chunks.get_status(resolved_id)
+            click.echo(f"{shortname}: {current_status.value}")
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+        return
+
+    # Transition mode: validate and update status
+    # First validate new_status is a valid ChunkStatus value
+    try:
+        new_status_enum = ChunkStatus(new_status)
+    except ValueError:
+        valid_statuses = ", ".join(s.value for s in ChunkStatus)
+        click.echo(
+            f"Error: Invalid status '{new_status}'. Valid statuses: {valid_statuses}",
+            err=True
+        )
+        raise SystemExit(1)
+
+    # Attempt the transition
+    try:
+        old_status, updated_status = chunks.update_status(resolved_id, new_status_enum)
+        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 # Chunk: docs/chunks/chunk_overlap_command - Find overlapping chunks
 @chunk.command()
 @click.argument("chunk_id")
@@ -386,6 +437,51 @@ def list_narratives(project_dir):
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         tip_indicator = " *" if narrative_name in tips else ""
         click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
+
+
+# Chunk: docs/chunks/valid_transitions - Status command
+@narrative.command()
+@click.argument("narrative_id")
+@click.argument("new_status", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def status(narrative_id, new_status, project_dir):
+    """Show or update narrative status."""
+    from models import extract_short_name
+
+    narratives = Narratives(project_dir)
+
+    # Extract shortname for display
+    shortname = extract_short_name(narrative_id)
+
+    # Display mode: just show current status
+    if new_status is None:
+        try:
+            current_status = narratives.get_status(narrative_id)
+            click.echo(f"{shortname}: {current_status.value}")
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+        return
+
+    # Transition mode: validate and update status
+    # First validate new_status is a valid NarrativeStatus value
+    try:
+        new_status_enum = NarrativeStatus(new_status)
+    except ValueError:
+        valid_statuses = ", ".join(s.value for s in NarrativeStatus)
+        click.echo(
+            f"Error: Invalid status '{new_status}'. Valid statuses: {valid_statuses}",
+            err=True
+        )
+        raise SystemExit(1)
+
+    # Attempt the transition
+    try:
+        old_status, updated_status = narratives.update_status(narrative_id, new_status_enum)
+        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/task_init - Task command group
@@ -677,6 +773,51 @@ def list_investigations(state, project_dir):
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         tip_indicator = " *" if inv_name in tips else ""
         click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
+
+
+# Chunk: docs/chunks/valid_transitions - Status command
+@investigation.command()
+@click.argument("investigation_id")
+@click.argument("new_status", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def status(investigation_id, new_status, project_dir):
+    """Show or update investigation status."""
+    from models import extract_short_name
+
+    investigations = Investigations(project_dir)
+
+    # Extract shortname for display
+    shortname = extract_short_name(investigation_id)
+
+    # Display mode: just show current status
+    if new_status is None:
+        try:
+            current_status = investigations.get_status(investigation_id)
+            click.echo(f"{shortname}: {current_status.value}")
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+        return
+
+    # Transition mode: validate and update status
+    # First validate new_status is a valid InvestigationStatus value
+    try:
+        new_status_enum = InvestigationStatus(new_status)
+    except ValueError:
+        valid_statuses = ", ".join(s.value for s in InvestigationStatus)
+        click.echo(
+            f"Error: Invalid status '{new_status}'. Valid statuses: {valid_statuses}",
+            err=True
+        )
+        raise SystemExit(1)
+
+    # Attempt the transition
+    try:
+        old_status, updated_status = investigations.update_status(investigation_id, new_status_enum)
+        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/ve_sync_command - Sync external references

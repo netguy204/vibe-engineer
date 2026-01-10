@@ -86,6 +86,9 @@ search for it - run it directly via Bash.
     recommendations based on each overlapping subsystem's status. For semantic changes,
     always get operator confirmation before expanding scope or updating subsystem documentation.
 
-11. Mark the chunk status as active in the front matter and remove the comment
-    explaining the structure of the front matter from the <chunk
-    directory>/GOAL.md file
+11. Update the chunk status to ACTIVE using the CLI command:
+    ```
+    ve chunk status <chunk_id> ACTIVE
+    ```
+    Then remove the comment explaining the structure of the front matter from the
+    <chunk directory>/GOAL.md file
