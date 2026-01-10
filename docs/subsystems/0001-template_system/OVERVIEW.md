@@ -1,5 +1,6 @@
 ---
 status: STABLE
+proposed_chunks: []
 chunks:
 - chunk_id: 0003-project_init_command
   relationship: implements

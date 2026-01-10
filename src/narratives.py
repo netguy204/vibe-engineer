@@ -1,8 +1,15 @@
 """Narratives module - business logic for narrative management."""
 # Chunk: docs/chunks/0006-narrative_cli_commands - Narrative creation and management
 # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing
 # Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
+import re
+
+from pydantic import ValidationError
+import yaml
+
+from models import NarrativeFrontmatter
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
@@ -66,3 +73,38 @@ class Narratives:
         )
 
         return narrative_path
+
+    # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Parse narrative frontmatter
+    def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
+        """Parse and validate OVERVIEW.md frontmatter for a narrative.
+
+        Args:
+            narrative_id: The narrative directory name.
+
+        Returns:
+            Validated NarrativeFrontmatter if successful, None if:
+            - Narrative directory doesn't exist
+            - OVERVIEW.md doesn't exist
+            - Frontmatter is malformed or fails validation
+        """
+        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
+        if not overview_path.exists():
+            return None
+
+        content = overview_path.read_text()
+
+        # Extract frontmatter between --- markers
+        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+        if not match:
+            return None
+
+        try:
+            frontmatter_data = yaml.safe_load(match.group(1))
+            if not isinstance(frontmatter_data, dict):
+                return None
+            # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
+            if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
+                frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
+            return NarrativeFrontmatter.model_validate(frontmatter_data)
+        except (yaml.YAMLError, ValidationError):
+            return None

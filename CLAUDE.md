@@ -43,7 +43,7 @@ When you see these references, read the referenced artifact to understand the br
 Narratives are multi-chunk initiatives that capture a high-level ambition decomposed into implementation steps. Each narrative directory contains an OVERVIEW.md with:
 
 - **Advances Trunk Goal** - How this narrative advances the project's goals
-- **Chunks** - List of chunk prompts and their corresponding chunk directories
+- **Proposed Chunks** - List of chunk prompts and their corresponding chunk directories (in `proposed_chunks` frontmatter)
 
 When a chunk references a narrative, read the narrative's OVERVIEW.md to understand the larger initiative the chunk belongs to.
 
@@ -55,6 +55,7 @@ Subsystems document emergent architectural patterns discovered in the codebase. 
 - **Scope** - What's in and out of scope
 - **Invariants** - Rules that must always hold
 - **Code References** - Symbolic references to implementations
+- **Proposed Chunks** - Consolidation work discovered but not yet implemented (in `proposed_chunks` frontmatter)
 
 Subsystem status values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
 
@@ -93,6 +94,19 @@ Investigations are exploratory documents for understanding something before comm
 - **Investigation**: When you need to understand something before committing to action—unclear root cause, multiple hypotheses, exploration needed
 - **Chunk**: When you know what needs to be done and can proceed directly to implementation
 - **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
+
+## Proposed Chunks
+
+The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, subsystems, and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
+
+- **prompt**: The chunk prompt text describing the work
+- **chunk_directory**: `null` until a chunk is created, then the directory name
+
+Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet across the entire project. This helps identify pending work from all sources.
+
+The distinction between `chunks` (in subsystem frontmatter) and `proposed_chunks` is important:
+- `chunks`: Tracks relationships to already-created chunks (implements/uses)
+- `proposed_chunks`: Tracks proposed work that may or may not become chunks
 
 ## Available Commands
 

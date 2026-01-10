@@ -1,147 +1,203 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk unifies how proposed chunks are tracked across narratives, subsystems, and investigations by:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Renaming `chunks` to `proposed_chunks`** in narrative templates and existing narratives
+2. **Adding `proposed_chunks`** to subsystem templates for consolidation work (keeping existing `chunks` for chunk relationships)
+3. **Adding a `ve chunk list-proposed` CLI command** to enumerate proposed-but-not-yet-created chunks across all artifact types
+4. **Migrating existing artifacts** to the new field names
+5. **Updating documentation** to explain the pattern
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The implementation follows existing CLI patterns in `src/ve.py` (click command groups) and leverages the Pydantic models in `src/models.py` for schema validation. Per DEC-001, all functionality is exposed via the CLI. Per DEC-004, file references are relative to project root.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/0032-proposed_chunks_frontmatter/GOAL.md)
-with references to the files that you expect to touch.
--->
+Tests will follow `docs/trunk/TESTING_PHILOSOPHY.md`:
+- TDD for the new `list-proposed` command logic
+- CLI integration tests using Click's test runner
+- Semantic assertions verifying actual output, not just types
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/0001-template_system** (STABLE): This chunk USES the template system's existing patterns. Templates are updated via direct file edits (not the render_to_directory API), following the `.jinja2` suffix convention.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No deviations discovered. The template system is STABLE, so no opportunistic improvements are needed.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `ProposedChunk` Pydantic model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a shared model for the `{prompt, chunk_directory}` structure used across all artifact types. This ensures consistent validation.
 
-Example:
+Location: `src/models.py`
 
-### Step 1: Define the SegmentHeader struct
+Schema:
+```python
+class ProposedChunk(BaseModel):
+    prompt: str  # The chunk prompt text
+    chunk_directory: str | None = None  # Populated when chunk is created
+```
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add validation that `prompt` is non-empty.
 
-Location: src/segment/format.rs
+### Step 2: Update narrative frontmatter schema
 
-### Step 2: Implement header serialization
+Add `NarrativeFrontmatter` Pydantic model with:
+- `status`: NarrativeStatus enum (DRAFTING, ACTIVE, COMPLETED)
+- `advances_trunk_goal`: str | None
+- `proposed_chunks`: list[ProposedChunk] = []
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+This model will be used by the `list-proposed` command to parse narrative frontmatter.
 
-### Step 3: ...
--->
+Location: `src/models.py`
 
-## Dependencies
+### Step 3: Update subsystem frontmatter schema
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Extend `SubsystemFrontmatter` to include `proposed_chunks`:
+- `proposed_chunks`: list[ProposedChunk] = []
 
-If there are no dependencies, delete this section.
--->
+The existing `chunks` field (list[ChunkRelationship]) remains for tracking already-created chunk relationships.
+
+Location: `src/models.py`
+
+### Step 4: Update narrative template
+
+Rename `chunks` to `proposed_chunks` in the narrative OVERVIEW.md template:
+
+Location: `src/templates/narrative/OVERVIEW.md.jinja2`
+
+Changes:
+- Frontmatter: `chunks: []` → `proposed_chunks: []`
+- Update schema comment to describe the new field
+- Keep existing prose sections (they refer to "chunks" conceptually, not the field name)
+
+### Step 5: Update subsystem template
+
+Add `proposed_chunks` field to subsystem OVERVIEW.md template frontmatter:
+
+Location: `src/templates/subsystem/OVERVIEW.md.jinja2`
+
+Changes:
+- Add `proposed_chunks: []` to frontmatter
+- Add schema documentation for the field
+- Update "Consolidation Chunks" section to reference the frontmatter array
+
+### Step 6: Add `parse_narrative_frontmatter` to narratives module
+
+Add a method to parse and validate narrative OVERVIEW.md frontmatter:
+
+Location: `src/narratives.py`
+
+```python
+def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None
+```
+
+Follow the pattern from `src/subsystems.py#parse_subsystem_frontmatter`.
+
+### Step 7: Implement `list_proposed_chunks` core logic
+
+Add business logic to collect proposed chunks across all artifact types:
+
+Location: `src/chunks.py` (add new method to Chunks class)
+
+```python
+def list_proposed_chunks(self) -> list[dict]:
+    """List all proposed chunks across investigations, narratives, and subsystems.
+
+    Returns:
+        List of dicts with keys: prompt, chunk_directory, source_type, source_id
+        Filtered to entries where chunk_directory is None (not yet created).
+    """
+```
+
+The method should:
+1. Iterate over all investigations, parse frontmatter, extract `proposed_chunks`
+2. Iterate over all narratives, parse frontmatter, extract `proposed_chunks`
+3. Iterate over all subsystems, parse frontmatter, extract `proposed_chunks`
+4. Filter to entries where `chunk_directory` is None or empty
+5. Return with source information (which artifact proposed this chunk)
+
+### Step 8: Add `ve chunk list-proposed` CLI command
+
+Location: `src/ve.py`
+
+```python
+@chunk.command("list-proposed")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_proposed_chunks(project_dir):
+    """List all proposed chunks that haven't been created yet."""
+```
+
+Output format:
+```
+From docs/investigations/0001-memory_leak:
+  - Add LRU eviction to ImageCache
+From docs/narratives/0003-investigations:
+  - Create the investigation OVERVIEW.md template...
+```
+
+### Step 9: Migrate existing narrative documents
+
+Update the three existing narratives to use `proposed_chunks`:
+
+Files to update:
+- `docs/narratives/0001-cross_repo_chunks/OVERVIEW.md`
+- `docs/narratives/0002-subsystem_documentation/OVERVIEW.md`
+- `docs/narratives/0003-investigations/OVERVIEW.md`
+
+For each file, rename the frontmatter field `chunks` to `proposed_chunks`.
+
+### Step 10: Migrate existing subsystem documents
+
+Update existing subsystem to add empty `proposed_chunks` if not present:
+
+File: `docs/subsystems/0001-template_system/OVERVIEW.md`
+
+Add `proposed_chunks: []` to frontmatter (no pending consolidation work since it's STABLE).
+
+### Step 11: Update CLAUDE.md documentation
+
+Add a section explaining the `proposed_chunks` pattern:
+
+Location: `CLAUDE.md`
+
+Content:
+- Explain that `proposed_chunks` is a cross-cutting field used in narratives, subsystems, and investigations
+- Document the `ve chunk list-proposed` command
+- Clarify the distinction from subsystem's `chunks` field (which tracks already-created relationships)
+
+### Step 12: Write tests for `list-proposed` command
+
+Location: `tests/test_chunk_list_proposed.py`
+
+Test cases:
+1. Empty project returns no output, exit code 0
+2. Investigation with proposed chunks shows them
+3. Narrative with proposed chunks shows them
+4. Subsystem with proposed chunks shows them
+5. Already-created chunks (chunk_directory populated) are filtered out
+6. Output includes source artifact information
+7. Multiple sources are aggregated correctly
+
+### Step 13: Write tests for narrative frontmatter parsing
+
+Location: `tests/test_narratives.py` (extend existing file)
+
+Test cases:
+1. Parse valid narrative frontmatter with proposed_chunks
+2. Handle missing proposed_chunks field (defaults to empty list)
+3. Handle malformed frontmatter gracefully
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Backward compatibility**: Existing narratives use `chunks`, not `proposed_chunks`. The migration in Steps 9-10 addresses this, but any external tools parsing these files would need updates. This is acceptable since no external tooling exists yet.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Semantic clarity**: The name `proposed_chunks` clearly signals these are proposals, not created chunks. However, for subsystems, we now have both `chunks` (relationships to existing chunks) and `proposed_chunks` (pending consolidation work). The distinction should be documented clearly.
+
+3. **Field naming in investigations**: Investigations already use `proposed_chunks`, so no template change is needed there. The model addition in Step 1 formalizes what already exists.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

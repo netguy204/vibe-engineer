@@ -318,7 +318,28 @@ class SymbolicReference(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Proposed chunk schema
+class ProposedChunk(BaseModel):
+    """A proposed chunk entry used across narratives, subsystems, and investigations.
+
+    Represents a chunk that has been proposed but may or may not have been created yet.
+    When chunk_directory is None or empty, the chunk has not yet been created.
+    """
+
+    prompt: str  # The chunk prompt text
+    chunk_directory: str | None = None  # Populated when chunk is created
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        """Validate prompt is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("prompt cannot be empty")
+        return v
+
+
 # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystem frontmatter schema
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Added proposed_chunks field
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -328,9 +349,32 @@ class SubsystemFrontmatter(BaseModel):
     status: SubsystemStatus
     chunks: list[ChunkRelationship] = []
     code_references: list[SymbolicReference] = []
+    proposed_chunks: list[ProposedChunk] = []
+
+
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative status enum
+class NarrativeStatus(StrEnum):
+    """Status values for narrative lifecycle."""
+
+    DRAFTING = "DRAFTING"  # Narrative is being refined; chunks not yet created
+    ACTIVE = "ACTIVE"  # Chunks are being created and implemented
+    COMPLETED = "COMPLETED"  # All chunks created and narrative's ambition realized
+
+
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter schema
+class NarrativeFrontmatter(BaseModel):
+    """Frontmatter schema for narrative OVERVIEW.md files.
+
+    Validates the YAML frontmatter in narrative documentation.
+    """
+
+    status: NarrativeStatus
+    advances_trunk_goal: str | None = None
+    proposed_chunks: list[ProposedChunk] = []
 
 
 # Chunk: docs/chunks/0029-investigation_commands - Investigation frontmatter schema
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Updated to use ProposedChunk
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 
@@ -339,4 +383,4 @@ class InvestigationFrontmatter(BaseModel):
 
     status: InvestigationStatus
     trigger: str | None = None
-    proposed_chunks: list[dict] = []
+    proposed_chunks: list[ProposedChunk] = []

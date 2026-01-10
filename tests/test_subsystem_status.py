@@ -294,10 +294,10 @@ class TestSubsystemStatusFrontmatterPreservation:
         overview_path = temp_project / "docs" / "subsystems" / "0001-validation" / "OVERVIEW.md"
         content = overview_path.read_text()
 
-        # Add a chunk reference to the frontmatter
+        # Add a chunk reference to the frontmatter (be specific to avoid matching proposed_chunks)
         new_content = content.replace(
-            "chunks: []",
-            "chunks:\n  - chunk_id: '0001-test'\n    relationship: implements"
+            "\nchunks: []\n",
+            "\nchunks:\n  - chunk_id: '0001-test'\n    relationship: implements\n"
         )
         overview_path.write_text(new_content)
 

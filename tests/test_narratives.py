@@ -1,6 +1,8 @@
 """Tests for the Narratives class."""
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests
 
 from narratives import Narratives
+from models import NarrativeStatus
 
 
 class TestNarrativesClass:
@@ -74,3 +76,122 @@ class TestNarrativesClass:
         narratives = Narratives(temp_project)
         expected = temp_project / "docs" / "narratives"
         assert narratives.narratives_dir == expected
+
+
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests
+class TestNarrativeFrontmatterParsing:
+    """Tests for parse_narrative_frontmatter method."""
+
+    def test_parse_valid_frontmatter_with_proposed_chunks(self, temp_project):
+        """Verify valid frontmatter with proposed_chunks parses correctly."""
+        narr_dir = temp_project / "docs" / "narratives" / "0001-test_narr"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: "Some goal"
+proposed_chunks:
+  - prompt: "First chunk"
+    chunk_directory: "0001-first"
+  - prompt: "Second chunk"
+    chunk_directory: null
+---
+# Test Narrative
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-test_narr")
+
+        assert frontmatter is not None
+        assert frontmatter.status == NarrativeStatus.ACTIVE
+        assert frontmatter.advances_trunk_goal == "Some goal"
+        assert len(frontmatter.proposed_chunks) == 2
+        assert frontmatter.proposed_chunks[0].prompt == "First chunk"
+        assert frontmatter.proposed_chunks[0].chunk_directory == "0001-first"
+        assert frontmatter.proposed_chunks[1].prompt == "Second chunk"
+        assert frontmatter.proposed_chunks[1].chunk_directory is None
+
+    def test_parse_frontmatter_missing_proposed_chunks_defaults_empty(self, temp_project):
+        """Verify missing proposed_chunks field defaults to empty list."""
+        narr_dir = temp_project / "docs" / "narratives" / "0001-test_narr"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: DRAFTING
+advances_trunk_goal: null
+---
+# Test Narrative
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-test_narr")
+
+        assert frontmatter is not None
+        assert frontmatter.status == NarrativeStatus.DRAFTING
+        assert frontmatter.proposed_chunks == []
+
+    def test_parse_legacy_chunks_field_maps_to_proposed_chunks(self, temp_project):
+        """Verify legacy 'chunks' field is mapped to proposed_chunks."""
+        narr_dir = temp_project / "docs" / "narratives" / "0001-legacy_narr"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: null
+chunks:
+  - prompt: "Legacy prompt"
+    chunk_directory: null
+---
+# Legacy Narrative
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-legacy_narr")
+
+        assert frontmatter is not None
+        assert len(frontmatter.proposed_chunks) == 1
+        assert frontmatter.proposed_chunks[0].prompt == "Legacy prompt"
+
+    def test_parse_malformed_frontmatter_returns_none(self, temp_project):
+        """Verify malformed YAML frontmatter returns None."""
+        narr_dir = temp_project / "docs" / "narratives" / "0001-bad_narr"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+  bad_indent: yes
+---
+# Bad Narrative
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-bad_narr")
+
+        assert frontmatter is None
+
+    def test_parse_nonexistent_narrative_returns_none(self, temp_project):
+        """Verify nonexistent narrative returns None."""
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-nonexistent")
+
+        assert frontmatter is None
+
+    def test_parse_no_frontmatter_returns_none(self, temp_project):
+        """Verify file without frontmatter returns None."""
+        narr_dir = temp_project / "docs" / "narratives" / "0001-no_front"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""# No Frontmatter Narrative
+
+Just regular markdown content.
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("0001-no_front")
+
+        assert frontmatter is None

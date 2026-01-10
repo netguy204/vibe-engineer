@@ -1,7 +1,7 @@
 ---
 status: COMPLETED
 advances_trunk_goal: "Required Properties: Following the workflow must maintain the health of documents over time and should not grow more difficult over time."
-chunks:
+proposed_chunks:
   - prompt: "Subsystem schemas and data model"
     chunk_directory: "0014-subsystem_schemas_and_model"
   - prompt: "Subsystem directory structure and CLI scaffolding"

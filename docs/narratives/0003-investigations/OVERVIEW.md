@@ -1,7 +1,7 @@
 ---
 status: COMPLETED
 advances_trunk_goal: "Problem Statement: deeply understanding the goal and the correctness constraints around the project are the entire engineering problem that remains"
-chunks:
+proposed_chunks:
   - prompt: "Create the investigation OVERVIEW.md template in src/templates/investigation/, following the patterns established by narrative and subsystem templates. Include sections for: trigger, success criteria, testable hypotheses, exploration log, findings, proposed chunks, and resolution rationale."
     chunk_directory: "0027-investigation_template"
   - prompt: "Add CLI commands for investigations: `ve investigation create <name>` to scaffold a new investigation directory, and `ve investigation list` to show investigations by status. Create the /investigation-create slash command to guide collaborative refinement of a new investigation, with scale assessment to propose chunks for simple tasks."

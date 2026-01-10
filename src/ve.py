@@ -169,6 +169,41 @@ def list_chunks(latest, project_dir):
             click.echo(f"docs/chunks/{chunk_name} [{status}]")
 
 
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - List proposed chunks command
+@chunk.command("list-proposed")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_proposed_chunks(project_dir):
+    """List all proposed chunks that haven't been created yet."""
+    chunks = Chunks(project_dir)
+    investigations = Investigations(project_dir)
+    narratives = Narratives(project_dir)
+    subsystems = Subsystems(project_dir)
+
+    proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+
+    if not proposed:
+        click.echo("No proposed chunks found", err=True)
+        raise SystemExit(0)
+
+    # Group by source
+    by_source: dict[str, list[dict]] = {}
+    for item in proposed:
+        source_key = f"docs/{item['source_type']}s/{item['source_id']}"
+        if source_key not in by_source:
+            by_source[source_key] = []
+        by_source[source_key].append(item)
+
+    # Output grouped by source
+    for source_path, items in sorted(by_source.items()):
+        click.echo(f"From {source_path}:")
+        for item in items:
+            # Truncate long prompts for display
+            prompt = item["prompt"]
+            if len(prompt) > 80:
+                prompt = prompt[:77] + "..."
+            click.echo(f"  - {prompt}")
+
+
 # Chunk: docs/chunks/0013-future_chunk_creation - Activate FUTURE chunk
 @chunk.command()
 @click.argument("chunk_id")

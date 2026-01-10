@@ -1,7 +1,7 @@
 ---
 status: DRAFTING
 advances_trunk_goal: null
-chunks: []
+proposed_chunks: []
 ---
 
 <!--
@@ -14,13 +14,14 @@ ADVANCES_TRUNK_GOAL:
 - Reference the specific section of docs/trunk/GOAL.md this narrative advances
 - Example: "Required Properties: Must support multi-repository workflows"
 
-CHUNKS:
+PROPOSED_CHUNKS:
 - Starts empty; entries are added as prompts are turned into chunks via /chunk-create
 - Each entry records which prompt was refined and where the resulting chunk lives
 - prompt: The prompt text from this document that was used to create the chunk
-- chunk_directory: The created chunk directory (e.g., "0007-feature_name")
+- chunk_directory: The created chunk directory (e.g., "0007-feature_name"), null until created
 - DO NOT POPULATE this array during narrative creation. It will be populated as
   chunks are created.
+- Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet
 -->
 
 ## Advances Trunk Goal
@@ -77,7 +78,7 @@ process, which handles detailed refinement.
 -->
 
 <!--
-Update the chunks array in the frontmatter as prompts are defined.
+Update the proposed_chunks array in the frontmatter as prompts are defined.
 The list below mirrors the frontmatter for readability.
 -->
 

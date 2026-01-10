@@ -2,6 +2,7 @@
 status: DISCOVERING
 chunks: []
 code_references: []
+proposed_chunks: []
 ---
 
 <!--
@@ -68,6 +69,19 @@ CODE_REFERENCES:
     - ref: src/api/handler.py#process_input
       implements: "Input processing with inline validation"
       compliance: PARTIAL
+
+PROPOSED_CHUNKS:
+- Tracks consolidation work that has been proposed but not yet created as chunks
+- Format: list of {prompt, chunk_directory} where:
+  - prompt: Description of the consolidation work needed
+  - chunk_directory: null until a chunk is created, then the directory name
+- Use `ve chunk list-proposed` to see all proposed chunks across the system
+- Example:
+  proposed_chunks:
+    - prompt: "Migrate old_validator.py to use the validation subsystem's regex patterns"
+      chunk_directory: null
+    - prompt: "Add validation subsystem integration to third_party.py"
+      chunk_directory: "0015-third_party_validation"
 -->
 
 # {{ short_name }}
@@ -269,29 +283,32 @@ Delete this comment block once chunk relationships begin to accumulate.
 <!--
 GUIDANCE:
 
-This section tracks discovered out-of-compliance code awaiting migration. Each
-entry should include:
-- Location: Where the non-compliant code lives
-- Issue: What's wrong or different from the canonical approach
-- Draft prompt: A seed for `/chunk-create` when work is scheduled
-- Status: Not yet scheduled / Planned / Blocked on X
+This section provides prose context for consolidation work. The authoritative
+list of proposed consolidation chunks is in the `proposed_chunks` frontmatter.
 
-When consolidation work is planned, use the draft prompt to create a real chunk
-via `/chunk-create`. Update this section to reference the created chunk.
+When you discover out-of-compliance code during exploration:
+1. Add an entry to `proposed_chunks` in the frontmatter with the draft prompt
+2. Optionally add prose context here explaining the issue and any blockers
 
-This differs from narrative chunks:
-- Narrative chunks are forward-planned from an ambition
-- Consolidation chunks are backward-discovered from inconsistencies
+When consolidation work is scheduled:
+1. Create a real chunk via `/chunk-create` using the prompt
+2. Update the `proposed_chunks` entry to set `chunk_directory` to the created chunk
+3. Update this section to reference the created chunk
 
-Example:
+Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet.
+
+This differs from narrative proposed_chunks:
+- Narrative proposed_chunks are forward-planned from an ambition
+- Subsystem proposed_chunks are backward-discovered from inconsistencies
+
+Example prose context:
 ### Pending Consolidation
 
-1. **src/legacy/old_validator.py** - Uses string matching instead of regex patterns
-   - Draft prompt: "Migrate old_validator.py to use the validation subsystem's regex patterns"
+1. **src/legacy/old_validator.py** - Uses string matching instead of regex patterns.
+   Impact is low (only used by deprecated API) but creates maintenance burden.
    - Status: Not yet scheduled
 
-2. **src/external/third_party.py** - Bypasses validation entirely
-   - Draft prompt: "Add validation subsystem integration to third_party.py"
+2. **src/external/third_party.py** - Bypasses validation entirely.
    - Status: Blocked on upstream changes
 
 ### Completed Consolidation

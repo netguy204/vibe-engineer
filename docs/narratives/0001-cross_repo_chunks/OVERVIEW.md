@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 advances_trunk_goal: "Required Properties: It must be possible to perform the workflow outside the context of a Git repository."
-chunks:
+proposed_chunks:
   - prompt: "Cross-repo schemas: Define Pydantic models for .ve-task.yaml, external.yaml, and extended chunk GOAL.md frontmatter with dependents list. Add utility functions to detect task directories and external vs local chunks."
     chunk_directory: "0007-cross_repo_schemas"
   - prompt: "Git local utilities: Create utility functions for working with local git worktrees. Implement get_current_sha and resolve_ref to operate on local worktrees within the task directory."
@@ -10,6 +10,12 @@ chunks:
     chunk_directory: "0009-task_init"
   - prompt: "ve chunk create task-aware: Extend ve chunk create to detect task directory context. When in a task directory: create the chunk in the external chunk repo with dependents metadata, create external.yaml references in each project repo (using next sequential local ID per repo), resolve and populate pinned fields, and report all created paths. Preserve existing single-repo behavior when not in a task directory."
     chunk_directory: "0010-chunk_create_task_aware"
+  - prompt: "ve chunk list task-aware: Extend ve chunk list to detect task directory context. When in a task directory: list chunks from the external chunk repo, show dependent repos for each chunk, --latest returns highest chunk from external repo. Preserve existing single-repo behavior when not in a task directory."
+    chunk_directory: null
+  - prompt: "ve sync command: Implement ve sync to update pinned fields in external chunk references. When run from a task directory: iterate all projects, find external.yaml files, resolve current SHA from external chunk repo, update pinned if changed. When run from a single repo: update only that repo's external references. Report which references were updated."
+    chunk_directory: null
+  - prompt: "ve external resolve command: Implement ve external resolve <local-chunk-id> [--at-pinned] to display an external chunk's content. Locate the external.yaml, resolve the external chunk location, display GOAL.md and PLAN.md. By default show content at current HEAD of external repo; with --at-pinned show content at the pinned SHA. Works from both task directory and single repo contexts."
+    chunk_directory: null
 ---
 
 ## Advances Trunk Goal

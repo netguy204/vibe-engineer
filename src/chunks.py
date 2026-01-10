@@ -6,10 +6,14 @@
 # Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic reference support
 # Chunk: docs/chunks/0013-future_chunk_creation - Current/activate chunk operations
 # Chunk: docs/chunks/0018-bidirectional_refs - Subsystem validation
+# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - List proposed chunks
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 import pathlib
 import re
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 import yaml
@@ -17,6 +21,11 @@ import yaml
 from models import CodeReference, SymbolicReference, SubsystemRelationship, CHUNK_ID_PATTERN
 from symbols import is_parent_of, parse_reference, extract_symbols
 from template_system import ActiveChunk, TemplateContext, render_to_directory
+
+if TYPE_CHECKING:
+    from investigations import Investigations
+    from narratives import Narratives
+    from subsystems import Subsystems
 
 
 # Chunk: docs/chunks/0005-chunk_validate - Validation result dataclass
@@ -536,6 +545,73 @@ class Chunks:
             return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
 
         return []
+
+    # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - List proposed chunks
+    def list_proposed_chunks(
+        self,
+        investigations: Investigations,
+        narratives: Narratives,
+        subsystems: Subsystems,
+    ) -> list[dict]:
+        """List all proposed chunks across investigations, narratives, and subsystems.
+
+        Args:
+            investigations: Investigations instance for parsing investigation frontmatter.
+            narratives: Narratives instance for parsing narrative frontmatter.
+            subsystems: Subsystems instance for parsing subsystem frontmatter.
+
+        Returns:
+            List of dicts with keys: prompt, chunk_directory, source_type, source_id
+            Filtered to entries where chunk_directory is None (not yet created).
+        """
+        results: list[dict] = []
+
+        # Collect from investigations
+        for inv_id in investigations.enumerate_investigations():
+            frontmatter = investigations.parse_investigation_frontmatter(inv_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "investigation",
+                        "source_id": inv_id,
+                    })
+
+        # Collect from narratives
+        for narr_id in narratives.enumerate_narratives():
+            frontmatter = narratives.parse_narrative_frontmatter(narr_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "narrative",
+                        "source_id": narr_id,
+                    })
+
+        # Collect from subsystems
+        for sub_id in subsystems.enumerate_subsystems():
+            frontmatter = subsystems.parse_subsystem_frontmatter(sub_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "subsystem",
+                        "source_id": sub_id,
+                    })
+
+        return results
 
     # Chunk: docs/chunks/0018-bidirectional_refs - Validate subsystem references
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
