@@ -13,6 +13,7 @@
 # Chunk: docs/chunks/0019-subsystem_status_transitions - Status transitions
 # Chunk: docs/chunks/0022-subsystem_impact_resolution - Subsystem overlap
 # Chunk: docs/chunks/0029-investigation_commands - Investigation commands
+# Chunk: docs/chunks/0035-external_resolve - External resolve command
 
 import pathlib
 
@@ -36,6 +37,11 @@ from sync import (
     sync_task_directory,
     sync_single_repo,
     find_external_refs,
+)
+from external_resolve import (
+    resolve_task_directory,
+    resolve_single_repo as resolve_single_repo_external,
+    ResolveResult,
 )
 from validation import validate_identifier
 
@@ -713,6 +719,120 @@ def _display_sync_results(results: list, dry_run: bool):
     if error_count > 0:
         click.echo(f"{error_count} error(s) occurred", err=True)
         raise SystemExit(1)
+
+
+# Chunk: docs/chunks/0035-external_resolve - External command group
+@cli.group()
+def external():
+    """External chunk reference commands."""
+    pass
+
+
+# Chunk: docs/chunks/0035-external_resolve - Resolve external chunk command
+@external.command()
+@click.argument("local_chunk_id")
+@click.option("--at-pinned", is_flag=True, help="Show content at pinned SHA instead of current HEAD")
+@click.option("--goal-only", is_flag=True, help="Show only GOAL.md content")
+@click.option("--plan-only", is_flag=True, help="Show only PLAN.md content")
+@click.option("--project", type=str, default=None, help="Specify project for disambiguation (task directory only)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def resolve(local_chunk_id, at_pinned, goal_only, plan_only, project, project_dir):
+    """Display external chunk content.
+
+    Resolves an external chunk reference and displays its GOAL.md and PLAN.md content.
+    Works in both task directory mode (using local worktrees) and single repo mode
+    (using the repo cache).
+    """
+    # Validate mutually exclusive options
+    if goal_only and plan_only:
+        click.echo("Error: --goal-only and --plan-only are mutually exclusive", err=True)
+        raise SystemExit(1)
+
+    # Determine mode and resolve
+    if is_task_directory(project_dir):
+        _resolve_external_task_directory(
+            project_dir, local_chunk_id, at_pinned, goal_only, plan_only, project
+        )
+    else:
+        if project:
+            click.echo("Error: --project can only be used in task directory context", err=True)
+            raise SystemExit(1)
+        _resolve_external_single_repo(
+            project_dir, local_chunk_id, at_pinned, goal_only, plan_only
+        )
+
+
+def _resolve_external_task_directory(
+    task_dir: pathlib.Path,
+    local_chunk_id: str,
+    at_pinned: bool,
+    goal_only: bool,
+    plan_only: bool,
+    project_filter: str | None,
+):
+    """Handle resolve in task directory mode."""
+    try:
+        result = resolve_task_directory(
+            task_dir,
+            local_chunk_id,
+            at_pinned=at_pinned,
+            project_filter=project_filter,
+        )
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    _display_resolve_result(result, goal_only, plan_only)
+
+
+def _resolve_external_single_repo(
+    repo_path: pathlib.Path,
+    local_chunk_id: str,
+    at_pinned: bool,
+    goal_only: bool,
+    plan_only: bool,
+):
+    """Handle resolve in single repo mode."""
+    try:
+        result = resolve_single_repo_external(
+            repo_path,
+            local_chunk_id,
+            at_pinned=at_pinned,
+        )
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    _display_resolve_result(result, goal_only, plan_only)
+
+
+def _display_resolve_result(result: ResolveResult, goal_only: bool, plan_only: bool):
+    """Display the resolve result to the user."""
+    # Header with metadata
+    click.echo("External Chunk Reference")
+    click.echo("========================")
+    click.echo(f"Repository: {result.repo}")
+    click.echo(f"Chunk: {result.external_chunk_id}")
+    click.echo(f"Track: {result.track}")
+    click.echo(f"SHA: {result.resolved_sha}")
+    click.echo("")
+
+    # Content
+    if not plan_only:
+        click.echo("--- GOAL.md ---")
+        if result.goal_content:
+            click.echo(result.goal_content)
+        else:
+            click.echo("(not found)")
+
+    if not goal_only:
+        if not plan_only:
+            click.echo("")
+        click.echo("--- PLAN.md ---")
+        if result.plan_content:
+            click.echo(result.plan_content)
+        else:
+            click.echo("(not found)")
 
 
 if __name__ == "__main__":

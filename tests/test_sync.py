@@ -432,8 +432,8 @@ class TestSyncTaskDirectory:
 class TestSyncSingleRepo:
     """Tests for sync_single_repo function."""
 
-    def test_updates_external_refs_using_ls_remote(self, git_repo, monkeypatch):
-        """Updates external.yaml using git ls-remote for remote resolution."""
+    def test_updates_external_refs_using_repo_cache(self, git_repo, monkeypatch):
+        """Updates external.yaml using repo cache for SHA resolution."""
         import sync
 
         # Create external reference
@@ -447,15 +447,44 @@ class TestSyncSingleRepo:
             f"pinned: '{old_sha}'\n"
         )
 
-        # Mock resolve_remote_ref to avoid network
+        # Mock repo_cache.resolve_ref to avoid network
         mock_sha = "a" * 40
-        monkeypatch.setattr(sync, "resolve_remote_ref", lambda *args, **kwargs: mock_sha)
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: mock_sha)
 
         results = sync_single_repo(git_repo)
 
         assert len(results) == 1
         assert results[0].updated is True
         assert results[0].new_sha == mock_sha
+
+    def test_single_repo_uses_cache(self, git_repo, monkeypatch):
+        """Verifies single repo mode uses repo_cache.resolve_ref."""
+        import sync
+
+        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
+        chunks_dir.mkdir(parents=True)
+        old_sha = "0" * 40
+        (chunks_dir / "external.yaml").write_text(
+            f"repo: octocat/Hello-World\n"
+            f"chunk: 0001-feature\n"
+            f"track: main\n"
+            f"pinned: '{old_sha}'\n"
+        )
+
+        # Track calls to repo_cache.resolve_ref
+        resolve_ref_calls = []
+
+        def track_resolve_ref(repo, ref):
+            resolve_ref_calls.append((repo, ref))
+            return "b" * 40
+
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", track_resolve_ref)
+
+        sync_single_repo(git_repo)
+
+        # Should have called repo_cache.resolve_ref with repo and track
+        assert len(resolve_ref_calls) == 1
+        assert resolve_ref_calls[0] == ("octocat/Hello-World", "main")
 
     def test_dry_run(self, git_repo, monkeypatch):
         """Dry run reports changes without modifying files."""
@@ -473,7 +502,7 @@ class TestSyncSingleRepo:
         )
 
         mock_sha = "a" * 40
-        monkeypatch.setattr(sync, "resolve_remote_ref", lambda *args, **kwargs: mock_sha)
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: mock_sha)
 
         results = sync_single_repo(git_repo, dry_run=True)
 
@@ -498,7 +527,7 @@ class TestSyncSingleRepo:
                 f"pinned: '{old_sha}'\n"
             )
 
-        monkeypatch.setattr(sync, "resolve_remote_ref", lambda *args, **kwargs: "a" * 40)
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: "a" * 40)
 
         results = sync_single_repo(git_repo, chunk_filter=["0001-external"])
 
@@ -522,7 +551,7 @@ class TestSyncSingleRepo:
         def raise_error(*args, **kwargs):
             raise ValueError("Remote not accessible")
 
-        monkeypatch.setattr(sync, "resolve_remote_ref", raise_error)
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", raise_error)
 
         results = sync_single_repo(git_repo)
 

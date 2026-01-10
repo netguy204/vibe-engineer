@@ -5,13 +5,15 @@ This module provides functionality for the `ve sync` command, which updates
 chunk repositories.
 """
 # Chunk: docs/chunks/0034-ve_sync_command - Sync external references
+# Chunk: docs/chunks/0035-external_resolve - Use repo cache for single-repo mode
 
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-from git_utils import get_current_sha, resolve_remote_ref
+import repo_cache
+from git_utils import get_current_sha
 from task_utils import (
     is_task_directory,
     load_task_config,
@@ -205,8 +207,8 @@ def sync_single_repo(
 ) -> list[SyncResult]:
     """Sync external references in single repo mode.
 
-    Finds external.yaml files, uses git ls-remote to resolve current SHA
-    from remote repository, and updates pinned fields.
+    Finds external.yaml files, uses repo cache to resolve current SHA
+    from external repository, and updates pinned fields.
 
     Args:
         repo_path: Path to the repository
@@ -242,10 +244,10 @@ def sync_single_repo(
             )
             continue
 
-        # Resolve SHA from remote using track field
+        # Resolve SHA using repo cache
         track = ref.track or "HEAD"
         try:
-            remote_sha = resolve_remote_ref(ref.repo, track)
+            remote_sha = repo_cache.resolve_ref(ref.repo, track)
         except ValueError as e:
             results.append(
                 SyncResult(

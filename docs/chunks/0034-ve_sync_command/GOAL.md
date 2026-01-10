@@ -22,7 +22,7 @@ code_references:
   - ref: src/sync.py#sync_task_directory
     implements: "Task directory mode sync logic"
   - ref: src/sync.py#sync_single_repo
-    implements: "Single repo mode sync logic using git ls-remote"
+    implements: "Single repo mode sync logic (updated by 0035 to use repo cache)"
   - ref: src/git_utils.py#resolve_remote_ref
     implements: "Resolve a git ref from a remote repository using git ls-remote"
   - ref: src/ve.py#sync

@@ -301,9 +301,9 @@ class TestSyncCommandSingleRepo:
             f"pinned: '{old_sha}'\n"
         )
 
-        # Mock resolve_remote_ref
+        # Mock repo_cache.resolve_ref
         mock_sha = "a" * 40
-        monkeypatch.setattr(sync, "resolve_remote_ref", lambda *args, **kwargs: mock_sha)
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: mock_sha)
 
         result = runner.invoke(cli, ["sync", "--project-dir", str(git_repo)])
 

@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETE
 advances_trunk_goal: "Required Properties: It must be possible to perform the workflow outside the context of a Git repository."
 proposed_chunks:
   - prompt: "Cross-repo schemas: Define Pydantic models for .ve-task.yaml, external.yaml, and extended chunk GOAL.md frontmatter with dependents list. Add utility functions to detect task directories and external vs local chunks."
