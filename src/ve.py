@@ -90,14 +90,15 @@ def chunk():
 
 # Chunk: docs/chunks/implement_chunk_start - Create new chunk command
 # Chunk: docs/chunks/future_chunk_creation - Future chunks support
-@chunk.command()
+# Chunk: docs/chunks/rename_chunk_start_to_create - Rename start to create
+@chunk.command("create")
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
-def start(short_name, ticket_id, project_dir, yes, future):
-    """Start a new chunk."""
+def create(short_name, ticket_id, project_dir, yes, future):
+    """Create a new chunk."""
     errors = validate_short_name(short_name)
     if ticket_id:
         errors.extend(validate_ticket_id(ticket_id))
@@ -136,6 +137,10 @@ def start(short_name, ticket_id, project_dir, yes, future):
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+
+# Chunk: docs/chunks/rename_chunk_start_to_create - Backward compatibility alias
+chunk.add_command(create, name="start")
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Task directory chunk creation

@@ -43,6 +43,8 @@ chunks:
   relationship: implements
 - chunk_id: external_chunk_causal
   relationship: implements
+- chunk_id: rename_chunk_start_to_create
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -92,9 +94,9 @@ code_references:
 - ref: src/task_utils.py#create_external_yaml
   implements: External reference creation with causal ordering support
   compliance: COMPLIANT
-- ref: src/ve.py#start
+- ref: src/ve.py#create
   implements: Chunk creation CLI command
-  compliance: NON_COMPLIANT
+  compliance: COMPLIANT
 - ref: src/artifact_ordering.py#ArtifactType
   implements: Workflow artifact type enum
   compliance: COMPLIANT
@@ -123,7 +125,7 @@ proposed_chunks:
     to rename the 'start' command to 'create' while maintaining backward compatibility
     via an alias. Update all documentation and slash commands that reference 'chunk
     start'.
-  chunk_directory: null
+  chunk_directory: rename_chunk_start_to_create
 - prompt: 'Consolidate external reference model: Replace ExternalChunkRef with a generic
     ExternalArtifactRef model that works for any workflow type. Add artifact_type
     field (chunk, narrative, investigation, subsystem) and artifact_id field (replaces
@@ -461,14 +463,12 @@ have transitions documented only in template comments:
 **Impact**: Medium. Violates hard invariant #9. No runtime validation of lifecycle
 transitions for these types. Enables invalid state changes that could confuse agents.
 
-### CLI Command Inconsistency: `chunk start` vs `create`
+### ~~CLI Command Inconsistency: `chunk start` vs `create`~~ (RESOLVED)
 
-**Location**: `src/ve.py#start`
+**Resolved by**: chunk rename_chunk_start_to_create
 
-Chunks use `ve chunk start` while other workflow types use `ve {type} create`.
-This inconsistency breaks the uniform command pattern.
-
-**Impact**: Low. UX inconsistency but functional.
+Chunks now use `ve chunk create` consistent with other workflow types. The `start`
+command remains as a backward-compatible alias.
 
 ### External References Only for Chunks
 
@@ -580,6 +580,11 @@ External chunk references now participate in local causal ordering:
   tip eligibility. `create_task_chunk()` now automatically populates `created_after`
   with current tips when creating external references.
 
+- **rename_chunk_start_to_create** - Renamed CLI command from `ve chunk start` to
+  `ve chunk create` for consistency with other workflow artifact commands (`ve narrative
+  create`, `ve investigation create`). The `start` command remains as a backward-compatible
+  alias via Click's `add_command()`. Updated slash command templates and documentation.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -596,10 +601,9 @@ External chunk references now participate in local causal ordering:
    - Impact: Medium
    - Status: Not yet scheduled
 
-3. **CLI command rename: `chunk start` → `chunk create`** - Minor UX inconsistency.
-   Should maintain backward compatibility via alias.
-   - Impact: Low
-   - Status: Not yet scheduled
+3. ~~**CLI command rename: `chunk start` → `chunk create`**~~ - **RESOLVED** by chunk
+   rename_chunk_start_to_create. `ve chunk create` is now the primary command with
+   `start` maintained as a backward-compatible alias.
 
 #### External Reference Consolidation
 
