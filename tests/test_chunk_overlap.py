@@ -6,25 +6,21 @@ from ve import cli
 
 
 def write_goal_frontmatter(chunk_path: pathlib.Path, status: str, code_references: list[dict]):
-    """Helper to write GOAL.md with frontmatter using the real format.
+    """Helper to write GOAL.md with frontmatter using symbolic reference format.
 
     Args:
         chunk_path: Path to chunk directory
-        status: Chunk status (ACTIVE, COMPLETED, etc.)
-        code_references: List of dicts with 'file' and 'ranges' keys, e.g.:
-            [{"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "feature"}]}]
+        status: Chunk status (ACTIVE, IMPLEMENTING, etc.)
+        code_references: List of dicts with 'ref' and 'implements' keys, e.g.:
+            [{"ref": "src/main.py#Foo", "implements": "feature"}]
     """
     goal_path = chunk_path / "GOAL.md"
 
     if code_references:
         refs_lines = ["code_references:"]
         for ref in code_references:
-            refs_lines.append(f"  - file: {ref['file']}")
-            refs_lines.append("    ranges:")
-            for r in ref.get("ranges", []):
-                implements = r.get("implements", "test implementation")
-                refs_lines.append(f"      - lines: \"{r['lines']}\"")
-                refs_lines.append(f"        implements: \"{implements}\"")
+            refs_lines.append(f"  - ref: \"{ref['ref']}\"")
+            refs_lines.append(f"    implements: \"{ref.get('implements', 'test implementation')}\"")
         refs_yaml = "\n".join(refs_lines)
     else:
         refs_yaml = "code_references: []"
@@ -87,7 +83,7 @@ class TestOverlapCommand:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/main.py#Foo", "implements": "test feature"}
         ])
 
         result = runner.invoke(
@@ -99,25 +95,25 @@ class TestOverlapCommand:
 
     def test_overlapping_references_outputs_affected_chunks(self, runner, temp_project):
         """Chunk with overlapping references outputs affected chunk names."""
-        # Create chunk 0001 (older) with references to lines 50-60
+        # Create chunk 0001 (older) referencing src/main.py#Foo
         runner.invoke(
             cli,
             ["chunk", "start", "older", "--project-dir", str(temp_project)]
         )
         chunk1_path = temp_project / "docs" / "chunks" / "0001-older"
         write_goal_frontmatter(chunk1_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "50-60"}]}
+            {"ref": "src/main.py#Foo", "implements": "original implementation"}
         ])
 
-        # Create chunk 0002 (newer) with references to lines 10-20
-        # This overlaps because 10 <= 60 (newer's earliest <= older's latest)
+        # Create chunk 0002 (newer) referencing src/main.py#Foo::bar (child of Foo)
+        # This overlaps because Foo is parent of Foo::bar
         runner.invoke(
             cli,
             ["chunk", "start", "newer", "--project-dir", str(temp_project)]
         )
         chunk2_path = temp_project / "docs" / "chunks" / "0002-newer"
         write_goal_frontmatter(chunk2_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/main.py#Foo::bar", "implements": "modified method"}
         ])
 
         result = runner.invoke(
@@ -129,25 +125,25 @@ class TestOverlapCommand:
 
     def test_non_overlapping_references_outputs_nothing(self, runner, temp_project):
         """Chunk with non-overlapping references outputs nothing."""
-        # Create chunk 0001 with references to lines 10-20
+        # Create chunk 0001 referencing src/main.py#Foo
         runner.invoke(
             cli,
             ["chunk", "start", "older", "--project-dir", str(temp_project)]
         )
         chunk1_path = temp_project / "docs" / "chunks" / "0001-older"
         write_goal_frontmatter(chunk1_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/main.py#Foo", "implements": "foo class"}
         ])
 
-        # Create chunk 0002 with references to lines 100-110
-        # This does NOT overlap because 100 > 20 (newer's earliest > older's latest)
+        # Create chunk 0002 referencing src/main.py#Bar (different symbol)
+        # This does NOT overlap because Foo and Bar are siblings
         runner.invoke(
             cli,
             ["chunk", "start", "newer", "--project-dir", str(temp_project)]
         )
         chunk2_path = temp_project / "docs" / "chunks" / "0002-newer"
         write_goal_frontmatter(chunk2_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "100-110"}]}
+            {"ref": "src/main.py#Bar", "implements": "bar class"}
         ])
 
         result = runner.invoke(
@@ -183,14 +179,14 @@ class TestOverlapCommand:
 
     def test_inactive_chunks_excluded_from_detection(self, runner, temp_project):
         """Chunks with status other than ACTIVE are excluded."""
-        # Create chunk 0001 with COMPLETED status
+        # Create chunk 0001 with SUPERSEDED status
         runner.invoke(
             cli,
-            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+            ["chunk", "start", "superseded", "--project-dir", str(temp_project)]
         )
-        chunk1_path = temp_project / "docs" / "chunks" / "0001-completed"
-        write_goal_frontmatter(chunk1_path, "COMPLETED", [
-            {"file": "src/main.py", "ranges": [{"lines": "50-60"}]}
+        chunk1_path = temp_project / "docs" / "chunks" / "0001-superseded"
+        write_goal_frontmatter(chunk1_path, "SUPERSEDED", [
+            {"ref": "src/main.py#Foo", "implements": "superseded code"}
         ])
 
         # Create chunk 0002 with ACTIVE status and overlapping refs
@@ -200,7 +196,7 @@ class TestOverlapCommand:
         )
         chunk2_path = temp_project / "docs" / "chunks" / "0002-active"
         write_goal_frontmatter(chunk2_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/main.py#Foo", "implements": "active code"}
         ])
 
         result = runner.invoke(
@@ -208,8 +204,8 @@ class TestOverlapCommand:
             ["chunk", "overlap", "0002", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Should NOT include completed chunk
-        assert "docs/chunks/0001-completed" not in result.output
+        # Should NOT include superseded chunk
+        assert "docs/chunks/0001-superseded" not in result.output
 
     def test_different_files_no_overlap(self, runner, temp_project):
         """References to different files don't overlap."""
@@ -220,7 +216,7 @@ class TestOverlapCommand:
         )
         chunk1_path = temp_project / "docs" / "chunks" / "0001-older"
         write_goal_frontmatter(chunk1_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/main.py#Foo", "implements": "main code"}
         ])
 
         # Create chunk 0002 referencing file B
@@ -230,7 +226,7 @@ class TestOverlapCommand:
         )
         chunk2_path = temp_project / "docs" / "chunks" / "0002-newer"
         write_goal_frontmatter(chunk2_path, "ACTIVE", [
-            {"file": "src/other.py", "ranges": [{"lines": "10-20"}]}
+            {"ref": "src/other.py#Bar", "implements": "other code"}
         ])
 
         result = runner.invoke(
@@ -240,30 +236,27 @@ class TestOverlapCommand:
         assert result.exit_code == 0
         assert result.output.strip() == ""
 
-    def test_multiple_ranges_in_same_file(self, runner, temp_project):
-        """Multiple ranges in the same file are handled correctly."""
-        # Create chunk 0001 with multiple ranges
+    def test_multiple_refs_in_same_file(self, runner, temp_project):
+        """Multiple references in the same file are handled correctly."""
+        # Create chunk 0001 with multiple refs
         runner.invoke(
             cli,
             ["chunk", "start", "older", "--project-dir", str(temp_project)]
         )
         chunk1_path = temp_project / "docs" / "chunks" / "0001-older"
         write_goal_frontmatter(chunk1_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [
-                {"lines": "10-20"},
-                {"lines": "50-60"},
-            ]}
+            {"ref": "src/main.py#Foo", "implements": "foo class"},
+            {"ref": "src/main.py#Bar", "implements": "bar class"},
         ])
 
-        # Create chunk 0002 with reference between those ranges
-        # 30 <= 60 (older's latest), so it overlaps
+        # Create chunk 0002 with ref to child of Foo
         runner.invoke(
             cli,
             ["chunk", "start", "newer", "--project-dir", str(temp_project)]
         )
         chunk2_path = temp_project / "docs" / "chunks" / "0002-newer"
         write_goal_frontmatter(chunk2_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "30-40"}]}
+            {"ref": "src/main.py#Foo::baz", "implements": "baz method"}
         ])
 
         result = runner.invoke(

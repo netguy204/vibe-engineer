@@ -1,6 +1,7 @@
 """Tests for the 'chunk activate' CLI command."""
 
 from chunks import Chunks
+from models import ChunkStatus
 from ve import cli
 
 
@@ -30,7 +31,7 @@ class TestActivateCommand:
         # Verify status changed
         chunk_mgr = Chunks(temp_project)
         frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
-        assert frontmatter["status"] == "IMPLEMENTING"
+        assert frontmatter.status == ChunkStatus.IMPLEMENTING
 
     def test_activates_using_full_chunk_name(self, runner, temp_project):
         """Can activate using full chunk directory name."""
@@ -46,7 +47,7 @@ class TestActivateCommand:
 
         chunk_mgr = Chunks(temp_project)
         frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
-        assert frontmatter["status"] == "IMPLEMENTING"
+        assert frontmatter.status == ChunkStatus.IMPLEMENTING
 
     def test_outputs_success_message(self, runner, temp_project):
         """Shows success message after activation."""
@@ -142,4 +143,4 @@ class TestActivateWithTicketId:
 
         chunk_mgr = Chunks(temp_project)
         frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
-        assert frontmatter["status"] == "IMPLEMENTING"
+        assert frontmatter.status == ChunkStatus.IMPLEMENTING

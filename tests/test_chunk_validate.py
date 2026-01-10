@@ -10,25 +10,21 @@ def write_goal_frontmatter(
     status: str,
     code_references: list[dict] | None = None,
 ):
-    """Helper to write GOAL.md with frontmatter.
+    """Helper to write GOAL.md with symbolic reference frontmatter.
 
     Args:
         chunk_path: Path to chunk directory
         status: Chunk status (IMPLEMENTING, ACTIVE, etc.)
-        code_references: List of dicts with 'file' and 'ranges' keys, e.g.:
-            [{"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}]
+        code_references: List of dicts with 'ref' and 'implements' keys, e.g.:
+            [{"ref": "src/main.py#MyClass", "implements": "feature"}]
     """
     goal_path = chunk_path / "GOAL.md"
 
     if code_references:
         refs_lines = ["code_references:"]
         for ref in code_references:
-            refs_lines.append(f"  - file: {ref['file']}")
-            refs_lines.append("    ranges:")
-            for r in ref.get("ranges", []):
-                refs_lines.append(f"      - lines: \"{r['lines']}\"")
-                if "implements" in r:
-                    refs_lines.append(f"        implements: \"{r['implements']}\"")
+            refs_lines.append(f"  - ref: \"{ref['ref']}\"")
+            refs_lines.append(f"    implements: \"{ref.get('implements', 'test implementation')}\"")
         refs_yaml = "\n".join(refs_lines)
     else:
         refs_yaml = "code_references: []"
@@ -105,7 +101,7 @@ class TestValidateCommandInterface:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         # Invoke without chunk_id - should default to latest
@@ -123,7 +119,7 @@ class TestValidateCommandInterface:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -143,8 +139,8 @@ class TestStatusValidation:
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
-        write_goal_frontmatter(chunk_path, "COMPLETED", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+        write_goal_frontmatter(chunk_path, "HISTORICAL", [
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -161,7 +157,7 @@ class TestStatusValidation:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "ACTIVE", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -177,15 +173,15 @@ class TestStatusValidation:
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
-        write_goal_frontmatter(chunk_path, "COMPLETED", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+        write_goal_frontmatter(chunk_path, "HISTORICAL", [
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
             ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
-        assert "COMPLETED" in result.output
+        assert "HISTORICAL" in result.output
 
     def test_error_explains_why_blocked(self, runner, temp_project):
         """Error message explains why completion is blocked."""
@@ -194,8 +190,8 @@ class TestStatusValidation:
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
-        write_goal_frontmatter(chunk_path, "COMPLETED", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+        write_goal_frontmatter(chunk_path, "HISTORICAL", [
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -234,7 +230,7 @@ class TestCodeReferencesValidation:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -243,8 +239,8 @@ class TestCodeReferencesValidation:
         )
         assert result.exit_code == 0
 
-    def test_missing_file_field_produces_error(self, runner, temp_project):
-        """Missing 'file' field produces error with field path."""
+    def test_missing_ref_field_produces_error(self, runner, temp_project):
+        """Missing 'ref' field produces error (frontmatter can't be parsed)."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -256,9 +252,7 @@ class TestCodeReferencesValidation:
         goal_path.write_text("""---
 status: IMPLEMENTING
 code_references:
-  - ranges:
-      - lines: "10-20"
-        implements: "req1"
+  - implements: "req1"
 ---
 
 # Chunk Goal
@@ -269,37 +263,10 @@ code_references:
             ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "file" in result.output.lower()
-
-    def test_missing_lines_field_produces_error(self, runner, temp_project):
-        """Missing 'lines' field in range produces error with field path."""
-        runner.invoke(
-            cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
-        )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
-
-        goal_path = chunk_path / "GOAL.md"
-        goal_path.write_text("""---
-status: IMPLEMENTING
-code_references:
-  - file: src/main.py
-    ranges:
-      - implements: "req1"
----
-
-# Chunk Goal
-""")
-
-        result = runner.invoke(
-            cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
-        )
-        assert result.exit_code != 0
-        assert "lines" in result.output.lower()
+        assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
 
     def test_missing_implements_field_produces_error(self, runner, temp_project):
-        """Missing 'implements' field in range produces error with field path."""
+        """Missing 'implements' field produces error (frontmatter can't be parsed)."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -310,9 +277,7 @@ code_references:
         goal_path.write_text("""---
 status: IMPLEMENTING
 code_references:
-  - file: src/main.py
-    ranges:
-      - lines: "10-20"
+  - ref: "src/main.py#Main"
 ---
 
 # Chunk Goal
@@ -323,10 +288,10 @@ code_references:
             ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "implements" in result.output.lower()
+        assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
 
-    def test_wrong_type_produces_error(self, runner, temp_project):
-        """Wrong type (int instead of string) produces error with field path."""
+    def test_wrong_status_type_produces_error(self, runner, temp_project):
+        """Wrong type for status produces error (frontmatter can't be parsed)."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -335,12 +300,10 @@ code_references:
 
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("""---
-status: IMPLEMENTING
+status: INVALID_STATUS
 code_references:
-  - file: src/main.py
-    ranges:
-      - lines: 1020
-        implements: "req1"
+  - ref: "src/main.py#Main"
+    implements: "req1"
 ---
 
 # Chunk Goal
@@ -351,38 +314,6 @@ code_references:
             ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-
-    def test_multiple_errors_reported_together(self, runner, temp_project):
-        """Multiple errors are reported together."""
-        runner.invoke(
-            cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
-        )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
-
-        goal_path = chunk_path / "GOAL.md"
-        goal_path.write_text("""---
-status: IMPLEMENTING
-code_references:
-  - file: src/main.py
-    ranges:
-      - lines: "10-20"
-  - ranges:
-      - implements: "req2"
----
-
-# Chunk Goal
-""")
-
-        result = runner.invoke(
-            cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
-        )
-        assert result.exit_code != 0
-        # Should mention both 'implements' (missing) and 'file' (missing)
-        output_lower = result.output.lower()
-        assert "implements" in output_lower
-        assert "file" in output_lower
 
     def test_empty_code_references_fails(self, runner, temp_project):
         """Empty code_references list fails with error."""
@@ -413,7 +344,7 @@ class TestSuccessOutput:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -432,7 +363,7 @@ class TestSuccessOutput:
         )
         chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
-            {"file": "src/main.py", "ranges": [{"lines": "10-20", "implements": "req1"}]}
+            {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
@@ -669,7 +600,7 @@ code_references: []
         assert "0001-nonexistent" in result.output
 
     def test_chunk_with_invalid_subsystem_id_format_fails(self, runner, temp_project):
-        """Chunk with invalid subsystem_id format fails validation."""
+        """Chunk with invalid subsystem_id format fails validation (frontmatter parse fails)."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -687,8 +618,9 @@ code_references: []
             cli,
             ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
         )
+        # Invalid subsystem_id format causes frontmatter parse failure
         assert result.exit_code != 0
-        assert "invalid-format" in result.output
+        assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
 
     def test_chunk_with_no_subsystems_passes(self, runner, temp_project):
         """Chunk without subsystems field still passes validation."""

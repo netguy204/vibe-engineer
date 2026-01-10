@@ -226,23 +226,23 @@ class TestParseFrontmatterDependents:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "feature")
 
-        # Write GOAL.md with dependents in frontmatter
+        # Write GOAL.md with dependents in frontmatter (valid ExternalChunkRef format)
         goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
         goal_path.write_text(
             "---\n"
-            "status: active\n"
+            "status: ACTIVE\n"
             "dependents:\n"
-            "  - project: other-repo\n"
+            "  - repo: acme/other-repo\n"
             "    chunk: 0002-integration\n"
             "---\n"
             "# Goal\n"
         )
 
         frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
-        assert "dependents" in frontmatter
-        assert len(frontmatter["dependents"]) == 1
-        assert frontmatter["dependents"][0]["project"] == "other-repo"
-        assert frontmatter["dependents"][0]["chunk"] == "0002-integration"
+        assert frontmatter is not None
+        assert len(frontmatter.dependents) == 1
+        assert frontmatter.dependents[0].repo == "acme/other-repo"
+        assert frontmatter.dependents[0].chunk == "0002-integration"
 
     def test_parse_frontmatter_without_dependents(self, temp_project):
         """Existing chunks without dependents continue to work."""
@@ -253,15 +253,15 @@ class TestParseFrontmatterDependents:
         goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
         goal_path.write_text(
             "---\n"
-            "status: active\n"
+            "status: ACTIVE\n"
             "---\n"
             "# Goal\n"
         )
 
         frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
         assert frontmatter is not None
-        assert "dependents" not in frontmatter
-        assert frontmatter.get("status") == "active"
+        assert frontmatter.dependents == []
+        assert frontmatter.status.value == "ACTIVE"
 
 
 class TestTicketFrontmatter:
@@ -438,16 +438,17 @@ code_references: []
         errors = chunk_mgr.validate_subsystem_refs("0001-feature")
         assert errors == []
 
-    def test_invalid_subsystem_id_format_returns_error(self, temp_project):
-        """Invalid subsystem_id format returns error message."""
+    def test_invalid_subsystem_id_format_causes_frontmatter_parse_failure(self, temp_project):
+        """Invalid subsystem_id format causes frontmatter parsing to fail."""
         chunk_mgr = Chunks(temp_project)
         self._write_chunk_with_subsystems(temp_project, "0001-feature", [
             {"subsystem_id": "invalid-format", "relationship": "implements"}
         ])
 
-        errors = chunk_mgr.validate_subsystem_refs("0001-feature")
-        assert len(errors) == 1
-        assert "invalid-format" in errors[0]
+        # With ChunkFrontmatter validation, invalid subsystem_id format
+        # causes parse_chunk_frontmatter to return None (validation fails)
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        assert frontmatter is None
 
     def test_nonexistent_subsystem_returns_error(self, temp_project):
         """Non-existent subsystem reference returns error message."""
@@ -474,16 +475,19 @@ code_references: []
         errors = chunk_mgr.validate_subsystem_refs("0001-feature")
         assert errors == []
 
-    def test_multiple_errors_collected(self, temp_project):
-        """Multiple invalid references return multiple errors."""
+    def test_multiple_nonexistent_subsystems_return_multiple_errors(self, temp_project):
+        """Multiple non-existent subsystem references return multiple errors."""
         chunk_mgr = Chunks(temp_project)
+        # Use valid subsystem_id format but non-existent directories
         self._write_chunk_with_subsystems(temp_project, "0001-feature", [
-            {"subsystem_id": "invalid", "relationship": "implements"},
-            {"subsystem_id": "0001-nonexistent", "relationship": "uses"},
+            {"subsystem_id": "0001-missing_first", "relationship": "implements"},
+            {"subsystem_id": "0002-missing_second", "relationship": "uses"},
         ])
 
         errors = chunk_mgr.validate_subsystem_refs("0001-feature")
         assert len(errors) == 2
+        assert "0001-missing_first" in errors[0]
+        assert "0002-missing_second" in errors[1]
 
     def test_chunk_not_found_returns_none_or_empty(self, temp_project):
         """Non-existent chunk returns empty list or None gracefully."""

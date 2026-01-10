@@ -19,10 +19,18 @@ chunks:
   relationship: implements
 - chunk_id: 0010-chunk_create_task_aware
   relationship: implements
+- chunk_id: 0036-chunk_frontmatter_model
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
-  compliance: PARTIAL
+  compliance: COMPLIANT
+- ref: src/models.py#ChunkStatus
+  implements: Chunk lifecycle states
+  compliance: COMPLIANT
+- ref: src/models.py#ChunkFrontmatter
+  implements: Chunk frontmatter schema
+  compliance: COMPLIANT
 - ref: src/narratives.py#Narratives
   implements: Narrative workflow manager class
   compliance: COMPLIANT
@@ -71,7 +79,7 @@ proposed_chunks:
     as a StrEnum. Create ChunkFrontmatter model with status, ticket, parent_chunk,
     code_paths, code_references, narrative, subsystems, and proposed_chunks fields.
     Update chunks.py to use the new model for frontmatter parsing and validation.
-  chunk_directory: null
+  chunk_directory: 0036-chunk_frontmatter_model
 - prompt: Add VALID_CHUNK_TRANSITIONS, VALID_NARRATIVE_TRANSITIONS, and VALID_INVESTIGATION_TRANSITIONS
     dicts to models.py. Follow the pattern established by VALID_STATUS_TRANSITIONS
     for subsystems. Update the respective manager classes to validate transitions
@@ -324,19 +332,13 @@ Cross-repo pattern (currently chunks only):
 
 ## Known Deviations
 
-### Chunk Status Not a StrEnum
+### ~~Chunk Status Not a StrEnum~~ (RESOLVED)
 
-**Location**: `src/chunks.py`, `src/templates/chunk/GOAL.md.jinja2`
+**Resolved by**: chunk 0036-chunk_frontmatter_model
 
-Chunk status values (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL) are only
-defined in template comments, not as a `ChunkStatus` StrEnum in `models.py`. This
-means:
-- No `ChunkFrontmatter` Pydantic model for validation
-- Status checked via string comparison (`status == "IMPLEMENTING"`)
-- No IDE support or compile-time validation
-
-**Impact**: Medium. Inconsistent with other workflow types. Makes it harder to add
-chunk-specific validation or status transitions.
+`ChunkStatus` StrEnum and `ChunkFrontmatter` Pydantic model now exist in `models.py`.
+Chunk status is validated at frontmatter parse time, and all call sites use typed
+model access (`frontmatter.status == ChunkStatus.IMPLEMENTING`).
 
 ### No Code-Level State Transitions for Chunks, Narratives, Investigations
 
@@ -407,11 +409,9 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
 
 #### Lifecycle Consistency
 
-1. **ChunkStatus StrEnum and ChunkFrontmatter** - Chunks are the only workflow type
-   without a status StrEnum and Pydantic frontmatter model. This blocks consistent
-   validation and tooling.
-   - Impact: Medium
-   - Status: Not yet scheduled
+1. ~~**ChunkStatus StrEnum and ChunkFrontmatter**~~ - **RESOLVED** by chunk
+   0036-chunk_frontmatter_model. `ChunkStatus` StrEnum and `ChunkFrontmatter` Pydantic
+   model now exist in `models.py`.
 
 2. **State transition dicts for chunks, narratives, investigations** - Only subsystems
    have code-level transition validation. Add `VALID_CHUNK_TRANSITIONS`,

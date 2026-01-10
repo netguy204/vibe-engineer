@@ -29,7 +29,7 @@ code_references:
     implements: "Renamed from 'complete' - CLI command for chunk validation"
   - ref: src/ve.py#validate
     implements: "New CLI command 've subsystem validate' for subsystem validation"
-  - ref: src/templates/chunk/GOAL.md
+  - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Template updated with subsystems field and documentation"
 narrative: 0002-subsystem_documentation
 ---

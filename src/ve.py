@@ -189,7 +189,7 @@ def list_chunks(latest, project_dir):
     else:
         for _, chunk_name in chunk_list:
             frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
-            status = frontmatter.get("status", "UNKNOWN") if frontmatter else "UNKNOWN"
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
             click.echo(f"docs/chunks/{chunk_name} [{status}]")
 
 

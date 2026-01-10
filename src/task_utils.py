@@ -393,8 +393,9 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
     results = []
     for _, chunk_name in chunk_list:
         frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
-        status = frontmatter.get("status", "UNKNOWN") if frontmatter else "UNKNOWN"
-        dependents = frontmatter.get("dependents", []) if frontmatter else []
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        # Convert ExternalChunkRef objects to dicts for API compatibility
+        dependents = [{"repo": d.repo, "chunk": d.chunk} for d in frontmatter.dependents] if frontmatter else []
         results.append({
             "name": chunk_name,
             "status": status,

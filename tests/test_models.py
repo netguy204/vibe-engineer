@@ -3,7 +3,14 @@
 import pytest
 from pydantic import ValidationError
 
-from models import SymbolicReference, SubsystemRelationship, InvestigationFrontmatter, InvestigationStatus
+from models import (
+    SymbolicReference,
+    SubsystemRelationship,
+    InvestigationFrontmatter,
+    InvestigationStatus,
+    ChunkFrontmatter,
+    ChunkStatus,
+)
 
 
 class TestSymbolicReference:
@@ -126,3 +133,73 @@ class TestInvestigationFrontmatter:
         """trigger defaults to None when not provided."""
         frontmatter = InvestigationFrontmatter(status=InvestigationStatus.NOTED)
         assert frontmatter.trigger is None
+
+
+class TestChunkFrontmatter:
+    """Tests for ChunkFrontmatter model validation."""
+
+    def test_invalid_status_value_rejected(self):
+        """Invalid status value is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ChunkFrontmatter(status="INVALID_STATUS")
+        assert "status" in str(exc_info.value).lower()
+
+    def test_missing_status_rejected(self):
+        """Missing status field is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ChunkFrontmatter()
+        assert "status" in str(exc_info.value).lower()
+
+    def test_valid_frontmatter_parses_successfully(self):
+        """Valid frontmatter with all fields parses correctly."""
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            ticket="VE-123",
+            parent_chunk="0001-previous_chunk",
+            code_paths=["src/foo.py", "src/bar.py"],
+            code_references=[
+                {"ref": "src/foo.py#Foo", "implements": "Main logic"}
+            ],
+            narrative="0001-my_narrative",
+            subsystems=[
+                {"subsystem_id": "0001-validation", "relationship": "implements"}
+            ],
+            proposed_chunks=[
+                {"prompt": "Fix the bug", "chunk_directory": None}
+            ],
+            dependents=[
+                {"repo": "acme/service-a", "chunk": "0002-integration"}
+            ]
+        )
+        assert frontmatter.status == ChunkStatus.IMPLEMENTING
+        assert frontmatter.ticket == "VE-123"
+        assert frontmatter.parent_chunk == "0001-previous_chunk"
+        assert len(frontmatter.code_paths) == 2
+        assert len(frontmatter.code_references) == 1
+        assert frontmatter.narrative == "0001-my_narrative"
+        assert len(frontmatter.subsystems) == 1
+        assert len(frontmatter.proposed_chunks) == 1
+        assert len(frontmatter.dependents) == 1
+
+    def test_optional_fields_default_correctly(self):
+        """Optional fields default to None or empty lists."""
+        frontmatter = ChunkFrontmatter(status=ChunkStatus.ACTIVE)
+        assert frontmatter.ticket is None
+        assert frontmatter.parent_chunk is None
+        assert frontmatter.code_paths == []
+        assert frontmatter.code_references == []
+        assert frontmatter.narrative is None
+        assert frontmatter.subsystems == []
+        assert frontmatter.proposed_chunks == []
+        assert frontmatter.dependents == []
+
+    def test_all_status_values_accepted(self):
+        """All valid status values are accepted."""
+        for status in ChunkStatus:
+            frontmatter = ChunkFrontmatter(status=status)
+            assert frontmatter.status == status
+
+    def test_lowercase_status_rejected(self):
+        """Lowercase status values are rejected (case-sensitive enum)."""
+        with pytest.raises(ValidationError):
+            ChunkFrontmatter(status="implementing")

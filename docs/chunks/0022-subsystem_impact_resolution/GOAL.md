@@ -15,7 +15,7 @@ code_references:
     implements: "Helper method for hierarchical reference comparison using is_parent_of"
   - ref: src/ve.py#overlap
     implements: "CLI command 've subsystem overlap <chunk_id>' that surfaces overlap detection"
-  - ref: src/templates/commands/chunk-complete.md
+  - ref: src/templates/commands/chunk-complete.md.jinja2
     implements: "Workflow steps 8-10 for subsystem analysis during chunk completion"
   - ref: tests/test_subsystem_overlap_logic.py
     implements: "Tests for find_overlapping_subsystems business logic"

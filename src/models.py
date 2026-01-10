@@ -38,6 +38,17 @@ class InvestigationStatus(StrEnum):
     DEFERRED = "DEFERRED"  # Investigation paused; may be revisited later
 
 
+# Chunk: docs/chunks/0036-chunk_frontmatter_model - Chunk lifecycle states
+class ChunkStatus(StrEnum):
+    """Status values for chunk lifecycle."""
+
+    FUTURE = "FUTURE"  # Queued for future work, not yet being implemented
+    IMPLEMENTING = "IMPLEMENTING"  # Currently being implemented
+    ACTIVE = "ACTIVE"  # Accurately describes current or recently-merged work
+    SUPERSEDED = "SUPERSEDED"  # Another chunk has modified the code this chunk governed
+    HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
+
+
 # Chunk: docs/chunks/0019-subsystem_status_transitions - Valid state transitions
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
@@ -384,3 +395,21 @@ class InvestigationFrontmatter(BaseModel):
     status: InvestigationStatus
     trigger: str | None = None
     proposed_chunks: list[ProposedChunk] = []
+
+
+# Chunk: docs/chunks/0036-chunk_frontmatter_model - Chunk frontmatter schema
+class ChunkFrontmatter(BaseModel):
+    """Frontmatter schema for chunk GOAL.md files.
+
+    Validates the YAML frontmatter in chunk documentation.
+    """
+
+    status: ChunkStatus
+    ticket: str | None = None
+    parent_chunk: str | None = None
+    code_paths: list[str] = []
+    code_references: list[SymbolicReference] = []
+    narrative: str | None = None
+    subsystems: list[SubsystemRelationship] = []
+    proposed_chunks: list[ProposedChunk] = []
+    dependents: list[ExternalChunkRef] = []  # For cross-repo chunks

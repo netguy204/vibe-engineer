@@ -18,7 +18,14 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 import yaml
 
-from models import CodeReference, SymbolicReference, SubsystemRelationship, CHUNK_ID_PATTERN
+from models import (
+    CodeReference,
+    SymbolicReference,
+    SubsystemRelationship,
+    CHUNK_ID_PATTERN,
+    ChunkFrontmatter,
+    ChunkStatus,
+)
 from symbols import is_parent_of, parse_reference, extract_symbols
 from template_system import ActiveChunk, TemplateContext, render_to_directory
 
@@ -96,6 +103,7 @@ class Chunks:
         return None
 
     # Chunk: docs/chunks/0013-future_chunk_creation - Get active IMPLEMENTING chunk
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed status comparison
     def get_current_chunk(self) -> str | None:
         """Return the highest-numbered chunk with status IMPLEMENTING.
 
@@ -108,11 +116,12 @@ class Chunks:
         chunks = self.list_chunks()
         for _, chunk_name in chunks:
             frontmatter = self.parse_chunk_frontmatter(chunk_name)
-            if frontmatter and frontmatter.get("status") == "IMPLEMENTING":
+            if frontmatter and frontmatter.status == ChunkStatus.IMPLEMENTING:
                 return chunk_name
         return None
 
     # Chunk: docs/chunks/0013-future_chunk_creation - Activate FUTURE chunks
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed status comparison
     def activate_chunk(self, chunk_id: str) -> str:
         """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
 
@@ -145,10 +154,9 @@ class Chunks:
         if frontmatter is None:
             raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}'")
 
-        status = frontmatter.get("status")
-        if status != "FUTURE":
+        if frontmatter.status != ChunkStatus.FUTURE:
             raise ValueError(
-                f"Cannot activate: chunk '{chunk_name}' has status '{status}', "
+                f"Cannot activate: chunk '{chunk_name}' has status '{frontmatter.status.value}', "
                 f"expected 'FUTURE'"
             )
 
@@ -223,12 +231,12 @@ class Chunks:
         return self.chunk_dir / chunk_name / "GOAL.md"
 
     # Chunk: docs/chunks/0004-chunk_overlap_command - Parse YAML frontmatter
-    def parse_chunk_frontmatter(self, chunk_id: str) -> dict | None:
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Return typed ChunkFrontmatter
+    def parse_chunk_frontmatter(self, chunk_id: str) -> ChunkFrontmatter | None:
         """Parse YAML frontmatter from a chunk's GOAL.md.
 
         Returns:
-            Dictionary of frontmatter fields, or None if chunk not found.
-            Returns empty dict if frontmatter is malformed or missing.
+            ChunkFrontmatter if valid, or None if chunk not found or frontmatter invalid.
         """
         goal_path = self.get_chunk_goal_path(chunk_id)
         if goal_path is None or not goal_path.exists():
@@ -238,13 +246,15 @@ class Chunks:
         # Extract frontmatter between --- markers
         match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
         if not match:
-            return {}
+            return None
 
         try:
             frontmatter = yaml.safe_load(match.group(1))
-            return frontmatter if isinstance(frontmatter, dict) else {}
-        except yaml.YAMLError:
-            return {}
+            if not isinstance(frontmatter, dict):
+                return None
+            return ChunkFrontmatter.model_validate(frontmatter)
+        except (yaml.YAMLError, ValidationError):
+            return None
 
     # Chunk: docs/chunks/0004-chunk_overlap_command - Parse line-based code refs
     def parse_code_references(self, refs: list) -> dict[str, tuple[int, int]]:
@@ -305,6 +315,7 @@ class Chunks:
 
     # Chunk: docs/chunks/0004-chunk_overlap_command - Find overlapping chunks
     # Chunk: docs/chunks/0012-symbolic_code_refs - Added symbolic overlap support
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
         """Find ACTIVE chunks with lower IDs that have overlapping code references.
 
@@ -330,7 +341,8 @@ class Chunks:
         if frontmatter is None:
             raise ValueError(f"Chunk '{chunk_id}' not found")
 
-        code_refs = frontmatter.get("code_references", [])
+        # Convert SymbolicReference objects to dicts for existing helper methods
+        code_refs = [{"ref": ref.ref, "implements": ref.implements} for ref in frontmatter.code_references]
         if not code_refs:
             return []
 
@@ -366,10 +378,11 @@ class Chunks:
 
             # Check if ACTIVE
             fm = self.parse_chunk_frontmatter(name)
-            if fm is None or fm.get("status") != "ACTIVE":
+            if fm is None or fm.status != ChunkStatus.ACTIVE:
                 continue
 
-            candidate_refs_raw = fm.get("code_references", [])
+            # Convert SymbolicReference objects to dicts for existing helper methods
+            candidate_refs_raw = [{"ref": ref.ref, "implements": ref.implements} for ref in fm.code_references]
             if not candidate_refs_raw:
                 continue
 
@@ -409,6 +422,7 @@ class Chunks:
 
     # Chunk: docs/chunks/0005-chunk_validate - Validate chunk for completion
     # Chunk: docs/chunks/0012-symbolic_code_refs - Added symbolic ref validation
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
     def validate_chunk_complete(self, chunk_id: str | None = None) -> ValidationResult:
         """Validate that a chunk is ready for completion.
 
@@ -456,49 +470,23 @@ class Chunks:
             )
 
         # Check status
-        status = frontmatter.get("status")
-        valid_statuses = ("IMPLEMENTING", "ACTIVE")
-        if status not in valid_statuses:
+        valid_statuses = (ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE)
+        if frontmatter.status not in valid_statuses:
             errors.append(
-                f"Status is '{status}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
+                f"Status is '{frontmatter.status.value}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
             )
 
-        # Validate code_references
-        code_refs = frontmatter.get("code_references", [])
-
-        if not code_refs:
+        # Validate code_references - already validated by ChunkFrontmatter model
+        # Just need to check non-empty and validate symbol existence for warnings
+        if not frontmatter.code_references:
             errors.append(
                 "code_references is empty; at least one reference is required"
             )
         else:
-            # Detect format: symbolic (has 'ref') or line-based (has 'file')
-            is_symbolic = any("ref" in ref for ref in code_refs)
-
-            if is_symbolic:
-                # Validate symbolic references
-                for i, ref in enumerate(code_refs):
-                    try:
-                        validated = SymbolicReference.model_validate(ref)
-                        # Validate that referenced symbol exists
-                        symbol_warnings = self._validate_symbol_exists(validated.ref)
-                        warnings.extend(symbol_warnings)
-                    except ValidationError as e:
-                        for err in e.errors():
-                            loc = ".".join(str(x) for x in err["loc"])
-                            field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
-                            msg = err["msg"]
-                            errors.append(f"{field_path}: {msg}")
-            else:
-                # Validate old line-based format
-                for i, ref in enumerate(code_refs):
-                    try:
-                        CodeReference.model_validate(ref)
-                    except ValidationError as e:
-                        for err in e.errors():
-                            loc = ".".join(str(x) for x in err["loc"])
-                            field_path = f"code_references[{i}].{loc}" if loc else f"code_references[{i}]"
-                            msg = err["msg"]
-                            errors.append(f"{field_path}: {msg}")
+            # Validate that referenced symbols exist (produces warnings, not errors)
+            for ref in frontmatter.code_references:
+                symbol_warnings = self._validate_symbol_exists(ref.ref)
+                warnings.extend(symbol_warnings)
 
         # Validate subsystem references
         subsystem_errors = self.validate_subsystem_refs(chunk_name)
@@ -614,6 +602,7 @@ class Chunks:
         return results
 
     # Chunk: docs/chunks/0018-bidirectional_refs - Validate subsystem references
+    # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
@@ -634,31 +623,19 @@ class Chunks:
         if frontmatter is None:
             return []  # Chunk doesn't exist, nothing to validate
 
-        # Get subsystems field (may not exist in older chunks)
-        subsystems = frontmatter.get("subsystems", [])
-        if not subsystems:
+        # Get subsystems field (already validated by ChunkFrontmatter model)
+        if not frontmatter.subsystems:
             return []
 
         # Subsystems directory path
         subsystems_dir = self.project_dir / "docs" / "subsystems"
 
-        for entry in subsystems:
-            subsystem_id = entry.get("subsystem_id", "")
-
-            # Validate format using SubsystemRelationship model
-            try:
-                SubsystemRelationship.model_validate(entry)
-            except ValidationError as e:
-                for err in e.errors():
-                    msg = err["msg"]
-                    errors.append(f"Invalid subsystem reference '{subsystem_id}': {msg}")
-                continue
-
+        for entry in frontmatter.subsystems:
             # Check if subsystem directory exists
-            subsystem_path = subsystems_dir / subsystem_id
+            subsystem_path = subsystems_dir / entry.subsystem_id
             if not subsystem_path.exists():
                 errors.append(
-                    f"Subsystem '{subsystem_id}' does not exist in docs/subsystems/"
+                    f"Subsystem '{entry.subsystem_id}' does not exist in docs/subsystems/"
                 )
 
         return errors

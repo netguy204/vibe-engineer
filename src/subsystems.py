@@ -341,17 +341,13 @@ class Subsystems:
             raise ValueError(f"Chunk '{chunk_id}' not found")
 
         # Get chunk's code references (symbolic format)
-        code_refs = frontmatter.get("code_references", [])
-        chunk_refs: list[str] = []
-
-        if code_refs and chunks._is_symbolic_format(code_refs):
-            chunk_refs = chunks._extract_symbolic_refs(code_refs)
+        # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
+        chunk_refs: list[str] = [ref.ref for ref in frontmatter.code_references]
 
         # Fall back to code_paths if no symbolic code_references
         if not chunk_refs:
-            code_paths = frontmatter.get("code_paths", [])
             # code_paths are file-only references
-            chunk_refs = code_paths if code_paths else []
+            chunk_refs = frontmatter.code_paths if frontmatter.code_paths else []
 
         # No references to check against
         if not chunk_refs:
