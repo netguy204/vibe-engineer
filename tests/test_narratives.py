@@ -78,6 +78,29 @@ class TestNarrativesClass:
         assert narratives.narratives_dir == expected
 
 
+class TestNarrativeCreatedAfterPopulation:
+    """Tests for created_after population during narrative creation."""
+
+    def test_first_narrative_has_empty_created_after(self, temp_project):
+        """When creating the first narrative, created_after is empty list."""
+        narratives = Narratives(temp_project)
+        narratives.create_narrative("first_narrative")
+
+        frontmatter = narratives.parse_narrative_frontmatter("0001-first_narrative")
+        assert frontmatter is not None
+        assert frontmatter.created_after == []
+
+    def test_second_narrative_references_first_as_created_after(self, temp_project):
+        """When creating second narrative, created_after contains first narrative's name."""
+        narratives = Narratives(temp_project)
+        narratives.create_narrative("first_narrative")
+        narratives.create_narrative("second_narrative")
+
+        frontmatter = narratives.parse_narrative_frontmatter("0002-second_narrative")
+        assert frontmatter is not None
+        assert "0001-first_narrative" in frontmatter.created_after
+
+
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests
 class TestNarrativeFrontmatterParsing:
     """Tests for parse_narrative_frontmatter method."""

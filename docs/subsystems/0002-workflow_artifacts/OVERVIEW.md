@@ -25,6 +25,8 @@ chunks:
   relationship: implements
 - chunk_id: 0038-artifact_ordering_index
   relationship: implements
+- chunk_id: 0039-populate_created_after
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class

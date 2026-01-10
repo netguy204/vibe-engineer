@@ -3,6 +3,33 @@
 import pytest
 
 
+class TestInvestigationCreatedAfterPopulation:
+    """Tests for created_after population during investigation creation."""
+
+    def test_first_investigation_has_empty_created_after(self, temp_project):
+        """When creating the first investigation, created_after is empty list."""
+        from investigations import Investigations
+
+        investigations = Investigations(temp_project)
+        investigations.create_investigation("first_investigation")
+
+        frontmatter = investigations.parse_investigation_frontmatter("0001-first_investigation")
+        assert frontmatter is not None
+        assert frontmatter.created_after == []
+
+    def test_second_investigation_references_first_as_created_after(self, temp_project):
+        """When creating second investigation, created_after contains first investigation's name."""
+        from investigations import Investigations
+
+        investigations = Investigations(temp_project)
+        investigations.create_investigation("first_investigation")
+        investigations.create_investigation("second_investigation")
+
+        frontmatter = investigations.parse_investigation_frontmatter("0002-second_investigation")
+        assert frontmatter is not None
+        assert "0001-first_investigation" in frontmatter.created_after
+
+
 class TestInvestigationsCreateInvestigation:
     """Tests for Investigations.create_investigation() method."""
 

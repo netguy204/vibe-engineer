@@ -1,5 +1,6 @@
 """Investigations module - business logic for investigation management."""
 # Chunk: docs/chunks/0029-investigation_commands - Investigation management
+# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
 # Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 import pathlib
@@ -8,6 +9,7 @@ import re
 from pydantic import ValidationError
 import yaml
 
+from artifact_ordering import ArtifactIndex, ArtifactType
 from models import InvestigationFrontmatter
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
@@ -46,6 +48,7 @@ class Investigations:
         return len(self.enumerate_investigations())
 
     # Chunk: docs/chunks/0029-investigation_commands - Create investigation directory
+    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
@@ -56,6 +59,10 @@ class Investigations:
         Returns:
             Path to created investigation directory.
         """
+        # Get current investigation tips for created_after field
+        artifact_index = ArtifactIndex(self.project_dir)
+        tips = artifact_index.find_tips(ArtifactType.INVESTIGATION)
+
         # Ensure investigations directory exists
         self.investigations_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,6 +88,7 @@ class Investigations:
             context=context,
             short_name=short_name,
             next_id=next_id_str,
+            created_after=tips,
         )
 
         return investigation_path

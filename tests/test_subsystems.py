@@ -209,6 +209,33 @@ status: INVALID_STATUS
         assert result is None
 
 
+class TestSubsystemCreatedAfterPopulation:
+    """Tests for created_after population during subsystem creation."""
+
+    def test_first_subsystem_has_empty_created_after(self, temp_project):
+        """When creating the first subsystem, created_after is empty list."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        subsystems.create_subsystem("first_subsystem")
+
+        frontmatter = subsystems.parse_subsystem_frontmatter("0001-first_subsystem")
+        assert frontmatter is not None
+        assert frontmatter.created_after == []
+
+    def test_second_subsystem_references_first_as_created_after(self, temp_project):
+        """When creating second subsystem, created_after contains first subsystem's name."""
+        from subsystems import Subsystems
+
+        subsystems = Subsystems(temp_project)
+        subsystems.create_subsystem("first_subsystem")
+        subsystems.create_subsystem("second_subsystem")
+
+        frontmatter = subsystems.parse_subsystem_frontmatter("0002-second_subsystem")
+        assert frontmatter is not None
+        assert "0001-first_subsystem" in frontmatter.created_after
+
+
 class TestSubsystemsCreateSubsystem:
     """Tests for Subsystems.create_subsystem() method."""
 

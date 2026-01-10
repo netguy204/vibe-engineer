@@ -33,7 +33,7 @@ code_references:
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Template with FUTURE status documentation and Jinja status variable"
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Skill updated to check for IMPLEMENTING chunk and default to --future"
+    implements: "Skill checks for IMPLEMENTING chunk and defaults to --future"
   - ref: docs/trunk/SPEC.md
     implements: "Specification updated with FUTURE status, --future flag, and ve chunk activate"
 narrative: null

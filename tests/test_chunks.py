@@ -189,6 +189,57 @@ class TestGetCurrentChunk:
         assert chunk_mgr.get_current_chunk() is None
 
 
+class TestCreatedAfterPopulation:
+    """Tests for created_after population during chunk creation."""
+
+    def test_first_chunk_has_empty_created_after(self, temp_project):
+        """When creating the first chunk, created_after is empty list."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "first_chunk")
+
+        # Parse the frontmatter
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-first_chunk")
+        assert frontmatter is not None
+        assert frontmatter.created_after == []
+
+    def test_second_chunk_references_first_as_created_after(self, temp_project):
+        """When creating second chunk, created_after contains first chunk's short name."""
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "first_chunk")
+        chunk_mgr.create_chunk(None, "second_chunk")
+
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0002-second_chunk")
+        assert frontmatter is not None
+        # Tips should reference directory names (the format returned by find_tips)
+        assert "0001-first_chunk" in frontmatter.created_after
+
+    def test_third_chunk_references_only_current_tip(self, temp_project):
+        """Third chunk references only the current tip (second chunk).
+
+        In the causal graph:
+        - First chunk has created_after: [] - no parents
+        - Second chunk has created_after: [first] - first is its parent
+        - After second is created, first is no longer a tip (second references it)
+        - Third chunk should only reference second (the current tip)
+        """
+        chunk_mgr = Chunks(temp_project)
+
+        # Create first chunk (becomes a tip)
+        chunk_mgr.create_chunk(None, "first_chunk")
+
+        # Create second chunk (references first, making first no longer a tip)
+        chunk_mgr.create_chunk(None, "second_chunk")
+
+        # Create third chunk - only second should be a tip now
+        chunk_mgr.create_chunk(None, "third_chunk")
+
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("0003-third_chunk")
+        assert frontmatter is not None
+        # Second chunk is the only tip (first is referenced by second)
+        assert len(frontmatter.created_after) == 1
+        assert "0002-second_chunk" in frontmatter.created_after
+
+
 class TestChunkDirectoryInTemplates:
     """Tests for chunk_directory variable in rendered templates."""
 

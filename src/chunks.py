@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 import yaml
 
+from artifact_ordering import ArtifactIndex, ArtifactType
 from models import (
     CodeReference,
     SymbolicReference,
@@ -169,6 +170,7 @@ class Chunks:
     # Chunk: docs/chunks/0001-implement_chunk_start - Create chunk directories
     # Chunk: docs/chunks/0011-chunk_template_expansion - Template context
     # Chunk: docs/chunks/0025-migrate_chunks_template - Template system integration
+    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_chunk(
         self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
@@ -180,6 +182,10 @@ class Chunks:
             short_name: Short name for the chunk.
             status: Initial status for the chunk (default: "IMPLEMENTING").
         """
+        # Get current chunk tips for created_after field
+        artifact_index = ArtifactIndex(self.project_dir)
+        tips = artifact_index.find_tips(ArtifactType.CHUNK)
+
         next_chunk_id = self.num_chunks + 1
         next_chunk_id_str = f"{next_chunk_id:04d}"
         if ticket_id:
@@ -198,6 +204,7 @@ class Chunks:
             context=context,
             ticket_id=ticket_id,
             status=status,
+            created_after=tips,
         )
         return chunk_path
 

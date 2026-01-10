@@ -5,6 +5,7 @@
 # Chunk: docs/chunks/0019-subsystem_status_transitions - Status management
 # Chunk: docs/chunks/0022-subsystem_impact_resolution - Overlap detection
 # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
 # Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 import yaml
 
+from artifact_ordering import ArtifactIndex, ArtifactType
 from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
 from symbols import is_parent_of, parse_reference
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
@@ -135,6 +137,7 @@ class Subsystems:
 
     # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem directory
     # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
@@ -145,6 +148,10 @@ class Subsystems:
         Returns:
             Path to created subsystem directory.
         """
+        # Get current subsystem tips for created_after field
+        artifact_index = ArtifactIndex(self.project_dir)
+        tips = artifact_index.find_tips(ArtifactType.SUBSYSTEM)
+
         # Ensure subsystems directory exists
         self.subsystems_dir.mkdir(parents=True, exist_ok=True)
 
@@ -170,6 +177,7 @@ class Subsystems:
             context=context,
             short_name=shortname,
             next_id=next_id_str,
+            created_after=tips,
         )
 
         return subsystem_path

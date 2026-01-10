@@ -16,7 +16,7 @@ proposed_chunks:
 - prompt: "Update create_chunk(), create_narrative(), create_investigation(), create_subsystem()
     to find current tips using ArtifactIndex and set created_after to list of tip
     short names. Pass to template for frontmatter generation."
-  chunk_directory: null
+  chunk_directory: 0039-populate_created_after
 - prompt: "Modify ve chunk list, ve narrative list, ve investigation list, ve subsystem
     list to use ArtifactIndex for ordering instead of sequence number parsing. Fall
     back to sequence order when created_after not populated. Display tip indicators
@@ -46,6 +46,14 @@ proposed_chunks:
     frontmatter), subsystem code_references. Create automated migration tool for
     existing cross-refs. References remain type-qualified (e.g., docs/chunks/foo,
     docs/narratives/bar) so cross-type name collisions are not an issue."
+  chunk_directory: null
+- prompt: "Add `created_after: list[str]` field to ExternalChunkRef model in models.py.
+    Update ArtifactIndex to handle external chunk references: enumerate directories
+    with external.yaml when GOAL.md doesn't exist, read created_after from external.yaml
+    (plain YAML, not markdown frontmatter), hash external.yaml for staleness detection.
+    Update chunk creation flow (task_utils.py) to set created_after when creating
+    external.yaml references. This ensures external chunks participate in local
+    causal ordering."
   chunk_directory: null
 ---
 
@@ -127,7 +135,107 @@ Both functions might be achievable through alternative mechanisms that don't req
 - **Test**: Prototype an index approach; measure rebuild time and query time
 - **Status**: VERIFIED - cached approach is 75x faster. Warm query ~0.43ms vs cold rebuild ~33ms. Extrapolated: 1000 chunks ≈ 11ms with cache.
 
+### H6: External chunk references need `created_after` in the reference, not the chunk
+
+- **Rationale**: An external chunk's `created_after` in its GOAL.md frontmatter tracks its position in the *external repo's* causal chain. But when referenced locally via `external.yaml`, we need to track where it fits in the *local* causal ordering. The same external chunk could be referenced from multiple projects at different points in their respective causal chains.
+- **Test**: Design where `created_after` should live for external references; verify it correctly captures local causal position
+- **Status**: VERIFIED - External chunks are completely excluded from ArtifactIndex. Adding `created_after` to ExternalChunkRef and updating ArtifactIndex to handle external.yaml is required.
+
 ## Exploration Log
+
+### 2026-01-10: External chunk references and causal ordering
+
+**Problem statement:**
+
+External chunks create a two-chain scenario:
+- The external repo has its own causal chain (chunk's GOAL.md `created_after` tracks position there)
+- The local repo has its own causal chain (where does this external reference fit locally?)
+
+Example scenario:
+```
+project-a/docs/chunks/
+  0001-local_chunk/GOAL.md          # created_after: []
+  0002-another_local/GOAL.md        # created_after: [local_chunk]
+  0003-external_work/external.yaml  # Points to project-b chunk
+```
+
+Where does `0003-external_work` fit in project-a's causal chain? Its `created_after` should capture that it was added after `another_local`, regardless of where the chunk sits in project-b's causal chain.
+
+**Design options:**
+
+1. **Add `created_after` to ExternalChunkRef model**: The external.yaml stores the local causal position
+2. **Use a companion file**: external.yaml + metadata.yaml with frontmatter
+3. **External refs don't participate**: They're always tips in local ordering
+
+**Analysis:**
+
+Option 1 is cleanest - ExternalChunkRef already holds reference metadata (track, pinned). Adding `created_after` keeps all reference-specific data together. The same external chunk referenced from two different projects would have different `created_after` values in each project's external.yaml.
+
+Option 2 adds file complexity for little benefit.
+
+Option 3 breaks the causal model - external work IS causally ordered relative to local work.
+
+**Current ExternalChunkRef structure** (from `src/models.py:215-226`):
+```python
+class ExternalChunkRef(BaseModel):
+    repo: str  # GitHub-style org/repo format
+    chunk: str  # Chunk directory name
+    track: str | None = None  # Branch to follow
+    pinned: str | None = None  # 40-char SHA
+```
+
+**Proposed addition:**
+```python
+created_after: list[str] = []  # Local causal ordering (short names)
+```
+
+**Impact on ArtifactIndex:**
+
+The `ArtifactIndex` currently reads `created_after` from GOAL.md frontmatter. For external chunks, it needs to:
+1. Detect external reference (external.yaml exists instead of GOAL.md)
+2. Read `created_after` from external.yaml instead
+
+This is a small change to the index loading logic.
+
+**Open questions:**
+- Should `ve sync` update `created_after` when syncing external refs?
+- How does this interact with the planned `ExternalArtifactRef` consolidation?
+
+**ArtifactIndex analysis:**
+
+Reviewed `src/artifact_ordering.py`. Current implementation has a critical gap:
+
+1. **Lines 276-280**: `_is_index_stale()` only considers directories with the main file (GOAL.md for chunks)
+2. **Lines 313-318**: `_build_index_for_type()` same pattern - only includes dirs with GOAL.md
+3. **`_parse_created_after()`**: Reads markdown frontmatter, not YAML files
+
+External chunk directories have `external.yaml` instead of `GOAL.md`, so they're **completely excluded** from:
+- The ordered list
+- Tip identification
+- Staleness detection
+
+This confirms H6 - external chunks need special handling.
+
+**Required changes to ArtifactIndex:**
+
+1. When enumerating artifacts, also include directories with `external.yaml` (when GOAL.md doesn't exist)
+2. For external chunks, read `created_after` from external.yaml (plain YAML, not markdown frontmatter)
+3. Hash external.yaml for staleness detection (not GOAL.md)
+
+**Code sketch:**
+```python
+# In _build_index_for_type and _is_index_stale:
+for item in artifact_dir.iterdir():
+    if item.is_dir():
+        main_path = item / main_file
+        external_path = item / "external.yaml"
+        if main_path.exists():
+            # Local artifact
+            ...
+        elif external_path.exists():
+            # External reference
+            ...
+```
 
 ### 2026-01-10: Performance baseline and scaling analysis
 
@@ -245,6 +353,10 @@ Instead of listing all 36 predecessors.
 
 8. **Linear migration preserves order**: Existing sequence numbers can bootstrap the `created_after` chain, resulting in a single tip after migration.
 
+9. **External chunk references need `created_after` in the reference**: An external chunk's GOAL.md `created_after` tracks its position in the external repo's causal chain, not the local repo's. The `ExternalChunkRef` model (in external.yaml) must have its own `created_after` field to capture local causal position. The same external chunk can be referenced from multiple projects at different points in their respective causal chains.
+
+10. **ArtifactIndex currently excludes external chunks**: The current implementation only considers directories with GOAL.md (lines 276-280, 313-318 of `src/artifact_ordering.py`). External chunk directories have external.yaml instead, so they're completely invisible to causal ordering. This must be fixed for external chunks to participate in the local causal DAG.
+
 ### Design Decisions
 
 1. **Index will be gitignored**: It's derived data, rebuild is cheap (~33ms for 36 chunks, ~1s for 1000), and git-tracking would cause merge conflicts.
@@ -254,6 +366,8 @@ Instead of listing all 36 predecessors.
 3. **`created_after` is an array**: A merge can create multiple tips. Work created after a merge is causally after ALL merged tips. This makes the causal graph a true DAG with multiple parents, not a linked list.
 
 4. **Short name uniqueness is per-type**: Short names only need to be unique within their artifact type (chunks, narratives, investigations, subsystems). Cross-type collisions are fine because all references include the type path (e.g., `docs/chunks/foo` vs `docs/narratives/foo`). Each artifact type maintains its own independent causal ordering graph.
+
+5. **External references store `created_after` in external.yaml**: The `ExternalChunkRef` model gets a `created_after` field to track local causal position. This is stored in external.yaml alongside repo, chunk, track, and pinned fields. The `ArtifactIndex` reads this field when processing external chunk directories.
 
 ### Hypotheses/Opinions
 
@@ -353,13 +467,15 @@ Instead of listing all 36 predecessors.
 ## Resolution Rationale
 
 **Problem solved**: Designed a merge-friendly causal ordering system that eliminates
-sequence number conflicts in parallel work scenarios.
+sequence number conflicts in parallel work scenarios, including proper handling of
+external chunk references.
 
 **Solution summary**:
 - Replace sequence-based ordering with `created_after` frontmatter field (array of parent short names)
 - Use short names as artifact handles (directories become `short_name/` instead of `NNNN-short_name/`)
 - Cache ordering in gitignored JSON index with git-hash-based staleness detection
 - Topological sort handles multi-parent DAGs from merged branches
+- External chunk references store `created_after` in ExternalChunkRef/external.yaml to track local causal position (separate from the chunk's position in the external repo)
 
 **Performance validated**:
 - Without cache: ~900ms for 1000 chunks (acceptable)
@@ -367,8 +483,8 @@ sequence number conflicts in parallel work scenarios.
 - Git hash staleness: ~300ms for 1000 chunks (acceptable for correctness guarantee)
 
 **Migration path**: Phased approach allows incremental adoption while maintaining
-backward compatibility. 8 proposed chunks cover foundation, creation flow, migration,
-and directory naming changes.
+backward compatibility. 9 proposed chunks cover foundation, creation flow, migration,
+directory naming, and external reference handling.
 
 **Prototypes preserved**: All exploration code saved in `prototypes/` subdirectory
 for implementation reference.

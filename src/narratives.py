@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/0006-narrative_cli_commands - Narrative creation and management
 # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing
+# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
 # Subsystem: docs/subsystems/0001-template_system - Uses template rendering
 
 import re
@@ -9,6 +10,7 @@ import re
 from pydantic import ValidationError
 import yaml
 
+from artifact_ordering import ArtifactIndex, ArtifactType
 from models import NarrativeFrontmatter
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
@@ -35,6 +37,7 @@ class Narratives:
 
     # Chunk: docs/chunks/0006-narrative_cli_commands - Create narrative directory
     # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
@@ -45,6 +48,10 @@ class Narratives:
         Returns:
             Path to the created narrative directory.
         """
+        # Get current narrative tips for created_after field
+        artifact_index = ArtifactIndex(self.project_dir)
+        tips = artifact_index.find_tips(ArtifactType.NARRATIVE)
+
         # Ensure narratives directory exists (fallback for pre-existing projects)
         self.narratives_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +77,7 @@ class Narratives:
             context=context,
             short_name=short_name,
             next_id=next_id_str,
+            created_after=tips,
         )
 
         return narrative_path
