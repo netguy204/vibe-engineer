@@ -23,6 +23,8 @@ chunks:
   relationship: implements
 - chunk_id: 0037-created_after_field
   relationship: implements
+- chunk_id: 0038-artifact_ordering_index
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -75,6 +77,18 @@ code_references:
 - ref: src/ve.py#start
   implements: Chunk creation CLI command
   compliance: NON_COMPLIANT
+- ref: src/artifact_ordering.py#ArtifactType
+  implements: Workflow artifact type enum
+  compliance: COMPLIANT
+- ref: src/artifact_ordering.py#ArtifactIndex
+  implements: Cached ordering system for workflow artifacts
+  compliance: COMPLIANT
+- ref: src/artifact_ordering.py#ArtifactIndex::get_ordered
+  implements: Topological sort of artifacts by created_after
+  compliance: COMPLIANT
+- ref: src/artifact_ordering.py#ArtifactIndex::find_tips
+  implements: Identify artifacts with no dependents
+  compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
     Define chunk lifecycle states (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL)
@@ -332,6 +346,16 @@ Cross-repo pattern (currently chunks only):
 - `TaskConfig` model for `.ve-task.yaml`
 - `create_external_yaml()`, `load_external_ref()` utilities
 
+### Artifact Ordering (`src/artifact_ordering.py`)
+
+Cached ordering system for workflow artifacts:
+- `ArtifactType` enum defining all workflow artifact types
+- `ArtifactIndex` class providing topological sorting and tip identification
+- Git-hash-based staleness detection for efficient caching
+- Parses `created_after` field from frontmatter to build dependency DAG
+- Supports multi-parent DAGs (merged branches) via Kahn's algorithm
+- Index stored as gitignored JSON (`.artifact-order.json`)
+
 ## Known Deviations
 
 ### ~~Chunk Status Not a StrEnum~~ (RESOLVED)
@@ -404,6 +428,15 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
 
 - **0032-proposed_chunks_frontmatter** - Added `ProposedChunk` model, `proposed_chunks`
   field to all frontmatter schemas, `NarrativeStatus` StrEnum
+
+- **0036-chunk_frontmatter_model** - Added `ChunkStatus` StrEnum and `ChunkFrontmatter`
+  Pydantic model to `models.py`
+
+- **0037-created_after_field** - Added `created_after` field to all workflow artifact
+  frontmatter models for causal ordering
+
+- **0038-artifact_ordering_index** - Created `src/artifact_ordering.py` with `ArtifactIndex`
+  class for cached topological sorting and tip identification using git-hash staleness
 
 ## Consolidation Chunks
 

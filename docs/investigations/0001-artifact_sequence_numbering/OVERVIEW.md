@@ -12,7 +12,7 @@ proposed_chunks:
     multi-parent DAGs (Kahn's algorithm), find_tips() to identify artifacts with no
     dependents. Index stored as gitignored JSON. See investigation prototypes for
     reference implementation."
-  chunk_directory: null
+  chunk_directory: 0038-artifact_ordering_index
 - prompt: "Update create_chunk(), create_narrative(), create_investigation(), create_subsystem()
     to find current tips using ArtifactIndex and set created_after to list of tip
     short names. Pass to template for frontmatter generation."
@@ -22,24 +22,30 @@ proposed_chunks:
     back to sequence order when created_after not populated. Display tip indicators
     for artifacts with no dependents."
   chunk_directory: null
-- prompt: "Create ve migrate causal-ordering command that sorts existing artifacts by
-    sequence number and sets each artifact's created_after to [previous artifact's
-    short name]. First artifact gets empty created_after. See investigation prototypes
-    for migration strategy."
+- prompt: "Create ve migrate causal-ordering command that migrates ALL artifact types
+    (chunks, narratives, investigations, subsystems). For each type, sort existing
+    artifacts by sequence number and set each artifact's created_after to [previous
+    artifact's short name]. First artifact of each type gets empty created_after.
+    Short names only need to be unique within their artifact type. See investigation
+    prototypes for migration strategy."
   chunk_directory: null
 - prompt: "Update docs/subsystems/0002-workflow_artifacts/OVERVIEW.md to revise Hard
     Invariant #1 for new naming pattern, document created_after field and causal ordering
     semantics, add ArtifactIndex to Implementation Locations, note sequence prefixes
     as legacy."
   chunk_directory: null
-- prompt: "Update artifact creation to use short_name/ instead of NNNN-short_name/ for
-    directory naming. Add collision detection, update all code that parses directory
-    names. Support both patterns during transition."
+- prompt: "Update artifact creation for ALL types (chunks, narratives, investigations,
+    subsystems) to use short_name/ instead of NNNN-short_name/ for directory naming.
+    Add collision detection within each artifact type (short names only need to be
+    unique within their type). Update all code that parses directory names. Support
+    both patterns during transition."
   chunk_directory: null
-- prompt: "Update all cross-references from NNNN-short_name to short_name format: code
-    backreferences, frontmatter references (narrative, subsystems.chunk_id, parent_chunk),
-    subsystem code_references. Create automated migration tool for the 14+ existing
-    cross-refs."
+- prompt: "Update all cross-references across ALL artifact types from NNNN-short_name
+    to short_name format: code backreferences (# Chunk:, # Subsystem:), frontmatter
+    references (narrative, subsystems.chunk_id, parent_chunk, chunks in subsystem
+    frontmatter), subsystem code_references. Create automated migration tool for
+    existing cross-refs. References remain type-qualified (e.g., docs/chunks/foo,
+    docs/narratives/bar) so cross-type name collisions are not an issue."
   chunk_directory: null
 ---
 
@@ -235,7 +241,7 @@ Instead of listing all 36 predecessors.
 
 6. **Multi-parent DAG works with standard algorithms**: Kahn's algorithm handles `created_after` arrays correctly. A chunk appears after all its parents in the sorted output.
 
-7. **Short names are currently unique**: Audit confirms all artifacts have unique short names within their type, with no cross-type collisions.
+7. **Short names are currently unique within type**: Audit confirms all artifacts have unique short names within their type. Cross-type collisions are allowed (a chunk and narrative can share a short name since references are type-qualified, e.g., `docs/chunks/foo` vs `docs/narratives/foo`).
 
 8. **Linear migration preserves order**: Existing sequence numbers can bootstrap the `created_after` chain, resulting in a single tip after migration.
 
@@ -246,6 +252,8 @@ Instead of listing all 36 predecessors.
 2. **Use git hashes for staleness detection**: Mtimes are unreliable across merges, checkouts, and rsync. Git blob hashes are the source of truth for content identity.
 
 3. **`created_after` is an array**: A merge can create multiple tips. Work created after a merge is causally after ALL merged tips. This makes the causal graph a true DAG with multiple parents, not a linked list.
+
+4. **Short name uniqueness is per-type**: Short names only need to be unique within their artifact type (chunks, narratives, investigations, subsystems). Cross-type collisions are fine because all references include the type path (e.g., `docs/chunks/foo` vs `docs/narratives/foo`). Each artifact type maintains its own independent causal ordering graph.
 
 ### Hypotheses/Opinions
 
