@@ -1,7 +1,7 @@
 """Investigations module - business logic for investigation management."""
-# Chunk: docs/chunks/0029-investigation_commands - Investigation management
-# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/investigation_commands - Investigation management
+# Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import pathlib
 import re
@@ -14,8 +14,8 @@ from models import InvestigationFrontmatter, extract_short_name
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
-# Chunk: docs/chunks/0029-investigation_commands - Core investigation class
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/investigation_commands - Core investigation class
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 class Investigations:
     """Utility class for managing investigation documentation."""
 
@@ -47,10 +47,10 @@ class Investigations:
         """Return the number of investigations."""
         return len(self.enumerate_investigations())
 
-    # Chunk: docs/chunks/0029-investigation_commands - Create investigation directory
-    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
-    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
+    # Chunk: docs/chunks/investigation_commands - Create investigation directory
+    # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
 
@@ -99,7 +99,7 @@ class Investigations:
 
         return investigation_path
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing investigations with the same short_name.
 
@@ -116,7 +116,7 @@ class Investigations:
                 duplicates.append(name)
         return duplicates
 
-    # Chunk: docs/chunks/0029-investigation_commands - Parse investigation frontmatter
+    # Chunk: docs/chunks/investigation_commands - Parse investigation frontmatter
     def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for an investigation.
 

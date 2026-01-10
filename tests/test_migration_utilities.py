@@ -1,6 +1,6 @@
 """Tests for the causal ordering migration utilities.
 
-# Chunk: docs/chunks/0042-causal_ordering_migration - Migration utilities tests
+# Chunk: docs/chunks/causal_ordering_migration - Migration utilities tests
 
 These tests verify the migration script's core functionality:
 - Short name extraction from directory names
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 # Import from the chunk's migration script
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated path after migration
+# Chunk: docs/chunks/remove_sequence_prefix - Updated path after migration
 import sys
 
 sys.path.insert(

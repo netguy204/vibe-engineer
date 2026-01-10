@@ -4,7 +4,7 @@ This module provides a local cache of external repositories at ~/.ve/cache/repos
 The cache enables reading files and resolving refs without network round-trips
 after the initial clone.
 """
-# Chunk: docs/chunks/0035-external_resolve - Repo cache infrastructure
+# Chunk: docs/chunks/external_resolve - Repo cache infrastructure
 
 import subprocess
 from pathlib import Path

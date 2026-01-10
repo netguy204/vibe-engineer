@@ -6,7 +6,7 @@ import pytest
 class TestInvestigationCreatedAfterPopulation:
     """Tests for created_after population during investigation creation.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_first_investigation_has_empty_created_after(self, temp_project):
@@ -36,7 +36,7 @@ class TestInvestigationCreatedAfterPopulation:
 class TestInvestigationsCreateInvestigation:
     """Tests for Investigations.create_investigation() method.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_create_investigation_first_investigation(self, temp_project):

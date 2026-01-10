@@ -3,7 +3,7 @@
 from ve import cli
 
 
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
 class TestNarrativeCreateCommand:
     """Tests for the 've narrative create' command."""
 

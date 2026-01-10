@@ -1,9 +1,9 @@
 """Narratives module - business logic for narrative management."""
-# Chunk: docs/chunks/0006-narrative_cli_commands - Narrative creation and management
-# Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
-# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing
-# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/narrative_cli_commands - Narrative creation and management
+# Chunk: docs/chunks/template_system_consolidation - Template system integration
+# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter parsing
+# Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import re
 
@@ -15,8 +15,8 @@ from models import NarrativeFrontmatter, extract_short_name
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
-# Chunk: docs/chunks/0006-narrative_cli_commands - Core narrative class
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/narrative_cli_commands - Core narrative class
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 class Narratives:
     def __init__(self, project_dir):
         self.project_dir = project_dir
@@ -35,11 +35,11 @@ class Narratives:
     def num_narratives(self):
         return len(self.enumerate_narratives())
 
-    # Chunk: docs/chunks/0006-narrative_cli_commands - Create narrative directory
-    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
-    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
-    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
+    # Chunk: docs/chunks/narrative_cli_commands - Create narrative directory
+    # Chunk: docs/chunks/template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
 
@@ -88,7 +88,7 @@ class Narratives:
 
         return narrative_path
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing narratives with the same short_name.
 
@@ -105,7 +105,7 @@ class Narratives:
                 duplicates.append(name)
         return duplicates
 
-    # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Parse narrative frontmatter
+    # Chunk: docs/chunks/proposed_chunks_frontmatter - Parse narrative frontmatter
     def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a narrative.
 

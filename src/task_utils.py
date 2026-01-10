@@ -1,6 +1,6 @@
 """Utility functions for cross-repository task management."""
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Cross-repo task utilities
-# Chunk: docs/chunks/0013-future_chunk_creation - Status support
+# Chunk: docs/chunks/chunk_create_task_aware - Cross-repo task utilities
+# Chunk: docs/chunks/future_chunk_creation - Status support
 
 import re
 from pathlib import Path
@@ -12,13 +12,13 @@ from git_utils import get_current_sha
 from models import TaskConfig, ExternalChunkRef
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Detect task directory
+# Chunk: docs/chunks/chunk_create_task_aware - Detect task directory
 def is_task_directory(path: Path) -> bool:
     """Detect if path contains a .ve-task.yaml file."""
     return (path / ".ve-task.yaml").exists()
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Resolve org/repo to path
+# Chunk: docs/chunks/chunk_create_task_aware - Resolve org/repo to path
 def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     """Resolve a GitHub-style org/repo reference to a filesystem path.
 
@@ -62,7 +62,7 @@ def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     )
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Detect external chunk
+# Chunk: docs/chunks/chunk_create_task_aware - Detect external chunk
 def is_external_chunk(chunk_path: Path) -> bool:
     """Detect if chunk_path is an external chunk reference.
 
@@ -73,7 +73,7 @@ def is_external_chunk(chunk_path: Path) -> bool:
     return has_external and not has_goal
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Load task configuration
+# Chunk: docs/chunks/chunk_create_task_aware - Load task configuration
 def load_task_config(path: Path) -> TaskConfig:
     """Load and validate .ve-task.yaml from path.
 
@@ -97,7 +97,7 @@ def load_task_config(path: Path) -> TaskConfig:
     return TaskConfig.model_validate(data)
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Load external chunk reference
+# Chunk: docs/chunks/chunk_create_task_aware - Load external chunk reference
 def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
     """Load and validate external.yaml from chunk path.
 
@@ -121,9 +121,9 @@ def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
     return ExternalChunkRef.model_validate(data)
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Get next chunk ID
-# Chunk: docs/chunks/0041-artifact_list_ordering - Use enumerate_chunks for directory-based ID
-# Chunk: docs/chunks/0044-remove_sequence_prefix - DEPRECATED: No longer needed for new naming
+# Chunk: docs/chunks/chunk_create_task_aware - Get next chunk ID
+# Chunk: docs/chunks/artifact_list_ordering - Use enumerate_chunks for directory-based ID
+# Chunk: docs/chunks/remove_sequence_prefix - DEPRECATED: No longer needed for new naming
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
 
@@ -157,8 +157,8 @@ def get_next_chunk_id(project_path: Path) -> str:
     return f"{highest_number + 1:04d}"
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Create external.yaml
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml
+# Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 def create_external_yaml(
     project_path: Path,
     short_name: str,
@@ -198,8 +198,8 @@ def create_external_yaml(
     return external_yaml_path
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Update frontmatter field
-# Chunk: docs/chunks/0013-future_chunk_creation - Used for status updates
+# Chunk: docs/chunks/chunk_create_task_aware - Update frontmatter field
+# Chunk: docs/chunks/future_chunk_creation - Used for status updates
 def update_frontmatter_field(
     goal_path: Path,
     field: str,
@@ -242,7 +242,7 @@ def update_frontmatter_field(
     goal_path.write_text(new_content)
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Add dependents to chunk
+# Chunk: docs/chunks/chunk_create_task_aware - Add dependents to chunk
 def add_dependents_to_chunk(
     chunk_path: Path,
     dependents: list[dict],
@@ -263,16 +263,16 @@ def add_dependents_to_chunk(
     update_frontmatter_field(goal_path, "dependents", dependents)
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Task chunk error class
+# Chunk: docs/chunks/chunk_create_task_aware - Task chunk error class
 class TaskChunkError(Exception):
     """Error during task chunk creation with user-friendly message."""
 
     pass
 
 
-# Chunk: docs/chunks/0010-chunk_create_task_aware - Orchestrate multi-repo chunk
-# Chunk: docs/chunks/0013-future_chunk_creation - Status parameter support
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/chunk_create_task_aware - Orchestrate multi-repo chunk
+# Chunk: docs/chunks/future_chunk_creation - Status parameter support
+# Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -373,7 +373,7 @@ def create_task_chunk(
     }
 
 
-# Chunk: docs/chunks/0033-list_task_aware - Task-aware chunk listing
+# Chunk: docs/chunks/list_task_aware - Task-aware chunk listing
 def list_task_chunks(task_dir: Path) -> list[dict]:
     """List chunks from external repo with their dependents.
 
@@ -404,7 +404,7 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
         )
 
     # List chunks from external repo
-    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new list_chunks return type
+    # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
     chunks = Chunks(external_repo_path)
     chunk_list = chunks.list_chunks()
 
@@ -423,7 +423,7 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
     return results
 
 
-# Chunk: docs/chunks/0033-list_task_aware - Task-aware current chunk
+# Chunk: docs/chunks/list_task_aware - Task-aware current chunk
 def get_current_task_chunk(task_dir: Path) -> str | None:
     """Get the current (IMPLEMENTING) chunk from external repo.
 

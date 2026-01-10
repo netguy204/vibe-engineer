@@ -70,7 +70,7 @@ projects:
     return task_dir, external_path, project_paths
 
 
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
 class TestChunkCreateInTaskDirectory:
     """Tests for ve chunk start in task directory context."""
 

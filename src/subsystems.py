@@ -1,12 +1,12 @@
 """Subsystems module - business logic for subsystem documentation management."""
-# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Core subsystem management
-# Chunk: docs/chunks/0016-subsystem_cli_scaffolding - CLI and creation logic
-# Chunk: docs/chunks/0018-bidirectional_refs - Chunk reference validation
-# Chunk: docs/chunks/0019-subsystem_status_transitions - Status management
-# Chunk: docs/chunks/0022-subsystem_impact_resolution - Overlap detection
-# Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
-# Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/subsystem_schemas_and_model - Core subsystem management
+# Chunk: docs/chunks/subsystem_cli_scaffolding - CLI and creation logic
+# Chunk: docs/chunks/bidirectional_refs - Chunk reference validation
+# Chunk: docs/chunks/subsystem_status_transitions - Status management
+# Chunk: docs/chunks/subsystem_impact_resolution - Overlap detection
+# Chunk: docs/chunks/template_system_consolidation - Template system integration
+# Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 
 from __future__ import annotations
 
@@ -26,14 +26,14 @@ if TYPE_CHECKING:
     from chunks import Chunks
 
 
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new patterns
+# Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new patterns
 # Regex for validating subsystem directory name pattern
 # Legacy: {NNNN}-{short_name}, New: {short_name} (lowercase, starting with letter)
 SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
-# Chunk: docs/chunks/0014-subsystem_schemas_and_model - Core subsystem class
-# Subsystem: docs/subsystems/0001-template_system - Uses template rendering
+# Chunk: docs/chunks/subsystem_schemas_and_model - Core subsystem class
+# Subsystem: docs/subsystems/template_system - Uses template rendering
 class Subsystems:
     """Utility class for managing subsystem documentation.
 
@@ -49,13 +49,13 @@ class Subsystems:
         """
         self.project_dir = project_dir
 
-    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystems directory path
+    # Chunk: docs/chunks/subsystem_schemas_and_model - Subsystems directory path
     @property
     def subsystems_dir(self):
         """Return the path to the subsystems directory."""
         return self.project_dir / "docs" / "subsystems"
 
-    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - List subsystem directories
+    # Chunk: docs/chunks/subsystem_schemas_and_model - List subsystem directories
     def enumerate_subsystems(self) -> list[str]:
         """List subsystem directory names.
 
@@ -66,8 +66,8 @@ class Subsystems:
             return []
         return [f.name for f in self.subsystems_dir.iterdir() if f.is_dir()]
 
-    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Validate directory pattern
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new patterns
+    # Chunk: docs/chunks/subsystem_schemas_and_model - Validate directory pattern
+    # Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new patterns
     def is_subsystem_dir(self, name: str) -> bool:
         """Check if a directory name matches the subsystem pattern.
 
@@ -85,7 +85,7 @@ class Subsystems:
             return len(parts) == 2 and bool(parts[1])
         return True
 
-    # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Parse OVERVIEW.md frontmatter
+    # Chunk: docs/chunks/subsystem_schemas_and_model - Parse OVERVIEW.md frontmatter
     def parse_subsystem_frontmatter(self, subsystem_id: str) -> SubsystemFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a subsystem.
 
@@ -117,8 +117,8 @@ class Subsystems:
         except (yaml.YAMLError, ValidationError):
             return None
 
-    # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Find subsystem by name
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Handle both legacy and new patterns
+    # Chunk: docs/chunks/subsystem_cli_scaffolding - Find subsystem by name
+    # Chunk: docs/chunks/remove_sequence_prefix - Handle both legacy and new patterns
     def find_by_shortname(self, shortname: str) -> str | None:
         """Find subsystem directory by shortname.
 
@@ -141,11 +141,11 @@ class Subsystems:
         """Return the number of subsystems."""
         return len(self.enumerate_subsystems())
 
-    # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem directory
-    # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
-    # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
-    # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
+    # Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem directory
+    # Chunk: docs/chunks/template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
 
@@ -194,7 +194,7 @@ class Subsystems:
 
         return subsystem_path
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
     def find_duplicates(self, shortname: str) -> list[str]:
         """Find existing subsystems with the same short_name.
 
@@ -211,7 +211,7 @@ class Subsystems:
                 duplicates.append(name)
         return duplicates
 
-    # Chunk: docs/chunks/0018-bidirectional_refs - Validate chunk references
+    # Chunk: docs/chunks/bidirectional_refs - Validate chunk references
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:
         """Validate chunk references in a subsystem's frontmatter.
 
@@ -251,7 +251,7 @@ class Subsystems:
 
         return errors
 
-    # Chunk: docs/chunks/0019-subsystem_status_transitions - Get current status
+    # Chunk: docs/chunks/subsystem_status_transitions - Get current status
     def get_status(self, subsystem_id: str) -> SubsystemStatus:
         """Get the current status of a subsystem.
 
@@ -269,7 +269,7 @@ class Subsystems:
             raise ValueError(f"Subsystem '{subsystem_id}' not found in docs/subsystems/")
         return frontmatter.status
 
-    # Chunk: docs/chunks/0019-subsystem_status_transitions - Update status with validation
+    # Chunk: docs/chunks/subsystem_status_transitions - Update status with validation
     def update_status(
         self, subsystem_id: str, new_status: SubsystemStatus
     ) -> tuple[SubsystemStatus, SubsystemStatus]:
@@ -309,7 +309,7 @@ class Subsystems:
 
         return (current_status, new_status)
 
-    # Chunk: docs/chunks/0019-subsystem_status_transitions - Update frontmatter field
+    # Chunk: docs/chunks/subsystem_status_transitions - Update frontmatter field
     def _update_overview_frontmatter(
         self, subsystem_id: str, field: str, value
     ) -> None:
@@ -347,7 +347,7 @@ class Subsystems:
 
         overview_path.write_text(new_content)
 
-    # Chunk: docs/chunks/0022-subsystem_impact_resolution - Find overlapping subsystems
+    # Chunk: docs/chunks/subsystem_impact_resolution - Find overlapping subsystems
     def find_overlapping_subsystems(
         self, chunk_id: str, chunks: Chunks
     ) -> list[dict]:
@@ -378,7 +378,7 @@ class Subsystems:
             raise ValueError(f"Chunk '{chunk_id}' not found")
 
         # Get chunk's code references (symbolic format)
-        # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
+        # Chunk: docs/chunks/chunk_frontmatter_model - Use typed frontmatter access
         chunk_refs: list[str] = [ref.ref for ref in frontmatter.code_references]
 
         # Fall back to code_paths if no symbolic code_references
@@ -418,7 +418,7 @@ class Subsystems:
 
         return results
 
-    # Chunk: docs/chunks/0022-subsystem_impact_resolution - Compute reference overlap
+    # Chunk: docs/chunks/subsystem_impact_resolution - Compute reference overlap
     def _find_overlapping_refs(
         self, chunk_refs: list[str], subsystem_refs: list[str]
     ) -> list[str]:

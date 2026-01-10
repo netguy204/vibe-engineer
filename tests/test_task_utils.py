@@ -199,7 +199,7 @@ class TestGetNextChunkId:
 class TestCreateExternalYaml:
     """Tests for create_external_yaml.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_creates_external_yaml_file(self, tmp_path):

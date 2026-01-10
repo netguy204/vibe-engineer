@@ -4,7 +4,7 @@ This module provides functions to resolve external chunk references and
 read their GOAL.md and PLAN.md content, supporting both task directory mode
 (using local worktrees) and single repo mode (using the repo cache).
 """
-# Chunk: docs/chunks/0035-external_resolve - External chunk resolution
+# Chunk: docs/chunks/external_resolve - External chunk resolution
 
 from dataclasses import dataclass
 from pathlib import Path

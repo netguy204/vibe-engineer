@@ -4,8 +4,8 @@ This module provides functionality for the `ve sync` command, which updates
 `pinned` fields in external.yaml files to match the current HEAD of external
 chunk repositories.
 """
-# Chunk: docs/chunks/0034-ve_sync_command - Sync external references
-# Chunk: docs/chunks/0035-external_resolve - Use repo cache for single-repo mode
+# Chunk: docs/chunks/ve_sync_command - Sync external references
+# Chunk: docs/chunks/external_resolve - Use repo cache for single-repo mode
 
 from dataclasses import dataclass
 from pathlib import Path

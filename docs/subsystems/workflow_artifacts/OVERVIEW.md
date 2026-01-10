@@ -1,7 +1,7 @@
 ---
 status: REFACTORING
 chunks:
-- chunk_id: 0001-implement_chunk_start
+- chunk_id: implement_chunk_start
   relationship: implements
 - chunk_id: narrative_cli_commands
   relationship: implements
@@ -36,6 +36,8 @@ chunks:
 - chunk_id: subsystem_docs_update
   relationship: implements
 - chunk_id: remove_sequence_prefix
+  relationship: implements
+- chunk_id: update_crossref_format
   relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
@@ -553,6 +555,12 @@ details.
   types. New artifacts created as `{short_name}/` instead of `{NNNN}-{short_name}/`. Added
   `extract_short_name()` utility supporting both patterns, collision detection by short name,
   and migration script (`scripts/migrate_artifact_names.py`) for existing artifacts
+
+- **update_crossref_format** - Completed the directory naming transition by updating all
+  cross-references from legacy `NNNN-short_name` format to `short_name` format. Updated
+  code backreferences (`# Chunk:`, `# Subsystem:`), frontmatter references (`chunk_id`,
+  `parent_chunk`, `subsystem_id`), and template examples. Migration script created at
+  `docs/chunks/update_crossref_format/migrate_crossrefs.py`
 
 ## Consolidation Chunks
 

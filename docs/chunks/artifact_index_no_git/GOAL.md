@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 ticket: null
-parent_chunk: 0038-artifact_ordering_index
+parent_chunk: artifact_ordering_index
 code_paths:
 - src/artifact_ordering.py
 - tests/test_artifact_ordering.py

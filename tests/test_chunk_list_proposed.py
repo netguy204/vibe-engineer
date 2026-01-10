@@ -1,5 +1,5 @@
 """Tests for ve chunk list-proposed command."""
-# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Tests for list-proposed
+# Chunk: docs/chunks/proposed_chunks_frontmatter - Tests for list-proposed
 
 import pathlib
 

@@ -112,7 +112,7 @@ Add a new entry to the Known Deviations section:
 
 Add this chunk to the subsystem's `chunks` frontmatter array:
 ```yaml
-- chunk_id: 0043-subsystem_docs_update
+- chunk_id: subsystem_docs_update
   relationship: implements
 ```
 

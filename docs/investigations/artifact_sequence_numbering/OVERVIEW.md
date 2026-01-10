@@ -46,7 +46,7 @@ proposed_chunks:
     frontmatter), subsystem code_references. Create automated migration tool for existing
     cross-refs. References remain type-qualified (e.g., docs/chunks/foo, docs/narratives/bar)
     so cross-type name collisions are not an issue.'
-  chunk_directory: null
+  chunk_directory: update_crossref_format
 - prompt: 'Add `created_after: list[str]` field to ExternalChunkRef model in models.py.
     Update ArtifactIndex to handle external chunk references: enumerate directories
     with external.yaml when GOAL.md doesn''t exist, read created_after from external.yaml

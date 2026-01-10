@@ -3,13 +3,13 @@
 These utilities operate entirely on local worktrees within a task directory,
 avoiding network operations. They form the foundation for the `ve sync` command.
 """
-# Chunk: docs/chunks/0008-ve_sync_foundation - Git utility functions
+# Chunk: docs/chunks/ve_sync_foundation - Git utility functions
 
 import subprocess
 from pathlib import Path
 
 
-# Chunk: docs/chunks/0008-ve_sync_foundation - Get HEAD SHA
+# Chunk: docs/chunks/ve_sync_foundation - Get HEAD SHA
 def get_current_sha(repo_path: Path) -> str:
     """Get the current HEAD SHA of a local git repository.
 
@@ -41,7 +41,7 @@ def get_current_sha(repo_path: Path) -> str:
         raise ValueError(f"Not a git repository: {repo_path}") from e
 
 
-# Chunk: docs/chunks/0008-ve_sync_foundation - Resolve git ref to SHA
+# Chunk: docs/chunks/ve_sync_foundation - Resolve git ref to SHA
 def resolve_ref(repo_path: Path, ref: str) -> str:
     """Resolve a git ref (branch, tag, or symbolic ref) to its SHA.
 
@@ -78,7 +78,7 @@ def resolve_ref(repo_path: Path, ref: str) -> str:
         raise ValueError(f"Cannot resolve ref '{ref}' in {repo_path}") from e
 
 
-# Chunk: docs/chunks/0034-ve_sync_command - Resolve remote ref to SHA
+# Chunk: docs/chunks/ve_sync_command - Resolve remote ref to SHA
 def resolve_remote_ref(repo_url: str, ref: str = "HEAD") -> str:
     """Resolve a git ref from a remote repository using git ls-remote.
 
@@ -123,7 +123,7 @@ def resolve_remote_ref(repo_url: str, ref: str = "HEAD") -> str:
     return sha
 
 
-# Chunk: docs/chunks/0008-ve_sync_foundation - Check if directory is git repo
+# Chunk: docs/chunks/ve_sync_foundation - Check if directory is git repo
 def is_git_repository(path: Path) -> bool:
     """Check if path is a git repository (or worktree).
 

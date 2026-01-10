@@ -1,7 +1,7 @@
 """Template system module - unified Jinja2 template rendering."""
-# Chunk: docs/chunks/0023-canonical_template_module - Unified Jinja2 template rendering
-# Chunk: docs/chunks/0026-template_system_consolidation - RenderResult and consolidation
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Unified Jinja2 template rendering
+# Chunk: docs/chunks/template_system_consolidation - RenderResult and consolidation
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 
 import pathlib
 from dataclasses import dataclass, field
@@ -11,8 +11,8 @@ import jinja2
 from constants import template_dir
 
 
-# Chunk: docs/chunks/0026-template_system_consolidation - Track rendering outcomes
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/template_system_consolidation - Track rendering outcomes
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class RenderResult:
     """Result of template rendering to a directory.
@@ -27,8 +27,8 @@ class RenderResult:
     overwritten: list[pathlib.Path] = field(default_factory=list)
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Chunk context for templates
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Chunk context for templates
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class ActiveChunk:
     """Represents an active chunk context for template rendering."""
@@ -48,8 +48,8 @@ class ActiveChunk:
         return self._project_dir / "docs" / "chunks" / self.id / "PLAN.md"
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Narrative context for templates
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Narrative context for templates
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class ActiveNarrative:
     """Represents an active narrative context for template rendering."""
@@ -64,8 +64,8 @@ class ActiveNarrative:
         return self._project_dir / "docs" / "narratives" / self.id / "OVERVIEW.md"
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Subsystem context for templates
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Subsystem context for templates
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class ActiveSubsystem:
     """Represents an active subsystem context for template rendering."""
@@ -80,7 +80,7 @@ class ActiveSubsystem:
         return self._project_dir / "docs" / "subsystems" / self.id / "OVERVIEW.md"
 
 
-# Chunk: docs/chunks/0029-investigation_commands - Investigation context for templates
+# Chunk: docs/chunks/investigation_commands - Investigation context for templates
 @dataclass
 class ActiveInvestigation:
     """Represents an active investigation context for template rendering."""
@@ -95,8 +95,8 @@ class ActiveInvestigation:
         return self._project_dir / "docs" / "investigations" / self.id / "OVERVIEW.md"
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Unified template context holder
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Unified template context holder
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class TemplateContext:
     """Holds project-level context for template rendering.
@@ -123,8 +123,8 @@ class TemplateContext:
         return {"project": self}
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Template enumeration
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Template enumeration
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 def list_templates(collection: str) -> list[str]:
     """List template files in a collection (excludes partials/ and hidden files).
 
@@ -148,8 +148,8 @@ def list_templates(collection: str) -> list[str]:
 _environments: dict[str, jinja2.Environment] = {}
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Jinja2 Environment with include support
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Jinja2 Environment with include support
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 def get_environment(collection: str) -> jinja2.Environment:
     """Get or create a Jinja2 Environment for a template collection.
 
@@ -170,8 +170,8 @@ def get_environment(collection: str) -> jinja2.Environment:
     return _environments[collection]
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Core template rendering function
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Core template rendering function
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 def render_template(
     collection: str,
     template_name: str,
@@ -203,9 +203,9 @@ def render_template(
     return template.render(**render_context)
 
 
-# Chunk: docs/chunks/0023-canonical_template_module - Batch directory rendering
-# Chunk: docs/chunks/0026-template_system_consolidation - Added overwrite parameter
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/canonical_template_module - Batch directory rendering
+# Chunk: docs/chunks/template_system_consolidation - Added overwrite parameter
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 def render_to_directory(
     collection: str,
     dest_dir: pathlib.Path,

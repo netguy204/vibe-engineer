@@ -6,7 +6,7 @@ from chunks import Chunks
 class TestChunksClass:
     """Tests for the Chunks class.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_create_chunk_creates_directory(self, temp_project):
@@ -65,8 +65,8 @@ class TestChunksClass:
 class TestListChunks:
     """Tests for Chunks.list_chunks() method.
 
-    # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new return type
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/artifact_list_ordering - Updated for new return type
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_empty_project_returns_empty_list(self, temp_project):
@@ -109,7 +109,7 @@ class TestListChunks:
 class TestGetLatestChunk:
     """Tests for Chunks.get_latest_chunk() method.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_empty_project_returns_none(self, temp_project):
@@ -135,7 +135,7 @@ class TestGetLatestChunk:
 class TestGetCurrentChunk:
     """Tests for Chunks.get_current_chunk() method.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_empty_project_returns_none(self, temp_project):
@@ -206,7 +206,7 @@ class TestGetCurrentChunk:
 class TestCreatedAfterPopulation:
     """Tests for created_after population during chunk creation.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_first_chunk_has_empty_created_after(self, temp_project):
@@ -260,7 +260,7 @@ class TestCreatedAfterPopulation:
 class TestChunkDirectoryInTemplates:
     """Tests for chunk_directory variable in rendered templates.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_plan_md_contains_chunk_directory(self, temp_project):
@@ -292,7 +292,7 @@ class TestChunkDirectoryInTemplates:
 class TestParseFrontmatterDependents:
     """Tests for parsing dependents from chunk frontmatter.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_parse_frontmatter_with_dependents(self, temp_project):
@@ -515,7 +515,7 @@ code_references: []
     def test_invalid_subsystem_id_format_causes_frontmatter_parse_failure(self, temp_project):
         """Invalid subsystem_id format causes frontmatter parsing to fail."""
         chunk_mgr = Chunks(temp_project)
-        # Chunk: docs/chunks/0044-remove_sequence_prefix - Must now use truly invalid format
+        # Chunk: docs/chunks/remove_sequence_prefix - Must now use truly invalid format
         # "UPPERCASE" is invalid since new pattern requires lowercase
         self._write_chunk_with_subsystems(temp_project, "feature", [
             {"subsystem_id": "INVALID_UPPERCASE", "relationship": "implements"}

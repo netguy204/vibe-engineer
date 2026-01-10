@@ -1,7 +1,7 @@
 """Tests for artifact ordering system.
 
-# Chunk: docs/chunks/0038-artifact_ordering_index - Causal ordering infrastructure
-# Chunk: docs/chunks/0040-artifact_index_no_git - Directory-based staleness detection
+# Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
+# Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
 """
 
 from pathlib import Path
@@ -697,7 +697,7 @@ class TestPerformance:
         assert elapsed_ms < 50, f"Warm query took {elapsed_ms:.1f}ms, expected <50ms"
 
 
-# Chunk: docs/chunks/0041-artifact_list_ordering - Backward compatibility tests
+# Chunk: docs/chunks/artifact_list_ordering - Backward compatibility tests
 class TestBackwardCompatibility:
     """Tests for backward compatibility with mixed created_after scenarios.
 
@@ -783,7 +783,7 @@ class TestBackwardCompatibility:
         assert tips == ["0002-legacy_b", "0003-new_a"]
 
 
-# Chunk: docs/chunks/0040-artifact_index_no_git - Non-git operation tests
+# Chunk: docs/chunks/artifact_index_no_git - Non-git operation tests
 class TestNonGitOperation:
     """Tests that verify ArtifactIndex works without git.
 

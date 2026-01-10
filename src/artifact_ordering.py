@@ -1,8 +1,8 @@
 """Cached ordering system for workflow artifacts.
 
-# Chunk: docs/chunks/0038-artifact_ordering_index - Causal ordering infrastructure
-# Chunk: docs/chunks/0040-artifact_index_no_git - Directory-based staleness detection
-# Subsystem: docs/subsystems/0002-workflow_artifacts - Artifact ordering
+# Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
+# Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
+# Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
 listings using directory enumeration for staleness detection and topological sorting.
@@ -325,7 +325,7 @@ class ArtifactIndex:
 
         self._save_index(self._cache)
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Get all ancestors of an artifact
+    # Chunk: docs/chunks/remove_sequence_prefix - Get all ancestors of an artifact
     def get_ancestors(self, artifact_type: ArtifactType, artifact_name: str) -> set[str]:
         """Get all ancestors (artifacts created before) of the given artifact.
 

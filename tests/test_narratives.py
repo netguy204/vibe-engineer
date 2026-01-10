@@ -1,5 +1,5 @@
 """Tests for the Narratives class."""
-# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests
+# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter parsing tests
 
 from narratives import Narratives
 from models import NarrativeStatus
@@ -33,7 +33,7 @@ class TestNarrativesClass:
     def test_create_narrative_creates_directory(self, temp_project):
         """Verify narrative creation creates the expected directory structure.
 
-        # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+        # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
         """
         narratives = Narratives(temp_project)
         result_path = narratives.create_narrative("my_narrative")
@@ -55,7 +55,7 @@ class TestNarrativesClass:
     def test_narratives_use_short_name_only(self, temp_project):
         """Verify narratives use short_name only format (no sequence prefix).
 
-        # Chunk: docs/chunks/0044-remove_sequence_prefix - Test new naming format
+        # Chunk: docs/chunks/remove_sequence_prefix - Test new naming format
         """
         narratives = Narratives(temp_project)
 
@@ -87,7 +87,7 @@ class TestNarrativesClass:
 class TestNarrativeCreatedAfterPopulation:
     """Tests for created_after population during narrative creation.
 
-    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_first_narrative_has_empty_created_after(self, temp_project):
@@ -110,7 +110,7 @@ class TestNarrativeCreatedAfterPopulation:
         assert "first_narrative" in frontmatter.created_after
 
 
-# Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests
+# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter parsing tests
 class TestNarrativeFrontmatterParsing:
     """Tests for parse_narrative_frontmatter method."""
 
