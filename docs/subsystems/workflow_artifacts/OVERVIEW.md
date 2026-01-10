@@ -43,6 +43,8 @@ chunks:
   relationship: implements
 - chunk_id: external_chunk_causal
   relationship: implements
+- chunk_id: consolidate_ext_refs
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -87,7 +89,13 @@ code_references:
   implements: Subsystem state transition rules
   compliance: COMPLIANT
 - ref: src/models.py#ExternalChunkRef
-  implements: External chunk reference schema with created_after for local causal ordering
+  implements: External chunk reference schema (legacy, for backward compatibility)
+  compliance: PARTIAL
+- ref: src/models.py#ExternalArtifactRef
+  implements: Generic external artifact reference schema for any workflow type
+  compliance: COMPLIANT
+- ref: src/models.py#ArtifactType
+  implements: Workflow artifact type enum (moved from artifact_ordering.py)
   compliance: COMPLIANT
 - ref: src/task_utils.py#create_external_yaml
   implements: External reference creation with causal ordering support
@@ -95,8 +103,8 @@ code_references:
 - ref: src/ve.py#start
   implements: Chunk creation CLI command
   compliance: NON_COMPLIANT
-- ref: src/artifact_ordering.py#ArtifactType
-  implements: Workflow artifact type enum
+- ref: src/artifact_ordering.py
+  implements: Artifact ordering re-exports ArtifactType from models
   compliance: COMPLIANT
 - ref: src/artifact_ordering.py#ArtifactIndex
   implements: Cached ordering system for workflow artifacts
@@ -129,7 +137,7 @@ proposed_chunks:
     field (chunk, narrative, investigation, subsystem) and artifact_id field (replaces
     chunk field). Update existing chunk external reference code to use the new model.
     This enables code reuse across all workflow types.'
-  chunk_directory: null
+  chunk_directory: consolidate_ext_refs
 - prompt: 'Consolidate external reference utilities: Create generic external artifact
     utilities in a new src/external_refs.py module. Include is_external_artifact(path,
     artifact_type), load_external_ref(path), create_external_yaml(path, ref), and
@@ -470,16 +478,19 @@ This inconsistency breaks the uniform command pattern.
 
 **Impact**: Low. UX inconsistency but functional.
 
-### External References Only for Chunks
+### External References Only for Chunks (PARTIALLY RESOLVED)
 
 **Location**: `src/task_utils.py`, `src/models.py`
 
-The external reference pattern (`external.yaml`, `ExternalChunkRef`, task directory
-support) only exists for chunks. Narratives, investigations, and subsystems cannot
-span repositories.
+**Resolved**: chunk consolidate_ext_refs created `ExternalArtifactRef` model that supports
+all artifact types. The model has `artifact_type` and `artifact_id` fields instead of
+chunk-specific `chunk` field. `ChunkDependent` and `ChunkFrontmatter` now use
+`ExternalArtifactRef`. `create_external_yaml()` now supports creating external references
+for any artifact type via the `artifact_type` parameter.
 
-**Impact**: High. Violates hard invariant #7. Cross-repo work involving non-chunk
-artifacts is not supported, limiting the system's utility for multi-repo workflows.
+**Remaining work**: The CLI commands and utilities only create external references for
+chunks. Additional chunks are needed to extend task-aware commands (`ve narrative create`,
+`ve investigation create`, `ve subsystem discover`) to support external references.
 
 ### ~~External Chunk References Not in Causal Ordering~~ (RESOLVED)
 
@@ -580,6 +591,13 @@ External chunk references now participate in local causal ordering:
   tip eligibility. `create_task_chunk()` now automatically populates `created_after`
   with current tips when creating external references.
 
+- **consolidate_ext_refs** - Created `ExternalArtifactRef` model as a type-agnostic
+  replacement for `ExternalChunkRef`. Added `artifact_type` and `artifact_id` fields.
+  Moved `ArtifactType` enum from `artifact_ordering.py` to `models.py` to enable import.
+  Updated `ChunkDependent` and `ChunkFrontmatter` to use `ExternalArtifactRef`.
+  Extended `create_external_yaml()` to support any artifact type. This is the foundation
+  for extending external reference support to narratives, investigations, and subsystems.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -603,12 +621,9 @@ External chunk references now participate in local causal ordering:
 
 #### External Reference Consolidation
 
-4. **Consolidate external reference model** - Replace `ExternalChunkRef` with a generic
-   `ExternalArtifactRef` model that works for any workflow type. Avoids duplicating
-   models for each type.
-   - Impact: Medium (enables all subsequent external ref work)
-   - Status: Not yet scheduled
-   - Dependencies: None
+4. ~~**Consolidate external reference model**~~ - **RESOLVED** by chunk consolidate_ext_refs.
+   Created `ExternalArtifactRef` model with `artifact_type` and `artifact_id` fields.
+   `ChunkDependent` and `ChunkFrontmatter` now use `ExternalArtifactRef`.
 
 5. **Consolidate external reference utilities** - Create `src/external_refs.py` with
    generic utilities: `is_external_artifact()`, `load_external_ref()`,

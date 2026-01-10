@@ -158,12 +158,14 @@ def task_directory(tmp_path, tmp_path_factory):
     )
     (project_dir / "README.md").write_text("# Service A\n")
 
-    # Create external chunk reference
+    # Create external chunk reference (using ExternalArtifactRef format)
+    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
     chunks_dir = project_dir / "docs" / "chunks" / "0001-shared_feature"
     chunks_dir.mkdir(parents=True)
     (chunks_dir / "external.yaml").write_text(
+        f"artifact_type: chunk\n"
+        f"artifact_id: 0001-shared_feature\n"
         f"repo: acme/chunks-repo\n"
-        f"chunk: 0001-shared_feature\n"
         f"track: main\n"
         f"pinned: {external_sha}\n"
     )
@@ -255,12 +257,13 @@ class TestResolveTaskDirectory:
             capture_output=True,
         )
 
-        # Create external chunk reference
+        # Create external chunk reference (using ExternalArtifactRef format)
         chunks_dir = project_b / "docs" / "chunks" / "0001-shared_feature"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-shared_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0001-shared_feature\n"
             f"track: main\n"
             f"pinned: {'a' * 40}\n"
         )
@@ -322,11 +325,12 @@ class TestResolveTaskDirectory:
         task_dir = task_directory["task_dir"]
         project_dir = task_directory["project_dir"]
 
-        # Update external.yaml to have no pinned value
+        # Update external.yaml to have no pinned value (using ExternalArtifactRef format)
         external_yaml = project_dir / "docs" / "chunks" / "0001-shared_feature" / "external.yaml"
         external_yaml.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-shared_feature\n"
             "repo: acme/chunks-repo\n"
-            "chunk: 0001-shared_feature\n"
             "track: main\n"
             "pinned: null\n"
         )
@@ -350,12 +354,13 @@ class TestResolveSingleRepo:
 
     def test_resolves_via_cache(self, git_repo, monkeypatch):
         """Resolves external chunk using repo cache."""
-        # Create external chunk reference
+        # Create external chunk reference (using ExternalArtifactRef format)
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: null\n"
         )
@@ -389,11 +394,13 @@ class TestResolveSingleRepo:
         """Uses pinned SHA when --at-pinned is specified."""
         pinned_sha = "b" * 40
 
+        # Using ExternalArtifactRef format
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: acme/chunks\n"
-            f"chunk: 0001-feature\n"
             f"track: main\n"
             f"pinned: {pinned_sha}\n"
         )
@@ -416,11 +423,13 @@ class TestResolveSingleRepo:
 
     def test_error_when_pinned_null_and_at_pinned(self, git_repo, monkeypatch):
         """Raises error when --at-pinned but pinned is null."""
+        # Using ExternalArtifactRef format
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: null\n"
         )
@@ -438,11 +447,13 @@ class TestResolveSingleRepo:
 
     def test_handles_missing_plan_md(self, git_repo, monkeypatch):
         """Gracefully handles missing PLAN.md."""
+        # Using ExternalArtifactRef format
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: null\n"
         )
@@ -491,11 +502,13 @@ class TestResolveSingleRepo:
 
     def test_error_on_inaccessible_repo(self, git_repo, monkeypatch):
         """Raises error when external repo cannot be accessed."""
+        # Using ExternalArtifactRef format
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: nonexistent/repo\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: null\n"
         )

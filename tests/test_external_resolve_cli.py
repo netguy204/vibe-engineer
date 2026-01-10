@@ -116,8 +116,9 @@ def task_directory(tmp_path, tmp_path_factory):
     chunks_dir = project_dir / "docs" / "chunks" / "0001-shared_feature"
     chunks_dir.mkdir(parents=True)
     (chunks_dir / "external.yaml").write_text(
+        f"artifact_type: chunk\n"
+        f"artifact_id: 0001-shared_feature\n"
         f"repo: acme/chunks-repo\n"
-        f"chunk: 0001-shared_feature\n"
         f"track: main\n"
         f"pinned: {external_sha}\n"
     )
@@ -255,8 +256,9 @@ class TestResolveTaskDirectoryMode:
         chunks_dir = project_b / "docs" / "chunks" / "0001-shared_feature"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-shared_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0001-shared_feature\n"
             f"track: main\n"
             f"pinned: {'a' * 40}\n"
         )
@@ -305,8 +307,9 @@ class TestResolveSingleRepoMode:
         chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: null\n"
         )
@@ -393,8 +396,9 @@ class TestResolveErrorCases:
         # Update external.yaml to have no pinned value
         external_yaml = project_dir / "docs" / "chunks" / "0001-shared_feature" / "external.yaml"
         external_yaml.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-shared_feature\n"
             "repo: acme/chunks-repo\n"
-            "chunk: 0001-shared_feature\n"
             "track: main\n"
             "pinned: null\n"
         )

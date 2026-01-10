@@ -79,7 +79,7 @@ def create_chunk_in_external_repo(
         chunk_id: e.g., "0001"
         short_name: e.g., "auth_token"
         status: Chunk status (default "ACTIVE")
-        dependents: List of {repo, chunk} dicts (optional)
+        dependents: List of {artifact_type, artifact_id, repo} dicts (optional)
 
     Returns:
         Path to the created chunk directory
@@ -91,8 +91,9 @@ def create_chunk_in_external_repo(
     if dependents:
         dependents_lines = []
         for dep in dependents:
-            dependents_lines.append(f"  - repo: {dep['repo']}")
-            dependents_lines.append(f"    chunk: {dep['chunk']}")
+            dependents_lines.append(f"  - artifact_type: {dep['artifact_type']}")
+            dependents_lines.append(f"    artifact_id: {dep['artifact_id']}")
+            dependents_lines.append(f"    repo: {dep['repo']}")
         dependents_yaml = "dependents:\n" + "\n".join(dependents_lines)
 
     goal_content = f"""---
@@ -140,8 +141,8 @@ class TestChunkListInTaskDirectory:
 
         # Create chunk with dependents in external repo
         dependents = [
-            {"repo": "acme/service_a", "chunk": "0005-auth_token"},
-            {"repo": "acme/service_b", "chunk": "0009-auth_token"},
+            {"artifact_type": "chunk", "artifact_id": "0005-auth_token", "repo": "acme/service_a"},
+            {"artifact_type": "chunk", "artifact_id": "0009-auth_token", "repo": "acme/service_b"},
         ]
         create_chunk_in_external_repo(
             external_path, "0001", "auth_token", status="ACTIVE", dependents=dependents

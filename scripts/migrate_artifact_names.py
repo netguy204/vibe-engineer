@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Migration script to remove sequence prefixes from artifact directory names.
 
-# Chunk: docs/chunks/0044-remove_sequence_prefix - Migration script
+# Chunk: docs/chunks/remove_sequence_prefix - Migration script
 
 This script renames artifact directories from {NNNN}-{short_name} to {short_name}
 and updates all frontmatter references (created_after, chunks, subsystems).

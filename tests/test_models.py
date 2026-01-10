@@ -156,6 +156,7 @@ class TestChunkFrontmatter:
 
     def test_valid_frontmatter_parses_successfully(self):
         """Valid frontmatter with all fields parses correctly."""
+        # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
         frontmatter = ChunkFrontmatter(
             status=ChunkStatus.IMPLEMENTING,
             ticket="VE-123",
@@ -172,7 +173,7 @@ class TestChunkFrontmatter:
                 {"prompt": "Fix the bug", "chunk_directory": None}
             ],
             dependents=[
-                {"repo": "acme/service-a", "chunk": "0002-integration"}
+                {"artifact_type": "chunk", "artifact_id": "integration", "repo": "acme/service-a"}
             ]
         )
         assert frontmatter.status == ChunkStatus.IMPLEMENTING

@@ -36,7 +36,15 @@ The `::` separator indicates nesting (class::method, outer::inner::method).
    - Search the codebase for code semantically capturing the original intent
    - Examine later chunks and git history to understand changes
 
-4. If all referenced symbols either still exist or can be updated unambiguously
+4. Maintain backreference comments in the source code:
+   - When updating a reference to point to a new location, ensure the backreference
+     comment at the new location includes this chunk
+   - When removing a reference (code deleted or concept obsolete), remove the
+     corresponding backreference comment from the source code if present
+   - Backreference format: `# Chunk: docs/chunks/NNNN-short_name - Brief description`
+   - If the code has backreferences from multiple chunks, preserve all that still apply
+
+5. If all referenced symbols either still exist or can be updated unambiguously
    to a new symbol that represents the same semantic concept, perform the update
    and respond to the operator with a table summarizing the changes.
 

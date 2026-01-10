@@ -4,10 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/models.py
-- src/task_utils.py
-- src/validation.py
 - tests/test_task_models.py
-- tests/test_task_utils.py
 - tests/test_chunks.py
 code_references:
 - ref: src/models.py#TaskConfig
@@ -16,20 +13,10 @@ code_references:
   implements: Schema for chunk references between repos
 - ref: src/models.py#ChunkDependent
   implements: Schema for chunk GOAL.md dependents list
-- ref: src/validation.py#validate_identifier
-  implements: Shared directory name validation
-- ref: src/task_utils.py#is_task_directory
-  implements: Detects task directory presence
-- ref: src/task_utils.py#is_external_chunk
-  implements: Detects external chunk presence
-- ref: src/task_utils.py#load_task_config
-  implements: Loads and validates .ve-task.yaml
-- ref: src/task_utils.py#load_external_ref
-  implements: Loads and validates external.yaml
+- ref: src/models.py#_require_valid_dir_name
+  implements: Directory name validation wrapper using validate_identifier
 - ref: tests/test_task_models.py
   implements: Validation tests for TaskConfig, ExternalChunkRef, ChunkDependent
-- ref: tests/test_task_utils.py
-  implements: Utility function tests
 - ref: tests/test_chunks.py
   implements: Frontmatter dependents parsing tests
 narrative: cross_repo_chunks

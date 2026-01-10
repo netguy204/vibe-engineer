@@ -224,8 +224,8 @@ def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
 
                 click.echo(f"docs/chunks/{name} [{status}]")
                 if dependents:
-                    # Format dependents as: repo (chunk_id), repo (chunk_id)
-                    dep_strs = [f"{d['repo']} ({d['chunk']})" for d in dependents]
+                    # Format dependents as: repo (artifact_id), repo (artifact_id)
+                    dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
                     click.echo(f"  dependents: {', '.join(dep_strs)}")
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
