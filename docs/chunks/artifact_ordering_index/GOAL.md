@@ -6,7 +6,7 @@ code_paths:
 - src/artifact_ordering.py
 - tests/test_artifact_ordering.py
 code_references:
-- ref: src/artifact_ordering.py#ArtifactType
+- ref: src/models.py#ArtifactType
   implements: Enum defining workflow artifact types (CHUNK, NARRATIVE, INVESTIGATION,
     SUBSYSTEM)
 - ref: src/artifact_ordering.py#ArtifactIndex

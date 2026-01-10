@@ -14,7 +14,7 @@ from task_utils import (
     add_dependents_to_chunk,
     update_frontmatter_field,
 )
-from models import TaskConfig, ExternalChunkRef
+from models import TaskConfig, ExternalArtifactRef, ArtifactType
 
 
 class TestIsTaskDirectory:
@@ -85,23 +85,26 @@ class TestLoadExternalRef:
     """Tests for load_external_ref."""
 
     def test_load_external_ref_valid(self, tmp_path):
-        """Loads and returns ExternalChunkRef from valid YAML."""
+        """Loads and returns ExternalArtifactRef from valid YAML."""
         ref_file = tmp_path / "external.yaml"
         ref_file.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: my_feature\n"
             "repo: acme/other-project\n"
-            "chunk: 0001-feature\n"
         )
         ref = load_external_ref(tmp_path)
-        assert isinstance(ref, ExternalChunkRef)
+        assert isinstance(ref, ExternalArtifactRef)
         assert ref.repo == "acme/other-project"
-        assert ref.chunk == "0001-feature"
+        assert ref.artifact_id == "my_feature"
+        assert ref.artifact_type == ArtifactType.CHUNK
 
     def test_load_external_ref_with_versioning(self, tmp_path):
         """Loads external ref with track and pinned fields."""
         ref_file = tmp_path / "external.yaml"
         ref_file.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: my_feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: " + "a" * 40 + "\n"
         )
@@ -113,8 +116,9 @@ class TestLoadExternalRef:
         """Raises ValidationError for invalid YAML."""
         ref_file = tmp_path / "external.yaml"
         ref_file.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: my_feature\n"
             "repo: invalid repo/project\n"  # Space is invalid
-            "chunk: 0001-feature\n"
         )
         with pytest.raises(ValidationError):
             load_external_ref(tmp_path)
@@ -200,6 +204,7 @@ class TestCreateExternalYaml:
     """Tests for create_external_yaml.
 
     # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
     """
 
     def test_creates_external_yaml_file(self, tmp_path):
@@ -210,7 +215,7 @@ class TestCreateExternalYaml:
             project_path=tmp_path,
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="auth_token",
+            external_artifact_id="auth_token",
             pinned_sha="a" * 40,
         )
 
@@ -225,7 +230,7 @@ class TestCreateExternalYaml:
             project_path=tmp_path,
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="auth_token",
+            external_artifact_id="auth_token",
             pinned_sha="a" * 40,
         )
 
@@ -241,7 +246,7 @@ class TestCreateExternalYaml:
             project_path=tmp_path,
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="auth_token",
+            external_artifact_id="auth_token",
             pinned_sha="abcd1234" * 5,
             track="develop",
         )
@@ -250,7 +255,8 @@ class TestCreateExternalYaml:
         chunk_dir = result.parent
         ref = load_external_ref(chunk_dir)
         assert ref.repo == "acme/chunks"
-        assert ref.chunk == "auth_token"
+        assert ref.artifact_id == "auth_token"
+        assert ref.artifact_type == ArtifactType.CHUNK
         assert ref.track == "develop"
         assert ref.pinned == "abcd1234" * 5
 
@@ -262,20 +268,41 @@ class TestCreateExternalYaml:
             project_path=tmp_path,
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="auth_token",
+            external_artifact_id="auth_token",
             pinned_sha="a" * 40,
         )
 
         ref = load_external_ref(result.parent)
         assert ref.track == "main"
 
+    def test_creates_narrative_external_yaml(self, tmp_path):
+        """Creates external.yaml file for narrative in correct location."""
+        (tmp_path / "docs" / "narratives").mkdir(parents=True)
+
+        result = create_external_yaml(
+            project_path=tmp_path,
+            short_name="user_auth_narrative",
+            external_repo_ref="acme/narratives",
+            external_artifact_id="user_auth_narrative",
+            pinned_sha="a" * 40,
+            artifact_type=ArtifactType.NARRATIVE,
+        )
+
+        assert result.exists()
+        assert result == tmp_path / "docs" / "narratives" / "user_auth_narrative" / "external.yaml"
+        ref = load_external_ref(result.parent)
+        assert ref.artifact_type == ArtifactType.NARRATIVE
+
 
 class TestAddDependentsToChunk:
-    """Tests for add_dependents_to_chunk."""
+    """Tests for add_dependents_to_chunk.
+
+    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
+    """
 
     def test_adds_dependents_to_frontmatter(self, tmp_path):
         """Adds dependents field to GOAL.md frontmatter."""
-        chunk_path = tmp_path / "0001-feature"
+        chunk_path = tmp_path / "my_feature"
         chunk_path.mkdir(parents=True)
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text(
@@ -289,17 +316,17 @@ class TestAddDependentsToChunk:
 
         add_dependents_to_chunk(
             chunk_path,
-            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+            [{"artifact_type": "chunk", "artifact_id": "my_feature", "repo": "acme/service-a"}],
         )
 
         content = goal_path.read_text()
         assert "dependents:" in content
         assert "acme/service-a" in content
-        assert "0003-feature" in content
+        assert "my_feature" in content
 
     def test_preserves_existing_frontmatter(self, tmp_path):
         """Preserves existing frontmatter fields."""
-        chunk_path = tmp_path / "0001-feature"
+        chunk_path = tmp_path / "my_feature"
         chunk_path.mkdir(parents=True)
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text(
@@ -313,7 +340,7 @@ class TestAddDependentsToChunk:
 
         add_dependents_to_chunk(
             chunk_path,
-            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+            [{"artifact_type": "chunk", "artifact_id": "my_feature", "repo": "acme/service-a"}],
         )
 
         content = goal_path.read_text()
@@ -323,7 +350,7 @@ class TestAddDependentsToChunk:
 
     def test_preserves_body_content(self, tmp_path):
         """Preserves content after frontmatter."""
-        chunk_path = tmp_path / "0001-feature"
+        chunk_path = tmp_path / "my_feature"
         chunk_path.mkdir(parents=True)
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text(
@@ -340,7 +367,7 @@ class TestAddDependentsToChunk:
 
         add_dependents_to_chunk(
             chunk_path,
-            [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+            [{"artifact_type": "chunk", "artifact_id": "my_feature", "repo": "acme/service-a"}],
         )
 
         content = goal_path.read_text()
@@ -350,7 +377,7 @@ class TestAddDependentsToChunk:
 
     def test_handles_multiple_dependents(self, tmp_path):
         """Handles multiple dependents correctly."""
-        chunk_path = tmp_path / "0001-feature"
+        chunk_path = tmp_path / "my_feature"
         chunk_path.mkdir(parents=True)
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("---\nstatus: IMPLEMENTING\n---\n# Goal\n")
@@ -358,26 +385,26 @@ class TestAddDependentsToChunk:
         add_dependents_to_chunk(
             chunk_path,
             [
-                {"repo": "acme/service-a", "chunk": "0003-feature"},
-                {"repo": "acme/service-b", "chunk": "0007-feature"},
+                {"artifact_type": "chunk", "artifact_id": "feature_a", "repo": "acme/service-a"},
+                {"artifact_type": "chunk", "artifact_id": "feature_b", "repo": "acme/service-b"},
             ],
         )
 
         content = goal_path.read_text()
         assert "acme/service-a" in content
         assert "acme/service-b" in content
-        assert "0003-feature" in content
-        assert "0007-feature" in content
+        assert "feature_a" in content
+        assert "feature_b" in content
 
     def test_raises_when_goal_missing(self, tmp_path):
         """Raises FileNotFoundError when GOAL.md doesn't exist."""
-        chunk_path = tmp_path / "0001-feature"
+        chunk_path = tmp_path / "my_feature"
         chunk_path.mkdir(parents=True)
 
         with pytest.raises(FileNotFoundError):
             add_dependents_to_chunk(
                 chunk_path,
-                [{"repo": "acme/service-a", "chunk": "0003-feature"}],
+                [{"artifact_type": "chunk", "artifact_id": "my_feature", "repo": "acme/service-a"}],
             )
 
 
@@ -471,6 +498,7 @@ class TestUpdateFrontmatterField:
 
 
 # Chunk: docs/chunks/external_chunk_causal - Tests for created_after in external.yaml
+# Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
 class TestCreateExternalYamlCreatedAfter:
     """Tests for create_external_yaml created_after parameter."""
 
@@ -482,7 +510,7 @@ class TestCreateExternalYamlCreatedAfter:
             project_path=tmp_path,
             short_name="test_chunk",
             external_repo_ref="org/repo",
-            external_chunk_id="ext_chunk",
+            external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
             created_after=["previous_chunk"],
         )
@@ -498,7 +526,7 @@ class TestCreateExternalYamlCreatedAfter:
             project_path=tmp_path,
             short_name="test_chunk",
             external_repo_ref="org/repo",
-            external_chunk_id="ext_chunk",
+            external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
             created_after=["chunk_a", "chunk_b", "chunk_c"],
         )
@@ -516,7 +544,7 @@ class TestCreateExternalYamlCreatedAfter:
             project_path=tmp_path,
             short_name="test_chunk",
             external_repo_ref="org/repo",
-            external_chunk_id="ext_chunk",
+            external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
         )
 
@@ -536,7 +564,7 @@ class TestCreateExternalYamlCreatedAfter:
             project_path=tmp_path,
             short_name="test_chunk",
             external_repo_ref="org/repo",
-            external_chunk_id="ext_chunk",
+            external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
             created_after=[],
         )

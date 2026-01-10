@@ -150,12 +150,12 @@ def resolve_task_directory(
             raise TaskChunkError(f"Failed to get current SHA from external repo: {e}") from e
 
     # Read content from external repo at the resolved SHA
-    external_chunk_dir = external_repo_path / "docs" / "chunks" / ref.chunk
+    external_chunk_dir = external_repo_path / "docs" / "chunks" / ref.artifact_id
 
     if at_pinned:
         # Read at pinned SHA using git show
-        goal_content = _read_file_at_sha(external_repo_path, resolved_sha, f"docs/chunks/{ref.chunk}/GOAL.md")
-        plan_content = _read_file_at_sha(external_repo_path, resolved_sha, f"docs/chunks/{ref.chunk}/PLAN.md")
+        goal_content = _read_file_at_sha(external_repo_path, resolved_sha, f"docs/chunks/{ref.artifact_id}/GOAL.md")
+        plan_content = _read_file_at_sha(external_repo_path, resolved_sha, f"docs/chunks/{ref.artifact_id}/PLAN.md")
     else:
         # Read from working tree
         goal_path = external_chunk_dir / "GOAL.md"
@@ -163,7 +163,7 @@ def resolve_task_directory(
 
         if not goal_path.exists():
             raise TaskChunkError(
-                f"External chunk '{ref.chunk}' not found in repository '{ref.repo}'"
+                f"External chunk '{ref.artifact_id}' not found in repository '{ref.repo}'"
             )
 
         goal_content = goal_path.read_text()
@@ -171,7 +171,7 @@ def resolve_task_directory(
 
     return ResolveResult(
         repo=ref.repo,
-        external_chunk_id=ref.chunk,
+        external_chunk_id=ref.artifact_id,
         track=ref.track or "main",
         resolved_sha=resolved_sha,
         goal_content=goal_content,
@@ -261,14 +261,14 @@ def resolve_single_repo(
             raise TaskChunkError(f"Failed to resolve track '{track}': {e}") from e
 
     # Read content from cache
-    goal_path = f"docs/chunks/{ref.chunk}/GOAL.md"
-    plan_path = f"docs/chunks/{ref.chunk}/PLAN.md"
+    goal_path = f"docs/chunks/{ref.artifact_id}/GOAL.md"
+    plan_path = f"docs/chunks/{ref.artifact_id}/PLAN.md"
 
     try:
         goal_content = repo_cache.get_file_at_ref(ref.repo, resolved_sha, goal_path)
     except ValueError as e:
         raise TaskChunkError(
-            f"External chunk '{ref.chunk}' not found in repository '{ref.repo}': {e}"
+            f"External chunk '{ref.artifact_id}' not found in repository '{ref.repo}': {e}"
         ) from e
 
     try:
@@ -278,7 +278,7 @@ def resolve_single_repo(
 
     return ResolveResult(
         repo=ref.repo,
-        external_chunk_id=ref.chunk,
+        external_chunk_id=ref.artifact_id,
         track=ref.track or "main",
         resolved_sha=resolved_sha,
         goal_content=goal_content,

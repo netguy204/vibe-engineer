@@ -40,8 +40,9 @@ class TestFindExternalRefs:
         external_dir.mkdir(parents=True)
         external_yaml = external_dir / "external.yaml"
         external_yaml.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: main\n"
             "pinned: " + "a" * 40 + "\n"
         )
@@ -58,7 +59,7 @@ class TestFindExternalRefs:
             external_dir = chunks_dir / f"000{i+1}-external_{i}"
             external_dir.mkdir(parents=True)
             (external_dir / "external.yaml").write_text(
-                f"repo: acme/chunks\nchunk: 000{i+1}-feature\ntrack: main\npinned: {'a' * 40}\n"
+                f"artifact_type: chunk\nartifact_id: 000{i+1}-feature\nrepo: acme/chunks\ntrack: main\npinned: {'a' * 40}\n"
             )
 
         result = find_external_refs(tmp_path)
@@ -72,7 +73,7 @@ class TestFindExternalRefs:
         external_dir = chunks_dir / "0001-external"
         external_dir.mkdir(parents=True)
         (external_dir / "external.yaml").write_text(
-            "repo: acme/chunks\nchunk: 0001-feature\ntrack: main\npinned: " + "a" * 40 + "\n"
+            "artifact_type: chunk\nartifact_id: 0001-feature\nrepo: acme/chunks\ntrack: main\npinned: " + "a" * 40 + "\n"
         )
 
         # Normal chunk
@@ -94,7 +95,7 @@ class TestUpdateExternalYaml:
         old_sha = "a" * 40
         new_sha = "b" * 40
         external_yaml.write_text(
-            f"repo: acme/chunks\nchunk: 0001-feature\ntrack: main\npinned: {old_sha}\n"
+            f"artifact_type: chunk\nartifact_id: 0001-feature\nrepo: acme/chunks\ntrack: main\npinned: {old_sha}\n"
         )
 
         result = update_external_yaml(external_yaml, new_sha)
@@ -108,7 +109,7 @@ class TestUpdateExternalYaml:
         external_yaml = tmp_path / "external.yaml"
         sha = "a" * 40
         external_yaml.write_text(
-            f"repo: acme/chunks\nchunk: 0001-feature\ntrack: main\npinned: {sha}\n"
+            f"artifact_type: chunk\nartifact_id: 0001-feature\nrepo: acme/chunks\ntrack: main\npinned: {sha}\n"
         )
 
         result = update_external_yaml(external_yaml, sha)
@@ -116,11 +117,12 @@ class TestUpdateExternalYaml:
         assert result is False
 
     def test_preserves_other_fields(self, tmp_path):
-        """Preserves repo, chunk, track fields when updating pinned."""
+        """Preserves repo, artifact_id, track fields when updating pinned."""
         external_yaml = tmp_path / "external.yaml"
         external_yaml.write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
             "repo: acme/chunks\n"
-            "chunk: 0001-feature\n"
             "track: develop\n"
             "pinned: " + "a" * 40 + "\n"
         )
@@ -129,14 +131,14 @@ class TestUpdateExternalYaml:
 
         content = yaml.safe_load(external_yaml.read_text())
         assert content["repo"] == "acme/chunks"
-        assert content["chunk"] == "0001-feature"
+        assert content["artifact_id"] == "0001-feature"
         assert content["track"] == "develop"
 
     def test_handles_null_pinned(self, tmp_path):
         """Updates pinned when it was null/missing."""
         external_yaml = tmp_path / "external.yaml"
         external_yaml.write_text(
-            "repo: acme/chunks\nchunk: 0001-feature\ntrack: main\n"
+            "artifact_type: chunk\nartifact_id: 0001-feature\nrepo: acme/chunks\ntrack: main\n"
         )
 
         result = update_external_yaml(external_yaml, "b" * 40)
@@ -287,8 +289,9 @@ def task_directory(tmp_path, git_repo, tmp_path_factory):
         chunks_dir.mkdir(parents=True)
         outdated_sha = "0" * 40  # Outdated SHA
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-shared_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0001-shared_feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"  # Quote to ensure string
         )
@@ -367,8 +370,9 @@ class TestSyncTaskDirectory:
         chunks_dir.mkdir(parents=True)
         outdated_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0002-another_feature\n"
             f"repo: acme/chunks-repo\n"
-            f"chunk: 0002-another_feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"  # Quote to ensure string
         )
@@ -413,8 +417,9 @@ class TestSyncTaskDirectory:
         )
         outdated_sha = "0" * 40
         service_b_yaml.write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: nonexistent/repo\n"
-            f"chunk: 0001-feature\n"
             f"track: main\n"
             f"pinned: '{outdated_sha}'\n"  # Quote to ensure string
         )
@@ -441,8 +446,9 @@ class TestSyncSingleRepo:
         chunks_dir.mkdir(parents=True)
         old_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: octocat/Hello-World\n"
-            f"chunk: 0001-feature\n"
             f"track: master\n"
             f"pinned: '{old_sha}'\n"
         )
@@ -465,8 +471,9 @@ class TestSyncSingleRepo:
         chunks_dir.mkdir(parents=True)
         old_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: octocat/Hello-World\n"
-            f"chunk: 0001-feature\n"
             f"track: main\n"
             f"pinned: '{old_sha}'\n"
         )
@@ -495,8 +502,9 @@ class TestSyncSingleRepo:
         old_sha = "0" * 40
         external_yaml = chunks_dir / "external.yaml"
         external_yaml.write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: octocat/Hello-World\n"
-            f"chunk: 0001-feature\n"
             f"track: master\n"
             f"pinned: '{old_sha}'\n"
         )
@@ -521,8 +529,9 @@ class TestSyncSingleRepo:
             chunks_dir.mkdir(parents=True)
             old_sha = "0" * 40
             (chunks_dir / "external.yaml").write_text(
+                f"artifact_type: chunk\n"
+                f"artifact_id: 000{i+1}-feature\n"
                 f"repo: octocat/Hello-World\n"
-                f"chunk: 000{i+1}-feature\n"
                 f"track: master\n"
                 f"pinned: '{old_sha}'\n"
             )
@@ -542,8 +551,9 @@ class TestSyncSingleRepo:
         chunks_dir.mkdir(parents=True)
         old_sha = "0" * 40
         (chunks_dir / "external.yaml").write_text(
+            f"artifact_type: chunk\n"
+            f"artifact_id: 0001-feature\n"
             f"repo: nonexistent/repo\n"
-            f"chunk: 0001-feature\n"
             f"track: main\n"
             f"pinned: '{old_sha}'\n"
         )
