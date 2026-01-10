@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestInvestigationCreateCommand:
     """Tests for 've investigation create' CLI command."""
 
@@ -19,10 +20,10 @@ class TestInvestigationCreateCommand:
             ["investigation", "create", "memory_leak", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/investigations/0001-memory_leak" in result.output
+        assert "docs/investigations/memory_leak" in result.output
 
         # Verify directory was created
-        investigation_path = temp_project / "docs" / "investigations" / "0001-memory_leak"
+        investigation_path = temp_project / "docs" / "investigations" / "memory_leak"
         assert investigation_path.exists()
         assert (investigation_path / "OVERVIEW.md").exists()
 
@@ -42,14 +43,14 @@ class TestInvestigationCreateCommand:
             ["investigation", "create", "MEMORY_LEAK", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0001-memory_leak" in result.output
+        assert "memory_leak" in result.output
 
         # Verify directory uses lowercase
-        investigation_path = temp_project / "docs" / "investigations" / "0001-memory_leak"
+        investigation_path = temp_project / "docs" / "investigations" / "memory_leak"
         assert investigation_path.exists()
 
-    def test_sequential_numbering_works(self, runner, temp_project):
-        """Sequential numbering works correctly."""
+    def test_multiple_investigations_works(self, runner, temp_project):
+        """Multiple investigations can be created."""
         # Create first investigation
         runner.invoke(
             cli,
@@ -62,7 +63,7 @@ class TestInvestigationCreateCommand:
             ["investigation", "create", "second", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0002-second" in result.output
+        assert "second" in result.output
 
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
@@ -71,4 +72,4 @@ class TestInvestigationCreateCommand:
             ["investigation", "create", "memory_leak", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert temp_project / "docs" / "investigations" / "0001-memory_leak"
+        assert temp_project / "docs" / "investigations" / "memory_leak"

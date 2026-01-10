@@ -70,6 +70,7 @@ projects:
     return task_dir, external_path, project_paths
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestChunkCreateInTaskDirectory:
     """Tests for ve chunk start in task directory context."""
 
@@ -86,7 +87,7 @@ class TestChunkCreateInTaskDirectory:
         assert "Created chunk in external repo" in result.output
 
         # Verify chunk was created in external repo
-        chunk_dir = external_path / "docs" / "chunks" / "0001-auth_token"
+        chunk_dir = external_path / "docs" / "chunks" / "auth_token"
         assert chunk_dir.exists()
         assert (chunk_dir / "GOAL.md").exists()
 
@@ -105,7 +106,7 @@ class TestChunkCreateInTaskDirectory:
 
         # Verify external.yaml in each project
         for project_path in project_paths:
-            chunk_dir = project_path / "docs" / "chunks" / "0001-auth_token"
+            chunk_dir = project_path / "docs" / "chunks" / "auth_token"
             assert chunk_dir.exists()
             external_yaml = chunk_dir / "external.yaml"
             assert external_yaml.exists()
@@ -113,7 +114,7 @@ class TestChunkCreateInTaskDirectory:
             # Verify content
             ref = load_external_ref(chunk_dir)
             assert ref.repo == "acme/ext"
-            assert ref.chunk == "0001-auth_token"
+            assert ref.chunk == "auth_token"
             assert ref.track == "main"
             assert len(ref.pinned) == 40  # SHA length
 
@@ -131,13 +132,13 @@ class TestChunkCreateInTaskDirectory:
         assert result.exit_code == 0
 
         # Verify dependents in external chunk GOAL.md
-        goal_path = external_path / "docs" / "chunks" / "0001-auth_token" / "GOAL.md"
+        goal_path = external_path / "docs" / "chunks" / "auth_token" / "GOAL.md"
         content = goal_path.read_text()
 
         assert "dependents:" in content
         assert "acme/proj1" in content
         assert "acme/proj2" in content
-        assert "0001-auth_token" in content
+        assert "auth_token" in content
 
     def test_uses_correct_sequential_ids_per_project(self, tmp_path):
         """Each project gets its own sequential chunk ID."""
@@ -158,8 +159,8 @@ class TestChunkCreateInTaskDirectory:
         assert result.exit_code == 0
 
         # proj1 should get 0001, proj2 should get 0003
-        assert (project_paths[0] / "docs" / "chunks" / "0001-auth_token").exists()
-        assert (project_paths[1] / "docs" / "chunks" / "0003-auth_token").exists()
+        assert (project_paths[0] / "docs" / "chunks" / "auth_token").exists()
+        assert (project_paths[1] / "docs" / "chunks" / "auth_token").exists()
 
     def test_resolves_pinned_sha_from_external_repo(self, tmp_path):
         """Pinned SHA matches HEAD of external repo at creation time."""
@@ -183,7 +184,7 @@ class TestChunkCreateInTaskDirectory:
         assert result.exit_code == 0
 
         # Verify pinned SHA
-        chunk_dir = project_paths[0] / "docs" / "chunks" / "0001-auth_token"
+        chunk_dir = project_paths[0] / "docs" / "chunks" / "auth_token"
         ref = load_external_ref(chunk_dir)
         assert ref.pinned == expected_sha
 
@@ -219,10 +220,10 @@ class TestChunkCreateOutsideTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "Created docs/chunks/0001-my_feature" in result.output
+        assert "Created docs/chunks/my_feature" in result.output
 
         # Verify regular chunk was created (with GOAL.md, not external.yaml)
-        chunk_dir = project_path / "docs" / "chunks" / "0001-my_feature"
+        chunk_dir = project_path / "docs" / "chunks" / "my_feature"
         assert (chunk_dir / "GOAL.md").exists()
         assert not (chunk_dir / "external.yaml").exists()
 

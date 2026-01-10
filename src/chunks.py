@@ -26,6 +26,7 @@ from models import (
     CHUNK_ID_PATTERN,
     ChunkFrontmatter,
     ChunkStatus,
+    extract_short_name,
 )
 from symbols import is_parent_of, parse_reference, extract_symbols
 from template_system import ActiveChunk, TemplateContext, render_to_directory
@@ -65,13 +66,33 @@ class Chunks:
         return len(self.enumerate_chunks())
 
     # Chunk: docs/chunks/0001-implement_chunk_start - Detect duplicate chunk names
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
-        """Find existing chunks with the same short_name and ticket_id."""
+        """Find existing chunks with the same short_name.
+
+        Detects collisions by extracting the short_name from existing directory
+        names (handling both legacy {NNNN}-{name} and new {name} formats).
+
+        Args:
+            short_name: The short name to check for collisions.
+            ticket_id: Optional ticket ID (included in short_name matching).
+
+        Returns:
+            List of existing chunk directory names that would collide.
+        """
+        # Build the target short_name (with optional ticket suffix)
         if ticket_id:
-            suffix = f"-{short_name}-{ticket_id}"
+            target_short = f"{short_name}-{ticket_id}"
         else:
-            suffix = f"-{short_name}"
-        return [name for name in self.enumerate_chunks() if name.endswith(suffix)]
+            target_short = short_name
+
+        duplicates = []
+        for name in self.enumerate_chunks():
+            # Extract short_name from existing directory (handles both patterns)
+            existing_short = extract_short_name(name)
+            if existing_short == target_short:
+                duplicates.append(name)
+        return duplicates
 
     # Chunk: docs/chunks/0002-chunk_list_command - Sorted chunk listing
     # Chunk: docs/chunks/0041-artifact_list_ordering - Use ArtifactIndex for causal ordering
@@ -173,6 +194,7 @@ class Chunks:
     # Chunk: docs/chunks/0011-chunk_template_expansion - Template context
     # Chunk: docs/chunks/0025-migrate_chunks_template - Template system integration
     # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_chunk(
         self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
@@ -183,17 +205,26 @@ class Chunks:
             ticket_id: Optional ticket ID to include in chunk directory name.
             short_name: Short name for the chunk.
             status: Initial status for the chunk (default: "IMPLEMENTING").
+
+        Raises:
+            ValueError: If a chunk with the same short_name already exists.
         """
+        # Check for collisions before creating
+        duplicates = self.find_duplicates(short_name, ticket_id)
+        if duplicates:
+            raise ValueError(
+                f"Chunk with short_name '{short_name}' already exists: {duplicates[0]}"
+            )
+
         # Get current chunk tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.CHUNK)
 
-        next_chunk_id = self.num_chunks + 1
-        next_chunk_id_str = f"{next_chunk_id:04d}"
+        # Build directory name using short_name only (no sequence prefix)
         if ticket_id:
-            chunk_path = self.chunk_dir / f"{next_chunk_id_str}-{short_name}-{ticket_id}"
+            chunk_path = self.chunk_dir / f"{short_name}-{ticket_id}"
         else:
-            chunk_path = self.chunk_dir / f"{next_chunk_id_str}-{short_name}"
+            chunk_path = self.chunk_dir / short_name
         chunk = ActiveChunk(
             short_name=short_name,
             id=chunk_path.name,
@@ -211,8 +242,14 @@ class Chunks:
         return chunk_path
 
     # Chunk: docs/chunks/0004-chunk_overlap_command - Resolve chunk ID to name
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Handle both legacy and new patterns
     def resolve_chunk_id(self, chunk_id: str) -> str | None:
-        """Resolve a chunk ID (4-digit or full name) to its directory name.
+        """Resolve a chunk ID to its directory name.
+
+        Supports multiple resolution strategies:
+        1. Exact match (returns the directory name as-is)
+        2. Legacy prefix match (e.g., "0003" matches "0003-feature")
+        3. Short name match (e.g., "feature" matches either "0003-feature" or "feature")
 
         Returns:
             The full chunk directory name, or None if not found.
@@ -221,9 +258,13 @@ class Chunks:
         # Exact match
         if chunk_id in chunks:
             return chunk_id
-        # Prefix match (e.g., "0003" matches "0003-feature")
+        # Legacy prefix match (e.g., "0003" matches "0003-feature")
         for name in chunks:
             if name.startswith(f"{chunk_id}-"):
+                return name
+        # Short name match (find by extracted short_name)
+        for name in chunks:
+            if extract_short_name(name) == chunk_id:
                 return name
         return None
 
@@ -325,15 +366,16 @@ class Chunks:
     # Chunk: docs/chunks/0004-chunk_overlap_command - Find overlapping chunks
     # Chunk: docs/chunks/0012-symbolic_code_refs - Added symbolic overlap support
     # Chunk: docs/chunks/0036-chunk_frontmatter_model - Use typed frontmatter access
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use causal ordering instead of numeric IDs
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
-        """Find ACTIVE chunks with lower IDs that have overlapping code references.
+        """Find ACTIVE chunks created before target with overlapping code references.
 
-        Supports both symbolic references (new format) and line-based references
-        (old format). Symbolic refs use hierarchical containment for overlap;
-        line-based refs use line number comparison.
+        Uses causal ordering (created_after field) to determine which chunks are
+        "older" than the target. Supports both symbolic references and line-based
+        references.
 
         Args:
-            chunk_id: The chunk ID to check (4-digit or full name).
+            chunk_id: The chunk ID to check.
 
         Returns:
             List of affected chunk directory names.
@@ -366,23 +408,15 @@ class Chunks:
             if not target_refs_dict:
                 return []
 
-        # Extract numeric ID of target chunk
-        target_match = re.match(r'^(\d{4})-', chunk_name)
-        if not target_match:
-            return []
-        target_num = int(target_match.group(1))
+        # Get ancestors of the target chunk (all chunks created before it)
+        artifact_index = ArtifactIndex(self.project_dir)
+        target_ancestors = artifact_index.get_ancestors(ArtifactType.CHUNK, chunk_name)
 
-        # Find all ACTIVE chunks with lower IDs
+        # Find all ACTIVE chunks that are ancestors (created before target)
         affected = []
         for name in self.enumerate_chunks():
-            # Parse chunk number
-            num_match = re.match(r'^(\d{4})-', name)
-            if not num_match:
-                continue
-            chunk_num = int(num_match.group(1))
-
-            # Only check chunks with lower IDs
-            if chunk_num >= target_num:
+            # Only check chunks that are ancestors
+            if name not in target_ancestors:
                 continue
 
             # Check if ACTIVE

@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestSubsystemListCommand:
     """Tests for 've subsystem list' CLI command."""
 
@@ -33,7 +34,7 @@ class TestSubsystemListCommand:
             ["subsystem", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
         assert "[DISCOVERING]" in result.output
 
     def test_multiple_subsystems_sorted(self, runner, temp_project):
@@ -55,8 +56,8 @@ class TestSubsystemListCommand:
         lines = result.output.strip().split("\n")
         assert len(lines) == 2
         # Should be sorted (highest first like chunks, or ascending - follow the pattern)
-        assert "0001-first" in result.output
-        assert "0002-second" in result.output
+        assert "first" in result.output
+        assert "second" in result.output
 
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
@@ -70,7 +71,7 @@ class TestSubsystemListCommand:
             ["subsystem", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
 
     def test_list_format_includes_status_brackets(self, runner, temp_project):
         """Status appears in brackets after the path."""
@@ -83,5 +84,5 @@ class TestSubsystemListCommand:
             ["subsystem", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Format should be: docs/subsystems/0001-validation [DISCOVERING]
-        assert "docs/subsystems/0001-validation [DISCOVERING]" in result.output
+        # Format should be: docs/subsystems/validation [DISCOVERING]
+        assert "docs/subsystems/validation [DISCOVERING]" in result.output

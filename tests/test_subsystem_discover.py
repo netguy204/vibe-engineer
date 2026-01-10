@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestSubsystemDiscoverCommand:
     """Tests for 've subsystem discover' CLI command."""
 
@@ -19,10 +20,10 @@ class TestSubsystemDiscoverCommand:
             ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
 
         # Verify directory was created
-        subsystem_dir = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_dir = temp_project / "docs" / "subsystems" / "validation"
         assert subsystem_dir.exists()
         assert (subsystem_dir / "OVERVIEW.md").exists()
 
@@ -51,7 +52,7 @@ class TestSubsystemDiscoverCommand:
             ["subsystem", "discover", "VALIDATION", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0001-validation" in result.output
+        assert "validation" in result.output
         assert "VALIDATION" not in result.output  # Should be lowercased
 
     def test_duplicate_shortname_errors(self, runner, temp_project):
@@ -69,7 +70,7 @@ class TestSubsystemDiscoverCommand:
         assert result.exit_code == 1
         assert "already exists" in result.output
         assert "validation" in result.output
-        assert "0001-validation" in result.output
+        assert "validation" in result.output
 
     def test_duplicate_shortname_case_insensitive(self, runner, temp_project):
         """Duplicate check is case-insensitive."""
@@ -93,14 +94,14 @@ class TestSubsystemDiscoverCommand:
             ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
 
         # Verify in correct location
-        subsystem_dir = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_dir = temp_project / "docs" / "subsystems" / "validation"
         assert subsystem_dir.exists()
 
-    def test_sequential_numbering(self, runner, temp_project):
-        """Sequential numbering works correctly."""
+    def test_multiple_subsystems(self, runner, temp_project):
+        """Multiple subsystems can be created."""
         runner.invoke(
             cli,
             ["subsystem", "discover", "first", "--project-dir", str(temp_project)]
@@ -110,7 +111,7 @@ class TestSubsystemDiscoverCommand:
             ["subsystem", "discover", "second", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0002-second" in result.output
+        assert "second" in result.output
 
         # Create third
         result = runner.invoke(
@@ -118,4 +119,4 @@ class TestSubsystemDiscoverCommand:
             ["subsystem", "discover", "third", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0003-third" in result.output
+        assert "third" in result.output

@@ -14,10 +14,11 @@ from pathlib import Path
 import pytest
 
 # Import from the chunk's migration script
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated path after migration
 import sys
 
 sys.path.insert(
-    0, str(Path(__file__).parent.parent / "docs/chunks/0042-causal_ordering_migration")
+    0, str(Path(__file__).parent.parent / "docs/chunks/causal_ordering_migration")
 )
 from migrate import (
     extract_sequence_number,

@@ -18,7 +18,7 @@ from pydantic import ValidationError
 import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
+from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS, extract_short_name
 from symbols import is_parent_of, parse_reference
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
@@ -26,8 +26,10 @@ if TYPE_CHECKING:
     from chunks import Chunks
 
 
-# Regex for validating subsystem directory name pattern: {NNNN}-{short_name}
-SUBSYSTEM_DIR_PATTERN = re.compile(r"^\d{4}-.+$")
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new patterns
+# Regex for validating subsystem directory name pattern
+# Legacy: {NNNN}-{short_name}, New: {short_name} (lowercase, starting with letter)
+SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
 # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Core subsystem class
@@ -65,6 +67,7 @@ class Subsystems:
         return [f.name for f in self.subsystems_dir.iterdir() if f.is_dir()]
 
     # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Validate directory pattern
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new patterns
     def is_subsystem_dir(self, name: str) -> bool:
         """Check if a directory name matches the subsystem pattern.
 
@@ -72,13 +75,15 @@ class Subsystems:
             name: Directory name to check.
 
         Returns:
-            True if name matches {NNNN}-{short_name} pattern, False otherwise.
+            True if name matches valid artifact ID pattern, False otherwise.
         """
         if not SUBSYSTEM_DIR_PATTERN.match(name):
             return False
-        # Ensure there's actually content after the hyphen
-        parts = name.split("-", 1)
-        return len(parts) == 2 and bool(parts[1])
+        # For legacy format, ensure there's content after the prefix
+        if re.match(r"^\d{4}-", name):
+            parts = name.split("-", 1)
+            return len(parts) == 2 and bool(parts[1])
+        return True
 
     # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Parse OVERVIEW.md frontmatter
     def parse_subsystem_frontmatter(self, subsystem_id: str) -> SubsystemFrontmatter | None:
@@ -113,6 +118,7 @@ class Subsystems:
             return None
 
     # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Find subsystem by name
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Handle both legacy and new patterns
     def find_by_shortname(self, shortname: str) -> str | None:
         """Find subsystem directory by shortname.
 
@@ -120,13 +126,13 @@ class Subsystems:
             shortname: The short name of the subsystem to find.
 
         Returns:
-            Directory name (e.g., "0001-validation") if found, None otherwise.
+            Directory name if found, None otherwise.
         """
         for dirname in self.enumerate_subsystems():
             if self.is_subsystem_dir(dirname):
-                # Extract the shortname part after the prefix
-                parts = dirname.split("-", 1)
-                if len(parts) == 2 and parts[1] == shortname:
+                # Extract short_name (handles both patterns)
+                existing_short = extract_short_name(dirname)
+                if existing_short == shortname:
                     return dirname
         return None
 
@@ -138,6 +144,7 @@ class Subsystems:
     # Chunk: docs/chunks/0016-subsystem_cli_scaffolding - Create subsystem directory
     # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
     # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
@@ -147,7 +154,17 @@ class Subsystems:
 
         Returns:
             Path to created subsystem directory.
+
+        Raises:
+            ValueError: If a subsystem with the same short_name already exists.
         """
+        # Check for collisions before creating
+        duplicates = self.find_duplicates(shortname)
+        if duplicates:
+            raise ValueError(
+                f"Subsystem with short_name '{shortname}' already exists: {duplicates[0]}"
+            )
+
         # Get current subsystem tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.SUBSYSTEM)
@@ -155,12 +172,8 @@ class Subsystems:
         # Ensure subsystems directory exists
         self.subsystems_dir.mkdir(parents=True, exist_ok=True)
 
-        # Calculate next sequence number (4-digit zero-padded)
-        next_id = self.num_subsystems + 1
-        next_id_str = f"{next_id:04d}"
-
-        # Create subsystem directory
-        subsystem_path = self.subsystems_dir / f"{next_id_str}-{shortname}"
+        # Create subsystem directory using short_name only (no sequence prefix)
+        subsystem_path = self.subsystems_dir / shortname
 
         # Create subsystem context
         subsystem = ActiveSubsystem(
@@ -176,11 +189,27 @@ class Subsystems:
             subsystem_path,
             context=context,
             short_name=shortname,
-            next_id=next_id_str,
             created_after=tips,
         )
 
         return subsystem_path
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    def find_duplicates(self, shortname: str) -> list[str]:
+        """Find existing subsystems with the same short_name.
+
+        Args:
+            shortname: The short name to check for collisions.
+
+        Returns:
+            List of existing subsystem directory names that would collide.
+        """
+        duplicates = []
+        for name in self.enumerate_subsystems():
+            existing_short = extract_short_name(name)
+            if existing_short == shortname:
+                duplicates.append(name)
+        return duplicates
 
     # Chunk: docs/chunks/0018-bidirectional_refs - Validate chunk references
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:

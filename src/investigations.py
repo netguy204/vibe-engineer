@@ -10,7 +10,7 @@ from pydantic import ValidationError
 import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import InvestigationFrontmatter
+from models import InvestigationFrontmatter, extract_short_name
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
@@ -49,6 +49,7 @@ class Investigations:
 
     # Chunk: docs/chunks/0029-investigation_commands - Create investigation directory
     # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
@@ -58,7 +59,17 @@ class Investigations:
 
         Returns:
             Path to created investigation directory.
+
+        Raises:
+            ValueError: If an investigation with the same short_name already exists.
         """
+        # Check for collisions before creating
+        duplicates = self.find_duplicates(short_name)
+        if duplicates:
+            raise ValueError(
+                f"Investigation with short_name '{short_name}' already exists: {duplicates[0]}"
+            )
+
         # Get current investigation tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.INVESTIGATION)
@@ -66,12 +77,8 @@ class Investigations:
         # Ensure investigations directory exists
         self.investigations_dir.mkdir(parents=True, exist_ok=True)
 
-        # Calculate next sequence number (4-digit zero-padded)
-        next_id = self.num_investigations + 1
-        next_id_str = f"{next_id:04d}"
-
-        # Create investigation directory
-        investigation_path = self.investigations_dir / f"{next_id_str}-{short_name}"
+        # Create investigation directory using short_name only (no sequence prefix)
+        investigation_path = self.investigations_dir / short_name
 
         # Create investigation context
         investigation = ActiveInvestigation(
@@ -87,11 +94,27 @@ class Investigations:
             investigation_path,
             context=context,
             short_name=short_name,
-            next_id=next_id_str,
             created_after=tips,
         )
 
         return investigation_path
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    def find_duplicates(self, short_name: str) -> list[str]:
+        """Find existing investigations with the same short_name.
+
+        Args:
+            short_name: The short name to check for collisions.
+
+        Returns:
+            List of existing investigation directory names that would collide.
+        """
+        duplicates = []
+        for name in self.enumerate_investigations():
+            existing_short = extract_short_name(name)
+            if existing_short == short_name:
+                duplicates.append(name)
+        return duplicates
 
     # Chunk: docs/chunks/0029-investigation_commands - Parse investigation frontmatter
     def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:

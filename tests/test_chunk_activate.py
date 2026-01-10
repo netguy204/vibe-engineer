@@ -5,6 +5,7 @@ from models import ChunkStatus
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestActivateCommand:
     """Tests for 've chunk activate' CLI command."""
 
@@ -24,13 +25,13 @@ class TestActivateCommand:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
         # Verify status changed
         chunk_mgr = Chunks(temp_project)
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter.status == ChunkStatus.IMPLEMENTING
 
     def test_activates_using_full_chunk_name(self, runner, temp_project):
@@ -41,12 +42,12 @@ class TestActivateCommand:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0001-feature", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
         chunk_mgr = Chunks(temp_project)
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter.status == ChunkStatus.IMPLEMENTING
 
     def test_outputs_success_message(self, runner, temp_project):
@@ -57,10 +58,10 @@ class TestActivateCommand:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "Activated" in result.output or "0001-feature" in result.output
+        assert "Activated" in result.output or "feature" in result.output
 
 
 class TestActivateFailures:
@@ -81,13 +82,13 @@ class TestActivateFailures:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "active", status="FUTURE")
         # Manually change it to ACTIVE (non-FUTURE, non-IMPLEMENTING)
-        goal_path = chunk_mgr.get_chunk_goal_path("0001")
+        goal_path = chunk_mgr.get_chunk_goal_path("active")
         content = goal_path.read_text()
         goal_path.write_text(content.replace("status: FUTURE", "status: ACTIVE"))
 
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "active", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Should mention that status is not FUTURE
@@ -107,7 +108,7 @@ class TestActivateFailures:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0002", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "future", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "already" in result.output.lower() or "implementing" in result.output.lower()
@@ -121,7 +122,7 @@ class TestActivateFailures:
 
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0002", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "future", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -137,10 +138,10 @@ class TestActivateWithTicketId:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "activate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "activate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
         chunk_mgr = Chunks(temp_project)
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter.status == ChunkStatus.IMPLEMENTING

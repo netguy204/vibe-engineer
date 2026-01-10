@@ -83,6 +83,7 @@ Test chunk content.
     goal_path.write_text(frontmatter)
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestValidateCommandInterface:
     """Tests for 've chunk validate' command interface."""
 
@@ -99,7 +100,7 @@ class TestValidateCommandInterface:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
@@ -117,14 +118,14 @@ class TestValidateCommandInterface:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -138,14 +139,14 @@ class TestStatusValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -155,14 +156,14 @@ class TestStatusValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "ACTIVE", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -172,14 +173,14 @@ class TestStatusValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert "HISTORICAL" in result.output
 
@@ -189,14 +190,14 @@ class TestStatusValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         # Should explain that status must be IMPLEMENTING or ACTIVE
         assert "IMPLEMENTING" in result.output or "ACTIVE" in result.output
@@ -228,14 +229,14 @@ class TestCodeReferencesValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -245,7 +246,7 @@ class TestCodeReferencesValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         # Write malformed frontmatter directly
         goal_path = chunk_path / "GOAL.md"
@@ -260,7 +261,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
@@ -271,7 +272,7 @@ code_references:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("""---
@@ -285,7 +286,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
@@ -296,7 +297,7 @@ code_references:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("""---
@@ -311,7 +312,7 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -321,12 +322,12 @@ code_references:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Should explain that at least one reference is required
@@ -342,14 +343,14 @@ class TestSuccessOutput:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         # Should output some confirmation
@@ -361,14 +362,14 @@ class TestSuccessOutput:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -382,14 +383,14 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#SymbolicReference", "implements": "Model definition"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -399,14 +400,14 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py", "implements": "Full module"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -416,14 +417,14 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#NonExistentClass", "implements": "Missing class"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
@@ -435,14 +436,14 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/nonexistent.py#SomeClass", "implements": "Missing file"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
@@ -454,7 +455,7 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#NonExistent1", "implements": "First missing"},
             {"ref": "src/models.py#NonExistent2", "implements": "Second missing"},
@@ -462,7 +463,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         # Should succeed but show warnings for both
         assert result.exit_code == 0
@@ -475,7 +476,7 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         # Create a real Python file with a symbol
         src_dir = temp_project / "src"
@@ -488,7 +489,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "warning" not in result.output.lower()
@@ -559,21 +560,21 @@ code_references: []
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         # Create the subsystem
-        self._create_subsystem(temp_project, "0001-validation")
+        self._create_subsystem(temp_project, "validation")
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
             "IMPLEMENTING",
             [{"ref": "src/main.py", "implements": "Main module"}],
-            [{"subsystem_id": "0001-validation", "relationship": "implements"}],
+            [{"subsystem_id": "validation", "relationship": "implements"}],
         )
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -583,29 +584,29 @@ code_references: []
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
             "IMPLEMENTING",
             [{"ref": "src/main.py", "implements": "Main module"}],
-            [{"subsystem_id": "0001-nonexistent", "relationship": "implements"}],
+            [{"subsystem_id": "nonexistent", "relationship": "implements"}],
         )
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "0001-nonexistent" in result.output
+        assert "nonexistent" in result.output
 
     def test_chunk_with_invalid_subsystem_id_format_fails(self, runner, temp_project):
-        """Chunk with invalid subsystem_id format fails validation (frontmatter parse fails)."""
+        """Chunk with invalid subsystem_id format fails validation."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
@@ -616,11 +617,11 @@ code_references: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
-        # Invalid subsystem_id format causes frontmatter parse failure
+        # Subsystem doesn't exist
         assert result.exit_code != 0
-        assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
+        assert "invalid-format" in result.output.lower() or "does not exist" in result.output.lower()
 
     def test_chunk_with_no_subsystems_passes(self, runner, temp_project):
         """Chunk without subsystems field still passes validation."""
@@ -628,13 +629,13 @@ code_references: []
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "0001-feature"
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py", "implements": "Main module"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "0001", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0

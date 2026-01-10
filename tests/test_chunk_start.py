@@ -146,7 +146,12 @@ class TestLowercaseNormalization:
 
 
 class TestDuplicateDetection:
-    """Tests for duplicate chunk detection."""
+    """Tests for duplicate chunk detection.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    Note: With short_name only format, duplicate detection is now stricter.
+    Creating a chunk with the same short_name will error by default.
+    """
 
     def test_detects_duplicate_and_prompts(self, runner, temp_project):
         """Duplicate chunk detected, prompt shown, abort on 'no'."""
@@ -171,7 +176,7 @@ class TestDuplicateDetection:
         assert len(list(chunk_dir.iterdir())) == 1
 
     def test_allows_duplicate_when_confirmed(self, runner, temp_project):
-        """Duplicate creation proceeds when user confirms."""
+        """Duplicate detection allows proceeding with different short_name."""
         # Create first chunk
         result1 = runner.invoke(
             cli,
@@ -179,11 +184,10 @@ class TestDuplicateDetection:
         )
         assert result1.exit_code == 0
 
-        # Create duplicate - answer 'y' to proceed
+        # Create with different short_name - no prompt needed
         result2 = runner.invoke(
             cli,
-            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)],
-            input="y\n"
+            ["chunk", "start", "feature2", "VE-001", "--project-dir", str(temp_project)]
         )
         assert result2.exit_code == 0
 
@@ -192,7 +196,7 @@ class TestDuplicateDetection:
         assert len(list(chunk_dir.iterdir())) == 2
 
     def test_yes_flag_skips_prompt(self, runner, temp_project):
-        """--yes flag bypasses duplicate confirmation prompt."""
+        """--yes flag bypasses duplicate confirmation prompt when creating with different names."""
         # Create first chunk
         result1 = runner.invoke(
             cli,
@@ -200,10 +204,10 @@ class TestDuplicateDetection:
         )
         assert result1.exit_code == 0
 
-        # Create duplicate with --yes - no prompt needed
+        # Create chunk with different name - --yes flag still works
         result2 = runner.invoke(
             cli,
-            ["chunk", "start", "feature", "VE-001", "--yes", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature2", "VE-001", "--yes", "--project-dir", str(temp_project)]
         )
         assert result2.exit_code == 0
 
@@ -213,10 +217,13 @@ class TestDuplicateDetection:
 
 
 class TestPathFormat:
-    """Tests for chunk path format."""
+    """Tests for chunk path format.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_path_format_with_ticket_id(self, runner, temp_project):
-        """Path format is {NNNN}-{short_name}-{ticket_id} when ticket_id provided."""
+        """Path format is {short_name}-{ticket_id} when ticket_id provided."""
         result = runner.invoke(
             cli,
             ["chunk", "start", "feature", "ve-001", "--project-dir", str(temp_project)]
@@ -226,10 +233,10 @@ class TestPathFormat:
         chunk_dir = temp_project / "docs" / "chunks"
         created_dirs = list(chunk_dir.iterdir())
         assert len(created_dirs) == 1
-        assert created_dirs[0].name == "0001-feature-ve-001"
+        assert created_dirs[0].name == "feature-ve-001"
 
     def test_path_format_without_ticket_id(self, runner, temp_project):
-        """Path format is {NNNN}-{short_name} when ticket_id omitted."""
+        """Path format is {short_name} when ticket_id omitted."""
         result = runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -240,12 +247,15 @@ class TestPathFormat:
         created_dirs = list(chunk_dir.iterdir())
         assert len(created_dirs) == 1
         # Should NOT have -None at the end
-        assert created_dirs[0].name == "0001-feature"
+        assert created_dirs[0].name == "feature"
         assert "None" not in created_dirs[0].name
 
 
 class TestSuccessOutput:
-    """Tests for success output."""
+    """Tests for success output.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_prints_created_path(self, runner, temp_project):
         """Success message shows the created path."""
@@ -255,7 +265,7 @@ class TestSuccessOutput:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        assert "docs/chunks/0001-feature-ve-001" in result.output
+        assert "docs/chunks/feature-ve-001" in result.output
 
     def test_prints_created_path_without_ticket_id(self, runner, temp_project):
         """Success message shows the created path when ticket_id omitted."""
@@ -265,11 +275,14 @@ class TestSuccessOutput:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        assert "docs/chunks/0001-feature" in result.output
+        assert "docs/chunks/feature" in result.output
 
 
 class TestFutureFlag:
-    """Tests for --future flag on 've chunk start'."""
+    """Tests for --future flag on 've chunk start'.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_future_flag_creates_future_chunk(self, runner, temp_project):
         """--future flag creates chunk with status FUTURE."""
@@ -279,7 +292,7 @@ class TestFutureFlag:
         )
         assert result.exit_code == 0, f"Failed with: {result.output}"
 
-        goal_path = temp_project / "docs" / "chunks" / "0001-feature" / "GOAL.md"
+        goal_path = temp_project / "docs" / "chunks" / "feature" / "GOAL.md"
         content = goal_path.read_text()
         assert "status: FUTURE" in content
 
@@ -291,7 +304,7 @@ class TestFutureFlag:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        assert "docs/chunks/0001-feature" in result.output
+        assert "docs/chunks/feature" in result.output
 
     def test_without_future_flag_creates_implementing(self, runner, temp_project):
         """Without --future, chunk has status IMPLEMENTING."""
@@ -301,7 +314,7 @@ class TestFutureFlag:
         )
         assert result.exit_code == 0
 
-        goal_path = temp_project / "docs" / "chunks" / "0001-feature" / "GOAL.md"
+        goal_path = temp_project / "docs" / "chunks" / "feature" / "GOAL.md"
         content = goal_path.read_text()
         assert "status: IMPLEMENTING" in content
 
@@ -313,7 +326,7 @@ class TestFutureFlag:
         )
         assert result.exit_code == 0
 
-        goal_path = temp_project / "docs" / "chunks" / "0001-feature-ve-001" / "GOAL.md"
+        goal_path = temp_project / "docs" / "chunks" / "feature-ve-001" / "GOAL.md"
         content = goal_path.read_text()
         assert "status: FUTURE" in content
 

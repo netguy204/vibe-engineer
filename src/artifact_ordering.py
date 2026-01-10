@@ -324,3 +324,46 @@ class ArtifactIndex:
                 self._cache[atype.value] = type_index
 
         self._save_index(self._cache)
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Get all ancestors of an artifact
+    def get_ancestors(self, artifact_type: ArtifactType, artifact_name: str) -> set[str]:
+        """Get all ancestors (artifacts created before) of the given artifact.
+
+        Uses the causal ordering to compute transitive closure of created_after
+        relationships. An artifact A is an ancestor of B if B depends on A
+        directly or transitively.
+
+        Args:
+            artifact_type: Type of artifact.
+            artifact_name: Name of the artifact to find ancestors for.
+
+        Returns:
+            Set of artifact directory names that are ancestors.
+        """
+        artifact_dir = self._get_artifact_dir(artifact_type)
+        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
+
+        # Build dependency graph
+        artifacts = _enumerate_artifacts(artifact_dir, artifact_type)
+        deps: dict[str, list[str]] = {}
+        for name in artifacts:
+            main_path = artifact_dir / name / main_file
+            created_after = _parse_created_after(main_path)
+            deps[name] = created_after
+
+        if artifact_name not in deps:
+            return set()
+
+        # BFS to find all ancestors
+        ancestors: set[str] = set()
+        queue = list(deps[artifact_name])
+
+        while queue:
+            parent = queue.pop(0)
+            if parent in ancestors:
+                continue
+            if parent in deps:  # Only add if it exists
+                ancestors.add(parent)
+                queue.extend(deps.get(parent, []))
+
+        return ancestors

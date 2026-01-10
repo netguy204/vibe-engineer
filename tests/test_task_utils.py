@@ -197,7 +197,10 @@ class TestGetNextChunkId:
 
 
 class TestCreateExternalYaml:
-    """Tests for create_external_yaml."""
+    """Tests for create_external_yaml.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_creates_external_yaml_file(self, tmp_path):
         """Creates external.yaml file in correct location."""
@@ -205,15 +208,14 @@ class TestCreateExternalYaml:
 
         result = create_external_yaml(
             project_path=tmp_path,
-            chunk_id="0003",
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="0001-auth_token",
+            external_chunk_id="auth_token",
             pinned_sha="a" * 40,
         )
 
         assert result.exists()
-        assert result == tmp_path / "docs" / "chunks" / "0003-auth_token" / "external.yaml"
+        assert result == tmp_path / "docs" / "chunks" / "auth_token" / "external.yaml"
 
     def test_creates_chunk_directory(self, tmp_path):
         """Creates chunk directory if it doesn't exist."""
@@ -221,14 +223,13 @@ class TestCreateExternalYaml:
 
         create_external_yaml(
             project_path=tmp_path,
-            chunk_id="0003",
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="0001-auth_token",
+            external_chunk_id="auth_token",
             pinned_sha="a" * 40,
         )
 
-        chunk_dir = tmp_path / "docs" / "chunks" / "0003-auth_token"
+        chunk_dir = tmp_path / "docs" / "chunks" / "auth_token"
         assert chunk_dir.exists()
         assert chunk_dir.is_dir()
 
@@ -238,10 +239,9 @@ class TestCreateExternalYaml:
 
         result = create_external_yaml(
             project_path=tmp_path,
-            chunk_id="0003",
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="0001-auth_token",
+            external_chunk_id="auth_token",
             pinned_sha="abcd1234" * 5,
             track="develop",
         )
@@ -250,7 +250,7 @@ class TestCreateExternalYaml:
         chunk_dir = result.parent
         ref = load_external_ref(chunk_dir)
         assert ref.repo == "acme/chunks"
-        assert ref.chunk == "0001-auth_token"
+        assert ref.chunk == "auth_token"
         assert ref.track == "develop"
         assert ref.pinned == "abcd1234" * 5
 
@@ -260,10 +260,9 @@ class TestCreateExternalYaml:
 
         result = create_external_yaml(
             project_path=tmp_path,
-            chunk_id="0003",
             short_name="auth_token",
             external_repo_ref="acme/chunks",
-            external_chunk_id="0001-auth_token",
+            external_chunk_id="auth_token",
             pinned_sha="a" * 40,
         )
 

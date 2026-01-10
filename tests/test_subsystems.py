@@ -55,11 +55,15 @@ class TestSubsystemFrontmatter:
         assert "status" in str(exc_info.value).lower()
 
     def test_invalid_chunk_relationship_propagates(self):
-        """Invalid chunk relationship fails (propagates from ChunkRelationship)."""
+        """Invalid chunk relationship fails (propagates from ChunkRelationship).
+
+        # Chunk: docs/chunks/0044-remove_sequence_prefix - Must use truly invalid format
+        """
         with pytest.raises(ValidationError) as exc_info:
             SubsystemFrontmatter(
                 status=SubsystemStatus.DOCUMENTED,
-                chunks=[{"chunk_id": "invalid", "relationship": "implements"}],
+                # Uppercase is invalid in new format
+                chunks=[{"chunk_id": "INVALID_UPPERCASE", "relationship": "implements"}],
             )
         assert "chunk_id" in str(exc_info.value).lower()
 
@@ -123,14 +127,21 @@ class TestSubsystems:
         assert subsystems.is_subsystem_dir("9999-test") is True
 
     def test_is_subsystem_dir_invalid_patterns(self, temp_project):
-        """is_subsystem_dir() returns False for invalid patterns."""
+        """is_subsystem_dir() returns False for invalid patterns.
+
+        # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for new pattern acceptance
+        """
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
-        assert subsystems.is_subsystem_dir("invalid") is False
-        assert subsystems.is_subsystem_dir("001-short") is False  # Only 3 digits
-        assert subsystems.is_subsystem_dir("0001_underscore") is False  # Underscore instead of hyphen
-        assert subsystems.is_subsystem_dir("0001-") is False  # No name after hyphen
+        # Uppercase is invalid
+        assert subsystems.is_subsystem_dir("INVALID_UPPERCASE") is False
+        # Starting with number (but not 4 digits) is invalid
+        assert subsystems.is_subsystem_dir("1abc") is False
+        # Legacy 3-digit prefix still invalid
+        assert subsystems.is_subsystem_dir("001-short") is False
+        # No name after legacy hyphen
+        assert subsystems.is_subsystem_dir("0001-") is False
 
     def test_parse_subsystem_frontmatter_valid(self, temp_project):
         """parse_subsystem_frontmatter() returns validated frontmatter."""
@@ -210,7 +221,10 @@ status: INVALID_STATUS
 
 
 class TestSubsystemCreatedAfterPopulation:
-    """Tests for created_after population during subsystem creation."""
+    """Tests for created_after population during subsystem creation.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_first_subsystem_has_empty_created_after(self, temp_project):
         """When creating the first subsystem, created_after is empty list."""
@@ -219,7 +233,7 @@ class TestSubsystemCreatedAfterPopulation:
         subsystems = Subsystems(temp_project)
         subsystems.create_subsystem("first_subsystem")
 
-        frontmatter = subsystems.parse_subsystem_frontmatter("0001-first_subsystem")
+        frontmatter = subsystems.parse_subsystem_frontmatter("first_subsystem")
         assert frontmatter is not None
         assert frontmatter.created_after == []
 
@@ -231,28 +245,31 @@ class TestSubsystemCreatedAfterPopulation:
         subsystems.create_subsystem("first_subsystem")
         subsystems.create_subsystem("second_subsystem")
 
-        frontmatter = subsystems.parse_subsystem_frontmatter("0002-second_subsystem")
+        frontmatter = subsystems.parse_subsystem_frontmatter("second_subsystem")
         assert frontmatter is not None
-        assert "0001-first_subsystem" in frontmatter.created_after
+        assert "first_subsystem" in frontmatter.created_after
 
 
 class TestSubsystemsCreateSubsystem:
-    """Tests for Subsystems.create_subsystem() method."""
+    """Tests for Subsystems.create_subsystem() method.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_create_subsystem_first_subsystem(self, temp_project):
-        """First subsystem gets 0001- prefix."""
+        """First subsystem uses short_name only (no prefix)."""
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
         result = subsystems.create_subsystem("validation")
 
-        expected_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        expected_path = temp_project / "docs" / "subsystems" / "validation"
         assert result == expected_path
         assert expected_path.exists()
         assert (expected_path / "OVERVIEW.md").exists()
 
-    def test_create_subsystem_increments_correctly(self, temp_project):
-        """Subsequent subsystems increment correctly."""
+    def test_create_subsystem_uses_short_name_only(self, temp_project):
+        """Subsequent subsystems use short_name only."""
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
@@ -263,7 +280,7 @@ class TestSubsystemsCreateSubsystem:
         # Create second subsystem
         result = subsystems.create_subsystem("frontmatter_updates")
 
-        expected_path = temp_project / "docs" / "subsystems" / "0002-frontmatter_updates"
+        expected_path = temp_project / "docs" / "subsystems" / "frontmatter_updates"
         assert result == expected_path
         assert expected_path.exists()
 
@@ -288,7 +305,7 @@ class TestSubsystemsCreateSubsystem:
         result = subsystems.create_subsystem("validation")
 
         overview_path = result / "OVERVIEW.md"
-        frontmatter = subsystems.parse_subsystem_frontmatter("0001-validation")
+        frontmatter = subsystems.parse_subsystem_frontmatter("validation")
 
         assert frontmatter is not None
         assert frontmatter.status == SubsystemStatus.DISCOVERING

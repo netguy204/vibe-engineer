@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestInvestigationListCommand:
     """Tests for 've investigation list' CLI command."""
 
@@ -33,7 +34,7 @@ class TestInvestigationListCommand:
             ["investigation", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/investigations/0001-memory_leak" in result.output
+        assert "docs/investigations/memory_leak" in result.output
         assert "[ONGOING]" in result.output
 
     def test_multiple_investigations_sorted(self, runner, temp_project):
@@ -55,8 +56,8 @@ class TestInvestigationListCommand:
         lines = result.output.strip().split("\n")
         assert len(lines) == 2
         # Should be sorted
-        assert "0001-first" in result.output
-        assert "0002-second" in result.output
+        assert "first" in result.output
+        assert "second" in result.output
 
     def test_state_filter_works(self, runner, temp_project):
         """--state filter works correctly."""
@@ -72,7 +73,7 @@ class TestInvestigationListCommand:
             ["investigation", "list", "--state", "ONGOING", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "0001-memory_leak" in result.output
+        assert "memory_leak" in result.output
 
         # Filter by SOLVED (should not find it)
         result = runner.invoke(
@@ -104,5 +105,5 @@ class TestInvestigationListCommand:
             ["investigation", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Format should be: docs/investigations/0001-memory_leak [ONGOING]
-        assert "docs/investigations/0001-memory_leak [ONGOING]" in result.output
+        # Format should be: docs/investigations/memory_leak [ONGOING]
+        assert "docs/investigations/memory_leak [ONGOING]" in result.output

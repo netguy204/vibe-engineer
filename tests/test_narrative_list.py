@@ -1,6 +1,7 @@
 """Tests for the 've narrative list' CLI command.
 
 # Chunk: docs/chunks/0041-artifact_list_ordering - Narrative list command tests
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 """
 
 from ve import cli
@@ -36,7 +37,7 @@ class TestNarrativeListCommand:
             ["narrative", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/narratives/0001-test_feature" in result.output
+        assert "docs/narratives/test_feature" in result.output
         assert "[DRAFTING]" in result.output
 
     def test_multiple_narratives_in_causal_order(self, runner, temp_project):
@@ -58,8 +59,8 @@ class TestNarrativeListCommand:
         lines = result.output.strip().split("\n")
         assert len(lines) == 2
         # Should be in reverse causal order (newest first)
-        assert "0002-second" in lines[0]
-        assert "0001-first" in lines[1]
+        assert "second" in lines[0]
+        assert "first" in lines[1]
 
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
@@ -73,7 +74,7 @@ class TestNarrativeListCommand:
             ["narrative", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/narratives/0001-feature" in result.output
+        assert "docs/narratives/feature" in result.output
 
     def test_format_includes_status_brackets(self, runner, temp_project):
         """Status appears in brackets after the path."""
@@ -86,8 +87,8 @@ class TestNarrativeListCommand:
             ["narrative", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Format should be: docs/narratives/0001-feature [DRAFTING]
-        assert "docs/narratives/0001-feature [DRAFTING]" in result.output
+        # Format should be: docs/narratives/feature [DRAFTING]
+        assert "docs/narratives/feature [DRAFTING]" in result.output
 
 
 class TestNarrativeListTipIndicator:

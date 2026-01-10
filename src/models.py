@@ -71,11 +71,35 @@ class ComplianceLevel(StrEnum):
     NON_COMPLIANT = "NON_COMPLIANT"  # Does not follow the patterns
 
 
-# Regex for validating chunk ID format: {NNNN}-{short_name}
-CHUNK_ID_PATTERN = re.compile(r"^\d{4}-.+$")
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Short name extraction utility
+def extract_short_name(dir_name: str) -> str:
+    """Extract short name from directory name, handling both patterns.
+
+    Supports both legacy "{NNNN}-{short_name}" format and new "{short_name}" format.
+
+    Args:
+        dir_name: Either "NNNN-short_name" or "short_name" format
+
+    Returns:
+        The short name portion
+    """
+    if re.match(r"^\d{4}-", dir_name):
+        return dir_name.split("-", 1)[1]
+    return dir_name
+
+
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Artifact ID pattern (both formats)
+# Regex for validating artifact ID format: {NNNN}-{short_name} (legacy) or {short_name} (new)
+# Legacy pattern: 4 digits, hyphen, then name
+# New pattern: lowercase letters, digits, underscores, hyphens (no leading digits)
+ARTIFACT_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
+
+# Legacy regex for backward compatibility in existing code
+CHUNK_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
 # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Chunk-to-subsystem relationship
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new ID formats
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -84,28 +108,33 @@ class ChunkRelationship(BaseModel):
     - "uses": chunk uses/depends on the subsystem
     """
 
-    chunk_id: str  # format: {NNNN}-{short_name}
+    chunk_id: str  # format: {NNNN}-{short_name} (legacy) or {short_name} (new)
     relationship: Literal["implements", "uses"]
 
     @field_validator("chunk_id")
     @classmethod
     def validate_chunk_id(cls, v: str) -> str:
-        """Validate chunk_id matches {NNNN}-{short_name} pattern."""
+        """Validate chunk_id matches valid artifact ID pattern.
+
+        Accepts both legacy {NNNN}-{short_name} format and new {short_name} format.
+        """
         if not v:
             raise ValueError("chunk_id cannot be empty")
-        if not CHUNK_ID_PATTERN.match(v):
+        if not ARTIFACT_ID_PATTERN.match(v):
             raise ValueError(
-                "chunk_id must match pattern {NNNN}-{short_name} "
-                "(4 digits, hyphen, name)"
+                "chunk_id must match pattern {NNNN}-{short_name} (legacy) "
+                "or {short_name} (new: lowercase, starting with letter)"
             )
-        # Ensure there's actually a name after the hyphen
-        parts = v.split("-", 1)
-        if len(parts) < 2 or not parts[1]:
-            raise ValueError("chunk_id must have a name after the hyphen")
+        # For legacy format, ensure there's content after the hyphen
+        if re.match(r"^\d{4}-", v):
+            parts = v.split("-", 1)
+            if len(parts) < 2 or not parts[1]:
+                raise ValueError("chunk_id must have a name after the prefix")
         return v
 
 
 # Chunk: docs/chunks/0018-bidirectional_refs - Subsystem-to-chunk relationship
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Accept both legacy and new ID formats
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
@@ -114,24 +143,28 @@ class SubsystemRelationship(BaseModel):
     - "uses": chunk uses/depends on the subsystem
     """
 
-    subsystem_id: str  # format: {NNNN}-{short_name}
+    subsystem_id: str  # format: {NNNN}-{short_name} (legacy) or {short_name} (new)
     relationship: Literal["implements", "uses"]
 
     @field_validator("subsystem_id")
     @classmethod
     def validate_subsystem_id(cls, v: str) -> str:
-        """Validate subsystem_id matches {NNNN}-{short_name} pattern."""
+        """Validate subsystem_id matches valid artifact ID pattern.
+
+        Accepts both legacy {NNNN}-{short_name} format and new {short_name} format.
+        """
         if not v:
             raise ValueError("subsystem_id cannot be empty")
-        if not CHUNK_ID_PATTERN.match(v):
+        if not ARTIFACT_ID_PATTERN.match(v):
             raise ValueError(
-                "subsystem_id must match pattern {NNNN}-{short_name} "
-                "(4 digits, hyphen, name)"
+                "subsystem_id must match pattern {NNNN}-{short_name} (legacy) "
+                "or {short_name} (new: lowercase, starting with letter)"
             )
-        # Ensure there's actually a name after the hyphen
-        parts = v.split("-", 1)
-        if len(parts) < 2 or not parts[1]:
-            raise ValueError("subsystem_id must have a name after the hyphen")
+        # For legacy format, ensure there's content after the hyphen
+        if re.match(r"^\d{4}-", v):
+            parts = v.split("-", 1)
+            if len(parts) < 2 or not parts[1]:
+                raise ValueError("subsystem_id must have a name after the prefix")
         return v
 
 

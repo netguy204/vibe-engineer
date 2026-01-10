@@ -11,7 +11,7 @@ from pydantic import ValidationError
 import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import NarrativeFrontmatter
+from models import NarrativeFrontmatter, extract_short_name
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
@@ -38,6 +38,7 @@ class Narratives:
     # Chunk: docs/chunks/0006-narrative_cli_commands - Create narrative directory
     # Chunk: docs/chunks/0026-template_system_consolidation - Template system integration
     # Chunk: docs/chunks/0039-populate_created_after - Populate created_after from tips
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/0001-template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
@@ -47,7 +48,17 @@ class Narratives:
 
         Returns:
             Path to the created narrative directory.
+
+        Raises:
+            ValueError: If a narrative with the same short_name already exists.
         """
+        # Check for collisions before creating
+        duplicates = self.find_duplicates(short_name)
+        if duplicates:
+            raise ValueError(
+                f"Narrative with short_name '{short_name}' already exists: {duplicates[0]}"
+            )
+
         # Get current narrative tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.NARRATIVE)
@@ -55,12 +66,8 @@ class Narratives:
         # Ensure narratives directory exists (fallback for pre-existing projects)
         self.narratives_dir.mkdir(parents=True, exist_ok=True)
 
-        # Calculate next sequence number (4-digit zero-padded)
-        next_id = self.num_narratives + 1
-        next_id_str = f"{next_id:04d}"
-
-        # Create narrative directory
-        narrative_path = self.narratives_dir / f"{next_id_str}-{short_name}"
+        # Create narrative directory using short_name only (no sequence prefix)
+        narrative_path = self.narratives_dir / short_name
 
         # Create narrative context
         narrative = ActiveNarrative(
@@ -76,11 +83,27 @@ class Narratives:
             narrative_path,
             context=context,
             short_name=short_name,
-            next_id=next_id_str,
             created_after=tips,
         )
 
         return narrative_path
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Collision detection by short_name
+    def find_duplicates(self, short_name: str) -> list[str]:
+        """Find existing narratives with the same short_name.
+
+        Args:
+            short_name: The short name to check for collisions.
+
+        Returns:
+            List of existing narrative directory names that would collide.
+        """
+        duplicates = []
+        for name in self.enumerate_narratives():
+            existing_short = extract_short_name(name)
+            if existing_short == short_name:
+                duplicates.append(name)
+        return duplicates
 
     # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Parse narrative frontmatter
     def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:

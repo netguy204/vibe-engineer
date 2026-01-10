@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestNarrativeCreateCommand:
     """Tests for the 've narrative create' command."""
 
@@ -97,7 +98,7 @@ class TestNarrativePathFormat:
     """Tests for narrative path format."""
 
     def test_path_format(self, runner, temp_project):
-        """Path format is {NNNN}-{short_name}."""
+        """Path format is {short_name}."""
         result = runner.invoke(
             cli,
             ["narrative", "create", "feature", "--project-dir", str(temp_project)]
@@ -107,10 +108,10 @@ class TestNarrativePathFormat:
         narratives_dir = temp_project / "docs" / "narratives"
         created_dirs = list(narratives_dir.iterdir())
         assert len(created_dirs) == 1
-        assert created_dirs[0].name == "0001-feature"
+        assert created_dirs[0].name == "feature"
 
-    def test_sequence_numbers_increment(self, runner, temp_project):
-        """Sequence numbers increment correctly."""
+    def test_multiple_narratives_created(self, runner, temp_project):
+        """Multiple narratives can be created."""
         runner.invoke(
             cli,
             ["narrative", "create", "first", "--project-dir", str(temp_project)]
@@ -123,8 +124,8 @@ class TestNarrativePathFormat:
         narratives_dir = temp_project / "docs" / "narratives"
         created_dirs = sorted(narratives_dir.iterdir())
         assert len(created_dirs) == 2
-        assert created_dirs[0].name == "0001-first"
-        assert created_dirs[1].name == "0002-second"
+        assert created_dirs[0].name == "first"
+        assert created_dirs[1].name == "second"
 
 
 class TestNarrativeSuccessOutput:
@@ -138,7 +139,7 @@ class TestNarrativeSuccessOutput:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        assert "docs/narratives/0001-feature" in result.output
+        assert "docs/narratives/feature" in result.output
 
     def test_creates_overview_file(self, runner, temp_project):
         """Creates OVERVIEW.md in narrative directory."""
@@ -148,5 +149,5 @@ class TestNarrativeSuccessOutput:
         )
         assert result.exit_code == 0
 
-        overview_path = temp_project / "docs" / "narratives" / "0001-feature" / "OVERVIEW.md"
+        overview_path = temp_project / "docs" / "narratives" / "feature" / "OVERVIEW.md"
         assert overview_path.exists()

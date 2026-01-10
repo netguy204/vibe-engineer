@@ -4,7 +4,10 @@ from chunks import Chunks
 
 
 class TestChunksClass:
-    """Tests for the Chunks class."""
+    """Tests for the Chunks class.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_create_chunk_creates_directory(self, temp_project):
         """Verify chunk creation creates the expected directory structure."""
@@ -13,7 +16,7 @@ class TestChunksClass:
 
         assert result_path.exists()
         assert result_path.is_dir()
-        assert "0001-my_feature-VE-001" in result_path.name
+        assert result_path.name == "my_feature-VE-001"
 
     def test_create_chunk_default_status_implementing(self, temp_project):
         """Default status is IMPLEMENTING when no status param provided."""
@@ -63,6 +66,7 @@ class TestListChunks:
     """Tests for Chunks.list_chunks() method.
 
     # Chunk: docs/chunks/0041-artifact_list_ordering - Updated for new return type
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
     """
 
     def test_empty_project_returns_empty_list(self, temp_project):
@@ -76,7 +80,7 @@ class TestListChunks:
         chunk_mgr.create_chunk("VE-001", "feature")
         result = chunk_mgr.list_chunks()
         assert len(result) == 1
-        assert result[0] == "0001-feature-VE-001"
+        assert result[0] == "feature-VE-001"
 
     def test_multiple_chunks_descending_order(self, temp_project):
         """Multiple chunks returned in causal order (newest first)."""
@@ -87,9 +91,9 @@ class TestListChunks:
         result = chunk_mgr.list_chunks()
         assert len(result) == 3
         # Newest first (each depends on previous via created_after)
-        assert result[0] == "0003-third-VE-003"
-        assert result[1] == "0002-second-VE-002"
-        assert result[2] == "0001-first-VE-001"
+        assert result[0] == "third-VE-003"
+        assert result[1] == "second-VE-002"
+        assert result[2] == "first-VE-001"
 
     def test_chunks_with_and_without_ticket_id(self, temp_project):
         """Chunks with different name formats all parsed correctly."""
@@ -98,12 +102,15 @@ class TestListChunks:
         chunk_mgr.create_chunk(None, "without_ticket")
         result = chunk_mgr.list_chunks()
         assert len(result) == 2
-        assert result[0] == "0002-without_ticket"
-        assert result[1] == "0001-with_ticket-VE-001"
+        assert result[0] == "without_ticket"
+        assert result[1] == "with_ticket-VE-001"
 
 
 class TestGetLatestChunk:
-    """Tests for Chunks.get_latest_chunk() method."""
+    """Tests for Chunks.get_latest_chunk() method.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_empty_project_returns_none(self, temp_project):
         """Empty project returns None."""
@@ -114,19 +121,22 @@ class TestGetLatestChunk:
         """Single chunk returns that chunk's name."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "feature")
-        assert chunk_mgr.get_latest_chunk() == "0001-feature-VE-001"
+        assert chunk_mgr.get_latest_chunk() == "feature-VE-001"
 
     def test_multiple_chunks_returns_highest(self, temp_project):
-        """Multiple chunks returns highest-numbered chunk."""
+        """Multiple chunks returns latest chunk (newest in causal order)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.create_chunk("VE-003", "third")
-        assert chunk_mgr.get_latest_chunk() == "0003-third-VE-003"
+        assert chunk_mgr.get_latest_chunk() == "third-VE-003"
 
 
 class TestGetCurrentChunk:
-    """Tests for Chunks.get_current_chunk() method."""
+    """Tests for Chunks.get_current_chunk() method.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_empty_project_returns_none(self, temp_project):
         """Empty project returns None."""
@@ -137,22 +147,22 @@ class TestGetCurrentChunk:
         """Single IMPLEMENTING chunk returns that chunk's name."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "feature", status="IMPLEMENTING")
-        assert chunk_mgr.get_current_chunk() == "0001-feature"
+        assert chunk_mgr.get_current_chunk() == "feature"
 
     def test_returns_highest_implementing_chunk(self, temp_project):
-        """Multiple IMPLEMENTING chunks returns highest-numbered."""
+        """Multiple IMPLEMENTING chunks returns latest in causal order."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
         chunk_mgr.create_chunk(None, "second", status="IMPLEMENTING")
-        assert chunk_mgr.get_current_chunk() == "0002-second"
+        assert chunk_mgr.get_current_chunk() == "second"
 
     def test_ignores_future_chunks(self, temp_project):
         """FUTURE chunks are ignored, returns IMPLEMENTING chunk."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "implementing", status="IMPLEMENTING")
         chunk_mgr.create_chunk(None, "future", status="FUTURE")
-        # Should return the IMPLEMENTING chunk, not the higher-numbered FUTURE one
-        assert chunk_mgr.get_current_chunk() == "0001-implementing"
+        # Should return the IMPLEMENTING chunk, not the newer FUTURE one
+        assert chunk_mgr.get_current_chunk() == "implementing"
 
     def test_returns_none_when_only_future_chunks(self, temp_project):
         """Returns None when only FUTURE chunks exist."""
@@ -166,7 +176,7 @@ class TestGetCurrentChunk:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
         # Manually change to ACTIVE status
-        goal_path = chunk_mgr.get_chunk_goal_path("0001")
+        goal_path = chunk_mgr.get_chunk_goal_path("first")
         content = goal_path.read_text()
         content = content.replace("status: IMPLEMENTING", "status: ACTIVE")
         goal_path.write_text(content)
@@ -182,11 +192,11 @@ class TestGetCurrentChunk:
         chunk_mgr.create_chunk(None, "historical", status="IMPLEMENTING")
 
         # Manually change statuses
-        goal_path1 = chunk_mgr.get_chunk_goal_path("0001")
+        goal_path1 = chunk_mgr.get_chunk_goal_path("superseded")
         content1 = goal_path1.read_text()
         goal_path1.write_text(content1.replace("status: IMPLEMENTING", "status: SUPERSEDED"))
 
-        goal_path2 = chunk_mgr.get_chunk_goal_path("0002")
+        goal_path2 = chunk_mgr.get_chunk_goal_path("historical")
         content2 = goal_path2.read_text()
         goal_path2.write_text(content2.replace("status: IMPLEMENTING", "status: HISTORICAL"))
 
@@ -194,7 +204,10 @@ class TestGetCurrentChunk:
 
 
 class TestCreatedAfterPopulation:
-    """Tests for created_after population during chunk creation."""
+    """Tests for created_after population during chunk creation.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_first_chunk_has_empty_created_after(self, temp_project):
         """When creating the first chunk, created_after is empty list."""
@@ -202,7 +215,7 @@ class TestCreatedAfterPopulation:
         result_path = chunk_mgr.create_chunk(None, "first_chunk")
 
         # Parse the frontmatter
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-first_chunk")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("first_chunk")
         assert frontmatter is not None
         assert frontmatter.created_after == []
 
@@ -212,10 +225,10 @@ class TestCreatedAfterPopulation:
         chunk_mgr.create_chunk(None, "first_chunk")
         chunk_mgr.create_chunk(None, "second_chunk")
 
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0002-second_chunk")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("second_chunk")
         assert frontmatter is not None
         # Tips should reference directory names (the format returned by find_tips)
-        assert "0001-first_chunk" in frontmatter.created_after
+        assert "first_chunk" in frontmatter.created_after
 
     def test_third_chunk_references_only_current_tip(self, temp_project):
         """Third chunk references only the current tip (second chunk).
@@ -237,15 +250,18 @@ class TestCreatedAfterPopulation:
         # Create third chunk - only second should be a tip now
         chunk_mgr.create_chunk(None, "third_chunk")
 
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0003-third_chunk")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("third_chunk")
         assert frontmatter is not None
         # Second chunk is the only tip (first is referenced by second)
         assert len(frontmatter.created_after) == 1
-        assert "0002-second_chunk" in frontmatter.created_after
+        assert "second_chunk" in frontmatter.created_after
 
 
 class TestChunkDirectoryInTemplates:
-    """Tests for chunk_directory variable in rendered templates."""
+    """Tests for chunk_directory variable in rendered templates.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_plan_md_contains_chunk_directory(self, temp_project):
         """Rendered PLAN.md contains actual chunk directory name, not placeholder."""
@@ -256,7 +272,7 @@ class TestChunkDirectoryInTemplates:
         plan_content = plan_path.read_text()
 
         # Should contain the actual chunk directory path
-        assert "docs/chunks/0001-feature/GOAL.md" in plan_content
+        assert "docs/chunks/feature/GOAL.md" in plan_content
         # Should NOT contain the placeholder
         assert "NNNN-name" not in plan_content
 
@@ -269,12 +285,15 @@ class TestChunkDirectoryInTemplates:
         plan_content = plan_path.read_text()
 
         # Should contain the full chunk directory with ticket
-        assert "docs/chunks/0001-feature-VE-001/GOAL.md" in plan_content
+        assert "docs/chunks/feature-VE-001/GOAL.md" in plan_content
         assert "NNNN-name" not in plan_content
 
 
 class TestParseFrontmatterDependents:
-    """Tests for parsing dependents from chunk frontmatter."""
+    """Tests for parsing dependents from chunk frontmatter.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_parse_frontmatter_with_dependents(self, temp_project):
         """Existing parse_chunk_frontmatter returns dependents field when present."""
@@ -282,22 +301,22 @@ class TestParseFrontmatterDependents:
         chunk_mgr.create_chunk(None, "feature")
 
         # Write GOAL.md with dependents in frontmatter (valid ExternalChunkRef format)
-        goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
+        goal_path = chunk_mgr.get_chunk_goal_path("feature")
         goal_path.write_text(
             "---\n"
             "status: ACTIVE\n"
             "dependents:\n"
             "  - repo: acme/other-repo\n"
-            "    chunk: 0002-integration\n"
+            "    chunk: integration\n"
             "---\n"
             "# Goal\n"
         )
 
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter is not None
         assert len(frontmatter.dependents) == 1
         assert frontmatter.dependents[0].repo == "acme/other-repo"
-        assert frontmatter.dependents[0].chunk == "0002-integration"
+        assert frontmatter.dependents[0].chunk == "integration"
 
     def test_parse_frontmatter_without_dependents(self, temp_project):
         """Existing chunks without dependents continue to work."""
@@ -305,7 +324,7 @@ class TestParseFrontmatterDependents:
         chunk_mgr.create_chunk(None, "feature")
 
         # Write GOAL.md without dependents
-        goal_path = chunk_mgr.get_chunk_goal_path("0001-feature")
+        goal_path = chunk_mgr.get_chunk_goal_path("feature")
         goal_path.write_text(
             "---\n"
             "status: ACTIVE\n"
@@ -313,7 +332,7 @@ class TestParseFrontmatterDependents:
             "# Goal\n"
         )
 
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter is not None
         assert frontmatter.dependents == []
         assert frontmatter.status.value == "ACTIVE"
@@ -496,13 +515,15 @@ code_references: []
     def test_invalid_subsystem_id_format_causes_frontmatter_parse_failure(self, temp_project):
         """Invalid subsystem_id format causes frontmatter parsing to fail."""
         chunk_mgr = Chunks(temp_project)
-        self._write_chunk_with_subsystems(temp_project, "0001-feature", [
-            {"subsystem_id": "invalid-format", "relationship": "implements"}
+        # Chunk: docs/chunks/0044-remove_sequence_prefix - Must now use truly invalid format
+        # "UPPERCASE" is invalid since new pattern requires lowercase
+        self._write_chunk_with_subsystems(temp_project, "feature", [
+            {"subsystem_id": "INVALID_UPPERCASE", "relationship": "implements"}
         ])
 
         # With ChunkFrontmatter validation, invalid subsystem_id format
         # causes parse_chunk_frontmatter to return None (validation fails)
-        frontmatter = chunk_mgr.parse_chunk_frontmatter("0001-feature")
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("feature")
         assert frontmatter is None
 
     def test_nonexistent_subsystem_returns_error(self, temp_project):

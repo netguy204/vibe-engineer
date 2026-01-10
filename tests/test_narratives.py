@@ -31,13 +31,16 @@ class TestNarrativesClass:
         assert narratives.num_narratives == 2
 
     def test_create_narrative_creates_directory(self, temp_project):
-        """Verify narrative creation creates the expected directory structure."""
+        """Verify narrative creation creates the expected directory structure.
+
+        # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+        """
         narratives = Narratives(temp_project)
         result_path = narratives.create_narrative("my_narrative")
 
         assert result_path.exists()
         assert result_path.is_dir()
-        assert result_path.name == "0001-my_narrative"
+        assert result_path.name == "my_narrative"
 
     def test_create_narrative_copies_template(self, temp_project):
         """Verify create_narrative copies template files."""
@@ -49,18 +52,21 @@ class TestNarrativesClass:
         content = overview_file.read_text()
         assert "status:" in content  # YAML frontmatter exists
 
-    def test_sequence_numbers_increment(self, temp_project):
-        """Verify sequence numbers increment correctly."""
+    def test_narratives_use_short_name_only(self, temp_project):
+        """Verify narratives use short_name only format (no sequence prefix).
+
+        # Chunk: docs/chunks/0044-remove_sequence_prefix - Test new naming format
+        """
         narratives = Narratives(temp_project)
 
         path1 = narratives.create_narrative("first")
-        assert path1.name == "0001-first"
+        assert path1.name == "first"
 
         path2 = narratives.create_narrative("second")
-        assert path2.name == "0002-second"
+        assert path2.name == "second"
 
         path3 = narratives.create_narrative("third")
-        assert path3.name == "0003-third"
+        assert path3.name == "third"
 
     def test_create_narrative_auto_creates_directory(self, temp_project):
         """Verify docs/narratives/ is auto-created if missing."""
@@ -79,14 +85,17 @@ class TestNarrativesClass:
 
 
 class TestNarrativeCreatedAfterPopulation:
-    """Tests for created_after population during narrative creation."""
+    """Tests for created_after population during narrative creation.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_first_narrative_has_empty_created_after(self, temp_project):
         """When creating the first narrative, created_after is empty list."""
         narratives = Narratives(temp_project)
         narratives.create_narrative("first_narrative")
 
-        frontmatter = narratives.parse_narrative_frontmatter("0001-first_narrative")
+        frontmatter = narratives.parse_narrative_frontmatter("first_narrative")
         assert frontmatter is not None
         assert frontmatter.created_after == []
 
@@ -96,9 +105,9 @@ class TestNarrativeCreatedAfterPopulation:
         narratives.create_narrative("first_narrative")
         narratives.create_narrative("second_narrative")
 
-        frontmatter = narratives.parse_narrative_frontmatter("0002-second_narrative")
+        frontmatter = narratives.parse_narrative_frontmatter("second_narrative")
         assert frontmatter is not None
-        assert "0001-first_narrative" in frontmatter.created_after
+        assert "first_narrative" in frontmatter.created_after
 
 
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter parsing tests

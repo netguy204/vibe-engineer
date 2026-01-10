@@ -4,7 +4,10 @@ import pytest
 
 
 class TestInvestigationCreatedAfterPopulation:
-    """Tests for created_after population during investigation creation."""
+    """Tests for created_after population during investigation creation.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_first_investigation_has_empty_created_after(self, temp_project):
         """When creating the first investigation, created_after is empty list."""
@@ -13,7 +16,7 @@ class TestInvestigationCreatedAfterPopulation:
         investigations = Investigations(temp_project)
         investigations.create_investigation("first_investigation")
 
-        frontmatter = investigations.parse_investigation_frontmatter("0001-first_investigation")
+        frontmatter = investigations.parse_investigation_frontmatter("first_investigation")
         assert frontmatter is not None
         assert frontmatter.created_after == []
 
@@ -25,28 +28,31 @@ class TestInvestigationCreatedAfterPopulation:
         investigations.create_investigation("first_investigation")
         investigations.create_investigation("second_investigation")
 
-        frontmatter = investigations.parse_investigation_frontmatter("0002-second_investigation")
+        frontmatter = investigations.parse_investigation_frontmatter("second_investigation")
         assert frontmatter is not None
-        assert "0001-first_investigation" in frontmatter.created_after
+        assert "first_investigation" in frontmatter.created_after
 
 
 class TestInvestigationsCreateInvestigation:
-    """Tests for Investigations.create_investigation() method."""
+    """Tests for Investigations.create_investigation() method.
+
+    # Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
+    """
 
     def test_create_investigation_first_investigation(self, temp_project):
-        """First investigation gets 0001- prefix."""
+        """First investigation uses short_name only (no prefix)."""
         from investigations import Investigations
 
         investigations = Investigations(temp_project)
         result = investigations.create_investigation("memory_leak")
 
-        expected_path = temp_project / "docs" / "investigations" / "0001-memory_leak"
+        expected_path = temp_project / "docs" / "investigations" / "memory_leak"
         assert result == expected_path
         assert expected_path.exists()
         assert (expected_path / "OVERVIEW.md").exists()
 
-    def test_create_investigation_increments_correctly(self, temp_project):
-        """Subsequent investigations increment correctly."""
+    def test_create_investigation_uses_short_name_only(self, temp_project):
+        """Subsequent investigations use short_name only."""
         from investigations import Investigations
 
         investigations = Investigations(temp_project)
@@ -57,7 +63,7 @@ class TestInvestigationsCreateInvestigation:
         # Create second investigation
         result = investigations.create_investigation("graphql_migration")
 
-        expected_path = temp_project / "docs" / "investigations" / "0002-graphql_migration"
+        expected_path = temp_project / "docs" / "investigations" / "graphql_migration"
         assert result == expected_path
         assert expected_path.exists()
 
@@ -82,7 +88,7 @@ class TestInvestigationsCreateInvestigation:
         investigations = Investigations(temp_project)
         result = investigations.create_investigation("memory_leak")
 
-        frontmatter = investigations.parse_investigation_frontmatter("0001-memory_leak")
+        frontmatter = investigations.parse_investigation_frontmatter("memory_leak")
 
         assert frontmatter is not None
         assert frontmatter.status == InvestigationStatus.ONGOING

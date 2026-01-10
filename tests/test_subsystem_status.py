@@ -3,6 +3,7 @@
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestSubsystemStatusDisplay:
     """Tests for 've subsystem status <id>' (display mode)."""
 
@@ -28,7 +29,7 @@ class TestSubsystemStatusDisplay:
         )
         result = runner.invoke(
             cli,
-            ["subsystem", "status", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "status", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "validation: DISCOVERING" in result.output
@@ -191,7 +192,7 @@ class TestSubsystemStatusIdResolution:
     """Tests for ID resolution (shortname vs full ID)."""
 
     def test_resolves_shortname_to_full_id(self, runner, temp_project):
-        """'validation' resolves to '0001-validation'."""
+        """'validation' resolves to 'validation' directory."""
         runner.invoke(
             cli,
             ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
@@ -204,14 +205,14 @@ class TestSubsystemStatusIdResolution:
         assert "validation:" in result.output
 
     def test_accepts_full_id_directly(self, runner, temp_project):
-        """'0001-validation' works directly."""
+        """'validation' works directly."""
         runner.invoke(
             cli,
             ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
         )
         result = runner.invoke(
             cli,
-            ["subsystem", "status", "0001-validation", "DOCUMENTED", "--project-dir", str(temp_project)]
+            ["subsystem", "status", "validation", "DOCUMENTED", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "validation:" in result.output
@@ -291,7 +292,7 @@ class TestSubsystemStatusFrontmatterPreservation:
         )
 
         # Manually add some fields to frontmatter
-        overview_path = temp_project / "docs" / "subsystems" / "0001-validation" / "OVERVIEW.md"
+        overview_path = temp_project / "docs" / "subsystems" / "validation" / "OVERVIEW.md"
         content = overview_path.read_text()
 
         # Add a chunk reference to the frontmatter (be specific to avoid matching proposed_chunks)
@@ -321,7 +322,7 @@ class TestSubsystemStatusFrontmatterPreservation:
         )
 
         # Add some content after the frontmatter
-        overview_path = temp_project / "docs" / "subsystems" / "0001-validation" / "OVERVIEW.md"
+        overview_path = temp_project / "docs" / "subsystems" / "validation" / "OVERVIEW.md"
         content = overview_path.read_text()
         content += "\n## Custom Section\n\nThis is custom content.\n"
         overview_path.write_text(content)

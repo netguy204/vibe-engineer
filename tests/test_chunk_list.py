@@ -4,6 +4,7 @@ from chunks import Chunks
 from ve import cli
 
 
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Updated for short_name only format
 class TestListCommand:
     """Tests for 've chunk list' CLI command."""
 
@@ -35,7 +36,7 @@ class TestListCommand:
             ["chunk", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/chunks/0001-feature-ve-001" in result.output
+        assert "docs/chunks/feature-ve-001" in result.output
 
     def test_multiple_chunks_reverse_order(self, runner, temp_project):
         """Multiple chunks: outputs in reverse numeric order, exit code 0."""
@@ -55,8 +56,8 @@ class TestListCommand:
         assert result.exit_code == 0
         lines = result.output.strip().split("\n")
         assert len(lines) == 2
-        assert "0002-second-ve-002" in lines[0]  # highest first
-        assert "0001-first-ve-001" in lines[1]
+        assert "second-ve-002" in lines[0]  # highest first
+        assert "first-ve-001" in lines[1]
 
     def test_latest_flag_outputs_only_highest(self, runner, temp_project):
         """--latest with multiple chunks: outputs only highest-numbered chunk."""
@@ -76,7 +77,7 @@ class TestListCommand:
         assert result.exit_code == 0
         lines = result.output.strip().split("\n")
         assert len(lines) == 1
-        assert "0002-second-ve-002" in lines[0]
+        assert "second-ve-002" in lines[0]
 
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
@@ -90,7 +91,7 @@ class TestListCommand:
             ["chunk", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        assert "docs/chunks/0001-feature" in result.output
+        assert "docs/chunks/feature" in result.output
 
 
 class TestListStatusDisplay:
@@ -126,8 +127,8 @@ class TestListStatusDisplay:
             ["chunk", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Format should be: docs/chunks/0001-feature [IMPLEMENTING]
-        assert "docs/chunks/0001-feature [IMPLEMENTING]" in result.output
+        # Format should be: docs/chunks/feature [IMPLEMENTING]
+        assert "docs/chunks/feature [IMPLEMENTING]" in result.output
 
 
 class TestLatestFlagWithStatus:
@@ -151,8 +152,8 @@ class TestLatestFlagWithStatus:
         )
         assert result.exit_code == 0
         # Should return the IMPLEMENTING chunk, not the FUTURE one
-        assert "0001-implementing" in result.output
-        assert "0002-future" not in result.output
+        assert "implementing" in result.output
+        assert "future" not in result.output
 
     def test_latest_fails_when_no_implementing_chunks(self, runner, temp_project):
         """--latest fails when only FUTURE chunks exist."""
@@ -177,7 +178,7 @@ class TestLatestFlagWithStatus:
         # Create a chunk and manually set it to ACTIVE
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "active", status="IMPLEMENTING")
-        goal_path = chunk_mgr.get_chunk_goal_path("0001")
+        goal_path = chunk_mgr.get_chunk_goal_path("active")
         content = goal_path.read_text()
         goal_path.write_text(content.replace("status: IMPLEMENTING", "status: ACTIVE"))
 

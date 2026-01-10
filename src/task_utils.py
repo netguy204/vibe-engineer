@@ -123,8 +123,12 @@ def load_external_ref(chunk_path: Path) -> ExternalChunkRef:
 
 # Chunk: docs/chunks/0010-chunk_create_task_aware - Get next chunk ID
 # Chunk: docs/chunks/0041-artifact_list_ordering - Use enumerate_chunks for directory-based ID
+# Chunk: docs/chunks/0044-remove_sequence_prefix - DEPRECATED: No longer needed for new naming
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
+
+    DEPRECATED: This function is only needed for legacy external.yaml creation.
+    New artifact creation uses short_name only without sequence prefixes.
 
     Args:
         project_path: Path to the project directory
@@ -154,9 +158,9 @@ def get_next_chunk_id(project_path: Path) -> str:
 
 
 # Chunk: docs/chunks/0010-chunk_create_task_aware - Create external.yaml
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only directory format
 def create_external_yaml(
     project_path: Path,
-    chunk_id: str,
     short_name: str,
     external_repo_ref: str,
     external_chunk_id: str,
@@ -167,17 +171,17 @@ def create_external_yaml(
 
     Args:
         project_path: Path to the project directory
-        chunk_id: 4-digit chunk ID for this project (e.g., "0003")
         short_name: Short name for the chunk directory
         external_repo_ref: External chunk repo identifier (org/repo format)
-        external_chunk_id: Chunk ID in the external repo (e.g., "0001-auth_token")
+        external_chunk_id: Chunk ID in the external repo
         pinned_sha: 40-character SHA to pin
         track: Branch to track (default "main")
 
     Returns:
         Path to the created external.yaml file
     """
-    chunk_dir = project_path / "docs" / "chunks" / f"{chunk_id}-{short_name}"
+    # Use short_name only (no sequence prefix)
+    chunk_dir = project_path / "docs" / "chunks" / short_name
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
     external_yaml_path = chunk_dir / "external.yaml"
@@ -268,6 +272,7 @@ class TaskChunkError(Exception):
 
 # Chunk: docs/chunks/0010-chunk_create_task_aware - Orchestrate multi-repo chunk
 # Chunk: docs/chunks/0013-future_chunk_creation - Status parameter support
+# Chunk: docs/chunks/0044-remove_sequence_prefix - Use short_name only directory format
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -322,9 +327,9 @@ def create_task_chunk(
     # 4. Create chunk in external repo
     chunks = Chunks(external_repo_path)
     external_chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
-    external_chunk_id = external_chunk_path.name  # e.g., "0001-auth_token"
+    external_chunk_id = external_chunk_path.name  # Now short_name format
 
-    # 5-6. For each project: calculate next ID, create external.yaml, build dependents
+    # 5-6. For each project: create external.yaml, build dependents
     dependents = []
     project_refs = {}
 
@@ -337,21 +342,22 @@ def create_task_chunk(
                 f"Project directory '{project_ref}' not found or not accessible"
             )
 
-        # Calculate next chunk ID for this project
-        next_id = get_next_chunk_id(project_path)
+        # Build project chunk ID (short_name only, with ticket if provided)
+        if ticket_id:
+            project_chunk_id = f"{short_name}-{ticket_id}"
+        else:
+            project_chunk_id = short_name
 
         # Create external.yaml
         external_yaml_path = create_external_yaml(
             project_path=project_path,
-            chunk_id=next_id,
-            short_name=short_name,
+            short_name=project_chunk_id,
             external_repo_ref=config.external_chunk_repo,
             external_chunk_id=external_chunk_id,
             pinned_sha=pinned_sha,
         )
 
         # Build dependent entry
-        project_chunk_id = f"{next_id}-{short_name}"
         dependents.append({"repo": project_ref, "chunk": project_chunk_id})
 
         # Track created path
