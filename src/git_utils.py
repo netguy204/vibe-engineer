@@ -78,6 +78,51 @@ def resolve_ref(repo_path: Path, ref: str) -> str:
         raise ValueError(f"Cannot resolve ref '{ref}' in {repo_path}") from e
 
 
+# Chunk: docs/chunks/0034-ve_sync_command - Resolve remote ref to SHA
+def resolve_remote_ref(repo_url: str, ref: str = "HEAD") -> str:
+    """Resolve a git ref from a remote repository using git ls-remote.
+
+    Args:
+        repo_url: The remote repository URL. Can be:
+            - Full URL (https://github.com/org/repo.git)
+            - GitHub shorthand (org/repo)
+        ref: The ref to resolve (default: "HEAD" for default branch)
+
+    Returns:
+        The full 40-character SHA
+
+    Raises:
+        ValueError: If the remote is not accessible or ref doesn't exist
+    """
+    # Expand GitHub shorthand to full URL
+    if "/" in repo_url and not repo_url.startswith(("https://", "http://", "git@", "ssh://")):
+        repo_url = f"https://github.com/{repo_url}.git"
+
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", repo_url, ref],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"Remote not accessible: {repo_url}") from e
+
+    # Parse output: "<sha>\t<ref>"
+    output = result.stdout.strip()
+    if not output:
+        raise ValueError(f"Could not resolve ref '{ref}' from {repo_url}")
+
+    # Take the first line (in case of multiple matches like HEAD)
+    first_line = output.split("\n")[0]
+    sha = first_line.split("\t")[0]
+
+    if len(sha) != 40:
+        raise ValueError(f"Unexpected SHA format from remote: {sha}")
+
+    return sha
+
+
 # Chunk: docs/chunks/0008-ve_sync_foundation - Check if directory is git repo
 def is_git_repository(path: Path) -> bool:
     """Check if path is a git repository (or worktree).

@@ -32,6 +32,11 @@ from task_utils import (
     get_current_task_chunk,
     TaskChunkError,
 )
+from sync import (
+    sync_task_directory,
+    sync_single_repo,
+    find_external_refs,
+)
 from validation import validate_identifier
 
 
@@ -609,6 +614,105 @@ def list_investigations(state, project_dir):
         frontmatter = investigations.parse_investigation_frontmatter(inv_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         click.echo(f"docs/investigations/{inv_name} [{status}]")
+
+
+# Chunk: docs/chunks/0034-ve_sync_command - Sync external references
+@cli.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
+@click.option("--project", "projects", multiple=True, help="Sync only specified project(s) (task directory only)")
+@click.option("--chunk", "chunks", multiple=True, help="Sync only specified chunk(s)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def sync(dry_run, projects, chunks, project_dir):
+    """Sync external chunk references to current repository state."""
+    # Convert filter tuples to lists (or None if empty)
+    project_filter = list(projects) if projects else None
+    chunk_filter = list(chunks) if chunks else None
+
+    # Check if we're in a task directory
+    if is_task_directory(project_dir):
+        _sync_task_directory(project_dir, dry_run, project_filter, chunk_filter)
+    else:
+        # Single repo mode
+        if project_filter:
+            click.echo("Error: --project can only be used in task directory context", err=True)
+            raise SystemExit(1)
+        _sync_single_repo(project_dir, dry_run, chunk_filter)
+
+
+def _sync_task_directory(
+    task_dir: pathlib.Path,
+    dry_run: bool,
+    project_filter: list[str] | None,
+    chunk_filter: list[str] | None,
+):
+    """Handle sync in task directory mode."""
+    try:
+        results = sync_task_directory(
+            task_dir,
+            dry_run=dry_run,
+            project_filter=project_filter,
+            chunk_filter=chunk_filter,
+        )
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    if not results:
+        click.echo("No external references found")
+        return
+
+    _display_sync_results(results, dry_run)
+
+
+def _sync_single_repo(
+    repo_path: pathlib.Path,
+    dry_run: bool,
+    chunk_filter: list[str] | None,
+):
+    """Handle sync in single repo mode."""
+    # Check if there are any external refs
+    external_refs = find_external_refs(repo_path)
+    if not external_refs:
+        click.echo("No external references found")
+        return
+
+    results = sync_single_repo(
+        repo_path,
+        dry_run=dry_run,
+        chunk_filter=chunk_filter,
+    )
+
+    _display_sync_results(results, dry_run)
+
+
+def _display_sync_results(results: list, dry_run: bool):
+    """Display sync results to the user."""
+    updated_count = 0
+    error_count = 0
+    prefix = "[dry-run] " if dry_run else ""
+
+    for result in results:
+        if result.error:
+            click.echo(f"{prefix}Error syncing {result.chunk_id}: {result.error}", err=True)
+            error_count += 1
+        elif result.updated:
+            old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
+            new_abbrev = result.new_sha[:7] if result.new_sha else "(none)"
+            verb = "Would update" if dry_run else "Updated"
+            click.echo(f"{prefix}{result.chunk_id}: {old_abbrev} -> {new_abbrev} ({verb})")
+            updated_count += 1
+        else:
+            old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
+            click.echo(f"{prefix}{result.chunk_id}: {old_abbrev} (already current)")
+
+    # Summary
+    total = len(results)
+    verb = "Would update" if dry_run else "Updated"
+    click.echo(f"\n{prefix}{verb} {updated_count} of {total} external reference(s)")
+
+    if error_count > 0:
+        click.echo(f"{error_count} error(s) occurred", err=True)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

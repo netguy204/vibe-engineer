@@ -285,3 +285,55 @@ class TestWorktreeSupport:
             sha = resolve_ref(worktree, "master")
 
         assert SHA_PATTERN.match(sha)
+
+
+class TestResolveRemoteRef:
+    """Tests for resolve_remote_ref function."""
+
+    def test_resolves_head_from_remote(self):
+        """Resolves HEAD from a public remote repository."""
+        from git_utils import resolve_remote_ref
+
+        # Use a well-known, stable public repo
+        sha = resolve_remote_ref("https://github.com/octocat/Hello-World.git")
+        assert SHA_PATTERN.match(sha), f"SHA '{sha}' is not a valid 40-char hex string"
+
+    def test_resolves_branch_from_remote(self):
+        """Resolves a specific branch from a public remote."""
+        from git_utils import resolve_remote_ref
+
+        sha = resolve_remote_ref("https://github.com/octocat/Hello-World.git", "master")
+        assert SHA_PATTERN.match(sha)
+
+    def test_raises_for_inaccessible_remote(self):
+        """Raises ValueError for an inaccessible remote URL."""
+        from git_utils import resolve_remote_ref
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_remote_ref("https://github.com/nonexistent-org-xyz/nonexistent-repo.git")
+        assert "not accessible" in str(exc_info.value).lower() or "could not" in str(exc_info.value).lower()
+
+    def test_raises_for_nonexistent_ref(self):
+        """Raises ValueError for a non-existent ref."""
+        from git_utils import resolve_remote_ref
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_remote_ref(
+                "https://github.com/octocat/Hello-World.git",
+                "nonexistent-branch-xyz-12345"
+            )
+        assert "nonexistent-branch" in str(exc_info.value).lower() or "could not" in str(exc_info.value).lower()
+
+    def test_sha_is_exactly_40_characters(self):
+        """Returned SHA is exactly 40 hex characters."""
+        from git_utils import resolve_remote_ref
+
+        sha = resolve_remote_ref("https://github.com/octocat/Hello-World.git")
+        assert len(sha) == 40
+
+    def test_expands_github_shorthand(self):
+        """Expands org/repo shorthand to full GitHub URL."""
+        from git_utils import resolve_remote_ref
+
+        sha = resolve_remote_ref("octocat/Hello-World")
+        assert SHA_PATTERN.match(sha)
