@@ -113,7 +113,24 @@ Use timestamped entries to track progress over time.
 
 Format suggestion: `### YYYY-MM-DD: [Summary]`
 
-Example:
+PROTOTYPES:
+
+When writing code to test hypotheses (scripts, benchmarks, proof-of-concepts),
+save them in a `prototypes/` subdirectory within this investigation folder.
+This keeps experimental code with the investigation that produced it, making
+findings reproducible and providing context for future readers.
+
+Example structure:
+  docs/investigations/0001-memory_leak/
+  ├── OVERVIEW.md
+  └── prototypes/
+      ├── memory_profiler.py
+      └── cache_benchmark.py
+
+Reference prototypes from the Exploration Log:
+  "Ran cache benchmark (see `prototypes/cache_benchmark.py`), results show..."
+
+Example log entries:
 
 ### 2024-01-15: Initial profiling
 
