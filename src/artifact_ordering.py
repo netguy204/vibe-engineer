@@ -107,6 +107,34 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
 _FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
 
+def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
+    """Parse YAML frontmatter from a markdown file.
+
+    Args:
+        file_path: Path to the markdown file with YAML frontmatter.
+
+    Returns:
+        Parsed frontmatter dict, or None if file doesn't exist,
+        has no frontmatter, or invalid YAML.
+    """
+    if not file_path.exists():
+        return None
+
+    try:
+        content = file_path.read_text()
+    except (OSError, IOError):
+        return None
+
+    match = _FRONTMATTER_PATTERN.match(content)
+    if not match:
+        return None
+
+    try:
+        return yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return None
+
+
 def _parse_created_after(file_path: Path) -> list[str]:
     """Parse the created_after field from a file's frontmatter.
 
@@ -118,21 +146,8 @@ def _parse_created_after(file_path: Path) -> list[str]:
         Returns empty list if file doesn't exist, has no frontmatter,
         invalid YAML, or missing created_after field.
     """
-    if not file_path.exists():
-        return []
-
-    try:
-        content = file_path.read_text()
-    except (OSError, IOError):
-        return []
-
-    match = _FRONTMATTER_PATTERN.match(content)
-    if not match:
-        return []
-
-    try:
-        frontmatter = yaml.safe_load(match.group(1)) or {}
-    except yaml.YAMLError:
+    frontmatter = _parse_frontmatter(file_path)
+    if frontmatter is None:
         return []
 
     created_after = frontmatter.get("created_after", [])
@@ -152,6 +167,28 @@ def _parse_created_after(file_path: Path) -> list[str]:
     return []
 
 
+# Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
+def _parse_status(file_path: Path) -> str | None:
+    """Parse the status field from a file's frontmatter.
+
+    Args:
+        file_path: Path to the markdown file with YAML frontmatter.
+
+    Returns:
+        Status string, or None if file doesn't exist, has no frontmatter,
+        invalid YAML, or missing/invalid status field.
+    """
+    frontmatter = _parse_frontmatter(file_path)
+    if frontmatter is None:
+        return None
+
+    status = frontmatter.get("status")
+    if isinstance(status, str):
+        return status
+
+    return None
+
+
 # Map artifact type to its directory name under docs/
 _ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
     ArtifactType.CHUNK: "chunks",
@@ -160,8 +197,18 @@ _ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
     ArtifactType.SUBSYSTEM: "subsystems",
 }
 
+# Chunk: docs/chunks/tip_detection_active_only - Tip-eligible statuses per artifact type
+# Statuses that are considered "active" for tip detection purposes.
+# None means no status filtering (all statuses are tip-eligible).
+_TIP_ELIGIBLE_STATUSES: dict[ArtifactType, set[str] | None] = {
+    ArtifactType.CHUNK: {"ACTIVE", "IMPLEMENTING"},
+    ArtifactType.NARRATIVE: {"ACTIVE"},
+    ArtifactType.INVESTIGATION: None,  # No filtering - all statuses are tips
+    ArtifactType.SUBSYSTEM: None,  # No filtering - all statuses are tips
+}
+
 # Index format version for compatibility checks
-_INDEX_VERSION = 2
+_INDEX_VERSION = 3
 
 
 class ArtifactIndex:
@@ -228,6 +275,7 @@ class ArtifactIndex:
 
         return stored_directories != current_directories
 
+    # Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
         artifact_dir = self._get_artifact_dir(artifact_type)
@@ -243,21 +291,50 @@ class ArtifactIndex:
 
         main_file = _ARTIFACT_MAIN_FILE[artifact_type]
 
-        # Build dependency graph
+        # Build dependency graph and collect statuses
         deps: dict[str, list[str]] = {}
+        statuses: dict[str, str | None] = {}
         for artifact_name in artifacts:
             main_path = artifact_dir / artifact_name / main_file
             created_after = _parse_created_after(main_path)
             deps[artifact_name] = created_after
+            statuses[artifact_name] = _parse_status(main_path)
 
         # Topological sort
         ordered = _topological_sort_multi_parent(deps)
 
-        # Find tips (artifacts not referenced in any created_after)
-        all_parents: set[str] = set()
-        for parents in deps.values():
-            all_parents.update(parents)
-        tips = [name for name in ordered if name not in all_parents]
+        # Find tips with status filtering
+        # Tips are artifacts that:
+        # 1. Have a tip-eligible status (or status filtering is disabled for this type), AND
+        # 2. Are not referenced by any other tip-eligible artifact
+        eligible_statuses = _TIP_ELIGIBLE_STATUSES[artifact_type]
+
+        # Determine which artifacts are tip-eligible
+        if eligible_statuses is not None:
+            tip_eligible_artifacts = {
+                name for name, status in statuses.items()
+                if status is not None and status in eligible_statuses
+            }
+        else:
+            tip_eligible_artifacts = set(artifacts)
+
+        # Collect artifacts referenced by tip-eligible artifacts
+        # Only references from tip-eligible artifacts count for excluding tips
+        referenced_by_eligible: set[str] = set()
+        for artifact_name in tip_eligible_artifacts:
+            referenced_by_eligible.update(deps.get(artifact_name, []))
+
+        tips: list[str] = []
+        for name in ordered:
+            # Only tip-eligible artifacts can be tips
+            if name not in tip_eligible_artifacts:
+                continue
+
+            # Skip artifacts that are referenced by tip-eligible artifacts
+            if name in referenced_by_eligible:
+                continue
+
+            tips.append(name)
 
         return {
             "ordered": ordered,

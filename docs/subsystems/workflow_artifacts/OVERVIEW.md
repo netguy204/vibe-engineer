@@ -39,6 +39,8 @@ chunks:
   relationship: implements
 - chunk_id: update_crossref_format
   relationship: implements
+- chunk_id: tip_detection_active_only
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -415,6 +417,12 @@ Cached ordering system for workflow artifacts based on causal DAG ordering.
 - Tips represent the current frontier of work within an artifact type
 - After a merge, multiple tips may exist until new work is created
 - `ArtifactIndex.find_tips()` returns all current tips for an artifact type
+- **Status-aware filtering**: Tips are filtered by status to exclude "future/queued" artifacts:
+  - Chunks: Only ACTIVE or IMPLEMENTING chunks are tips (excludes FUTURE, SUPERSEDED, HISTORICAL)
+  - Narratives: Only ACTIVE narratives are tips (excludes DRAFTING, COMPLETED)
+  - Investigations: No filtering (all statuses are tip-eligible)
+  - Subsystems: No filtering (all statuses are tip-eligible)
+- This ensures `created_after` captures causal ordering of actual work, not planned work
 
 **Performance optimization:**
 - Directory-enumeration-based staleness detection (no git required per DEC-002)
@@ -561,6 +569,13 @@ details.
   code backreferences (`# Chunk:`, `# Subsystem:`), frontmatter references (`chunk_id`,
   `parent_chunk`, `subsystem_id`), and template examples. Migration script created at
   `docs/chunks/update_crossref_format/migrate_crossrefs.py`
+
+- **tip_detection_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
+  excluding "future/queued" artifacts from tip detection. Chunks only include ACTIVE or
+  IMPLEMENTING status; narratives only include ACTIVE status; investigations and subsystems
+  have no filtering. Added `_parse_status()` helper and `_TIP_ELIGIBLE_STATUSES` constant.
+  This ensures multiple FUTURE chunks created in sequence all reference the same active tip,
+  rather than forming an implied causal chain among themselves.
 
 ## Consolidation Chunks
 

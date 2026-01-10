@@ -95,16 +95,27 @@ class TestNarrativeListTipIndicator:
     """Tests for tip indicator in narrative list output."""
 
     def test_tip_indicator_appears_for_tip_narratives(self, runner, temp_project):
-        """Tip indicator (*) appears for narratives with no dependents."""
-        # Create a single narrative - it should be a tip
+        """Tip indicator (*) appears for ACTIVE narratives with no dependents.
+
+        Note: DRAFTING narratives are not considered tips (they're not "active" yet).
+        Only ACTIVE narratives can be tips.
+        """
+        # Create a narrative first
         runner.invoke(
             cli,
             ["narrative", "create", "standalone", "--project-dir", str(temp_project)]
         )
+
+        # Update the narrative to ACTIVE status so it becomes a tip
+        overview_path = temp_project / "docs" / "narratives" / "standalone" / "OVERVIEW.md"
+        content = overview_path.read_text()
+        content = content.replace("status: DRAFTING", "status: ACTIVE")
+        overview_path.write_text(content)
+
         result = runner.invoke(
             cli,
             ["narrative", "list", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
-        # Single narrative is always a tip
+        # ACTIVE narrative is a tip
         assert "*" in result.output

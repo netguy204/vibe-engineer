@@ -100,9 +100,22 @@ class TestNarrativeCreatedAfterPopulation:
         assert frontmatter.created_after == []
 
     def test_second_narrative_references_first_as_created_after(self, temp_project):
-        """When creating second narrative, created_after contains first narrative's name."""
+        """When creating second narrative after an ACTIVE narrative, created_after references it.
+
+        Note: Only ACTIVE narratives are considered tips. DRAFTING narratives are not tips,
+        so a new DRAFTING narrative won't reference another DRAFTING narrative.
+        """
         narratives = Narratives(temp_project)
         narratives.create_narrative("first_narrative")
+
+        # Set first narrative to ACTIVE so it becomes a tip
+        overview_path = (
+            temp_project / "docs" / "narratives" / "first_narrative" / "OVERVIEW.md"
+        )
+        content = overview_path.read_text()
+        content = content.replace("status: DRAFTING", "status: ACTIVE")
+        overview_path.write_text(content)
+
         narratives.create_narrative("second_narrative")
 
         frontmatter = narratives.parse_narrative_frontmatter("second_narrative")

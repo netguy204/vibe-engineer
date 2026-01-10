@@ -294,7 +294,12 @@ created_after: [unclosed bracket
         assert result == []
 
 
-def _create_chunk(chunks_dir: Path, name: str, created_after: list[str] | None = None):
+def _create_chunk(
+    chunks_dir: Path,
+    name: str,
+    created_after: list[str] | None = None,
+    status: str = "IMPLEMENTING",
+):
     """Helper to create a chunk directory with GOAL.md frontmatter."""
     chunk_dir = chunks_dir / name
     chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -306,7 +311,7 @@ def _create_chunk(chunks_dir: Path, name: str, created_after: list[str] | None =
 
     (chunk_dir / "GOAL.md").write_text(
         f"""---
-status: IMPLEMENTING
+status: {status}
 created_after: {ca_str}
 ---
 # Chunk Goal for {name}
@@ -586,7 +591,7 @@ class TestArtifactIndexIntegration:
         assert chunk_data["ordered"] == ["0001-test"]
         assert chunk_data["tips"] == ["0001-test"]
         assert chunk_data["directories"] == ["0001-test"]
-        assert chunk_data["version"] == 2
+        assert chunk_data["version"] == 3
 
     def test_separate_type_indexes(self, tmp_path):
         """Different artifact types have separate index entries."""
@@ -873,3 +878,287 @@ created_after: []
 
         # Index file should be unchanged
         assert index_file.read_text() == initial_content
+
+
+# Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering tests
+class TestStatusFilteredTips:
+    """Tests for status-aware tip filtering.
+
+    Tips should only include artifacts with "active" statuses:
+    - Chunks: ACTIVE or IMPLEMENTING (excludes FUTURE, SUPERSEDED, HISTORICAL)
+    - Narratives: ACTIVE (excludes DRAFTING, COMPLETED)
+    - Investigations: No filtering (all statuses)
+    - Subsystems: No filtering (all statuses)
+    """
+
+    def test_find_tips_excludes_future_chunks(self, tmp_path):
+        """FUTURE chunks are not returned as tips."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # IMPLEMENTING chunk is the "active" work
+        _create_chunk(chunks_dir, "0001-active", status="IMPLEMENTING")
+
+        # FUTURE chunks should be excluded from tips
+        _create_chunk(
+            chunks_dir, "0002-future_a", created_after=["0001-active"], status="FUTURE"
+        )
+        _create_chunk(
+            chunks_dir, "0002-future_b", created_after=["0001-active"], status="FUTURE"
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # Only the IMPLEMENTING chunk should be a tip
+        assert tips == ["0001-active"]
+
+    def test_find_tips_includes_active_and_implementing_chunks(self, tmp_path):
+        """ACTIVE and IMPLEMENTING chunks are both valid tips."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-active", status="ACTIVE")
+        _create_chunk(chunks_dir, "0002-implementing", status="IMPLEMENTING")
+
+        index = ArtifactIndex(tmp_path)
+        tips = sorted(index.find_tips(ArtifactType.CHUNK))
+
+        # Both should be tips (neither references the other)
+        assert tips == ["0001-active", "0002-implementing"]
+
+    def test_find_tips_excludes_superseded_chunks(self, tmp_path):
+        """SUPERSEDED chunks are not returned as tips."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-first", status="ACTIVE")
+        _create_chunk(
+            chunks_dir, "0002-superseded", created_after=["0001-first"], status="SUPERSEDED"
+        )
+        _create_chunk(
+            chunks_dir, "0003-current", created_after=["0001-first"], status="IMPLEMENTING"
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # Only IMPLEMENTING chunk is a tip, SUPERSEDED is excluded
+        assert tips == ["0003-current"]
+
+    def test_find_tips_excludes_historical_chunks(self, tmp_path):
+        """HISTORICAL chunks are not returned as tips."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-old", status="HISTORICAL")
+        _create_chunk(
+            chunks_dir, "0002-current", created_after=["0001-old"], status="ACTIVE"
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # HISTORICAL chunk is excluded from tips
+        # Note: 0001-old is referenced by 0002-current, so it wouldn't be a tip anyway
+        # But if it wasn't referenced, it still shouldn't be a tip
+        assert tips == ["0002-current"]
+
+    def test_multiple_future_chunks_get_same_created_after(self, tmp_path):
+        """Multiple FUTURE chunks created in sequence all point to the same tip.
+
+        When creating multiple FUTURE chunks, they should all have the same
+        created_after (the IMPLEMENTING tip), not form a chain among themselves.
+        """
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Current work
+        _create_chunk(chunks_dir, "0001-implementing", status="IMPLEMENTING")
+
+        # Simulate creating FUTURE chunks that would get tips
+        # If FUTURE chunks were included in tips, 0002 would be tip after first create
+        # and 0003 would point to 0002. We want both to point to 0001.
+        _create_chunk(
+            chunks_dir, "0002-future_a", created_after=["0001-implementing"], status="FUTURE"
+        )
+        _create_chunk(
+            chunks_dir, "0003-future_b", created_after=["0001-implementing"], status="FUTURE"
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # The IMPLEMENTING chunk is the only tip
+        # FUTURE chunks don't become tips themselves
+        assert tips == ["0001-implementing"]
+
+    def test_find_tips_excludes_drafting_narratives(self, tmp_path):
+        """DRAFTING narratives are not returned as tips."""
+        narratives_dir = tmp_path / "docs" / "narratives"
+        narratives_dir.mkdir(parents=True)
+
+        # Create ACTIVE narrative
+        (narratives_dir / "0001-active").mkdir()
+        (narratives_dir / "0001-active" / "OVERVIEW.md").write_text(
+            """---
+status: ACTIVE
+created_after: []
+---
+# Active Narrative
+"""
+        )
+
+        # Create DRAFTING narrative (should be excluded from tips)
+        (narratives_dir / "0002-drafting").mkdir()
+        (narratives_dir / "0002-drafting" / "OVERVIEW.md").write_text(
+            """---
+status: DRAFTING
+created_after: ["0001-active"]
+---
+# Drafting Narrative
+"""
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.NARRATIVE)
+
+        # Only ACTIVE narrative is a tip
+        assert tips == ["0001-active"]
+
+    def test_find_tips_excludes_completed_narratives(self, tmp_path):
+        """COMPLETED narratives are not returned as tips."""
+        narratives_dir = tmp_path / "docs" / "narratives"
+        narratives_dir.mkdir(parents=True)
+
+        # Create COMPLETED narrative
+        (narratives_dir / "0001-completed").mkdir()
+        (narratives_dir / "0001-completed" / "OVERVIEW.md").write_text(
+            """---
+status: COMPLETED
+created_after: []
+---
+# Completed Narrative
+"""
+        )
+
+        # Create ACTIVE narrative
+        (narratives_dir / "0002-active").mkdir()
+        (narratives_dir / "0002-active" / "OVERVIEW.md").write_text(
+            """---
+status: ACTIVE
+created_after: ["0001-completed"]
+---
+# Active Narrative
+"""
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.NARRATIVE)
+
+        # Only ACTIVE narrative is a tip
+        assert tips == ["0002-active"]
+
+    def test_find_tips_includes_all_investigation_statuses(self, tmp_path):
+        """Investigations are not filtered by status - all are potential tips."""
+        investigations_dir = tmp_path / "docs" / "investigations"
+        investigations_dir.mkdir(parents=True)
+
+        # Create investigations with various statuses
+        for name, status in [
+            ("0001-ongoing", "ONGOING"),
+            ("0002-solved", "SOLVED"),
+            ("0003-noted", "NOTED"),
+            ("0004-deferred", "DEFERRED"),
+        ]:
+            (investigations_dir / name).mkdir()
+            (investigations_dir / name / "OVERVIEW.md").write_text(
+                f"""---
+status: {status}
+created_after: []
+---
+# Investigation
+"""
+            )
+
+        index = ArtifactIndex(tmp_path)
+        tips = sorted(index.find_tips(ArtifactType.INVESTIGATION))
+
+        # All investigations are tips (no status filtering)
+        assert tips == ["0001-ongoing", "0002-solved", "0003-noted", "0004-deferred"]
+
+    def test_find_tips_includes_all_subsystem_statuses(self, tmp_path):
+        """Subsystems are not filtered by status - all are potential tips."""
+        subsystems_dir = tmp_path / "docs" / "subsystems"
+        subsystems_dir.mkdir(parents=True)
+
+        # Create subsystems with various statuses
+        for name, status in [
+            ("0001-discovering", "DISCOVERING"),
+            ("0002-documented", "DOCUMENTED"),
+            ("0003-refactoring", "REFACTORING"),
+            ("0004-stable", "STABLE"),
+        ]:
+            (subsystems_dir / name).mkdir()
+            (subsystems_dir / name / "OVERVIEW.md").write_text(
+                f"""---
+status: {status}
+created_after: []
+---
+# Subsystem
+"""
+            )
+
+        index = ArtifactIndex(tmp_path)
+        tips = sorted(index.find_tips(ArtifactType.SUBSYSTEM))
+
+        # All subsystems are tips (no status filtering)
+        assert tips == ["0001-discovering", "0002-documented", "0003-refactoring", "0004-stable"]
+
+    def test_find_tips_excludes_missing_status_chunks(self, tmp_path):
+        """Chunks with missing status are excluded from tips."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        # Valid chunk
+        _create_chunk(chunks_dir, "0001-valid", status="ACTIVE")
+
+        # Chunk with no status field
+        (chunks_dir / "0002-no_status").mkdir()
+        (chunks_dir / "0002-no_status" / "GOAL.md").write_text(
+            """---
+created_after: []
+---
+# No status chunk
+"""
+        )
+
+        index = ArtifactIndex(tmp_path)
+        tips = index.find_tips(ArtifactType.CHUNK)
+
+        # Only the ACTIVE chunk is a tip
+        assert tips == ["0001-valid"]
+
+    def test_ordered_list_unchanged_by_status_filtering(self, tmp_path):
+        """Status filtering only affects tips, not the ordered list."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        _create_chunk(chunks_dir, "0001-active", status="ACTIVE")
+        _create_chunk(
+            chunks_dir, "0002-future", created_after=["0001-active"], status="FUTURE"
+        )
+        _create_chunk(
+            chunks_dir, "0003-implementing", created_after=["0001-active"], status="IMPLEMENTING"
+        )
+
+        index = ArtifactIndex(tmp_path)
+
+        # Ordered list should include ALL chunks
+        ordered = index.get_ordered(ArtifactType.CHUNK)
+        assert len(ordered) == 3
+        assert "0002-future" in ordered
+
+        # Tips should exclude FUTURE
+        tips = sorted(index.find_tips(ArtifactType.CHUNK))
+        assert tips == ["0003-implementing"]
