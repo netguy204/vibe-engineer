@@ -33,6 +33,8 @@ chunks:
   relationship: implements
 - chunk_id: 0042-causal_ordering_migration
   relationship: implements
+- chunk_id: 0043-subsystem_docs_update
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -248,10 +250,11 @@ duplicated code, and barriers to cross-repo work.
 
 ### In Scope
 
-- **Directory structure pattern**: `docs/{type}s/{NNNN}-{short_name}/` naming convention
+- **Directory structure pattern**: `docs/{type}s/{NNNN}-{short_name}/` naming (legacy, transitioning to `{short_name}/`)
 - **Document structure**: GOAL.md+PLAN.md (chunks) or OVERVIEW.md (narratives, investigations, subsystems)
-- **Frontmatter schemas**: Status enums, `proposed_chunks`, type-specific fields as Pydantic models
+- **Frontmatter schemas**: Status enums, `proposed_chunks`, `created_after`, type-specific fields as Pydantic models
 - **Status lifecycle**: Defined states and transitions per workflow type
+- **Causal ordering**: `created_after` field tracks artifact dependencies, `ArtifactIndex` computes order
 - **Manager class pattern**: `enumerate_`, `create_`, `parse_frontmatter` interface
 - **CLI command groups**: `ve {type} {action}` structure
 - **Template-based creation**: Integration with template_system for artifact instantiation
@@ -274,49 +277,79 @@ duplicated code, and barriers to cross-repo work.
 
 ### Hard Invariants
 
-1. **Directory naming must follow `{NNNN}-{short_name}` pattern** - Sequential 4-digit
-   numbering ensures chronological ordering; short_name provides human readability.
-   Violation breaks enumeration, sorting, and cross-references.
+1. **Artifact ordering is determined by `created_after` frontmatter field** - Each
+   artifact's `created_after` field references the artifacts that were tips (most recent)
+   when it was created. This creates a causal DAG that determines ordering without requiring
+   global coordination. `ArtifactIndex` computes topological order and identifies tips
+   (artifacts with no dependents). Directory naming uses `{NNNN}-{short_name}/` pattern
+   where the sequence prefix is legacy (being retired - see Directory Naming Transition below).
 
-2. **Every workflow artifact must have a `status` field in frontmatter** - Status enables
+2. **Every workflow artifact must have a `created_after` field in frontmatter** - The
+   `created_after` field is an array of short names referencing parent artifacts. An empty
+   array (`[]`) indicates a root artifact with no causal parents. Multiple entries represent
+   merged branches where the artifact was created after multiple tips simultaneously. This
+   field is populated automatically at creation time and is immutable thereafter.
+
+3. **Every workflow artifact must have a `status` field in frontmatter** - Status enables
    lifecycle management. Without it, agents cannot determine what phase an artifact is in
    or what actions are valid.
 
-3. **Status values must be defined as a StrEnum in `models.py`** - Enables validation,
+4. **Status values must be defined as a StrEnum in `models.py`** - Enables validation,
    IDE support, and consistent tooling. String literals in templates are insufficient.
 
-4. **Frontmatter schema must be a Pydantic model in `models.py`** - Enables consistent
+5. **Frontmatter schema must be a Pydantic model in `models.py`** - Enables consistent
    validation, clear documentation of required/optional fields, and type safety.
 
-5. **Manager class must implement the core interface** - Every workflow type needs:
+6. **Manager class must implement the core interface** - Every workflow type needs:
    - `enumerate_{types}()` - list artifact directories
    - `create_{type}(short_name)` - instantiate new artifact
    - `parse_{type}_frontmatter()` - parse and validate frontmatter
 
    This enables uniform tooling and reduces per-type special cases.
 
-6. **Creation must use the template_system** - All artifacts created via
+7. **Creation must use the template_system** - All artifacts created via
    `render_to_directory()` with appropriate `Active{Type}` context. Direct file
    creation bypasses template rendering and context injection.
 
-7. **All workflow artifacts must support external references** - Cross-repo capability
+8. **All workflow artifacts must support external references** - Cross-repo capability
    is essential for work spanning repository boundaries. Each type needs an
    `external.yaml` pattern for referencing artifacts in other repositories.
 
-8. **Frontmatter must include `proposed_chunks` field** - Enables mechanical discovery
+9. **Frontmatter must include `proposed_chunks` field** - Enables mechanical discovery
    of work opportunities via `ve chunk list-proposed`. Workflows produce downstream
    work; this field makes that traceable.
 
-9. **Status transitions must be defined in both template and code** - Transitions
-   documented in template comments for human readers AND enforced via a
-   `VALID_{TYPE}_TRANSITIONS` dict in `models.py`. This enables both documentation
-   and runtime validation of lifecycle paths.
+10. **Status transitions must be defined in both template and code** - Transitions
+    documented in template comments for human readers AND enforced via a
+    `VALID_{TYPE}_TRANSITIONS` dict in `models.py`. This enables both documentation
+    and runtime validation of lifecycle paths.
 
 ### Soft Conventions
 
 1. **CLI command naming: `ve {type} create`** - Consistent command structure aids
    discoverability. Exception: "discover" is appropriate for subsystems as it better
    describes the exploratory nature of subsystem documentation.
+
+### Directory Naming Transition
+
+Directory naming is transitioning from sequence-prefixed to short-name-only format.
+
+**Current state:**
+- All existing artifacts use `{NNNN}-{short_name}/` directory naming
+- New artifacts are still created with sequence prefixes
+- Short names are unique within each artifact type (not globally)
+
+**Terminal state:**
+- Directory naming will be `{short_name}/` only
+- Sequence prefixes will be fully retired (no backwards compatibility needed)
+- All existing artifacts will be renamed as part of the migration
+- See investigation 0001-artifact_sequence_numbering proposed chunks for the migration work
+
+**Why this matters:**
+- Agents should reference artifacts by short name, not full directory name
+- The sequence prefix is semantically meaningless (ordering comes from `created_after`)
+- Simpler naming reduces cognitive overhead and path length
+- Parallel work (multiple worktrees, teams) cannot conflict on sequence numbers
 
 ## Implementation Locations
 
@@ -357,14 +390,31 @@ Cross-repo pattern (currently chunks only):
 
 ### Artifact Ordering (`src/artifact_ordering.py`)
 
-Cached ordering system for workflow artifacts:
-- `ArtifactType` enum defining all workflow artifact types
-- `ArtifactIndex` class providing topological sorting and tip identification
-- Directory-enumeration-based staleness detection (no git required)
-- Since `created_after` is immutable after creation, only directory adds/removes trigger rebuild
-- Parses `created_after` field from frontmatter to build dependency DAG
-- Supports multi-parent DAGs (merged branches) via Kahn's algorithm
+Cached ordering system for workflow artifacts based on causal DAG ordering.
+
+**Core components:**
+- `ArtifactType` enum defining all workflow artifact types (CHUNK, NARRATIVE, INVESTIGATION, SUBSYSTEM)
+- `ArtifactIndex` class providing cached topological sorting and tip identification
 - Index stored as gitignored JSON (`.artifact-order.json`)
+
+**Causal ordering semantics:**
+- Each artifact's `created_after` field references parent artifacts by short name
+- Parents are the tips (artifacts with no dependents) that existed when the artifact was created
+- An empty `created_after: []` indicates a root artifact with no causal parents
+- Multiple entries in `created_after` represent merged branches (e.g., `["feature_a", "feature_b"]`)
+- Ordering is computed via topological sort using Kahn's algorithm
+- Each artifact type maintains its own independent causal graph
+
+**Tip identification:**
+- A "tip" is an artifact that no other artifact references in its `created_after`
+- Tips represent the current frontier of work within an artifact type
+- After a merge, multiple tips may exist until new work is created
+- `ArtifactIndex.find_tips()` returns all current tips for an artifact type
+
+**Performance optimization:**
+- Directory-enumeration-based staleness detection (no git required per DEC-002)
+- Since `created_after` is immutable after creation, only directory adds/removes trigger rebuild
+- Cache provides ~75x speedup: ~0.4ms cached vs ~33ms uncached for typical workloads
 
 ## Known Deviations
 
@@ -408,6 +458,32 @@ span repositories.
 
 **Impact**: High. Violates hard invariant #7. Cross-repo work involving non-chunk
 artifacts is not supported, limiting the system's utility for multi-repo workflows.
+
+### External Chunk References Not in Causal Ordering
+
+**Location**: `src/artifact_ordering.py`, `src/models.py#ExternalChunkRef`
+
+`ArtifactIndex` only processes directories containing GOAL.md. External chunk directories
+have `external.yaml` instead, so they are completely excluded from:
+- The ordered artifact list
+- Tip identification
+- Staleness detection
+
+The `ExternalChunkRef` model also lacks a `created_after` field. An external chunk's
+GOAL.md `created_after` tracks its position in the *external repo's* causal chain,
+but we need a separate field to track where the reference fits in the *local* causal
+ordering.
+
+**Impact**: High. Violates hard invariant #2. External chunks are invisible to causal
+ordering and always appear as orphans. The same external chunk could be referenced
+from multiple projects at different points in their respective causal chains, but
+currently this is not tracked.
+
+**Proposed fix**: Add `created_after: list[str]` to `ExternalChunkRef` model. Update
+`ArtifactIndex` to enumerate directories with `external.yaml` when GOAL.md doesn't
+exist, and read `created_after` from external.yaml (plain YAML, not markdown frontmatter).
+See investigation 0001-artifact_sequence_numbering proposed chunks for implementation
+details.
 
 ## Chunk Relationships
 
@@ -463,6 +539,12 @@ artifacts is not supported, limiting the system's utility for multi-repo workflo
   fields for all existing artifacts (chunks, narratives, investigations, subsystems).
   Creates linear causal chain based on sequence number order, enabling `ArtifactIndex`
   to correctly identify single tips for each artifact type
+
+- **0043-subsystem_docs_update** - Updated subsystem documentation to reflect the completed
+  causal ordering system: revised Hard Invariant #1 to describe `created_after` as primary
+  ordering mechanism, added new invariant for `created_after` requirement, documented
+  directory naming transition, expanded Artifact Ordering section with causal semantics,
+  added Known Deviation for external chunk references not in causal ordering
 
 ## Consolidation Chunks
 

@@ -33,7 +33,7 @@ proposed_chunks:
     Invariant #1 for new naming pattern, document created_after field and causal ordering
     semantics, add ArtifactIndex to Implementation Locations, note sequence prefixes
     as legacy."
-  chunk_directory: null
+  chunk_directory: 0043-subsystem_docs_update
 - prompt: "Update artifact creation for ALL types (chunks, narratives, investigations,
     subsystems) to use short_name/ instead of NNNN-short_name/ for directory naming.
     Add collision detection within each artifact type (short names only need to be
