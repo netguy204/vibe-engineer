@@ -6,7 +6,7 @@ proposed_chunks:
     InvestigationFrontmatter, and SubsystemFrontmatter Pydantic models in models.py.
     Field is optional (defaults to empty list) for backward compatibility. This is
     an array of short names referencing parent artifacts for causal ordering."
-  chunk_directory: null
+  chunk_directory: 0037-created_after_field
 - prompt: "Create src/artifact_ordering.py with ArtifactIndex class for caching ordered
     artifact lists. Include git-hash-based staleness detection, topological sort for
     multi-parent DAGs (Kahn's algorithm), find_tips() to identify artifacts with no

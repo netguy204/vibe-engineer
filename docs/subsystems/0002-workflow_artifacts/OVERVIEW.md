@@ -1,5 +1,5 @@
 ---
-status: DOCUMENTED
+status: REFACTORING
 chunks:
 - chunk_id: 0001-implement_chunk_start
   relationship: implements
@@ -20,6 +20,8 @@ chunks:
 - chunk_id: 0010-chunk_create_task_aware
   relationship: implements
 - chunk_id: 0036-chunk_frontmatter_model
+  relationship: implements
+- chunk_id: 0037-created_after_field
   relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks

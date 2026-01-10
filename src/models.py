@@ -351,6 +351,7 @@ class ProposedChunk(BaseModel):
 
 # Chunk: docs/chunks/0014-subsystem_schemas_and_model - Subsystem frontmatter schema
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Added proposed_chunks field
+# Chunk: docs/chunks/0037-created_after_field - Causal ordering field
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -361,6 +362,7 @@ class SubsystemFrontmatter(BaseModel):
     chunks: list[ChunkRelationship] = []
     code_references: list[SymbolicReference] = []
     proposed_chunks: list[ProposedChunk] = []
+    created_after: list[str] = []
 
 
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative status enum
@@ -373,6 +375,7 @@ class NarrativeStatus(StrEnum):
 
 
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Narrative frontmatter schema
+# Chunk: docs/chunks/0037-created_after_field - Causal ordering field
 class NarrativeFrontmatter(BaseModel):
     """Frontmatter schema for narrative OVERVIEW.md files.
 
@@ -382,10 +385,12 @@ class NarrativeFrontmatter(BaseModel):
     status: NarrativeStatus
     advances_trunk_goal: str | None = None
     proposed_chunks: list[ProposedChunk] = []
+    created_after: list[str] = []
 
 
 # Chunk: docs/chunks/0029-investigation_commands - Investigation frontmatter schema
 # Chunk: docs/chunks/0032-proposed_chunks_frontmatter - Updated to use ProposedChunk
+# Chunk: docs/chunks/0037-created_after_field - Causal ordering field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 
@@ -395,9 +400,11 @@ class InvestigationFrontmatter(BaseModel):
     status: InvestigationStatus
     trigger: str | None = None
     proposed_chunks: list[ProposedChunk] = []
+    created_after: list[str] = []
 
 
 # Chunk: docs/chunks/0036-chunk_frontmatter_model - Chunk frontmatter schema
+# Chunk: docs/chunks/0037-created_after_field - Causal ordering field
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -413,3 +420,4 @@ class ChunkFrontmatter(BaseModel):
     subsystems: list[SubsystemRelationship] = []
     proposed_chunks: list[ProposedChunk] = []
     dependents: list[ExternalChunkRef] = []  # For cross-repo chunks
+    created_after: list[str] = []

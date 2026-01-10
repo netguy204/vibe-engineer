@@ -10,6 +10,10 @@ from models import (
     InvestigationStatus,
     ChunkFrontmatter,
     ChunkStatus,
+    NarrativeFrontmatter,
+    NarrativeStatus,
+    SubsystemFrontmatter,
+    SubsystemStatus,
 )
 
 
@@ -203,3 +207,67 @@ class TestChunkFrontmatter:
         """Lowercase status values are rejected (case-sensitive enum)."""
         with pytest.raises(ValidationError):
             ChunkFrontmatter(status="implementing")
+
+    def test_created_after_defaults_to_empty_list(self):
+        """created_after defaults to empty list when not provided."""
+        frontmatter = ChunkFrontmatter(status=ChunkStatus.ACTIVE)
+        assert frontmatter.created_after == []
+
+    def test_created_after_accepts_list_of_strings(self):
+        """created_after accepts a list of short name strings."""
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            created_after=["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
+        )
+        assert frontmatter.created_after == ["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
+
+
+class TestNarrativeFrontmatterCreatedAfter:
+    """Tests for created_after field in NarrativeFrontmatter."""
+
+    def test_created_after_defaults_to_empty_list(self):
+        """created_after defaults to empty list when not provided."""
+        frontmatter = NarrativeFrontmatter(status=NarrativeStatus.ACTIVE)
+        assert frontmatter.created_after == []
+
+    def test_created_after_accepts_list_of_strings(self):
+        """created_after accepts a list of short name strings."""
+        frontmatter = NarrativeFrontmatter(
+            status=NarrativeStatus.DRAFTING,
+            created_after=["some_artifact", "another_artifact"]
+        )
+        assert frontmatter.created_after == ["some_artifact", "another_artifact"]
+
+
+class TestInvestigationFrontmatterCreatedAfter:
+    """Tests for created_after field in InvestigationFrontmatter."""
+
+    def test_created_after_defaults_to_empty_list(self):
+        """created_after defaults to empty list when not provided."""
+        frontmatter = InvestigationFrontmatter(status=InvestigationStatus.ONGOING)
+        assert frontmatter.created_after == []
+
+    def test_created_after_accepts_list_of_strings(self):
+        """created_after accepts a list of short name strings."""
+        frontmatter = InvestigationFrontmatter(
+            status=InvestigationStatus.SOLVED,
+            created_after=["memory_leak_investigation", "another_one"]
+        )
+        assert frontmatter.created_after == ["memory_leak_investigation", "another_one"]
+
+
+class TestSubsystemFrontmatterCreatedAfter:
+    """Tests for created_after field in SubsystemFrontmatter."""
+
+    def test_created_after_defaults_to_empty_list(self):
+        """created_after defaults to empty list when not provided."""
+        frontmatter = SubsystemFrontmatter(status=SubsystemStatus.DOCUMENTED)
+        assert frontmatter.created_after == []
+
+    def test_created_after_accepts_list_of_strings(self):
+        """created_after accepts a list of short name strings."""
+        frontmatter = SubsystemFrontmatter(
+            status=SubsystemStatus.STABLE,
+            created_after=["template_system", "frontmatter_parsing"]
+        )
+        assert frontmatter.created_after == ["template_system", "frontmatter_parsing"]
