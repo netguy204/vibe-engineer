@@ -85,9 +85,11 @@ Investigations are exploratory documents for understanding something before comm
 | Status | Meaning | Use When |
 |--------|---------|----------|
 | `ONGOING` | Active exploration | Investigation is in progress |
-| `SOLVED` | Question answered or problem resolved | Root cause found, solution identified |
+| `SOLVED` | Investigation question answered | Root cause found, solution identified. Proposed chunks may exist for implementation work. |
 | `NOTED` | Documented but no action needed | Findings useful for reference but don't warrant chunks |
 | `DEFERRED` | Paused for external reasons | Blocked on dependencies, time constraints, etc. |
+
+Note: `SOLVED` means the investigation is complete, not that all resulting work is done. Check `proposed_chunks` for follow-up implementation work.
 
 ### When to Use Investigations vs Other Artifacts
 
