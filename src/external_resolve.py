@@ -5,18 +5,19 @@ read their GOAL.md and PLAN.md content, supporting both task directory mode
 (using local worktrees) and single repo mode (using the repo cache).
 """
 # Chunk: docs/chunks/external_resolve - External chunk resolution
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
 
 from dataclasses import dataclass
 from pathlib import Path
 
 import repo_cache
+from external_refs import is_external_artifact, load_external_ref
 from git_utils import get_current_sha
+from models import ArtifactType
 from task_utils import (
     is_task_directory,
     load_task_config,
-    load_external_ref,
     resolve_repo_directory,
-    is_external_chunk,
     TaskChunkError,
 )
 
@@ -121,7 +122,7 @@ def resolve_task_directory(
     project_ref, chunk_dir = matches[0]
 
     # Verify it's an external chunk
-    if not is_external_chunk(chunk_dir):
+    if not is_external_artifact(chunk_dir, ArtifactType.CHUNK):
         raise TaskChunkError(
             f"Chunk '{local_chunk_id}' is not an external reference (has GOAL.md instead of external.yaml)"
         )
@@ -231,7 +232,7 @@ def resolve_single_repo(
         raise TaskChunkError(f"Chunk '{local_chunk_id}' not found")
 
     # Verify it's an external chunk
-    if not is_external_chunk(chunk_dir):
+    if not is_external_artifact(chunk_dir, ArtifactType.CHUNK):
         raise TaskChunkError(
             f"Chunk '{local_chunk_id}' is not an external reference (has GOAL.md instead of external.yaml)"
         )

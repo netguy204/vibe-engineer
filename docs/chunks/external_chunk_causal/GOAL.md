@@ -21,7 +21,7 @@ code_references:
     implements: "Handle external chunks in dependency graph building"
   - ref: src/artifact_ordering.py#ArtifactIndex::get_ancestors
     implements: "Handle external chunks in ancestor lookup"
-  - ref: src/task_utils.py#create_external_yaml
+  - ref: src/external_refs.py#create_external_yaml
     implements: "Accept created_after parameter for causal ordering"
   - ref: src/task_utils.py#create_task_chunk
     implements: "Pass current tips to create_external_yaml for causal ordering"

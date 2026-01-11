@@ -6,6 +6,7 @@ code_paths:
 - src/models.py
 - src/artifact_ordering.py
 - src/task_utils.py
+- src/external_refs.py
 - tests/test_task_models.py
 - tests/test_task_utils.py
 - tests/test_chunks.py
@@ -20,9 +21,9 @@ code_references:
     implements: "Updated dependents field to use ExternalArtifactRef"
   - ref: src/artifact_ordering.py
     implements: "Import ArtifactType from models.py instead of defining locally"
-  - ref: src/task_utils.py#load_external_ref
+  - ref: src/external_refs.py#load_external_ref
     implements: "Updated to return ExternalArtifactRef"
-  - ref: src/task_utils.py#create_external_yaml
+  - ref: src/external_refs.py#create_external_yaml
     implements: "Updated to use artifact_type and artifact_id fields"
   - ref: src/task_utils.py#create_task_chunk
     implements: "Updated to use ExternalArtifactRef format for dependents"

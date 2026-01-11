@@ -6,6 +6,7 @@ chunk repositories.
 """
 # Chunk: docs/chunks/ve_sync_command - Sync external references
 # Chunk: docs/chunks/external_resolve - Use repo cache for single-repo mode
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,13 +14,13 @@ from pathlib import Path
 import yaml
 
 import repo_cache
+from external_refs import is_external_artifact, load_external_ref
 from git_utils import get_current_sha
+from models import ArtifactType
 from task_utils import (
     is_task_directory,
     load_task_config,
-    load_external_ref,
     resolve_repo_directory,
-    is_external_chunk,
     TaskChunkError,
 )
 
@@ -50,7 +51,7 @@ def find_external_refs(project_path: Path) -> list[Path]:
 
     external_refs = []
     for chunk_dir in chunks_dir.iterdir():
-        if chunk_dir.is_dir() and is_external_chunk(chunk_dir):
+        if chunk_dir.is_dir() and is_external_artifact(chunk_dir, ArtifactType.CHUNK):
             external_yaml = chunk_dir / "external.yaml"
             if external_yaml.exists():
                 external_refs.append(external_yaml)
