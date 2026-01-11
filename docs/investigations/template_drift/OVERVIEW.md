@@ -9,7 +9,7 @@ proposed_chunks:
   - prompt: "Restore lost content (cluster prefix, proposed_chunks, What Counts as Code) to source templates"
     chunk_directory: restore_template_content
   - prompt: "Add Jinja backreference comments to templates for traceability"
-    chunk_directory: null
+    chunk_directory: jinja_backrefs
   - prompt: "Update ve source CLAUDE.md to document template editing workflow"
     chunk_directory: template_drift_prevention  # consolidated
 created_after: ["parallel_agent_orchestration"]

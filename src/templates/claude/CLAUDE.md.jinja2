@@ -1,3 +1,4 @@
+{# Chunk: docs/chunks/template_drift_prevention - Auto-generated header for ve source repo #}
 {% if ve_config is defined and ve_config.is_ve_source_repo %}
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
@@ -95,6 +96,7 @@ Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
 - **Chunk**: When you know what needs to be done and can proceed directly to implementation
 - **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
 
+{# Chunk: docs/chunks/restore_template_content - Proposed chunks documentation #}
 ## Proposed Chunks
 
 The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, subsystems, and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
@@ -144,6 +146,7 @@ Source code may contain backreference comments that link code back to the docume
 
 **When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
 
+{# Chunk: docs/chunks/restore_template_content - Development section with uv run instructions #}
 ## Development
 
 This project uses UV for package management. Run tests with `uv run pytest tests/`.
@@ -163,6 +166,7 @@ ve chunk list
 
 This ensures you're testing your changes with the local development code, not a previously installed version.
 {% endif %}
+{# Chunk: docs/chunks/template_drift_prevention - Template editing workflow documentation #}
 {% if ve_config is defined and ve_config.is_ve_source_repo %}
 
 ## Template Editing Workflow
