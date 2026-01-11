@@ -56,19 +56,27 @@ class Project:
 
     # Chunk: docs/chunks/project_init_command - Claude commands initialization
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/task_init_scaffolding - task_context=False for project context
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def _init_commands(self) -> InitResult:
         """Set up Claude commands by rendering templates.
 
         Commands are always updated to the latest templates (overwrite=True)
         because they are managed artifacts, not user content.
+
+        Commands are rendered with task_context=False to ensure the conditional
+        blocks for task-specific content are properly omitted in project context.
         """
         result = InitResult()
         commands_dir = self.project_dir / ".claude" / "commands"
 
         # Use render_to_directory with overwrite=True to always update commands
+        # Pass task_context=False to ensure project-context commands don't include
+        # task-specific conditional content
         context = TemplateContext()
-        render_result = render_to_directory("commands", commands_dir, context=context, overwrite=True)
+        render_result = render_to_directory(
+            "commands", commands_dir, context=context, overwrite=True, task_context=False
+        )
 
         # Map RenderResult paths to relative path strings for InitResult
         for path in render_result.created:

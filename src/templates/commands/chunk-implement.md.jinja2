@@ -5,6 +5,16 @@ description: Implement the active chunk.
 ## Tips
 
 {% include "partials/common-tips.md.jinja2" %}
+{% if task_context %}
+
+**Task Context:** Implementation may span multiple participating projects:
+{% for project in projects %}
+- `{{ project }}`
+{% endfor %}
+
+The chunk plan is in the external repo (`{{ external_artifact_repo }}`). Work
+from the task root to access both the plan and all project directories.
+{% endif %}
 
 ## Instructions
 
