@@ -342,6 +342,7 @@ class CodeReference(BaseModel):
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference
 # Chunk: docs/chunks/project_qualified_refs - Project-qualified path support
+# Chunk: docs/chunks/subsystem_template - Optional compliance field for subsystem docs
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
