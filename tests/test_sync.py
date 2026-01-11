@@ -5,6 +5,7 @@ import subprocess
 import pytest
 import yaml
 
+from models import ArtifactType
 from sync import (
     find_external_refs,
     update_external_yaml,
@@ -49,7 +50,9 @@ class TestFindExternalRefs:
 
         result = find_external_refs(tmp_path)
         assert len(result) == 1
-        assert result[0] == external_yaml
+        path, artifact_type = result[0]
+        assert path == external_yaml
+        assert artifact_type == ArtifactType.CHUNK
 
     def test_finds_multiple_external_refs(self, tmp_path):
         """Finds multiple external.yaml files."""
@@ -83,7 +86,142 @@ class TestFindExternalRefs:
 
         result = find_external_refs(tmp_path)
         assert len(result) == 1
-        assert "0001-external" in str(result[0])
+        assert "0001-external" in str(result[0][0])
+
+    def test_finds_external_refs_in_narratives(self, tmp_path):
+        """Finds external.yaml in docs/narratives/ directories."""
+        narratives_dir = tmp_path / "docs" / "narratives"
+        external_dir = narratives_dir / "my_narrative"
+        external_dir.mkdir(parents=True)
+        external_yaml = external_dir / "external.yaml"
+        external_yaml.write_text(
+            "artifact_type: narrative\n"
+            "artifact_id: my_narrative\n"
+            "repo: acme/narratives\n"
+            "track: main\n"
+            "pinned: " + "a" * 40 + "\n"
+        )
+
+        result = find_external_refs(tmp_path)
+        assert len(result) == 1
+        path, artifact_type = result[0]
+        assert path == external_yaml
+        assert artifact_type == ArtifactType.NARRATIVE
+
+    def test_finds_external_refs_in_investigations(self, tmp_path):
+        """Finds external.yaml in docs/investigations/ directories."""
+        investigations_dir = tmp_path / "docs" / "investigations"
+        external_dir = investigations_dir / "my_investigation"
+        external_dir.mkdir(parents=True)
+        external_yaml = external_dir / "external.yaml"
+        external_yaml.write_text(
+            "artifact_type: investigation\n"
+            "artifact_id: my_investigation\n"
+            "repo: acme/investigations\n"
+            "track: main\n"
+            "pinned: " + "a" * 40 + "\n"
+        )
+
+        result = find_external_refs(tmp_path)
+        assert len(result) == 1
+        path, artifact_type = result[0]
+        assert path == external_yaml
+        assert artifact_type == ArtifactType.INVESTIGATION
+
+    def test_finds_external_refs_in_subsystems(self, tmp_path):
+        """Finds external.yaml in docs/subsystems/ directories."""
+        subsystems_dir = tmp_path / "docs" / "subsystems"
+        external_dir = subsystems_dir / "my_subsystem"
+        external_dir.mkdir(parents=True)
+        external_yaml = external_dir / "external.yaml"
+        external_yaml.write_text(
+            "artifact_type: subsystem\n"
+            "artifact_id: my_subsystem\n"
+            "repo: acme/subsystems\n"
+            "track: main\n"
+            "pinned: " + "a" * 40 + "\n"
+        )
+
+        result = find_external_refs(tmp_path)
+        assert len(result) == 1
+        path, artifact_type = result[0]
+        assert path == external_yaml
+        assert artifact_type == ArtifactType.SUBSYSTEM
+
+    def test_finds_external_refs_across_all_artifact_types(self, tmp_path):
+        """Returns all external refs across all artifact types when no filter specified."""
+        # Create external refs in each artifact type directory
+        for type_name, dir_name, main_file in [
+            ("chunk", "chunks", "GOAL.md"),
+            ("narrative", "narratives", "OVERVIEW.md"),
+            ("investigation", "investigations", "OVERVIEW.md"),
+            ("subsystem", "subsystems", "OVERVIEW.md"),
+        ]:
+            artifact_dir = tmp_path / "docs" / dir_name / f"my_{type_name}"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "external.yaml").write_text(
+                f"artifact_type: {type_name}\n"
+                f"artifact_id: my_{type_name}\n"
+                f"repo: acme/{dir_name}\n"
+                f"track: main\n"
+                f"pinned: {'a' * 40}\n"
+            )
+
+        result = find_external_refs(tmp_path)
+        assert len(result) == 4
+        found_types = {r[1] for r in result}
+        assert found_types == {
+            ArtifactType.CHUNK,
+            ArtifactType.NARRATIVE,
+            ArtifactType.INVESTIGATION,
+            ArtifactType.SUBSYSTEM,
+        }
+
+    def test_filter_by_single_artifact_type(self, tmp_path):
+        """Can filter by artifact type."""
+        # Create external refs in each artifact type directory
+        for type_name, dir_name in [
+            ("chunk", "chunks"),
+            ("narrative", "narratives"),
+        ]:
+            artifact_dir = tmp_path / "docs" / dir_name / f"my_{type_name}"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "external.yaml").write_text(
+                f"artifact_type: {type_name}\n"
+                f"artifact_id: my_{type_name}\n"
+                f"repo: acme/{dir_name}\n"
+                f"track: main\n"
+                f"pinned: {'a' * 40}\n"
+            )
+
+        result = find_external_refs(tmp_path, artifact_types=[ArtifactType.CHUNK])
+        assert len(result) == 1
+        assert result[0][1] == ArtifactType.CHUNK
+
+    def test_filter_by_multiple_artifact_types(self, tmp_path):
+        """Can filter by multiple artifact types."""
+        # Create external refs in each artifact type directory
+        for type_name, dir_name in [
+            ("chunk", "chunks"),
+            ("narrative", "narratives"),
+            ("investigation", "investigations"),
+        ]:
+            artifact_dir = tmp_path / "docs" / dir_name / f"my_{type_name}"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "external.yaml").write_text(
+                f"artifact_type: {type_name}\n"
+                f"artifact_id: my_{type_name}\n"
+                f"repo: acme/{dir_name}\n"
+                f"track: main\n"
+                f"pinned: {'a' * 40}\n"
+            )
+
+        result = find_external_refs(
+            tmp_path, artifact_types=[ArtifactType.CHUNK, ArtifactType.NARRATIVE]
+        )
+        assert len(result) == 2
+        found_types = {r[1] for r in result}
+        assert found_types == {ArtifactType.CHUNK, ArtifactType.NARRATIVE}
 
 
 class TestUpdateExternalYaml:
@@ -154,12 +292,14 @@ class TestSyncResult:
     def test_sync_result_creation(self):
         """Creates SyncResult with all fields."""
         result = SyncResult(
-            chunk_id="0001-feature",
+            artifact_id="0001-feature",
+            artifact_type=ArtifactType.CHUNK,
             old_sha="a" * 40,
             new_sha="b" * 40,
             updated=True,
         )
-        assert result.chunk_id == "0001-feature"
+        assert result.artifact_id == "0001-feature"
+        assert result.artifact_type == ArtifactType.CHUNK
         assert result.old_sha == "a" * 40
         assert result.new_sha == "b" * 40
         assert result.updated is True
@@ -168,13 +308,49 @@ class TestSyncResult:
     def test_sync_result_with_error(self):
         """Creates SyncResult with error message."""
         result = SyncResult(
-            chunk_id="0001-feature",
+            artifact_id="0001-feature",
+            artifact_type=ArtifactType.CHUNK,
             old_sha="a" * 40,
             new_sha="",
             updated=False,
             error="External repo not accessible",
         )
         assert result.error == "External repo not accessible"
+
+    def test_sync_result_with_narrative_type(self):
+        """Creates SyncResult for narrative artifact."""
+        result = SyncResult(
+            artifact_id="my_narrative",
+            artifact_type=ArtifactType.NARRATIVE,
+            old_sha="a" * 40,
+            new_sha="b" * 40,
+            updated=True,
+        )
+        assert result.artifact_id == "my_narrative"
+        assert result.artifact_type == ArtifactType.NARRATIVE
+
+    def test_sync_result_formatted_id(self):
+        """SyncResult can format artifact ID with type prefix."""
+        result = SyncResult(
+            artifact_id="my_feature",
+            artifact_type=ArtifactType.CHUNK,
+            old_sha="a" * 40,
+            new_sha="b" * 40,
+            updated=True,
+        )
+        assert result.formatted_id == "chunk:my_feature"
+
+    def test_sync_result_formatted_id_with_project(self):
+        """SyncResult can format artifact ID with project and type prefix."""
+        result = SyncResult(
+            artifact_id="acme/service-a:my_feature",
+            artifact_type=ArtifactType.NARRATIVE,
+            old_sha="a" * 40,
+            new_sha="b" * 40,
+            updated=True,
+        )
+        # For task directory mode, artifact_id may include project prefix
+        assert result.artifact_id == "acme/service-a:my_feature"
 
 
 @pytest.fixture
@@ -357,10 +533,10 @@ class TestSyncTaskDirectory:
         results = sync_task_directory(task_dir, project_filter=["acme/service-a"])
 
         assert len(results) == 1
-        assert "service-a" in results[0].chunk_id
+        assert "service-a" in results[0].artifact_id
 
-    def test_chunk_filter(self, task_directory):
-        """Syncs only specified chunks when filter provided."""
+    def test_artifact_filter(self, task_directory):
+        """Syncs only specified artifacts when filter provided."""
         task_dir = task_directory["task_dir"]
 
         # Add another external ref to one project
@@ -378,12 +554,12 @@ class TestSyncTaskDirectory:
         )
 
         results = sync_task_directory(
-            task_dir, chunk_filter=["0001-shared_feature"]
+            task_dir, artifact_filter=["0001-shared_feature"]
         )
 
-        # Should only sync the filtered chunk across projects
+        # Should only sync the filtered artifact across projects
         for result in results:
-            assert "0001-shared_feature" in result.chunk_id
+            assert "0001-shared_feature" in result.artifact_id
 
     def test_returns_already_current_status(self, task_directory):
         """Reports refs that are already current."""
@@ -519,8 +695,8 @@ class TestSyncSingleRepo:
         content = yaml.safe_load(external_yaml.read_text())
         assert content["pinned"] == old_sha
 
-    def test_chunk_filter(self, git_repo, monkeypatch):
-        """Syncs only specified chunks when filter provided."""
+    def test_artifact_filter(self, git_repo, monkeypatch):
+        """Syncs only specified artifacts when filter provided."""
         import sync
 
         # Create two external references
@@ -538,10 +714,10 @@ class TestSyncSingleRepo:
 
         monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: "a" * 40)
 
-        results = sync_single_repo(git_repo, chunk_filter=["0001-external"])
+        results = sync_single_repo(git_repo, artifact_filter=["0001-external"])
 
         assert len(results) == 1
-        assert "0001-external" in results[0].chunk_id
+        assert "0001-external" in results[0].artifact_id
 
     def test_handles_remote_error(self, git_repo, monkeypatch):
         """Handles remote resolution failure with error in result."""
