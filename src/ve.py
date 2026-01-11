@@ -1935,5 +1935,161 @@ def work_unit_delete(chunk, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/orch_scheduling - Inject chunk into work pool
+@orch.command("inject")
+@click.argument("chunk")
+@click.option("--phase", type=str, default=None, help="Override initial phase (GOAL, PLAN, IMPLEMENT)")
+@click.option("--priority", type=int, default=0, help="Scheduling priority (higher = more urgent)")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_inject(chunk, phase, priority, json_output, project_dir):
+    """Inject a chunk into the orchestrator work pool.
+
+    Validates chunk exists and determines initial phase from chunk state.
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        # Use the inject endpoint via generic request
+        body = {"chunk": chunk, "priority": priority}
+        if phase:
+            body["phase"] = phase
+
+        result = client._request("POST", "/work-units/inject", json=body)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Injected: {result['chunk']} [{result['phase']}] priority={result['priority']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_scheduling - Show ready queue
+@orch.command("queue")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_queue(json_output, project_dir):
+    """Show ready queue ordered by priority."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client._request("GET", "/work-units/queue")
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            units = result["work_units"]
+            if not units:
+                click.echo("Ready queue is empty")
+                return
+
+            # Display table
+            click.echo(f"{'CHUNK':<30} {'PHASE':<12} {'PRIORITY':<10}")
+            click.echo("-" * 52)
+            for unit in units:
+                click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['priority']:<10}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_scheduling - Prioritize work unit
+@orch.command("prioritize")
+@click.argument("chunk")
+@click.argument("priority", type=int)
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_prioritize(chunk, priority, json_output, project_dir):
+    """Set priority for a work unit."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client._request(
+            "PATCH",
+            f"/work-units/{chunk}/priority",
+            json={"priority": priority},
+        )
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"{chunk}: priority set to {result['priority']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_scheduling - Config command
+@orch.command("config")
+@click.option("--max-agents", type=int, help="Maximum concurrent agents")
+@click.option("--dispatch-interval", type=float, help="Dispatch interval in seconds")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_config(max_agents, dispatch_interval, json_output, project_dir):
+    """Get or set orchestrator configuration.
+
+    If no options are provided, shows current configuration.
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        if max_agents is None and dispatch_interval is None:
+            # Get config
+            result = client._request("GET", "/config")
+        else:
+            # Update config
+            body = {}
+            if max_agents is not None:
+                body["max_agents"] = max_agents
+            if dispatch_interval is not None:
+                body["dispatch_interval_seconds"] = dispatch_interval
+
+            result = client._request("PATCH", "/config", json=body)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo("Orchestrator Configuration:")
+            click.echo(f"  max_agents: {result['max_agents']}")
+            click.echo(f"  dispatch_interval_seconds: {result['dispatch_interval_seconds']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
 if __name__ == "__main__":
     cli()

@@ -21,7 +21,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 1
+    CURRENT_VERSION = 2
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -84,6 +84,7 @@ class StateStore:
         """Run all migrations from from_version to CURRENT_VERSION."""
         migrations = {
             1: self._migrate_v1,
+            2: self._migrate_v2,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -125,6 +126,26 @@ class StateStore:
             """
         )
 
+    def _migrate_v2(self) -> None:
+        """Add scheduling fields and config table."""
+        self.connection.executescript(
+            """
+            -- Add priority and session_id columns to work_units
+            ALTER TABLE work_units ADD COLUMN priority INTEGER DEFAULT 0;
+            ALTER TABLE work_units ADD COLUMN session_id TEXT;
+
+            -- Create config table for daemon settings
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            -- Create index for priority-based ordering
+            CREATE INDEX IF NOT EXISTS idx_work_units_priority
+                ON work_units(priority DESC, created_at ASC);
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -153,8 +174,9 @@ class StateStore:
             self.connection.execute(
                 """
                 INSERT INTO work_units
-                    (chunk, phase, status, blocked_by, worktree, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (chunk, phase, status, blocked_by, worktree, priority, session_id,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -162,6 +184,8 @@ class StateStore:
                     work_unit.status.value,
                     blocked_by_json,
                     work_unit.worktree,
+                    work_unit.priority,
+                    work_unit.session_id,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -215,7 +239,8 @@ class StateStore:
         self.connection.execute(
             """
             UPDATE work_units
-            SET phase = ?, status = ?, blocked_by = ?, worktree = ?, updated_at = ?
+            SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
+                priority = ?, session_id = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -223,6 +248,8 @@ class StateStore:
                 work_unit.status.value,
                 blocked_by_json,
                 work_unit.worktree,
+                work_unit.priority,
+                work_unit.session_id,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -331,11 +358,76 @@ class StateStore:
             for row in cursor.fetchall()
         ]
 
+    # Config operations
+
+    def get_config(self, key: str) -> Optional[str]:
+        """Get a config value by key.
+
+        Args:
+            key: The config key
+
+        Returns:
+            The config value, or None if not found
+        """
+        cursor = self.connection.execute(
+            "SELECT value FROM config WHERE key = ?", (key,)
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def set_config(self, key: str, value: str) -> None:
+        """Set a config value.
+
+        Args:
+            key: The config key
+            value: The config value (stored as string)
+        """
+        self.connection.execute(
+            """
+            INSERT OR REPLACE INTO config (key, value)
+            VALUES (?, ?)
+            """,
+            (key, value),
+        )
+
+    # Queue operations
+
+    def get_ready_queue(self, limit: Optional[int] = None) -> list[WorkUnit]:
+        """Get READY work units ordered by priority (highest first), then creation time.
+
+        Args:
+            limit: Optional maximum number of work units to return
+
+        Returns:
+            List of READY work units in scheduling order
+        """
+        query = """
+            SELECT * FROM work_units
+            WHERE status = ?
+            ORDER BY priority DESC, created_at ASC
+        """
+        if limit is not None:
+            query += f" LIMIT {limit}"
+
+        cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
+        return [self._row_to_work_unit(row) for row in cursor.fetchall()]
+
     # Helper methods
 
     def _row_to_work_unit(self, row: sqlite3.Row) -> WorkUnit:
         """Convert a database row to a WorkUnit model."""
         blocked_by = json.loads(row["blocked_by"]) if row["blocked_by"] else []
+
+        # Handle priority and session_id which may not exist in old databases
+        try:
+            priority = row["priority"] if row["priority"] is not None else 0
+        except (IndexError, KeyError):
+            priority = 0
+
+        try:
+            session_id = row["session_id"]
+        except (IndexError, KeyError):
+            session_id = None
 
         return WorkUnit(
             chunk=row["chunk"],
@@ -343,6 +435,8 @@ class StateStore:
             status=WorkUnitStatus(row["status"]),
             blocked_by=blocked_by,
             worktree=row["worktree"],
+            priority=priority,
+            session_id=session_id,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

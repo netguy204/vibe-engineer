@@ -48,6 +48,8 @@ class WorkUnit(BaseModel):
     status: WorkUnitStatus
     blocked_by: list[str] = []  # Chunk names that must complete first
     worktree: Optional[str] = None  # Git worktree path, if assigned
+    priority: int = 0  # Scheduling priority (higher = more urgent)
+    session_id: Optional[str] = None  # Agent session ID for suspended sessions
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +72,8 @@ class WorkUnit(BaseModel):
             "status": self.status.value,
             "blocked_by": self.blocked_by,
             "worktree": self.worktree,
+            "priority": self.priority,
+            "session_id": self.session_id,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -101,3 +105,33 @@ class OrchestratorState(BaseModel):
             "work_unit_counts": self.work_unit_counts,
             "version": self.version,
         }
+
+
+class OrchestratorConfig(BaseModel):
+    """Configuration for the orchestrator daemon.
+
+    Controls agent scheduling behavior.
+    """
+
+    max_agents: int = 2  # Maximum concurrent agents
+    dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
+
+    def model_dump_json_serializable(self) -> dict:
+        """Return a JSON-serializable dict representation."""
+        return {
+            "max_agents": self.max_agents,
+            "dispatch_interval_seconds": self.dispatch_interval_seconds,
+        }
+
+
+class AgentResult(BaseModel):
+    """Result from running an agent phase.
+
+    Captures the outcome of a single phase execution.
+    """
+
+    completed: bool  # Phase finished successfully
+    suspended: bool = False  # Agent called AskUserQuestion
+    session_id: Optional[str] = None  # Session ID for resuming
+    question: Optional[dict] = None  # Question data if suspended
+    error: Optional[str] = None  # Error message if failed

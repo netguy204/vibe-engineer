@@ -1,0 +1,17 @@
+---
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*)
+description: Create a git commit
+---
+
+## Context
+
+- Current git status: !`git status`
+- Current git diff (staged and unstaged changes): !`git diff HEAD`
+- Current branch: !`git branch --show-current`
+- Recent commits: !`git log --oneline -10`
+- Current chunk: !`ve chunk list --latest`
+
+## Your task
+
+Based on the above changes, create a single git commit. Use the conventional commit message format.
+Be careful not to add extraneous files to the commit. Examples of these would be binary builds or files describing an ephemeral task that was accomplished during the creation of the work.

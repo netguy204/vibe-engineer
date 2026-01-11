@@ -1,12 +1,15 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_scheduling - Scheduler integration
 """Daemon process management for the orchestrator.
 
 Handles starting, stopping, and monitoring the orchestrator daemon process.
 Uses standard Unix daemonization (double-fork) to detach from terminal.
 """
 
+import asyncio
 import atexit
 import fcntl
+import logging
 import os
 import signal
 import sys
@@ -17,8 +20,16 @@ from typing import Optional
 
 import uvicorn
 
-from orchestrator.models import OrchestratorState
+from orchestrator.models import OrchestratorConfig, OrchestratorState
 from orchestrator.state import StateStore, get_default_db_path
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 class DaemonError(Exception):
@@ -337,26 +348,172 @@ def start_daemon(project_dir: Path) -> int:
         store = StateStore(db_path)
         store.initialize()
 
+        # Capture base branch at startup
+        base_branch = _get_current_branch(project_dir)
+        store.set_config("base_branch", base_branch)
+        logger.info(f"Daemon started on branch: {base_branch}")
+
+        # Load config from database or use defaults
+        orch_config = _load_config(store)
+
         # Import and create the API app
         from orchestrator.api import create_app
 
         app = create_app(project_dir)
 
-        # Run the server
-        config = uvicorn.Config(
-            app,
-            uds=str(socket_path),
-            log_level="info",
-            access_log=True,
-        )
-        server = uvicorn.Server(config)
-        server.run()
+        # Run the server with scheduler
+        asyncio.run(_run_daemon_async(
+            app=app,
+            socket_path=socket_path,
+            store=store,
+            project_dir=project_dir,
+            config=orch_config,
+            base_branch=base_branch,
+        ))
 
     except Exception as e:
         print(f"Daemon startup error: {e}", file=sys.stderr)
         sys.exit(1)
 
     sys.exit(0)
+
+
+def _get_current_branch(project_dir: Path) -> str:
+    """Get the current git branch name.
+
+    Args:
+        project_dir: The project directory
+
+    Returns:
+        Current branch name
+
+    Raises:
+        DaemonError: If not in a git repo or git command fails
+    """
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise DaemonError(f"Failed to get current branch: {result.stderr}")
+
+    branch = result.stdout.strip()
+    if branch == "HEAD":
+        # Detached HEAD state - get the commit instead
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise DaemonError("Failed to get current commit in detached HEAD state")
+        return result.stdout.strip()
+
+    return branch
+
+
+def _load_config(store: StateStore) -> OrchestratorConfig:
+    """Load orchestrator config from database.
+
+    Args:
+        store: State store
+
+    Returns:
+        OrchestratorConfig with values from database or defaults
+    """
+    config = OrchestratorConfig()
+
+    # Load max_agents
+    max_agents_str = store.get_config("max_agents")
+    if max_agents_str is not None:
+        try:
+            config.max_agents = int(max_agents_str)
+        except ValueError:
+            pass
+
+    # Load dispatch_interval_seconds
+    dispatch_str = store.get_config("dispatch_interval_seconds")
+    if dispatch_str is not None:
+        try:
+            config.dispatch_interval_seconds = float(dispatch_str)
+        except ValueError:
+            pass
+
+    return config
+
+
+async def _run_daemon_async(
+    app,
+    socket_path: Path,
+    store: StateStore,
+    project_dir: Path,
+    config: OrchestratorConfig,
+    base_branch: str,
+) -> None:
+    """Run the daemon with scheduler as async tasks.
+
+    Args:
+        app: Starlette application
+        socket_path: Unix socket path
+        store: State store
+        project_dir: Project directory
+        config: Orchestrator config
+        base_branch: Git branch to use as base for worktrees
+    """
+    from orchestrator.scheduler import create_scheduler
+
+    # Create scheduler with base branch
+    scheduler = create_scheduler(store, project_dir, config, base_branch)
+
+    # Create uvicorn server
+    uvicorn_config = uvicorn.Config(
+        app,
+        uds=str(socket_path),
+        log_level="info",
+        access_log=True,
+    )
+    server = uvicorn.Server(uvicorn_config)
+
+    # Create shutdown event
+    shutdown_event = asyncio.Event()
+
+    # Handle shutdown signals
+    loop = asyncio.get_event_loop()
+
+    def signal_handler():
+        logger.info("Received shutdown signal")
+        shutdown_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    # Run scheduler and server concurrently
+    scheduler_task = asyncio.create_task(scheduler.start())
+    server_task = asyncio.create_task(server.serve())
+
+    # Wait for shutdown signal
+    await shutdown_event.wait()
+
+    # Graceful shutdown
+    logger.info("Shutting down...")
+
+    # Stop scheduler first
+    await scheduler.stop()
+    scheduler_task.cancel()
+
+    # Then stop server
+    server.should_exit = True
+    try:
+        await asyncio.wait_for(server_task, timeout=5.0)
+    except asyncio.TimeoutError:
+        server_task.cancel()
+
+    logger.info("Daemon shutdown complete")
 
 
 def stop_daemon(project_dir: Path, timeout: float = 5.0) -> bool:

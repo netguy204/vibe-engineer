@@ -352,3 +352,267 @@ class TestWorkUnitDelete:
             )
 
             assert result.exit_code == 1
+
+
+# Chunk: docs/chunks/orch_scheduling - Tests for scheduling CLI commands
+
+
+class TestOrchInject:
+    """Tests for ve orch inject command."""
+
+    def test_inject_success(self, runner, tmp_path):
+        """Successfully injects chunk."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "chunk": "test_chunk",
+                "phase": "PLAN",
+                "priority": 5,
+                "status": "READY",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "test_chunk", "--priority", "5", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "Injected" in result.output
+            assert "test_chunk" in result.output
+            assert "priority=5" in result.output
+
+    def test_inject_with_phase(self, runner, tmp_path):
+        """Inject with explicit phase."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "chunk": "test_chunk",
+                "phase": "IMPLEMENT",
+                "priority": 0,
+                "status": "READY",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "test_chunk", "--phase", "IMPLEMENT", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "POST", "/work-units/inject",
+                json={"chunk": "test_chunk", "priority": 0, "phase": "IMPLEMENT"},
+            )
+
+    def test_inject_not_found(self, runner, tmp_path):
+        """Shows error when chunk not found."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.side_effect = OrchestratorClientError("Chunk not found")
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "missing_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not found" in result.output.lower()
+
+    def test_inject_daemon_not_running(self, runner, tmp_path):
+        """Shows error when daemon not running."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.side_effect = DaemonNotRunningError("not running")
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "test_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not running" in result.output.lower()
+
+
+class TestOrchQueue:
+    """Tests for ve orch queue command."""
+
+    def test_queue_empty(self, runner, tmp_path):
+        """Shows message when queue is empty."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {"work_units": [], "count": 0}
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "queue", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "empty" in result.output.lower()
+
+    def test_queue_with_units(self, runner, tmp_path):
+        """Shows queue with work units."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "work_units": [
+                    {"chunk": "high_priority", "phase": "PLAN", "priority": 10},
+                    {"chunk": "low_priority", "phase": "GOAL", "priority": 0},
+                ],
+                "count": 2,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "queue", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "high_priority" in result.output
+            assert "low_priority" in result.output
+            # High priority should be first
+            assert result.output.index("high_priority") < result.output.index("low_priority")
+
+    def test_queue_json(self, runner, tmp_path):
+        """Queue outputs JSON format."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "work_units": [{"chunk": "test", "phase": "PLAN", "priority": 0}],
+                "count": 1,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "queue", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data["count"] == 1
+
+
+class TestOrchPrioritize:
+    """Tests for ve orch prioritize command."""
+
+    def test_prioritize_success(self, runner, tmp_path):
+        """Successfully sets priority."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "chunk": "test_chunk",
+                "priority": 10,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "prioritize", "test_chunk", "10", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "priority" in result.output.lower()
+            assert "10" in result.output
+
+    def test_prioritize_not_found(self, runner, tmp_path):
+        """Shows error when work unit not found."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.side_effect = OrchestratorClientError("not found")
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "prioritize", "missing", "5", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not found" in result.output
+
+
+class TestOrchConfig:
+    """Tests for ve orch config command."""
+
+    def test_config_get(self, runner, tmp_path):
+        """Gets current configuration."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "max_agents: 2" in result.output
+            assert "dispatch_interval_seconds: 1.0" in result.output
+
+    def test_config_set_max_agents(self, runner, tmp_path):
+        """Sets max_agents."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 4,
+                "dispatch_interval_seconds": 1.0,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--max-agents", "4", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "PATCH", "/config", json={"max_agents": 4}
+            )
+
+    def test_config_set_dispatch_interval(self, runner, tmp_path):
+        """Sets dispatch interval."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 0.5,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--dispatch-interval", "0.5", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "PATCH", "/config", json={"dispatch_interval_seconds": 0.5}
+            )
+
+    def test_config_json(self, runner, tmp_path):
+        """Config outputs JSON format."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data["max_agents"] == 2

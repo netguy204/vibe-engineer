@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_scheduling - Scheduling API endpoints
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.
@@ -16,6 +17,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from orchestrator.models import (
+    OrchestratorConfig,
     OrchestratorState,
     WorkUnit,
     WorkUnitPhase,
@@ -239,6 +241,307 @@ async def get_status_history_endpoint(request: Request) -> JSONResponse:
     })
 
 
+# Scheduling endpoints
+
+
+def _parse_chunk_status(goal_path: Path) -> Optional[str]:
+    """Parse the status field from a chunk's GOAL.md frontmatter.
+
+    Args:
+        goal_path: Path to the GOAL.md file
+
+    Returns:
+        The status string (e.g., "FUTURE", "IMPLEMENTING") or None if not found
+    """
+    import re
+
+    try:
+        content = goal_path.read_text()
+    except Exception:
+        return None
+
+    # Extract YAML frontmatter
+    frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not frontmatter_match:
+        return None
+
+    frontmatter = frontmatter_match.group(1)
+
+    # Look for status field
+    status_match = re.search(r"^status:\s*(\w+)", frontmatter, re.MULTILINE)
+    if status_match:
+        return status_match.group(1)
+
+    return None
+
+
+def _plan_has_content(plan_path: Path) -> bool:
+    """Check if PLAN.md has actual content beyond the template.
+
+    Looks for content in the '## Approach' section that isn't just the
+    template's HTML comment block.
+
+    Args:
+        plan_path: Path to the PLAN.md file
+
+    Returns:
+        True if the plan has actual content, False if it's just a template
+    """
+    import re
+
+    try:
+        content = plan_path.read_text()
+    except Exception:
+        return False
+
+    # Look for the Approach section
+    approach_match = re.search(
+        r"## Approach\s*\n(.*?)(?=\n## |\Z)",
+        content,
+        re.DOTALL
+    )
+
+    if not approach_match:
+        return False
+
+    approach_content = approach_match.group(1).strip()
+
+    # If the approach section is empty or only contains HTML comments, it's a template
+    # Remove HTML comments and see what's left
+    content_without_comments = re.sub(r"<!--.*?-->", "", approach_content, flags=re.DOTALL)
+    content_without_comments = content_without_comments.strip()
+
+    # If there's meaningful content after removing comments, the plan is populated
+    return len(content_without_comments) > 0
+
+
+def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
+    """Detect the initial phase for a chunk based on existing files and status.
+
+    Checks both file existence AND content to determine the appropriate phase.
+    A PLAN.md that's just a template (no actual content) is treated as if it
+    doesn't exist.
+
+    Args:
+        chunk_dir: Path to the chunk directory
+
+    Returns:
+        WorkUnitPhase to start from
+    """
+    goal_path = chunk_dir / "GOAL.md"
+    plan_path = chunk_dir / "PLAN.md"
+
+    # If no GOAL.md, start with GOAL phase
+    if not goal_path.exists():
+        return WorkUnitPhase.GOAL
+
+    # Check chunk status from frontmatter
+    chunk_status = _parse_chunk_status(goal_path)
+
+    # Check if PLAN.md exists AND has actual content (not just template)
+    plan_exists_with_content = plan_path.exists() and _plan_has_content(plan_path)
+
+    # For FUTURE or IMPLEMENTING chunks, the goal is already defined
+    # so we start from PLAN phase (if no populated PLAN.md exists)
+    if chunk_status in ("FUTURE", "IMPLEMENTING"):
+        if not plan_exists_with_content:
+            return WorkUnitPhase.PLAN
+        else:
+            return WorkUnitPhase.IMPLEMENT
+
+    # If GOAL.md exists but no populated PLAN.md, start with PLAN
+    if not plan_exists_with_content:
+        return WorkUnitPhase.PLAN
+
+    # Both exist with content - start with IMPLEMENT
+    return WorkUnitPhase.IMPLEMENT
+
+
+async def inject_endpoint(request: Request) -> JSONResponse:
+    """POST /work-units/inject - Inject a chunk into the work pool.
+
+    Validates chunk exists and determines initial phase from chunk state.
+    """
+    store = _get_store()
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    chunk = body.get("chunk")
+    if not chunk:
+        return _error_response("Missing required field: chunk")
+
+    # Validate chunk directory exists
+    chunk_dir = _project_dir / "docs" / "chunks" / chunk
+    goal_path = chunk_dir / "GOAL.md"
+
+    if not chunk_dir.exists():
+        return _error_response(f"Chunk directory does not exist: docs/chunks/{chunk}", 404)
+
+    if not goal_path.exists():
+        return _error_response(f"Chunk GOAL.md does not exist: docs/chunks/{chunk}/GOAL.md", 404)
+
+    # Check if work unit already exists
+    existing = store.get_work_unit(chunk)
+    if existing:
+        return _error_response(
+            f"Work unit for chunk '{chunk}' already exists (status: {existing.status.value})",
+            status_code=409,
+        )
+
+    # Detect initial phase
+    phase = body.get("phase")
+    if phase:
+        try:
+            phase = WorkUnitPhase(phase)
+        except ValueError:
+            return _error_response(f"Invalid phase: {phase}")
+    else:
+        phase = _detect_initial_phase(chunk_dir)
+
+    # Get optional priority
+    priority = body.get("priority", 0)
+    if not isinstance(priority, int):
+        return _error_response("priority must be an integer")
+
+    # Create work unit
+    now = datetime.now(timezone.utc)
+    unit = WorkUnit(
+        chunk=chunk,
+        phase=phase,
+        status=WorkUnitStatus.READY,
+        priority=priority,
+        created_at=now,
+        updated_at=now,
+    )
+
+    try:
+        created = store.create_work_unit(unit)
+    except ValueError as e:
+        return _error_response(str(e), status_code=409)
+
+    return JSONResponse(
+        created.model_dump_json_serializable(),
+        status_code=201,
+    )
+
+
+async def queue_endpoint(request: Request) -> JSONResponse:
+    """GET /work-units/queue - Get ready queue ordered by priority."""
+    store = _get_store()
+
+    # Get ready queue
+    units = store.get_ready_queue()
+
+    return JSONResponse({
+        "work_units": [u.model_dump_json_serializable() for u in units],
+        "count": len(units),
+    })
+
+
+async def prioritize_endpoint(request: Request) -> JSONResponse:
+    """PATCH /work-units/{chunk}/priority - Update work unit priority."""
+    chunk = request.path_params["chunk"]
+    store = _get_store()
+
+    # Get existing unit
+    unit = store.get_work_unit(chunk)
+    if unit is None:
+        return _not_found_response("Work unit", chunk)
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    priority = body.get("priority")
+    if priority is None:
+        return _error_response("Missing required field: priority")
+
+    if not isinstance(priority, int):
+        return _error_response("priority must be an integer")
+
+    # Update priority
+    unit.priority = priority
+    unit.updated_at = datetime.now(timezone.utc)
+
+    try:
+        updated = store.update_work_unit(unit)
+    except ValueError as e:
+        return _error_response(str(e))
+
+    return JSONResponse(updated.model_dump_json_serializable())
+
+
+async def get_config_endpoint(request: Request) -> JSONResponse:
+    """GET /config - Get orchestrator configuration."""
+    store = _get_store()
+
+    # Build config from stored values
+    config = OrchestratorConfig()
+
+    max_agents_str = store.get_config("max_agents")
+    if max_agents_str:
+        try:
+            config.max_agents = int(max_agents_str)
+        except ValueError:
+            pass
+
+    dispatch_str = store.get_config("dispatch_interval_seconds")
+    if dispatch_str:
+        try:
+            config.dispatch_interval_seconds = float(dispatch_str)
+        except ValueError:
+            pass
+
+    return JSONResponse(config.model_dump_json_serializable())
+
+
+async def update_config_endpoint(request: Request) -> JSONResponse:
+    """PATCH /config - Update orchestrator configuration."""
+    store = _get_store()
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    # Update max_agents if provided
+    if "max_agents" in body:
+        max_agents = body["max_agents"]
+        if not isinstance(max_agents, int) or max_agents < 1:
+            return _error_response("max_agents must be a positive integer")
+        store.set_config("max_agents", str(max_agents))
+
+    # Update dispatch_interval_seconds if provided
+    if "dispatch_interval_seconds" in body:
+        interval = body["dispatch_interval_seconds"]
+        if not isinstance(interval, (int, float)) or interval <= 0:
+            return _error_response("dispatch_interval_seconds must be a positive number")
+        store.set_config("dispatch_interval_seconds", str(interval))
+
+    # Return updated config
+    config = OrchestratorConfig()
+
+    max_agents_str = store.get_config("max_agents")
+    if max_agents_str:
+        try:
+            config.max_agents = int(max_agents_str)
+        except ValueError:
+            pass
+
+    dispatch_str = store.get_config("dispatch_interval_seconds")
+    if dispatch_str:
+        try:
+            config.dispatch_interval_seconds = float(dispatch_str)
+        except ValueError:
+            pass
+
+    return JSONResponse(config.model_dump_json_serializable())
+
+
 # Application factory
 
 
@@ -264,14 +567,27 @@ def create_app(project_dir: Path) -> Starlette:
     # Note: More specific routes must come before generic {chunk:path} routes
     routes = [
         Route("/status", endpoint=status_endpoint, methods=["GET"]),
+        # Config endpoints
+        Route("/config", endpoint=get_config_endpoint, methods=["GET"]),
+        Route("/config", endpoint=update_config_endpoint, methods=["PATCH"]),
+        # Work unit endpoints
         Route("/work-units", endpoint=list_work_units_endpoint, methods=["GET"]),
         Route("/work-units", endpoint=create_work_unit_endpoint, methods=["POST"]),
-        # History endpoint must come before generic {chunk:path} routes
+        # Scheduling endpoints - must come before generic {chunk:path}
+        Route("/work-units/inject", endpoint=inject_endpoint, methods=["POST"]),
+        Route("/work-units/queue", endpoint=queue_endpoint, methods=["GET"]),
+        # History and priority endpoints must come before generic {chunk:path}
         Route(
             "/work-units/{chunk}/history",
             endpoint=get_status_history_endpoint,
             methods=["GET"],
         ),
+        Route(
+            "/work-units/{chunk}/priority",
+            endpoint=prioritize_endpoint,
+            methods=["PATCH"],
+        ),
+        # Generic work unit endpoints
         Route(
             "/work-units/{chunk:path}",
             endpoint=get_work_unit_endpoint,

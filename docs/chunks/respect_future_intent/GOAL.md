@@ -2,14 +2,14 @@
 status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: ["src/templates/commands/chunk-create.md.jinja2"]
+code_paths:
+  - src/templates/commands/chunk-create.md.jinja2
 code_references:
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "User intent detection for FUTURE vs IMPLEMENTING status, including explicit signal detection, priority ordering, and conflict handling with safe pause protocol"
+    implements: "User intent detection for FUTURE vs IMPLEMENTING chunk creation, including priority order, conflict handling, and safe pause protocol"
 narrative: null
 subsystems: []
-created_after:
-- investigation_chunk_refs
+created_after: ["investigation_chunk_refs"]
 ---
 
 # Chunk Goal

@@ -5,9 +5,11 @@ proposed_chunks:
   - prompt: "Orchestrator foundation: daemon skeleton with SQLite state, basic work unit model, ve orch start/stop/status/ps commands"
     chunk_directory: orch_foundation
   - prompt: "Orchestrator scheduling: worktree manager, agent spawning for single phase execution, ve orch inject and ready queue"
-    chunk_directory: null
+    chunk_directory: orch_scheduling
   - prompt: "Orchestrator attention queue: question/decision capture from agents, priority scoring by downstream impact, ve orch queue/answer commands"
     chunk_directory: null
+  - prompt: "Attention reason tracking: store and display why work units need attention, add ve orch work-unit show command"
+    chunk_directory: orch_attention_reason
   - prompt: "Conflict oracle: goal-level semantic comparison, plan-level file/symbol analysis, ve orch resolve command"
     chunk_directory: null
   - prompt: "Orchestrator dashboard: web UI with WebSocket updates, attention queue view, process grid"
@@ -233,3 +235,78 @@ The investigation achieved its primary success criterion: a design document for 
 **Design document:** `docs/investigations/parallel_agent_orchestration/design.md`
 
 **Next steps:** The proposed chunks in this investigation can be created to begin implementation. The design document includes phased implementation guidance.
+
+## Architectural Decisions (Implementation)
+
+These decisions were made during chunk implementation and should guide future chunks from this investigation.
+
+### Agent Interface: Claude Agent SDK with Session-per-Phase
+
+**Decision:** Use the Claude Agent SDK (`claude-agent-sdk` Python package) rather than Claude CLI or raw API.
+
+**Session semantics:**
+- Each phase (GOAL/PLAN/IMPLEMENT/COMPLETE) is a fresh `query()` call - **no context carryover between phases**
+- Session ID is captured from the `init` message for potential resume
+- Sessions **suspend** when the agent calls `AskUserQuestion` (intercepted via `PreToolUse` hook)
+- Sessions **end** when the phase completes; next phase starts with empty agent context
+- The workdir contains all needed context (GOAL.md, PLAN.md, code files) - agents don't need memory
+
+**Rationale:** Session-per-phase prevents context accumulation that could cause confusion. Each phase is a focused task. The OS analogy maps cleanly: phase = instruction, not long-running process.
+
+### Directory Structure
+
+**Per-chunk state lives under `.ve/chunks/<chunk_name>/`:**
+```
+.ve/chunks/orch_scheduling/
+├── worktree/           # Git worktree for isolated execution
+└── log/
+    ├── GOAL.txt        # Transcript from GOAL phase
+    ├── PLAN.txt        # Transcript from PLAN phase
+    ├── IMPLEMENT.txt   # Transcript from IMPLEMENT phase
+    └── COMPLETE.txt    # Transcript from COMPLETE phase
+```
+
+**Rationale:** Co-locating worktree and logs per chunk makes cleanup simple (delete the directory) and debugging straightforward (all artifacts in one place).
+
+### Git Branch Naming
+
+**Each chunk gets its own branch:** `orch/<chunk_name>`
+
+Example: `orch/orch_scheduling`
+
+**Rationale:** The `orch/` prefix namespaces orchestrator-managed branches, making them easy to identify and clean up. One branch per chunk enables parallel work without interference.
+
+### AskUserQuestion → Attention Queue Integration
+
+**Mechanism:** `PreToolUse` hook intercepts `AskUserQuestion` tool calls.
+
+**Flow:**
+1. Agent calls `AskUserQuestion` during phase execution
+2. `PreToolUse` hook fires, extracts question and options
+3. Hook queues question to attention queue with session_id
+4. Hook returns result that suspends the agent loop
+5. Work unit status changes to `NEEDS_ATTENTION`
+6. When operator answers via `ve orch answer`, session resumes with answer injected
+
+**Rationale:** This allows agents to ask questions without blocking on stdin. Questions flow through the attention queue like any other attention item, maintaining the unified UX.
+
+### Phase Execution via Existing Skills
+
+The orchestrator invokes existing slash commands rather than hardcoding prompts:
+
+| Phase | Skill Invoked |
+|-------|---------------|
+| GOAL | `/chunk-create` (with chunk context) |
+| PLAN | `/chunk-plan` |
+| IMPLEMENT | `/chunk-implement` |
+| COMPLETE | `/chunk-complete` |
+
+**Rationale:** The slash commands already encode the full workflow logic, templates, and instructions. Reusing them ensures consistency between manual and orchestrated workflows, and means improvements to the skills benefit both paths.
+
+### Worktree Lifecycle
+
+1. **Created** when work unit transitions READY → RUNNING
+2. **Preserved** while work unit is RUNNING or NEEDS_ATTENTION (for session resume)
+3. **Removed** when work unit transitions to DONE or is manually killed
+
+**Rationale:** Worktrees are the "process address space" in the OS analogy. They persist across session suspensions to enable resume, but are cleaned up on completion.
