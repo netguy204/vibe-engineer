@@ -20,6 +20,8 @@ from pydantic import ValidationError
 import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
+from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
+import repo_cache
 from models import (
     CodeReference,
     SymbolicReference,
@@ -57,6 +59,29 @@ class SuggestPrefixResult:
     suggested_prefix: str | None
     similar_chunks: list[tuple[str, float]]  # (chunk_name, similarity_score)
     reason: str
+
+
+# Chunk: docs/chunks/task_chunk_validation - Chunk location result
+@dataclass
+class ChunkLocation:
+    """Result of resolving a chunk's location.
+
+    Used to track whether a chunk is local or external, and provide
+    the resolved path for validation.
+
+    For cache-based resolution (external chunks without task context),
+    chunk_path and project_dir point to the local reference directory,
+    but cached_content contains the actual GOAL.md content from the cache.
+    """
+
+    chunk_name: str
+    chunk_path: pathlib.Path
+    project_dir: pathlib.Path  # The project directory containing the chunk
+    is_external: bool = False
+    external_repo: str | None = None  # org/repo format for external chunks
+    # For cache-based resolution (no task context)
+    cached_content: str | None = None  # GOAL.md content from repo cache
+    cached_sha: str | None = None  # SHA used for cache resolution
 
 
 # Chunk: docs/chunks/implement_chunk_start - Core chunk class
@@ -317,6 +342,147 @@ class Chunks:
         except (yaml.YAMLError, ValidationError):
             return None
 
+    # Chunk: docs/chunks/task_chunk_validation - Parse frontmatter from content string
+    def _parse_frontmatter_from_content(self, content: str) -> ChunkFrontmatter | None:
+        """Parse YAML frontmatter from GOAL.md content string.
+
+        Used for cache-based resolution where we have content but not a file path.
+
+        Args:
+            content: Full GOAL.md content including frontmatter
+
+        Returns:
+            ChunkFrontmatter if valid, or None if frontmatter invalid.
+        """
+        # Extract frontmatter between --- markers
+        match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+        if not match:
+            return None
+
+        try:
+            frontmatter = yaml.safe_load(match.group(1))
+            if not isinstance(frontmatter, dict):
+                return None
+            return ChunkFrontmatter.model_validate(frontmatter)
+        except (yaml.YAMLError, ValidationError):
+            return None
+
+    # Chunk: docs/chunks/task_chunk_validation - Resolve chunk location with external support
+    def resolve_chunk_location(
+        self, chunk_id: str, task_dir: pathlib.Path | None = None
+    ) -> ChunkLocation | None:
+        """Resolve a chunk's location, supporting external chunk references.
+
+        For local chunks (GOAL.md exists), returns the local path.
+        For external chunks (external.yaml without GOAL.md):
+          - With task context: resolves to live working copy in task directory
+          - Without task context: uses repo cache to read content at pinned SHA
+
+        Args:
+            chunk_id: The chunk directory name to resolve.
+            task_dir: Optional task directory for resolving to live working copies.
+
+        Returns:
+            ChunkLocation if found, None if not found.
+            For cache-based resolution, cached_content contains the GOAL.md content.
+        """
+        chunk_path = self.chunk_dir / chunk_id
+
+        # Check if chunk directory exists
+        if not chunk_path.exists():
+            return None
+
+        # Check if this is an external reference
+        if is_external_artifact(chunk_path, ArtifactType.CHUNK):
+            # Load external.yaml to get the reference info
+            try:
+                external_ref = load_external_ref(chunk_path)
+            except FileNotFoundError:
+                return None
+
+            # With task context, resolve to the live working copy
+            if task_dir is not None:
+                from task_utils import (
+                    load_task_config,
+                    resolve_repo_directory,
+                )
+
+                try:
+                    config = load_task_config(task_dir)
+                    external_repo_path = resolve_repo_directory(
+                        task_dir, config.external_artifact_repo
+                    )
+
+                    # Find the actual chunk in the external repo
+                    external_chunk_path = (
+                        external_repo_path
+                        / "docs"
+                        / ARTIFACT_DIR_NAME[ArtifactType.CHUNK]
+                        / external_ref.artifact_id
+                    )
+
+                    if external_chunk_path.exists():
+                        return ChunkLocation(
+                            chunk_name=external_ref.artifact_id,
+                            chunk_path=external_chunk_path,
+                            project_dir=external_repo_path,
+                            is_external=True,
+                            external_repo=external_ref.repo,
+                        )
+                    else:
+                        # External chunk referenced but not found in external repo
+                        return None
+
+                except (FileNotFoundError, ValueError):
+                    # Task config missing or repo not found - fall through to cache
+                    pass
+
+            # Without task context (or task resolution failed), use repo cache
+            # Determine SHA to use - prefer pinned, fall back to track
+            if external_ref.pinned:
+                resolved_sha = external_ref.pinned
+            else:
+                track = external_ref.track or "HEAD"
+                try:
+                    resolved_sha = repo_cache.resolve_ref(external_ref.repo, track)
+                except ValueError:
+                    # Can't resolve ref - return location without content
+                    return ChunkLocation(
+                        chunk_name=external_ref.artifact_id,
+                        chunk_path=chunk_path,
+                        project_dir=self.project_dir,
+                        is_external=True,
+                        external_repo=external_ref.repo,
+                    )
+
+            # Read GOAL.md from cache
+            goal_path = f"docs/{ARTIFACT_DIR_NAME[ArtifactType.CHUNK]}/{external_ref.artifact_id}/GOAL.md"
+            try:
+                cached_content = repo_cache.get_file_at_ref(
+                    external_ref.repo, resolved_sha, goal_path
+                )
+            except ValueError:
+                # Chunk not found in cache
+                return None
+
+            return ChunkLocation(
+                chunk_name=external_ref.artifact_id,
+                chunk_path=chunk_path,
+                project_dir=self.project_dir,
+                is_external=True,
+                external_repo=external_ref.repo,
+                cached_content=cached_content,
+                cached_sha=resolved_sha,
+            )
+
+        # Local chunk with GOAL.md - resolve directly
+        return ChunkLocation(
+            chunk_name=chunk_id,
+            chunk_path=chunk_path,
+            project_dir=self.project_dir,
+            is_external=False,
+        )
+
     # Chunk: docs/chunks/chunk_overlap_command - Parse line-based code refs
     def parse_code_references(self, refs: list) -> dict[str, tuple[int, int]]:
         """Parse code_references from frontmatter into file -> (earliest, latest) mapping.
@@ -479,20 +645,28 @@ class Chunks:
     # Chunk: docs/chunks/chunk_validate - Validate chunk for completion
     # Chunk: docs/chunks/symbolic_code_refs - Added symbolic ref validation
     # Chunk: docs/chunks/chunk_frontmatter_model - Use typed frontmatter access
-    def validate_chunk_complete(self, chunk_id: str | None = None) -> ValidationResult:
+    # Chunk: docs/chunks/task_chunk_validation - Task context awareness
+    def validate_chunk_complete(
+        self,
+        chunk_id: str | None = None,
+        task_dir: pathlib.Path | None = None,
+    ) -> ValidationResult:
         """Validate that a chunk is ready for completion.
 
         Checks:
-        1. Chunk exists
+        1. Chunk exists (resolves external chunks via task context if available)
         2. Status is IMPLEMENTING or ACTIVE
         3. code_references conforms to schema and is non-empty
         4. (For symbolic refs) Referenced symbols exist (produces warnings, not errors)
         5. Subsystem references are valid and exist
 
         Supports both old line-based format and new symbolic format.
+        Also supports cross-project code references when run in task context.
 
         Args:
             chunk_id: The chunk ID to validate. Defaults to latest chunk.
+            task_dir: Optional task directory for resolving external chunks
+                      and cross-project code references.
 
         Returns:
             ValidationResult with success status, errors, and warnings.
@@ -509,20 +683,74 @@ class Chunks:
                     errors=["No chunks found"],
                 )
 
-        chunk_name = self.resolve_chunk_id(chunk_id)
-        if chunk_name is None:
+        # Use resolve_chunk_location to handle external chunks
+        location = self.resolve_chunk_location(chunk_id, task_dir)
+
+        if location is None:
             return ValidationResult(
                 success=False,
                 errors=[f"Chunk '{chunk_id}' not found"],
             )
 
-        # Parse frontmatter
-        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        # Handle cache-based resolution (external chunk without task context)
+        if location.cached_content is not None:
+            # Parse frontmatter from cached content
+            frontmatter = self._parse_frontmatter_from_content(location.cached_content)
+            if frontmatter is None:
+                return ValidationResult(
+                    success=False,
+                    errors=[f"Could not parse frontmatter for chunk '{chunk_id}'"],
+                    chunk_name=location.chunk_name,
+                )
+
+            # Check status
+            valid_statuses = (ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE)
+            if frontmatter.status not in valid_statuses:
+                errors.append(
+                    f"Status is '{frontmatter.status.value}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
+                )
+
+            # Check code_references non-empty
+            if not frontmatter.code_references:
+                errors.append(
+                    "code_references is empty; at least one reference is required"
+                )
+            else:
+                # Note: Code reference validation is skipped for cache-based resolution
+                # since we don't have filesystem access to the code repository
+                warnings.append(
+                    f"Code reference validation skipped (resolved from cache at {location.cached_sha[:8]})"
+                )
+
+            # Note: Subsystem and investigation validation skipped for cache-based resolution
+            return ValidationResult(
+                success=len(errors) == 0,
+                errors=errors,
+                warnings=warnings,
+                chunk_name=location.chunk_name,
+            )
+
+        # For external chunks with task context, create a temporary Chunks instance
+        if location.is_external:
+            validation_chunks = Chunks(location.project_dir)
+            chunk_name_to_validate = location.chunk_name
+        else:
+            validation_chunks = self
+            # Fall back to resolve_chunk_id for local chunks (handles short names)
+            chunk_name_to_validate = self.resolve_chunk_id(chunk_id)
+            if chunk_name_to_validate is None:
+                return ValidationResult(
+                    success=False,
+                    errors=[f"Chunk '{chunk_id}' not found"],
+                )
+
+        # Parse frontmatter from the resolved chunk location
+        frontmatter = validation_chunks.parse_chunk_frontmatter(chunk_name_to_validate)
         if frontmatter is None:
             return ValidationResult(
                 success=False,
                 errors=[f"Could not parse frontmatter for chunk '{chunk_id}'"],
-                chunk_name=chunk_name,
+                chunk_name=chunk_name_to_validate,
             )
 
         # Check status
@@ -540,23 +768,28 @@ class Chunks:
             )
         else:
             # Validate that referenced symbols exist (produces warnings, not errors)
+            # Use the validation_chunks instance for proper project context
             for ref in frontmatter.code_references:
-                symbol_warnings = self._validate_symbol_exists(ref.ref)
+                symbol_warnings = validation_chunks._validate_symbol_exists_with_context(
+                    ref.ref,
+                    task_dir=task_dir,
+                    chunk_project=location.project_dir,
+                )
                 warnings.extend(symbol_warnings)
 
         # Validate subsystem references
-        subsystem_errors = self.validate_subsystem_refs(chunk_name)
+        subsystem_errors = validation_chunks.validate_subsystem_refs(chunk_name_to_validate)
         errors.extend(subsystem_errors)
 
         # Chunk: docs/chunks/investigation_chunk_refs - Validate investigation reference
-        investigation_errors = self.validate_investigation_ref(chunk_name)
+        investigation_errors = validation_chunks.validate_investigation_ref(chunk_name_to_validate)
         errors.extend(investigation_errors)
 
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
             warnings=warnings,
-            chunk_name=chunk_name,
+            chunk_name=chunk_name_to_validate,
         )
 
     # Chunk: docs/chunks/symbolic_code_refs - Validate symbol existence
@@ -596,6 +829,104 @@ class Chunks:
             return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
 
         return []
+
+    # Chunk: docs/chunks/task_chunk_validation - Validate symbol with task context
+    def _validate_symbol_exists_with_context(
+        self,
+        ref: str,
+        task_dir: pathlib.Path | None = None,
+        chunk_project: pathlib.Path | None = None,
+    ) -> list[str]:
+        """Validate a symbolic reference with task context for cross-project refs.
+
+        For non-qualified references (no project::), validates against chunk_project.
+        For project-qualified references (project::file), resolves the project
+        via task context and validates against that project.
+
+        Args:
+            ref: Symbolic reference string (may be project-qualified).
+            task_dir: Optional task directory for resolving cross-project refs.
+            chunk_project: Project directory where the chunk lives (default: self.project_dir).
+
+        Returns:
+            List of warning messages (empty if valid).
+        """
+        # Check if this is a project-qualified reference
+        hash_pos = ref.find("#")
+        check_portion = ref[:hash_pos] if hash_pos != -1 else ref
+        is_cross_project = "::" in check_portion
+
+        if is_cross_project:
+            # Parse the project qualifier
+            double_colon_pos = check_portion.find("::")
+            project_ref = ref[:double_colon_pos]
+            remaining = ref[double_colon_pos + 2:]
+
+            # Without task context, we can't resolve cross-project refs
+            if task_dir is None:
+                return [
+                    f"Skipped cross-project reference: {ref} (no task context)"
+                ]
+
+            # Resolve the project path
+            from task_utils import load_task_config, resolve_repo_directory
+
+            try:
+                config = load_task_config(task_dir)
+                project_path = resolve_repo_directory(task_dir, project_ref)
+            except (FileNotFoundError, ValueError) as e:
+                return [f"Warning: Could not resolve project '{project_ref}': {e} (ref: {ref})"]
+
+            # Parse the file and symbol from remaining
+            if "#" in remaining:
+                file_path, symbol_path = remaining.split("#", 1)
+            else:
+                file_path = remaining
+                symbol_path = None
+
+            # Validate against the resolved project
+            full_path = project_path / file_path
+            if not full_path.exists():
+                return [f"Warning: File not found: {file_path} in project {project_ref} (ref: {ref})"]
+
+            if symbol_path is None:
+                return []
+
+            symbols = extract_symbols(full_path)
+            if not symbols:
+                if str(file_path).endswith(".py"):
+                    return [f"Warning: Could not extract symbols from {file_path} in project {project_ref} (ref: {ref})"]
+                return []
+
+            if symbol_path not in symbols:
+                return [f"Warning: Symbol not found: {symbol_path} in {file_path} (project: {project_ref}) (ref: {ref})"]
+
+            return []
+        else:
+            # Non-qualified reference - validate against chunk's project
+            project_dir = chunk_project if chunk_project else self.project_dir
+
+            # Use local project context
+            qualified_ref = qualify_ref(ref, ".")
+            _, file_path, symbol_path = parse_reference(qualified_ref)
+
+            full_path = project_dir / file_path
+            if not full_path.exists():
+                return [f"Warning: File not found: {file_path} (ref: {ref})"]
+
+            if symbol_path is None:
+                return []
+
+            symbols = extract_symbols(full_path)
+            if not symbols:
+                if str(file_path).endswith(".py"):
+                    return [f"Warning: Could not extract symbols from {file_path} (ref: {ref})"]
+                return []
+
+            if symbol_path not in symbols:
+                return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
+
+            return []
 
     # Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks
     def list_proposed_chunks(

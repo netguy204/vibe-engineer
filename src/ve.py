@@ -543,17 +543,46 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
 # Chunk: docs/chunks/chunk_validate - Validate chunk for completion
 # Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
+# Chunk: docs/chunks/task_chunk_validation - Task context awareness
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def validate(chunk_id, project_dir):
-    """Validate chunk is ready for completion."""
+    """Validate chunk is ready for completion.
+
+    Supports validating chunks in task context, including external chunks
+    and cross-project code references.
+    """
+    from task_utils import find_task_directory, is_task_directory
+
     # Normalize chunk_id to strip path prefixes (if provided)
     if chunk_id is not None:
         chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
+    # Detect task context
+    # If project_dir is a task directory, use it directly
+    # Otherwise, try to find a task directory above the project_dir
+    task_dir = None
+    if is_task_directory(project_dir):
+        task_dir = project_dir
+    else:
+        task_dir = find_task_directory(project_dir)
+
+    # Determine which project directory to use for chunks
+    # If we're in a task directory directly, we need to find the external repo
+    if task_dir is not None and is_task_directory(project_dir):
+        from task_utils import load_task_config, resolve_repo_directory
+
+        try:
+            config = load_task_config(task_dir)
+            # Use external repo as the primary project for chunk operations
+            project_dir = resolve_repo_directory(task_dir, config.external_artifact_repo)
+        except (FileNotFoundError, ValueError):
+            # Can't resolve external repo, continue with project_dir
+            pass
+
     chunks = Chunks(project_dir)
-    result = chunks.validate_chunk_complete(chunk_id)
+    result = chunks.validate_chunk_complete(chunk_id, task_dir=task_dir)
 
     if not result.success:
         for error in result.errors:

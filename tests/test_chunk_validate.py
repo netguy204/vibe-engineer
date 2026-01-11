@@ -763,3 +763,411 @@ proposed_chunks: []
             ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
+
+
+# Chunk: docs/chunks/task_chunk_validation - External chunk validation tests
+class TestExternalChunkValidation:
+    """Tests for validating external chunks from project context."""
+
+    def _create_external_yaml(
+        self,
+        chunk_path,
+        external_repo_ref: str,
+        artifact_id: str,
+        pinned_sha: str = "a" * 40,
+    ):
+        """Helper to create external.yaml for a chunk directory."""
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        external_yaml = chunk_path / "external.yaml"
+        external_yaml.write_text(f"""artifact_type: chunk
+artifact_id: {artifact_id}
+repo: {external_repo_ref}
+track: main
+pinned: {pinned_sha}
+""")
+
+    def _create_chunk_with_refs(
+        self,
+        chunk_path,
+        status: str = "IMPLEMENTING",
+        code_references: list[dict] | None = None,
+    ):
+        """Helper to create a full chunk with GOAL.md."""
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        write_goal_frontmatter(chunk_path, status, code_references)
+
+    def test_external_chunk_without_task_context_uses_cache(
+        self, runner, tmp_path
+    ):
+        """External chunk validation uses repo cache when no task context available.
+
+        Without task context, external chunks are resolved via the repo cache.
+        If the external repo isn't accessible (e.g., doesn't exist on GitHub),
+        validation fails with 'not found'.
+        """
+        from conftest import make_ve_initialized_git_repo
+
+        # Set up external repo with the actual chunk (LOCAL - not on GitHub)
+        external_repo = tmp_path / "external"
+        make_ve_initialized_git_repo(external_repo)
+
+        external_chunk_path = external_repo / "docs" / "chunks" / "my_feature"
+        self._create_chunk_with_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py#Main", "implements": "feature"}],
+        )
+
+        # Set up project repo with external reference pointing to non-existent GitHub repo
+        project_repo = tmp_path / "project"
+        make_ve_initialized_git_repo(project_repo)
+
+        project_chunk_path = project_repo / "docs" / "chunks" / "my_feature"
+        self._create_external_yaml(
+            project_chunk_path,
+            external_repo_ref="acme/nonexistent-repo",  # This doesn't exist on GitHub
+            artifact_id="my_feature",
+        )
+
+        # Validate from project context - cache resolution will fail because
+        # the external repo doesn't exist on GitHub
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "my_feature", "--project-dir", str(project_repo)]
+        )
+        # Should fail because repo cache can't access the external repo
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+
+    def test_external_chunk_validated_in_task_context(self, runner, tmp_path):
+        """External chunk is fully validated when run from task directory."""
+        from conftest import setup_task_directory
+
+        # Set up complete task environment
+        task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
+
+        # Create chunk in external repo with valid code references
+        external_chunk_path = external_path / "docs" / "chunks" / "my_feature"
+        self._create_chunk_with_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py#Main", "implements": "feature"}],
+        )
+
+        # Create external reference in project
+        project_chunk_path = project_path / "docs" / "chunks" / "my_feature"
+        self._create_external_yaml(
+            project_chunk_path,
+            external_repo_ref="acme/ext",
+            artifact_id="my_feature",
+        )
+
+        # Validate from task directory - should find and validate the external chunk
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "my_feature", "--project-dir", str(task_dir)]
+        )
+        # Should succeed since the chunk exists in external repo
+        assert result.exit_code == 0
+        assert "my_feature" in result.output
+
+    def test_external_chunk_not_found_produces_error(self, runner, tmp_path):
+        """Missing external chunk produces clear error message."""
+        from conftest import setup_task_directory
+
+        # Set up task environment but don't create chunk in external repo
+        task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
+
+        # Create external reference in project pointing to non-existent chunk
+        project_chunk_path = project_path / "docs" / "chunks" / "ghost_chunk"
+        self._create_external_yaml(
+            project_chunk_path,
+            external_repo_ref="acme/ext",
+            artifact_id="ghost_chunk",
+        )
+
+        # Validate should fail with clear error
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "ghost_chunk", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower() or "error" in result.output.lower()
+
+
+# Chunk: docs/chunks/task_chunk_validation - Task context validation tests
+class TestTaskContextValidation:
+    """Tests for validating chunks with cross-project code references in task context."""
+
+    def _create_chunk_with_cross_project_refs(
+        self,
+        chunk_path,
+        status: str = "IMPLEMENTING",
+        code_references: list[dict] | None = None,
+    ):
+        """Helper to create a chunk with cross-project code references."""
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: \"{ref['ref']}\"")
+                refs_lines.append(f"    implements: \"{ref.get('implements', 'feature')}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def test_cross_project_ref_validated_in_task_context(self, runner, tmp_path):
+        """Cross-project code references are validated when running in task context."""
+        from conftest import setup_task_directory
+
+        # Set up task with two projects
+        task_dir, external_path, [project_path] = setup_task_directory(
+            tmp_path, project_names=["proj"]
+        )
+
+        # Create a file in the project that the chunk will reference
+        src_dir = project_path / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "service.py").write_text("class Service:\n    pass\n")
+
+        # Create chunk in external repo with cross-project reference
+        external_chunk_path = external_path / "docs" / "chunks" / "cross_proj_feature"
+        self._create_chunk_with_cross_project_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            # Reference uses project qualifier
+            [{"ref": "acme/proj::src/service.py#Service", "implements": "service impl"}],
+        )
+
+        # Validate from task directory - should resolve cross-project ref
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "cross_proj_feature", "--project-dir", str(task_dir)]
+        )
+        # Should succeed since the file and symbol exist in the referenced project
+        assert result.exit_code == 0
+
+    def test_cross_project_ref_warns_on_missing_symbol(self, runner, tmp_path):
+        """Cross-project reference to missing symbol produces warning but succeeds."""
+        from conftest import setup_task_directory
+
+        # Set up task with project
+        task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
+
+        # Create a file without the expected symbol
+        src_dir = project_path / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "service.py").write_text("# Empty module\n")
+
+        # Create chunk with reference to non-existent symbol
+        external_chunk_path = external_path / "docs" / "chunks" / "missing_symbol_ref"
+        self._create_chunk_with_cross_project_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "acme/proj::src/service.py#NonExistent", "implements": "missing"}],
+        )
+
+        # Validate should succeed but show warning
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "missing_symbol_ref", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_cross_project_ref_warns_on_missing_file(self, runner, tmp_path):
+        """Cross-project reference to missing file produces warning but succeeds."""
+        from conftest import setup_task_directory
+
+        # Set up task with project
+        task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
+
+        # Don't create the referenced file
+
+        # Create chunk with reference to non-existent file
+        external_chunk_path = external_path / "docs" / "chunks" / "missing_file_ref"
+        self._create_chunk_with_cross_project_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "acme/proj::src/nonexistent.py#Foo", "implements": "missing file"}],
+        )
+
+        # Validate should succeed but show warning
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "missing_file_ref", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_local_ref_validated_against_chunk_project(self, runner, tmp_path):
+        """Non-qualified references are validated against the project containing the chunk."""
+        from conftest import setup_task_directory
+
+        # Set up task
+        task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
+
+        # Create a file in the EXTERNAL repo (where chunks live)
+        src_dir = external_path / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "local.py").write_text("class LocalClass:\n    pass\n")
+
+        # Create chunk with local (non-qualified) reference
+        external_chunk_path = external_path / "docs" / "chunks" / "local_ref_chunk"
+        self._create_chunk_with_cross_project_refs(
+            external_chunk_path,
+            "IMPLEMENTING",
+            # No project qualifier - should resolve against chunk's own project
+            [{"ref": "src/local.py#LocalClass", "implements": "local impl"}],
+        )
+
+        # Validate from task directory
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "local_ref_chunk", "--project-dir", str(task_dir)]
+        )
+        # Should succeed since the file exists in the chunk's project (external repo)
+        assert result.exit_code == 0
+
+
+# Chunk: docs/chunks/task_chunk_validation - Project context partial validation tests
+class TestProjectContextPartialValidation:
+    """Tests for partial validation when running from project context (not task)."""
+
+    def _create_chunk_with_refs(
+        self,
+        chunk_path,
+        status: str = "IMPLEMENTING",
+        code_references: list[dict] | None = None,
+    ):
+        """Helper to create a chunk with code references."""
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: \"{ref['ref']}\"")
+                refs_lines.append(f"    implements: \"{ref.get('implements', 'feature')}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def test_local_refs_validated_in_project_context(self, runner, tmp_path):
+        """Local (non-qualified) refs are fully validated in project context."""
+        from conftest import make_ve_initialized_git_repo
+
+        # Set up standalone project
+        project_path = tmp_path / "project"
+        make_ve_initialized_git_repo(project_path)
+
+        # Create a file in the project
+        src_dir = project_path / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "module.py").write_text("class MyClass:\n    pass\n")
+
+        # Create chunk with local reference
+        chunk_path = project_path / "docs" / "chunks" / "local_feature"
+        self._create_chunk_with_refs(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/module.py#MyClass", "implements": "local impl"}],
+        )
+
+        # Validate from project context
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "local_feature", "--project-dir", str(project_path)]
+        )
+        # Should succeed - local refs can be validated
+        assert result.exit_code == 0
+
+    def test_cross_project_refs_skipped_in_project_context(self, runner, tmp_path):
+        """Cross-project refs are skipped with informative message in project context."""
+        from conftest import make_ve_initialized_git_repo
+
+        # Set up standalone project (no task directory)
+        project_path = tmp_path / "project"
+        make_ve_initialized_git_repo(project_path)
+
+        # Create chunk with cross-project reference
+        chunk_path = project_path / "docs" / "chunks" / "cross_proj_feature"
+        self._create_chunk_with_refs(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "other/repo::src/service.py#Service", "implements": "cross-proj"}],
+        )
+
+        # Validate from project context (no task dir)
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "cross_proj_feature", "--project-dir", str(project_path)]
+        )
+        # Should succeed (skip doesn't cause failure) but show skip message
+        assert result.exit_code == 0
+        # Output should indicate the cross-project ref was skipped
+        assert "skip" in result.output.lower() or "cross-project" in result.output.lower()
+
+    def test_mixed_refs_partial_validation(self, runner, tmp_path):
+        """Mix of local and cross-project refs: local validated, cross-project skipped."""
+        from conftest import make_ve_initialized_git_repo
+
+        # Set up standalone project
+        project_path = tmp_path / "project"
+        make_ve_initialized_git_repo(project_path)
+
+        # Create a local file
+        src_dir = project_path / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "local.py").write_text("class LocalClass:\n    pass\n")
+
+        # Create chunk with both local and cross-project references
+        chunk_path = project_path / "docs" / "chunks" / "mixed_refs"
+        self._create_chunk_with_refs(
+            chunk_path,
+            "IMPLEMENTING",
+            [
+                {"ref": "src/local.py#LocalClass", "implements": "local impl"},
+                {"ref": "other/repo::src/remote.py#RemoteClass", "implements": "remote impl"},
+            ],
+        )
+
+        # Validate from project context
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "mixed_refs", "--project-dir", str(project_path)]
+        )
+        # Should succeed overall
+        assert result.exit_code == 0
+        # Cross-project ref should be skipped
+        assert "skip" in result.output.lower() or "cross-project" in result.output.lower()

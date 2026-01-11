@@ -119,3 +119,51 @@ class TestInitCommand:
         )
         assert result.exit_code == 0
         assert (temp_project / "docs" / "chunks").exists()
+
+    def test_init_creates_gitignore_with_artifact_cache(self, runner, temp_project):
+        """ve init creates .gitignore with .artifact-order.json entry."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        gitignore = temp_project / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text()
+        assert ".artifact-order.json" in content
+
+    def test_init_appends_to_existing_gitignore(self, runner, temp_project):
+        """ve init appends to existing .gitignore without duplicating."""
+        # Create existing .gitignore with some content
+        gitignore = temp_project / ".gitignore"
+        gitignore.write_text("node_modules/\n.env\n")
+
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        content = gitignore.read_text()
+        # Original content preserved
+        assert "node_modules/" in content
+        assert ".env" in content
+        # New entry added
+        assert ".artifact-order.json" in content
+
+    def test_init_gitignore_idempotent(self, runner, temp_project):
+        """ve init doesn't duplicate .artifact-order.json entry."""
+        # Create .gitignore with the entry already present
+        gitignore = temp_project / ".gitignore"
+        gitignore.write_text(".artifact-order.json\n")
+
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        content = gitignore.read_text()
+        # Entry should appear exactly once
+        assert content.count(".artifact-order.json") == 1

@@ -58,6 +58,46 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Task Directory**: A directory containing `.ve-task.yaml` that coordinates work across multiple projects. Task directories have their own `CLAUDE.md` and `.claude/commands/` rendered with task-specific context. Use task directories when work spans multiple repositories.
 - **External Artifact Repo**: The project designated (via `--external` flag during `ve task init`) to hold cross-cutting workflow artifacts (chunks, narratives, subsystems, investigations) for a task. The external artifact repo is a regular project that happens to store shared documentation. Participating projects reference these artifacts via `external.yaml` files.
 
+### Task Context Modes
+
+There are two distinct aspects of "task context" that affect CLI behavior:
+
+**1. Task Mode (UI/Command Behavior)**
+
+When a user runs commands from a task directory (where `.ve-task.yaml` lives), commands operate in "task mode":
+- `ve chunk create` creates chunks in the external artifact repo
+- `ve chunk list` shows chunks from the external artifact repo
+- Artifact operations target the shared external repo rather than individual projects
+
+This mode determines *where* artifacts are created and listed.
+
+**2. Artifact Resolution Context**
+
+External artifacts (referenced via `external.yaml`) are **always dereferenceable**. The resolution context determines *how* they are dereferenced:
+
+- **With task context**: External artifacts resolve to the **live working copies** in the task directory. This enables editing and real-time validation.
+- **Without task context**: External artifacts resolve via the **repository cache** (`~/.ve/cache/repos/`) at the pinned SHA. This provides read-only access to the artifact content.
+
+**Resolution Behavior Summary**:
+
+| Context | External Artifacts | Cross-Project Code Refs | Local Code Refs |
+|---------|-------------------|------------------------|-----------------|
+| Task directory | Live working copy | Fully validated | Fully validated |
+| Project only | Cached at pinned SHA | Skipped (no project access) | Fully validated* |
+
+*For cache-based resolution, local code refs cannot be validated (no filesystem access to the code repository).
+
+**Design Intent**:
+
+When an agent is working within a task directory, all artifact references should resolve to the live working copies. This enables:
+- Validating chunks in the external repo without changing directories
+- Validating code references that span multiple projects
+- Seamless development experience regardless of which project subdirectory the agent is currently in
+
+When working outside a task directory (single-repo mode), external artifacts remain accessible via the cache, enabling basic validation and inspection even without the full task environment.
+
+The task directory acts as a unified resolution context where all projects and the external artifact repo are accessible as sibling directories.
+
 ### Identifiers and Metadata
 
 - **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order

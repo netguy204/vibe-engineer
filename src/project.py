@@ -116,6 +116,33 @@ class Project:
 
         return result
 
+    def _init_gitignore(self) -> InitResult:
+        """Ensure .gitignore excludes the artifact ordering cache.
+
+        Creates .gitignore if it doesn't exist, or appends the entry
+        if not already present. Idempotent.
+        """
+        result = InitResult()
+        gitignore_path = self.project_dir / ".gitignore"
+        entry = ".artifact-order.json"
+
+        if gitignore_path.exists():
+            content = gitignore_path.read_text()
+            if entry in content:
+                result.skipped.append(".gitignore")
+            else:
+                # Append entry, ensuring newline before if needed
+                if content and not content.endswith("\n"):
+                    content += "\n"
+                content += f"{entry}\n"
+                gitignore_path.write_text(content)
+                result.created.append(".gitignore")
+        else:
+            gitignore_path.write_text(f"{entry}\n")
+            result.created.append(".gitignore")
+
+        return result
+
     # Chunk: docs/chunks/project_init_command - CLAUDE.md creation
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Subsystem: docs/subsystems/template_system - Uses render_template
@@ -153,6 +180,7 @@ class Project:
             self._init_claude_md(),
             self._init_narratives(),
             self._init_chunks(),
+            self._init_gitignore(),
         ]:
             result.created.extend(sub_result.created)
             result.skipped.extend(sub_result.skipped)
