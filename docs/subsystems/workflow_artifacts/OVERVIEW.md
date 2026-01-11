@@ -57,6 +57,8 @@ chunks:
   relationship: implements
 - chunk_id: task_aware_narrative_cmds
   relationship: implements
+- chunk_id: task_aware_subsystem_cmds
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -175,6 +177,18 @@ code_references:
 - ref: src/ve.py#_list_task_narratives
   implements: CLI handler for task-aware narrative listing
   compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_subsystem
+  implements: Task-aware subsystem creation with external references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#list_task_subsystems
+  implements: Task-aware subsystem listing from external repo
+  compliance: COMPLIANT
+- ref: src/ve.py#_create_task_subsystem
+  implements: CLI handler for task-aware subsystem creation
+  compliance: COMPLIANT
+- ref: src/ve.py#_list_task_subsystems
+  implements: CLI handler for task-aware subsystem listing
+  compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
     Define chunk lifecycle states (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL)
@@ -230,7 +244,7 @@ proposed_chunks:
     in external repo with dependents, create external.yaml in projects; list from
     external repo showing dependents. Follow the pattern established by chunk task-aware
     commands.'
-  chunk_directory: null
+  chunk_directory: task_aware_subsystem_cmds
 created_after:
 - template_system
 ---
@@ -696,6 +710,13 @@ External chunk references now participate in local causal ordering:
   `artifact_type`, `artifact_id`, `main_content`, `secondary_content` fields. CLI
   auto-detects artifact type from directory path and displays type-appropriate files.
 
+- **task_aware_subsystem_cmds** - Extended `ve subsystem discover` and `ve subsystem list`
+  for task directory context. When in task directory: creates subsystem in external repo
+  with dependents, creates external.yaml in projects with causal ordering; lists subsystems
+  from external repo showing dependents. Added `TaskSubsystemError`,
+  `add_dependents_to_subsystem()`, `create_task_subsystem()`, and `list_task_subsystems()`
+  to `task_utils.py`. Added `dependents` field to `SubsystemFrontmatter`.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -755,8 +776,10 @@ External chunk references now participate in local causal ordering:
    - Status: Not yet scheduled
    - Dependencies: #5
 
-10. **Task-aware subsystem commands** - Extend `ve subsystem discover` and
-    `ve subsystem list` for task directory context.
-    - Impact: High
-    - Status: Not yet scheduled
-    - Dependencies: #5
+10. ~~**Task-aware subsystem commands**~~ - **RESOLVED** by chunk task_aware_subsystem_cmds.
+    Extended `ve subsystem discover` and `ve subsystem list` for task directory context.
+    When in task directory: creates subsystem in external repo with dependents, creates
+    external.yaml in projects with causal ordering; lists subsystems from external repo
+    showing dependents. Added `TaskSubsystemError`, `add_dependents_to_subsystem()`,
+    `create_task_subsystem()`, and `list_task_subsystems()` to `task_utils.py`. Added
+    `dependents` field to `SubsystemFrontmatter`.
