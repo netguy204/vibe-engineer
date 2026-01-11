@@ -3,9 +3,9 @@ status: ONGOING
 trigger: "Task directories lack Claude Code scaffolding (CLAUDE.md, .claude/commands) for effective agent experience"
 proposed_chunks:
   - prompt: "Modify ve task init to generate a lean CLAUDE.md (~30 lines) from template with external_artifact_repo and projects list - orientation only, defer details to slash commands"
-    chunk_directory: null
+    chunk_directory: task_init_scaffolding
   - prompt: "During ve task init, setup .claude/commands in task directory (symlink or copy from external repo)"
-    chunk_directory: null
+    chunk_directory: task_init_scaffolding
   - prompt: "Add learning philosophy section to project CLAUDE.md template mentioning natural progression to narratives, subsystems, and tasks"
     chunk_directory: null
   - prompt: "Enhance artifact list commands to show grouped-by-location output as default in task context (external repo artifacts + each project's local artifacts with per-group causal ordering)"

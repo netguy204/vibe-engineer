@@ -52,6 +52,12 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Subsystem**: A cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
 - **Investigation**: An exploratory document for understanding something before committing to action—diagnosing an issue or exploring a concept. Stored in `docs/investigations/`.
 
+### Workflow Contexts
+
+- **Project**: A git repository using ve for workflow management. Contains `docs/chunks/`, `.claude/commands/`, `CLAUDE.md`, and other ve artifacts. Projects are the primary context for most ve operations.
+- **Task Directory**: A directory containing `.ve-task.yaml` that coordinates work across multiple projects. Task directories have their own `CLAUDE.md` and `.claude/commands/` rendered with task-specific context. Use task directories when work spans multiple repositories.
+- **External Artifact Repo**: The project designated (via `--external` flag during `ve task init`) to hold cross-cutting workflow artifacts (chunks, narratives, subsystems, investigations) for a task. The external artifact repo is a regular project that happens to store shared documentation. Participating projects reference these artifacts via `external.yaml` files.
+
 ### Identifiers and Metadata
 
 - **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
@@ -93,6 +99,51 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
       chunk-update-references.md
       chunks-resolve-references.md
 ```
+
+### Task Directory Structure
+
+Task directories coordinate work across multiple projects:
+
+```
+{task_root}/
+  .ve-task.yaml                       # Task configuration
+  CLAUDE.md                           # Task-specific agent instructions
+  .claude/
+    commands/                         # Task-context command definitions
+      chunk-create.md                 # Includes task-specific guidance
+      chunk-implement.md              # References participating projects
+      ...                             # All command templates rendered for task context
+  {external_repo}/                    # External artifact repository
+    docs/
+      chunks/                         # Shared chunks
+      narratives/                     # Shared narratives
+      subsystems/                     # Shared subsystems
+      investigations/                 # Shared investigations
+  {project_1}/                        # Participating project
+    docs/
+      external.yaml                   # References to external artifacts
+  {project_N}/                        # Additional participating projects
+```
+
+**Task Configuration (.ve-task.yaml)**:
+```yaml
+external_artifact_repo: org/external-repo
+projects:
+  - org/project-1
+  - org/project-2
+```
+
+**Task CLAUDE.md**:
+- Rendered from `src/templates/task/CLAUDE.md.jinja2`
+- Contains external artifact repo reference
+- Lists participating projects
+- Provides task-specific workflow orientation
+
+**Task Commands (.claude/commands/)**:
+- Rendered from same templates as project commands
+- Include task-context conditional content (`{% if task_context %}...{% endif %}`)
+- Reference external_artifact_repo and projects list
+- Guide agents on where artifacts are created and how cross-project workflows differ
 
 ### Chunk Directory Naming
 
@@ -307,6 +358,38 @@ Initialize a project with the vibe engineering document structure.
 - **Errors**:
   - IOError if directories cannot be created
 - **Exit codes**: 0 on success
+
+#### ve task init --external REPO --project REPO [--project REPO ...] [--cwd PATH]
+
+Initialize a task directory for cross-repository work.
+
+- **Arguments**: None
+- **Options**:
+  - `--external REPO` (required): Repository to hold workflow artifacts (org/repo format)
+  - `--project REPO` (required, repeatable): Participating project repositories (org/repo format)
+  - `--cwd PATH`: Task directory location (default: current working directory)
+- **Preconditions**:
+  - `.ve-task.yaml` does not exist in task directory
+  - At least one `--project` is specified
+  - All referenced repositories exist as directories in the task directory
+  - All referenced repositories are git repositories
+  - All referenced repositories have `docs/chunks/` (VE-initialized)
+- **Postconditions**:
+  - `.ve-task.yaml` created with external_artifact_repo and projects list
+  - `CLAUDE.md` created with task-specific content (external repo and project list rendered from template)
+  - `.claude/commands/` directory created with all command templates rendered for task context
+  - Command templates include task-context specific guidance (e.g., "artifacts created in external repo")
+- **Behavior**:
+  - Repository references can be `org/repo` format or plain directory names
+  - Resolves directories by trying `{repo}` first, then `{org}/{repo}`
+  - Fails early if any validation errors are found
+- **Errors**:
+  - Error if `.ve-task.yaml` already exists
+  - Error if no `--project` arguments provided
+  - Error if any repository directory does not exist
+  - Error if any repository is not a git repository
+  - Error if any repository is not VE-initialized (missing `docs/chunks/`)
+- **Exit codes**: 0 on success, 1 on validation error
 
 #### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
 

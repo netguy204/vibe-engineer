@@ -1,15 +1,18 @@
 """Business logic for ve task init command."""
 # Chunk: docs/chunks/task_init - Task directory initialization
+# Chunk: docs/chunks/task_init_scaffolding - Task CLAUDE.md and commands scaffolding
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from git_utils import is_git_repository
+from template_system import TaskContext, render_template, render_to_directory
 
 
 # Chunk: docs/chunks/task_init - Result of task init
+# Chunk: docs/chunks/task_init_scaffolding - Added created_files tracking
 @dataclass
 class TaskInitResult:
     """Result of a successful task init."""
@@ -17,6 +20,7 @@ class TaskInitResult:
     config_path: Path
     external_repo: str
     projects: list[str]
+    created_files: list[str] = field(default_factory=list)
 
 
 # Chunk: docs/chunks/task_init - Resolve repo reference to path
@@ -126,14 +130,63 @@ class TaskInit:
 
         return errors
 
+    # Chunk: docs/chunks/task_init_scaffolding - Render task CLAUDE.md
+    def _render_claude_md(self) -> list[str]:
+        """Render the task CLAUDE.md template to task root.
+
+        Returns:
+            List of created file paths (relative to task root).
+        """
+        created = []
+        dest_file = self.cwd / "CLAUDE.md"
+
+        task_context = TaskContext(
+            external_artifact_repo=self.external,
+            projects=self.projects,
+        )
+        rendered = render_template(
+            "task", "CLAUDE.md.jinja2", **task_context.as_dict()
+        )
+        dest_file.write_text(rendered)
+        created.append("CLAUDE.md")
+
+        return created
+
+    # Chunk: docs/chunks/task_init_scaffolding - Render command templates
+    def _render_commands(self) -> list[str]:
+        """Render command templates to .claude/commands/ with task context.
+
+        Returns:
+            List of created file paths (relative to task root).
+        """
+        created = []
+        commands_dir = self.cwd / ".claude" / "commands"
+
+        task_context = TaskContext(
+            external_artifact_repo=self.external,
+            projects=self.projects,
+        )
+        render_result = render_to_directory(
+            "commands", commands_dir, **task_context.as_dict()
+        )
+
+        # Map paths to relative strings
+        for path in render_result.created:
+            created.append(f".claude/commands/{path.name}")
+
+        return created
+
     def execute(self) -> TaskInitResult:
-        """Create the .ve-task.yaml file.
+        """Create the .ve-task.yaml file and scaffolding.
 
         Should only be called if validate() returns an empty list.
 
         Returns:
             TaskInitResult with path and configuration details.
         """
+        created_files = []
+
+        # Create .ve-task.yaml
         config_path = self.cwd / ".ve-task.yaml"
         config_data = {
             "external_artifact_repo": self.external,
@@ -142,9 +195,17 @@ class TaskInit:
 
         with open(config_path, "w") as f:
             yaml.dump(config_data, f, default_flow_style=False)
+        created_files.append(".ve-task.yaml")
+
+        # Render CLAUDE.md
+        created_files.extend(self._render_claude_md())
+
+        # Render command templates
+        created_files.extend(self._render_commands())
 
         return TaskInitResult(
             config_path=config_path,
             external_repo=self.external,
             projects=self.projects,
+            created_files=created_files,
         )

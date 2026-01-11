@@ -226,3 +226,172 @@ class TestTaskInitExecute:
         config = load_task_config(tmp_path)
         assert config.external_artifact_repo == "acme/ext"
         assert config.projects == ["acme/proj"]
+
+
+# Chunk: docs/chunks/task_init_scaffolding - Tests for CLAUDE.md generation
+class TestTaskInitClaudeMd:
+    """Tests for CLAUDE.md generation in task init."""
+
+    def test_creates_claude_md_in_task_directory(self, tmp_path):
+        """Creates CLAUDE.md file in task directory."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        assert (tmp_path / "CLAUDE.md").exists()
+
+    def test_claude_md_contains_external_repo(self, tmp_path):
+        """CLAUDE.md contains external_artifact_repo from config."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert "acme/ext" in content
+
+    def test_claude_md_contains_project_list(self, tmp_path):
+        """CLAUDE.md contains project list from config."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        proj1 = tmp_path / "proj1"
+        make_ve_initialized_git_repo(proj1)
+        proj2 = tmp_path / "proj2"
+        make_ve_initialized_git_repo(proj2)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
+        init.execute()
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert "acme/proj1" in content
+        assert "acme/proj2" in content
+
+    def test_claude_md_is_rendered_from_template(self, tmp_path):
+        """CLAUDE.md is rendered (not a copy of template source)."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+        # Should not contain Jinja2 syntax
+        assert "{{" not in content
+        assert "{%" not in content
+        # Should contain rendered content
+        assert "Multi-Project Task" in content
+
+
+# Chunk: docs/chunks/task_init_scaffolding - Tests for command rendering
+class TestTaskInitCommands:
+    """Tests for command template rendering in task init."""
+
+    def test_creates_claude_commands_directory(self, tmp_path):
+        """Creates .claude/commands/ directory in task root."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        assert (tmp_path / ".claude" / "commands").exists()
+        assert (tmp_path / ".claude" / "commands").is_dir()
+
+    def test_renders_all_command_templates(self, tmp_path):
+        """All command templates are rendered to .claude/commands/."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        commands_dir = tmp_path / ".claude" / "commands"
+        # Check that key commands are rendered
+        assert (commands_dir / "chunk-create.md").exists()
+        assert (commands_dir / "chunk-implement.md").exists()
+        assert (commands_dir / "chunk-plan.md").exists()
+        assert (commands_dir / "chunk-complete.md").exists()
+        assert (commands_dir / "narrative-create.md").exists()
+        assert (commands_dir / "subsystem-discover.md").exists()
+        assert (commands_dir / "investigation-create.md").exists()
+
+    def test_commands_contain_task_context_content(self, tmp_path):
+        """Commands contain task-context specific content."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        init.execute()
+
+        # Check chunk-create contains task context
+        chunk_create = (tmp_path / ".claude" / "commands" / "chunk-create.md").read_text()
+        assert "Task Context:" in chunk_create
+        assert "acme/ext" in chunk_create
+
+    def test_commands_contain_project_list_in_task_context(self, tmp_path):
+        """Commands with project lists render them correctly."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        proj1 = tmp_path / "proj1"
+        make_ve_initialized_git_repo(proj1)
+        proj2 = tmp_path / "proj2"
+        make_ve_initialized_git_repo(proj2)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
+        init.execute()
+
+        # Check chunk-implement contains project list
+        chunk_impl = (tmp_path / ".claude" / "commands" / "chunk-implement.md").read_text()
+        assert "acme/proj1" in chunk_impl
+        assert "acme/proj2" in chunk_impl
+
+
+# Chunk: docs/chunks/task_init_scaffolding - Tests for created_files tracking
+class TestTaskInitCreatedFiles:
+    """Tests for created_files tracking in TaskInitResult."""
+
+    def test_result_includes_created_files(self, tmp_path):
+        """TaskInitResult.created_files lists all created files."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        result = init.execute()
+
+        # Should include .ve-task.yaml
+        assert ".ve-task.yaml" in result.created_files
+        # Should include CLAUDE.md
+        assert "CLAUDE.md" in result.created_files
+        # Should include commands
+        assert any("chunk-create.md" in f for f in result.created_files)
+
+    def test_created_files_are_relative_paths(self, tmp_path):
+        """Created files are relative paths, not absolute."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external)
+        project = tmp_path / "proj"
+        make_ve_initialized_git_repo(project)
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
+        result = init.execute()
+
+        # All paths should be relative (not start with /)
+        for f in result.created_files:
+            assert not f.startswith("/"), f"Path {f} should be relative"

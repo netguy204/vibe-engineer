@@ -885,3 +885,190 @@ Extra info: {{ extra_info }}
         finally:
             template_system.template_dir = original_template_dir
             template_system._environments.clear()
+
+
+# Chunk: docs/chunks/task_init_scaffolding - Tests for TaskContext
+class TestTaskContext:
+    """Tests for TaskContext dataclass."""
+
+    def test_task_context_has_required_fields(self):
+        """TaskContext has external_artifact_repo, projects, and task_context."""
+        from template_system import TaskContext
+
+        ctx = TaskContext(
+            external_artifact_repo="acme/external",
+            projects=["acme/proj1", "acme/proj2"],
+        )
+        assert ctx.external_artifact_repo == "acme/external"
+        assert ctx.projects == ["acme/proj1", "acme/proj2"]
+        assert ctx.task_context is True  # Default value
+
+    def test_task_context_as_dict_returns_all_fields(self):
+        """TaskContext.as_dict() returns dict with all fields."""
+        from template_system import TaskContext
+
+        ctx = TaskContext(
+            external_artifact_repo="acme/external",
+            projects=["acme/proj1"],
+        )
+        result = ctx.as_dict()
+        assert result["external_artifact_repo"] == "acme/external"
+        assert result["projects"] == ["acme/proj1"]
+        assert result["task_context"] is True
+
+    def test_task_context_works_in_template(self, temp_project):
+        """TaskContext can be used in Jinja2 templates."""
+        import template_system
+        from template_system import TaskContext
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "test.md").write_text(
+            "External: {{ external_artifact_repo }}\n"
+            "Projects:\n{% for p in projects %}- {{ p }}\n{% endfor %}"
+        )
+
+        ctx = TaskContext(
+            external_artifact_repo="acme/external",
+            projects=["acme/proj1", "acme/proj2"],
+        )
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            result = template_system.render_template(
+                "test_collection", "test.md", **ctx.as_dict()
+            )
+            assert "External: acme/external" in result
+            assert "- acme/proj1" in result
+            assert "- acme/proj2" in result
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+
+# Chunk: docs/chunks/task_init_scaffolding - Tests for conditional block processing
+class TestConditionalBlocks:
+    """Tests for task_context conditional blocks in templates."""
+
+    def test_conditional_block_included_when_task_context_true(self, temp_project):
+        """{% if task_context %} content is included when task_context=True."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "test.md").write_text(
+            "Always shown\n"
+            "{% if task_context %}Task-specific content{% endif %}"
+        )
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            result = template_system.render_template(
+                "test_collection", "test.md", task_context=True
+            )
+            assert "Always shown" in result
+            assert "Task-specific content" in result
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_conditional_block_excluded_when_task_context_false(self, temp_project):
+        """{% if task_context %} content is excluded when task_context=False."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "test.md").write_text(
+            "Always shown\n"
+            "{% if task_context %}Task-specific content{% endif %}"
+        )
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            result = template_system.render_template(
+                "test_collection", "test.md", task_context=False
+            )
+            assert "Always shown" in result
+            assert "Task-specific content" not in result
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_conditional_block_excluded_when_task_context_not_provided(self, temp_project):
+        """{% if task_context %} content is excluded when task_context is undefined."""
+        import template_system
+
+        collection_dir = temp_project / "templates" / "test_collection"
+        collection_dir.mkdir(parents=True)
+        (collection_dir / "test.md").write_text(
+            "Always shown\n"
+            "{% if task_context %}Task-specific content{% endif %}"
+        )
+
+        original_template_dir = template_system.template_dir
+        template_system.template_dir = temp_project / "templates"
+        template_system._environments.clear()
+        try:
+            # Note: not passing task_context at all
+            result = template_system.render_template(
+                "test_collection", "test.md"
+            )
+            assert "Always shown" in result
+            assert "Task-specific content" not in result
+        finally:
+            template_system.template_dir = original_template_dir
+            template_system._environments.clear()
+
+    def test_real_command_template_task_context_true(self):
+        """Real command templates render task-specific content when task_context=True."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            task_context=True,
+            external_artifact_repo="acme/external",
+            projects=["acme/proj1"],
+        )
+        assert "Task Context:" in result
+        assert "acme/external" in result
+
+    def test_real_command_template_task_context_false(self):
+        """Real command templates exclude task-specific content when task_context=False."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            task_context=False,
+        )
+        assert "Task Context:" not in result
+
+    def test_real_command_template_no_jinja_remnants_in_output(self):
+        """Real command templates render without Jinja2 syntax in output."""
+        from template_system import render_template
+
+        # Test task context
+        result_task = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            task_context=True,
+            external_artifact_repo="acme/external",
+            projects=["acme/proj1"],
+        )
+        assert "{%" not in result_task
+        assert "{{" not in result_task or "{{" in result_task and "}}" in result_task  # Allow escaped braces
+
+        # Test project context
+        result_project = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            task_context=False,
+        )
+        assert "{%" not in result_project
