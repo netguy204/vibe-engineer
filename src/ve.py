@@ -1696,5 +1696,244 @@ def copy_external(artifact_path, target_project, new_name, cwd):
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
+# Chunk: docs/chunks/orch_foundation - Orchestrator CLI commands
+@cli.group()
+def orch():
+    """Orchestrator daemon commands."""
+    pass
+
+
+# Chunk: docs/chunks/orch_foundation - Start daemon command
+@orch.command()
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def start(project_dir):
+    """Start the orchestrator daemon."""
+    from orchestrator.daemon import start_daemon, DaemonError
+
+    try:
+        pid = start_daemon(project_dir)
+        click.echo(f"Orchestrator daemon started (PID {pid})")
+    except DaemonError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+# Chunk: docs/chunks/orch_foundation - Stop daemon command
+@orch.command()
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def stop(project_dir):
+    """Stop the orchestrator daemon."""
+    from orchestrator.daemon import stop_daemon, DaemonError
+
+    try:
+        stopped = stop_daemon(project_dir)
+        if stopped:
+            click.echo("Orchestrator daemon stopped")
+        else:
+            click.echo("Orchestrator daemon is not running")
+    except DaemonError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+# Chunk: docs/chunks/orch_foundation - Daemon status command
+@orch.command("status")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_status(json_output, project_dir):
+    """Show orchestrator daemon status."""
+    from orchestrator.daemon import get_daemon_status
+    import json
+
+    state = get_daemon_status(project_dir)
+
+    if json_output:
+        click.echo(json.dumps(state.model_dump_json_serializable(), indent=2))
+    else:
+        if state.running:
+            click.echo(f"Status: Running")
+            click.echo(f"PID: {state.pid}")
+            if state.uptime_seconds is not None:
+                # Format uptime nicely
+                uptime = state.uptime_seconds
+                if uptime < 60:
+                    uptime_str = f"{uptime:.0f}s"
+                elif uptime < 3600:
+                    uptime_str = f"{uptime / 60:.0f}m"
+                else:
+                    uptime_str = f"{uptime / 3600:.1f}h"
+                click.echo(f"Uptime: {uptime_str}")
+            if state.work_unit_counts:
+                click.echo("Work Units:")
+                for status, count in sorted(state.work_unit_counts.items()):
+                    click.echo(f"  {status}: {count}")
+        else:
+            click.echo("Status: Stopped")
+
+
+# Chunk: docs/chunks/orch_foundation - List work units command
+@orch.command("ps")
+@click.option("--status", "status_filter", type=str, help="Filter by status")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_ps(status_filter, json_output, project_dir):
+    """List all work units (alias for work-unit list)."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client.list_work_units(status=status_filter)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            units = result["work_units"]
+            if not units:
+                click.echo("No work units")
+                return
+
+            # Display table
+            click.echo(f"{'CHUNK':<30} {'PHASE':<12} {'STATUS':<16} {'BLOCKED BY'}")
+            click.echo("-" * 80)
+            for unit in units:
+                blocked = ", ".join(unit["blocked_by"]) if unit["blocked_by"] else "-"
+                click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['status']:<16} {blocked}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_foundation - Work unit command group
+@orch.group("work-unit")
+def work_unit():
+    """Work unit management commands."""
+    pass
+
+
+# Chunk: docs/chunks/orch_foundation - Create work unit command
+@work_unit.command("create")
+@click.argument("chunk")
+@click.option("--phase", default="GOAL", help="Initial phase (GOAL, PLAN, IMPLEMENT, COMPLETE)")
+@click.option("--status", "init_status", default="READY", help="Initial status")
+@click.option("--blocked-by", multiple=True, help="Chunks this is blocked by")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project_dir):
+    """Create a new work unit for a chunk."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client.create_work_unit(
+            chunk=chunk,
+            phase=phase,
+            status=init_status,
+            blocked_by=list(blocked_by) if blocked_by else None,
+        )
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Created work unit: {result['chunk']} [{result['phase']}] {result['status']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_foundation - Work unit status command
+@work_unit.command("status")
+@click.argument("chunk")
+@click.argument("new_status", required=False, default=None)
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_status(chunk, new_status, json_output, project_dir):
+    """Show or update work unit status."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        if new_status is None:
+            # Show current status
+            result = client.get_work_unit(chunk)
+            if json_output:
+                click.echo(json.dumps(result, indent=2))
+            else:
+                click.echo(f"{result['chunk']}: [{result['phase']}] {result['status']}")
+        else:
+            # Update status
+            old = client.get_work_unit(chunk)
+            result = client.update_work_unit(chunk, status=new_status)
+            if json_output:
+                click.echo(json.dumps(result, indent=2))
+            else:
+                click.echo(f"{chunk}: {old['status']} -> {result['status']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_foundation - Work unit list command
+@work_unit.command("list")
+@click.option("--status", "status_filter", type=str, help="Filter by status")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_list(status_filter, json_output, project_dir):
+    """List all work units."""
+    # Delegate to orch ps
+    from click import Context
+    ctx = click.get_current_context()
+    ctx.invoke(orch_ps, status_filter=status_filter, json_output=json_output, project_dir=project_dir)
+
+
+# Chunk: docs/chunks/orch_foundation - Delete work unit command
+@work_unit.command("delete")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_delete(chunk, json_output, project_dir):
+    """Delete a work unit."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client.delete_work_unit(chunk)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Deleted work unit: {chunk}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
 if __name__ == "__main__":
     cli()

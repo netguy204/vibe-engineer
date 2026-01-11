@@ -11,8 +11,8 @@ code_references:
     implements: "Short name validation delegating to validate_identifier()"
   - ref: src/ve.py#validate_ticket_id
     implements: "Ticket ID validation delegating to validate_identifier()"
-  - ref: src/ve.py#start
-    implements: "start command - argument parsing, validation, normalization, duplicate detection, --yes flag"
+  - ref: src/ve.py#create
+    implements: "create command (formerly start) - argument parsing, validation, normalization, duplicate detection, --yes flag"
   - ref: src/chunks.py#Chunks::__init__
     implements: "Chunks class initialization"
   - ref: src/chunks.py#Chunks::enumerate_chunks

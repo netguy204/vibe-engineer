@@ -25,6 +25,7 @@ search for it - run it directly via Bash.
    will refer to the directory returned by this command below as <chunk
    directory>
 
+
 2. Run `ve chunk suggest-prefix <chunk_name>` (using just the directory name,
    not the full path) to check if this chunk should be renamed for better
    semantic clustering. If a prefix is suggested:

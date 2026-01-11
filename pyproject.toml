@@ -6,10 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "click",
+    "httpx>=0.27.0",
     "jinja2",
     "pydantic",
     "pyyaml",
     "scikit-learn",
+    "starlette>=0.36.0",
+    "uvicorn>=0.27.0",
 ]
 
 [project.scripts]

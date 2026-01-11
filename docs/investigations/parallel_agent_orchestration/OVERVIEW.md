@@ -3,7 +3,7 @@ status: SOLVED
 trigger: "Difficulty managing parallel agent workflows across multiple terminals and Conductor"
 proposed_chunks:
   - prompt: "Orchestrator foundation: daemon skeleton with SQLite state, basic work unit model, ve orch start/stop/status/ps commands"
-    chunk_directory: null
+    chunk_directory: orch_foundation
   - prompt: "Orchestrator scheduling: worktree manager, agent spawning for single phase execution, ve orch inject and ready queue"
     chunk_directory: null
   - prompt: "Orchestrator attention queue: question/decision capture from agents, priority scoring by downstream impact, ve orch queue/answer commands"
@@ -172,6 +172,12 @@ This means file overlap detection is possible at **planning time** (before imple
 3. **"Funnel files" are the primary source of false independence assumptions**
    - Evidence: `src/ve.py` (CLI entry point) is modified by nearly every feature chunk
    - Other common funnel files: main config files, central routing, index files
+
+4. **Multiple daemons must coexist on one machine, scoped by project**
+   - Requirement: An operator may work on multiple projects simultaneously, each with its own orchestrator daemon
+   - Solution: Each daemon uses a Unix socket stored in the project's `.ve/` directory (`.ve/orchestrator.sock`)
+   - CLI discovery: The `--project-dir` option (defaulting to `.`) determines which socket to connect to
+   - Implemented in: `orch_foundation` chunk - daemon stores PID, socket, log, and database all under `.ve/`
 
 ### Hypotheses/Opinions
 

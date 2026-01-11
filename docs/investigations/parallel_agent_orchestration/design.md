@@ -65,6 +65,38 @@ The primary interface is an **attention queue** - a prioritized list of things n
 - Primary view: attention queue + process grid
 - Click-to-expand: agent context, chunk goal, pending question
 
+### Per-Project Isolation
+
+**Requirement:** Multiple orchestrator daemons can run simultaneously on one machine, each managing a different project.
+
+**Implementation:** Each daemon is scoped to a project directory and stores all state under `.ve/`:
+
+```
+project-a/
+├── .ve/
+│   ├── orchestrator.pid     # Daemon process ID
+│   ├── orchestrator.sock    # Unix socket for IPC
+│   ├── orchestrator.db      # SQLite state database
+│   └── orchestrator.log     # Daemon logs
+└── docs/chunks/...
+
+project-b/
+├── .ve/
+│   ├── orchestrator.pid
+│   ├── orchestrator.sock
+│   ├── orchestrator.db
+│   └── orchestrator.log
+└── docs/chunks/...
+```
+
+**CLI discovery:** The `--project-dir` option (defaulting to current directory) determines which daemon to communicate with. The CLI reads `.ve/orchestrator.sock` from the project directory to find the right socket.
+
+**Benefits:**
+- No port conflicts between daemons
+- No global registry or coordination required
+- State is naturally co-located with the project it manages
+- Easy cleanup: delete `.ve/` to remove all orchestrator state
+
 ## The OS Analogy
 
 | OS Concept | Orchestrator Concept |
