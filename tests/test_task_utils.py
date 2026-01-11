@@ -217,6 +217,7 @@ class TestCreateExternalYaml:
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
         )
 
         assert result.exists()
@@ -232,6 +233,7 @@ class TestCreateExternalYaml:
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
         )
 
         chunk_dir = tmp_path / "docs" / "chunks" / "auth_token"
@@ -248,6 +250,7 @@ class TestCreateExternalYaml:
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
             pinned_sha="abcd1234" * 5,
+            artifact_type=ArtifactType.CHUNK,
             track="develop",
         )
 
@@ -270,6 +273,7 @@ class TestCreateExternalYaml:
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
         )
 
         ref = load_external_ref(result.parent)
@@ -512,6 +516,7 @@ class TestCreateExternalYamlCreatedAfter:
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
             created_after=["previous_chunk"],
         )
 
@@ -528,6 +533,7 @@ class TestCreateExternalYamlCreatedAfter:
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
             created_after=["chunk_a", "chunk_b", "chunk_c"],
         )
 
@@ -546,6 +552,7 @@ class TestCreateExternalYamlCreatedAfter:
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
         )
 
         # Read raw YAML to verify created_after is not present
@@ -566,6 +573,7 @@ class TestCreateExternalYamlCreatedAfter:
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
             pinned_sha="a" * 40,
+            artifact_type=ArtifactType.CHUNK,
             created_after=[],
         )
 

@@ -3,6 +3,7 @@
 # Chunk: docs/chunks/future_chunk_creation - Status support
 # Chunk: docs/chunks/external_chunk_causal - Causal ordering for external chunks
 # Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef for external.yaml
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
 
 import re
 from pathlib import Path
@@ -11,6 +12,12 @@ import yaml
 
 from artifact_ordering import ArtifactIndex
 from chunks import Chunks
+from external_refs import (
+    is_external_artifact,
+    load_external_ref,
+    create_external_yaml,
+    ARTIFACT_MAIN_FILE,
+)
 from git_utils import get_current_sha
 from models import TaskConfig, ExternalArtifactRef, ArtifactType
 
@@ -66,14 +73,16 @@ def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Detect external chunk
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Delegate to external_refs module
 def is_external_chunk(chunk_path: Path) -> bool:
     """Detect if chunk_path is an external chunk reference.
 
     An external chunk has external.yaml but no GOAL.md.
+
+    Note: This is a convenience wrapper around is_external_artifact()
+    for chunk-specific code.
     """
-    has_external = (chunk_path / "external.yaml").exists()
-    has_goal = (chunk_path / "GOAL.md").exists()
-    return has_external and not has_goal
+    return is_external_artifact(chunk_path, ArtifactType.CHUNK)
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Load task configuration
@@ -102,27 +111,8 @@ def load_task_config(path: Path) -> TaskConfig:
 
 # Chunk: docs/chunks/chunk_create_task_aware - Load external chunk reference
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to return ExternalArtifactRef
-def load_external_ref(chunk_path: Path) -> ExternalArtifactRef:
-    """Load and validate external.yaml from chunk path.
-
-    Args:
-        chunk_path: Directory containing external.yaml
-
-    Returns:
-        Validated ExternalArtifactRef
-
-    Raises:
-        FileNotFoundError: If external.yaml doesn't exist
-        ValidationError: If YAML content is invalid
-    """
-    ref_file = chunk_path / "external.yaml"
-    if not ref_file.exists():
-        raise FileNotFoundError(f"external.yaml not found in {chunk_path}")
-
-    with open(ref_file) as f:
-        data = yaml.safe_load(f)
-
-    return ExternalArtifactRef.model_validate(data)
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Now imported from external_refs module
+# load_external_ref is imported from external_refs
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Get next chunk ID
@@ -165,60 +155,8 @@ def get_next_chunk_id(project_path: Path) -> str:
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Support created_after for causal ordering
 # Chunk: docs/chunks/consolidate_ext_refs - Use artifact_type and artifact_id fields
-def create_external_yaml(
-    project_path: Path,
-    short_name: str,
-    external_repo_ref: str,
-    external_artifact_id: str,
-    pinned_sha: str,
-    track: str = "main",
-    created_after: list[str] | None = None,
-    artifact_type: ArtifactType = ArtifactType.CHUNK,
-) -> Path:
-    """Create external.yaml in project's artifact directory.
-
-    Args:
-        project_path: Path to the project directory
-        short_name: Short name for the artifact directory
-        external_repo_ref: External repo identifier (org/repo format)
-        external_artifact_id: Artifact ID in the external repo
-        pinned_sha: 40-character SHA to pin
-        track: Branch to track (default "main")
-        created_after: List of local artifact names this external artifact depends on
-                       (for local causal ordering)
-        artifact_type: Type of artifact (default CHUNK)
-
-    Returns:
-        Path to the created external.yaml file
-    """
-    # Determine the artifact directory based on type
-    artifact_dirs = {
-        ArtifactType.CHUNK: "chunks",
-        ArtifactType.NARRATIVE: "narratives",
-        ArtifactType.INVESTIGATION: "investigations",
-        ArtifactType.SUBSYSTEM: "subsystems",
-    }
-    artifact_dir_name = artifact_dirs[artifact_type]
-
-    # Use short_name only (no sequence prefix)
-    artifact_dir = project_path / "docs" / artifact_dir_name / short_name
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-
-    external_yaml_path = artifact_dir / "external.yaml"
-    data = {
-        "artifact_type": artifact_type.value,
-        "artifact_id": external_artifact_id,
-        "repo": external_repo_ref,
-        "track": track,
-        "pinned": pinned_sha,
-    }
-    if created_after:
-        data["created_after"] = created_after
-
-    with open(external_yaml_path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False)
-
-    return external_yaml_path
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Now imported from external_refs module
+# create_external_yaml is imported from external_refs
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Update frontmatter field

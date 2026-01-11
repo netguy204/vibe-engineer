@@ -3,6 +3,7 @@
 # Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
 # Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
 # Chunk: docs/chunks/consolidate_ext_refs - Import ArtifactType from models
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Import constants from external_refs
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
@@ -18,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from external_refs import ARTIFACT_MAIN_FILE, ARTIFACT_DIR_NAME, is_external_artifact
 from models import ArtifactType
 
 
@@ -65,16 +67,12 @@ def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
     return result
 
 
-# Map artifact type to the file that defines ordering (GOAL.md or OVERVIEW.md)
-_ARTIFACT_MAIN_FILE: dict[ArtifactType, str] = {
-    ArtifactType.CHUNK: "GOAL.md",
-    ArtifactType.NARRATIVE: "OVERVIEW.md",
-    ArtifactType.INVESTIGATION: "OVERVIEW.md",
-    ArtifactType.SUBSYSTEM: "OVERVIEW.md",
-}
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Use ARTIFACT_MAIN_FILE from external_refs
+# _ARTIFACT_MAIN_FILE is imported from external_refs as ARTIFACT_MAIN_FILE
 
 
 # Chunk: docs/chunks/external_chunk_causal - Include external chunks in enumeration
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Use is_external_artifact for detection
 def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
     """Enumerate artifact directory names.
 
@@ -85,12 +83,12 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
     Returns:
         Set of artifact directory names. Includes directories that have:
         - The required main file (e.g., GOAL.md or OVERVIEW.md), OR
-        - For chunks only: external.yaml (external chunk reference)
+        - external.yaml (external artifact reference)
     """
     if not artifact_dir.exists():
         return set()
 
-    main_file = _ARTIFACT_MAIN_FILE[artifact_type]
+    main_file = ARTIFACT_MAIN_FILE[artifact_type]
     result = set()
 
     for item in artifact_dir.iterdir():
@@ -98,13 +96,12 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
             continue
 
         main_path = item / main_file
-        external_path = item / "external.yaml"
 
         if main_path.exists():
             # Local artifact
             result.add(item.name)
-        elif artifact_type == ArtifactType.CHUNK and external_path.exists():
-            # External chunk reference
+        elif is_external_artifact(item, artifact_type):
+            # External artifact reference
             result.add(item.name)
 
     return result
@@ -235,13 +232,8 @@ def _parse_status(file_path: Path) -> str | None:
     return None
 
 
-# Map artifact type to its directory name under docs/
-_ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
-    ArtifactType.CHUNK: "chunks",
-    ArtifactType.NARRATIVE: "narratives",
-    ArtifactType.INVESTIGATION: "investigations",
-    ArtifactType.SUBSYSTEM: "subsystems",
-}
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Use ARTIFACT_DIR_NAME from external_refs
+# _ARTIFACT_DIR_NAME is imported from external_refs as ARTIFACT_DIR_NAME
 
 # Chunk: docs/chunks/tip_detection_active_only - Tip-eligible statuses per artifact type
 # Chunk: docs/chunks/external_chunk_causal - Added EXTERNAL pseudo-status for external chunks
@@ -283,7 +275,7 @@ class ArtifactIndex:
 
     def _get_artifact_dir(self, artifact_type: ArtifactType) -> Path:
         """Get the directory path for an artifact type."""
-        return self._project_root / "docs" / _ARTIFACT_DIR_NAME[artifact_type]
+        return self._project_root / "docs" / ARTIFACT_DIR_NAME[artifact_type]
 
     def _load_index(self) -> dict[str, Any]:
         """Load the index from disk."""
@@ -337,7 +329,7 @@ class ArtifactIndex:
                 "version": _INDEX_VERSION,
             }
 
-        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
+        main_file = ARTIFACT_MAIN_FILE[artifact_type]
 
         # Build dependency graph and collect statuses
         deps: dict[str, list[str]] = {}
@@ -481,7 +473,7 @@ class ArtifactIndex:
             Set of artifact directory names that are ancestors.
         """
         artifact_dir = self._get_artifact_dir(artifact_type)
-        main_file = _ARTIFACT_MAIN_FILE[artifact_type]
+        main_file = ARTIFACT_MAIN_FILE[artifact_type]
 
         # Build dependency graph
         artifacts = _enumerate_artifacts(artifact_dir, artifact_type)
