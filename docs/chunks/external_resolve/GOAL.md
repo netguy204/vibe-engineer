@@ -25,7 +25,7 @@ code_references:
 - ref: src/external_resolve.py
   implements: External chunk resolution logic for both modes
 - ref: src/external_resolve.py#ResolveResult
-  implements: Result dataclass with repo, chunk ID, track, SHA, and content
+  implements: Result dataclass with repo, artifact type, artifact ID, track, SHA, main content, and secondary content
 - ref: src/external_resolve.py#resolve_task_directory
   implements: Task directory mode resolution using local worktrees
 - ref: src/external_resolve.py#resolve_single_repo

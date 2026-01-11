@@ -39,10 +39,13 @@ from sync import (
     find_external_refs,
 )
 from external_resolve import (
+    resolve_artifact_task_directory,
+    resolve_artifact_single_repo,
     resolve_task_directory,
     resolve_single_repo as resolve_single_repo_external,
     ResolveResult,
 )
+from external_refs import ARTIFACT_MAIN_FILE, detect_artifact_type_from_path
 from validation import validate_identifier
 
 
@@ -920,59 +923,137 @@ def _display_sync_results(results: list, dry_run: bool):
 
 
 # Chunk: docs/chunks/external_resolve - External command group
+# Chunk: docs/chunks/external_resolve_all_types - Extended to all artifact types
 @cli.group()
 def external():
-    """External chunk reference commands."""
+    """External artifact reference commands."""
     pass
 
 
 # Chunk: docs/chunks/external_resolve - Resolve external chunk command
+# Chunk: docs/chunks/external_resolve_all_types - Extended to all artifact types
 @external.command()
-@click.argument("local_chunk_id")
+@click.argument("local_artifact_id")
 @click.option("--at-pinned", is_flag=True, help="Show content at pinned SHA instead of current HEAD")
-@click.option("--goal-only", is_flag=True, help="Show only GOAL.md content")
-@click.option("--plan-only", is_flag=True, help="Show only PLAN.md content")
+@click.option("--main-only", is_flag=True, help="Show only main file content (GOAL.md for chunks, OVERVIEW.md for others)")
+@click.option("--secondary-only", is_flag=True, help="Show only secondary file content (PLAN.md for chunks only)")
+@click.option("--goal-only", is_flag=True, hidden=True, help="Alias for --main-only (backward compatibility)")
+@click.option("--plan-only", is_flag=True, hidden=True, help="Alias for --secondary-only (backward compatibility)")
 @click.option("--project", type=str, default=None, help="Specify project for disambiguation (task directory only)")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def resolve(local_chunk_id, at_pinned, goal_only, plan_only, project, project_dir):
-    """Display external chunk content.
+def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, plan_only, project, project_dir):
+    """Display external artifact content.
 
-    Resolves an external chunk reference and displays its GOAL.md and PLAN.md content.
+    Resolves an external artifact reference and displays its content.
+    Auto-detects artifact type from the path (chunks, narratives, investigations, subsystems).
+
+    For chunks: displays GOAL.md and PLAN.md
+    For other types: displays OVERVIEW.md
+
     Works in both task directory mode (using local worktrees) and single repo mode
     (using the repo cache).
     """
+    # Handle backward-compatible aliases
+    if goal_only:
+        main_only = True
+    if plan_only:
+        secondary_only = True
+
     # Validate mutually exclusive options
-    if goal_only and plan_only:
-        click.echo("Error: --goal-only and --plan-only are mutually exclusive", err=True)
+    if main_only and secondary_only:
+        click.echo("Error: --main-only and --secondary-only are mutually exclusive", err=True)
         raise SystemExit(1)
 
     # Determine mode and resolve
     if is_task_directory(project_dir):
         _resolve_external_task_directory(
-            project_dir, local_chunk_id, at_pinned, goal_only, plan_only, project
+            project_dir, local_artifact_id, at_pinned, main_only, secondary_only, project
         )
     else:
         if project:
             click.echo("Error: --project can only be used in task directory context", err=True)
             raise SystemExit(1)
         _resolve_external_single_repo(
-            project_dir, local_chunk_id, at_pinned, goal_only, plan_only
+            project_dir, local_artifact_id, at_pinned, main_only, secondary_only
         )
+
+
+# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
+def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id: str) -> ArtifactType:
+    """Detect artifact type by searching for the artifact in project directories.
+
+    Args:
+        project_path: Path to the project directory
+        local_artifact_id: Local artifact ID to find
+
+    Returns:
+        The detected ArtifactType
+
+    Raises:
+        TaskChunkError: If artifact is not found in any artifact directory
+    """
+    from external_refs import ARTIFACT_DIR_NAME
+
+    for artifact_type, dir_name in ARTIFACT_DIR_NAME.items():
+        artifacts_dir = project_path / "docs" / dir_name
+        if not artifacts_dir.exists():
+            continue
+        for artifact_dir in artifacts_dir.iterdir():
+            if artifact_dir.is_dir():
+                if artifact_dir.name == local_artifact_id or artifact_dir.name.startswith(f"{local_artifact_id}-"):
+                    return artifact_type
+
+    raise TaskChunkError(f"Artifact '{local_artifact_id}' not found in any artifact directory")
 
 
 def _resolve_external_task_directory(
     task_dir: pathlib.Path,
-    local_chunk_id: str,
+    local_artifact_id: str,
     at_pinned: bool,
-    goal_only: bool,
-    plan_only: bool,
+    main_only: bool,
+    secondary_only: bool,
     project_filter: str | None,
 ):
     """Handle resolve in task directory mode."""
+    from external_refs import ARTIFACT_DIR_NAME
+    from task_utils import load_task_config, resolve_repo_directory
+
+    # Parse project:artifact format if present
+    if ":" in local_artifact_id:
+        parts = local_artifact_id.split(":", 1)
+        project_filter = parts[0]
+        local_artifact_id = parts[1]
+
+    config = load_task_config(task_dir)
+
+    # Filter projects to search
+    projects_to_search = config.projects
+    if project_filter:
+        matching = [p for p in config.projects if p == project_filter or p.endswith(f"/{project_filter}")]
+        if not matching:
+            click.echo(f"Error: Project '{project_filter}' not found in task configuration", err=True)
+            raise SystemExit(1)
+        projects_to_search = matching
+
+    # Find artifact and detect type
+    artifact_type = None
+    for project_ref in projects_to_search:
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+            artifact_type = _detect_artifact_type_from_id(project_path, local_artifact_id)
+            break
+        except (FileNotFoundError, TaskChunkError):
+            continue
+
+    if artifact_type is None:
+        click.echo(f"Error: Artifact '{local_artifact_id}' not found", err=True)
+        raise SystemExit(1)
+
     try:
-        result = resolve_task_directory(
+        result = resolve_artifact_task_directory(
             task_dir,
-            local_chunk_id,
+            local_artifact_id,
+            artifact_type,
             at_pinned=at_pinned,
             project_filter=project_filter,
         )
@@ -980,55 +1061,70 @@ def _resolve_external_task_directory(
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    _display_resolve_result(result, goal_only, plan_only)
+    _display_resolve_result(result, main_only, secondary_only)
 
 
 def _resolve_external_single_repo(
     repo_path: pathlib.Path,
-    local_chunk_id: str,
+    local_artifact_id: str,
     at_pinned: bool,
-    goal_only: bool,
-    plan_only: bool,
+    main_only: bool,
+    secondary_only: bool,
 ):
     """Handle resolve in single repo mode."""
+    # Detect artifact type from the repo
     try:
-        result = resolve_single_repo_external(
+        artifact_type = _detect_artifact_type_from_id(repo_path, local_artifact_id)
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = resolve_artifact_single_repo(
             repo_path,
-            local_chunk_id,
+            local_artifact_id,
+            artifact_type,
             at_pinned=at_pinned,
         )
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    _display_resolve_result(result, goal_only, plan_only)
+    _display_resolve_result(result, main_only, secondary_only)
 
 
-def _display_resolve_result(result: ResolveResult, goal_only: bool, plan_only: bool):
+# Chunk: docs/chunks/external_resolve_all_types - Type-aware display
+def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_only: bool):
     """Display the resolve result to the user."""
     # Header with metadata
-    click.echo("External Chunk Reference")
-    click.echo("========================")
+    artifact_type_display = result.artifact_type.value.capitalize()
+    click.echo(f"External {artifact_type_display} Reference")
+    click.echo("=" * (len(f"External {artifact_type_display} Reference")))
     click.echo(f"Repository: {result.repo}")
-    click.echo(f"Chunk: {result.external_chunk_id}")
+    click.echo(f"{artifact_type_display}: {result.artifact_id}")
     click.echo(f"Track: {result.track}")
     click.echo(f"SHA: {result.resolved_sha}")
     click.echo("")
 
+    # Determine file names based on artifact type
+    main_file = ARTIFACT_MAIN_FILE[result.artifact_type]
+    secondary_file = "PLAN.md" if result.artifact_type == ArtifactType.CHUNK else None
+
     # Content
-    if not plan_only:
-        click.echo("--- GOAL.md ---")
-        if result.goal_content:
-            click.echo(result.goal_content)
+    if not secondary_only:
+        click.echo(f"--- {main_file} ---")
+        if result.main_content:
+            click.echo(result.main_content)
         else:
             click.echo("(not found)")
 
-    if not goal_only:
-        if not plan_only:
+    # Only show secondary file section for chunks
+    if secondary_file and not main_only:
+        if not secondary_only:
             click.echo("")
-        click.echo("--- PLAN.md ---")
-        if result.plan_content:
-            click.echo(result.plan_content)
+        click.echo(f"--- {secondary_file} ---")
+        if result.secondary_content:
+            click.echo(result.secondary_content)
         else:
             click.echo("(not found)")
 
