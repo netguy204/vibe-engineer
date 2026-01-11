@@ -1579,3 +1579,130 @@ def list_task_proposed_chunks(task_dir: Path) -> dict:
         },
         "projects": project_results,
     }
+
+
+# Chunk: docs/chunks/copy_as_external - Copy external artifact error class
+class TaskCopyExternalError(Exception):
+    """Error during artifact copy as external with user-friendly message."""
+
+    pass
+
+
+# Chunk: docs/chunks/copy_as_external - Copy artifact as external reference
+def copy_artifact_as_external(
+    task_dir: Path,
+    artifact_path: str,
+    target_project: str,
+    new_name: str | None = None,
+) -> dict:
+    """Copy an artifact from external repo as an external reference in target project.
+
+    Creates an external.yaml in the target project that references an artifact
+    already present in the external artifact repository.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+        artifact_path: Path relative to external repo (e.g., "docs/chunks/my_chunk")
+        target_project: Project ref from task config (e.g., "acme/proj")
+        new_name: Optional new name for the artifact in destination
+
+    Returns:
+        Dict with keys:
+        - external_yaml_path: Path to created external.yaml in target project
+
+    Raises:
+        TaskCopyExternalError: If any step fails, with user-friendly message.
+    """
+    from external_refs import (
+        detect_artifact_type_from_path,
+        ARTIFACT_DIR_NAME,
+    )
+
+    # 1. Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskCopyExternalError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # 2. Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskCopyExternalError(
+            f"External artifact repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # 3. Build full source path and verify artifact exists
+    source_path = external_repo_path / artifact_path
+    if not source_path.exists():
+        raise TaskCopyExternalError(
+            f"Artifact '{artifact_path}' does not exist in external repository"
+        )
+
+    # 4. Detect artifact type from path
+    try:
+        artifact_type = detect_artifact_type_from_path(Path(artifact_path))
+    except ValueError as e:
+        raise TaskCopyExternalError(str(e))
+
+    # Extract artifact ID from path (the directory name)
+    artifact_id = source_path.name
+
+    # 5. Resolve target project path and validate it's in task config
+    if target_project not in config.projects:
+        raise TaskCopyExternalError(
+            f"Target project '{target_project}' is not a valid project in task configuration. "
+            f"Available projects: {', '.join(config.projects)}"
+        )
+
+    try:
+        target_project_path = resolve_repo_directory(task_dir, target_project)
+    except FileNotFoundError:
+        raise TaskCopyExternalError(
+            f"Target project '{target_project}' not found or not accessible"
+        )
+
+    # 6. Determine destination name
+    dest_name = new_name if new_name else artifact_id
+
+    # 7. Check for collision in target project
+    dir_name = ARTIFACT_DIR_NAME[artifact_type]
+    dest_path = target_project_path / "docs" / dir_name / dest_name
+    if dest_path.exists():
+        raise TaskCopyExternalError(
+            f"Artifact '{dest_name}' already exists in target project at {dest_path}. "
+            f"Use --name to specify a different name."
+        )
+
+    # 8. Get current SHA from external repo for pinned
+    try:
+        pinned_sha = get_current_sha(external_repo_path)
+    except ValueError as e:
+        raise TaskCopyExternalError(
+            f"Failed to resolve HEAD SHA in external repository: {e}"
+        )
+
+    # 9. Get current tips for target project's causal ordering
+    try:
+        index = ArtifactIndex(target_project_path)
+        tips = index.find_tips(artifact_type)
+    except Exception:
+        tips = []
+
+    # 10. Create external.yaml with all parameters
+    external_yaml_path = create_external_yaml(
+        project_path=target_project_path,
+        short_name=dest_name,
+        external_repo_ref=config.external_artifact_repo,
+        external_artifact_id=artifact_id,
+        pinned_sha=pinned_sha,
+        created_after=tips,
+        artifact_type=artifact_type,
+    )
+
+    # Return result
+    return {
+        "external_yaml_path": external_yaml_path,
+    }

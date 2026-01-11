@@ -47,6 +47,8 @@ from task_utils import (
     list_task_artifacts_grouped,
     TaskArtifactListError,
     list_task_proposed_chunks,
+    copy_artifact_as_external,
+    TaskCopyExternalError,
 )
 from sync import (
     sync_task_directory,
@@ -1550,6 +1552,38 @@ def promote(artifact_path, new_name, project_dir):
     external_yaml_path = result["external_yaml_path"]
 
     click.echo(f"Promoted artifact to external repo: {external_path}")
+    click.echo(f"Created external reference: {external_yaml_path}")
+
+
+# Chunk: docs/chunks/copy_as_external - Copy external artifact command
+@artifact.command("copy-external")
+@click.argument("artifact_path")
+@click.argument("target_project")
+@click.option("--name", "new_name", type=str, help="New name for artifact in destination")
+@click.option("--cwd", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def copy_external(artifact_path, target_project, new_name, cwd):
+    """Copy an external artifact as a reference in a target project.
+
+    Creates an external.yaml in the target project that references an artifact
+    already present in the external artifact repository.
+
+    ARTIFACT_PATH is the path relative to the external repo (e.g., "docs/chunks/my_chunk").
+
+    TARGET_PROJECT is the project reference from task config (e.g., "acme/proj").
+    """
+    try:
+        result = copy_artifact_as_external(
+            task_dir=cwd,
+            artifact_path=artifact_path,
+            target_project=target_project,
+            new_name=new_name,
+        )
+    except TaskCopyExternalError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created path
+    external_yaml_path = result["external_yaml_path"]
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
