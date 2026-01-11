@@ -18,9 +18,17 @@ will span participating projects and reference their structures appropriately.
    will refer to the directory returned by this command below as <chunk
    directory>
 
-2. Study <chunk directory>/GOAL.md
+2. Run `ve chunk suggest-prefix <chunk_name>` (using just the directory name,
+   not the full path) to check if this chunk should be renamed for better
+   semantic clustering. If a prefix is suggested:
+   - Present the suggestion to the operator: "This chunk is similar to
+     `{prefix}_*` chunks. Consider renaming to `{prefix}_{current_name}`?"
+   - If the operator accepts, use `mv` to rename the chunk directory
+   - Update <chunk directory> to the new path before continuing
 
-3. In light of the broader project objective in docs/trunk/GOAL.md and the
+3. Study <chunk directory>/GOAL.md
+
+4. In light of the broader project objective in docs/trunk/GOAL.md and the
    guiding architecture decisions in docs/trunk/DECISIONS.md and the existing
    codebase: Complete the template in <chunk directory>/PLAN.md with a detailed
    sequence of steps that will achieve the goal. If a chunk is part of a
