@@ -4,25 +4,7 @@ import subprocess
 import tempfile
 
 from ve import cli
-
-
-def make_ve_initialized_git_repo(path):
-    """Helper to create a VE-initialized git repository."""
-    path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    (path / "docs" / "chunks").mkdir(parents=True)
+from conftest import make_ve_initialized_git_repo
 
 
 class TestTaskInitCommand:

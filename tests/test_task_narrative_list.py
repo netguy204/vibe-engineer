@@ -9,67 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 from ve import cli
-
-
-def make_ve_initialized_git_repo(path):
-    """Helper to create a VE-initialized git repository with a commit."""
-    path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    (path / "docs" / "narratives").mkdir(parents=True)
-    # Create initial commit so HEAD exists
-    (path / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "."], cwd=path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-
-
-def setup_task_directory(tmp_path, external_name="ext", project_names=None):
-    """Create a complete task directory setup for testing.
-
-    Returns:
-        tuple: (task_dir, external_path, project_paths)
-    """
-    if project_names is None:
-        project_names = ["proj"]
-
-    task_dir = tmp_path
-
-    # Create external repo
-    external_path = task_dir / external_name
-    make_ve_initialized_git_repo(external_path)
-
-    # Create project repos
-    project_paths = []
-    for name in project_names:
-        project_path = task_dir / name
-        make_ve_initialized_git_repo(project_path)
-        project_paths.append(project_path)
-
-    # Create .ve-task.yaml
-    projects_yaml = "\n".join(f"  - acme/{name}" for name in project_names)
-    config_content = f"""external_artifact_repo: acme/{external_name}
-projects:
-{projects_yaml}
-"""
-    (task_dir / ".ve-task.yaml").write_text(config_content)
-
-    return task_dir, external_path, project_paths
+from conftest import make_ve_initialized_git_repo, setup_task_directory
 
 
 def create_narrative_in_external_repo(

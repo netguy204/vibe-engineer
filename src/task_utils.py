@@ -444,6 +444,20 @@ class TaskNarrativeError(Exception):
     pass
 
 
+# Chunk: docs/chunks/task_aware_investigations - Task investigation error class
+class TaskInvestigationError(Exception):
+    """Error during task investigation creation with user-friendly message."""
+
+    pass
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task subsystem error class
+class TaskSubsystemError(Exception):
+    """Error during task subsystem creation with user-friendly message."""
+
+    pass
+
+
 # Chunk: docs/chunks/task_aware_narrative_cmds - Add dependents to narrative
 def add_dependents_to_narrative(
     narrative_path: Path,
@@ -461,6 +475,48 @@ def add_dependents_to_narrative(
     overview_path = narrative_path / "OVERVIEW.md"
     if not overview_path.exists():
         raise FileNotFoundError(f"OVERVIEW.md not found in {narrative_path}")
+
+    update_frontmatter_field(overview_path, "dependents", dependents)
+
+
+# Chunk: docs/chunks/task_aware_investigations - Add dependents to investigation
+def add_dependents_to_investigation(
+    investigation_path: Path,
+    dependents: list[dict],
+) -> None:
+    """Update investigation OVERVIEW.md frontmatter to include dependents list.
+
+    Args:
+        investigation_path: Path to the investigation directory containing OVERVIEW.md
+        dependents: List of {artifact_type, artifact_id, repo} dicts to add as dependents
+
+    Raises:
+        FileNotFoundError: If OVERVIEW.md doesn't exist in investigation_path
+    """
+    overview_path = investigation_path / "OVERVIEW.md"
+    if not overview_path.exists():
+        raise FileNotFoundError(f"OVERVIEW.md not found in {investigation_path}")
+
+    update_frontmatter_field(overview_path, "dependents", dependents)
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Add dependents to subsystem
+def add_dependents_to_subsystem(
+    subsystem_path: Path,
+    dependents: list[dict],
+) -> None:
+    """Update subsystem OVERVIEW.md frontmatter to include dependents list.
+
+    Args:
+        subsystem_path: Path to the subsystem directory containing OVERVIEW.md
+        dependents: List of {artifact_type, artifact_id, repo} dicts to add as dependents
+
+    Raises:
+        FileNotFoundError: If OVERVIEW.md doesn't exist in subsystem_path
+    """
+    overview_path = subsystem_path / "OVERVIEW.md"
+    if not overview_path.exists():
+        raise FileNotFoundError(f"OVERVIEW.md not found in {subsystem_path}")
 
     update_frontmatter_field(overview_path, "dependents", dependents)
 
@@ -586,7 +642,6 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
         TaskNarrativeError: If external repo not accessible
     """
     from narratives import Narratives
-    from artifact_ordering import ArtifactIndex
 
     # Load task config
     try:
@@ -630,32 +685,168 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
     return results
 
 
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task subsystem error class
-class TaskSubsystemError(Exception):
-    """Error during task subsystem creation with user-friendly message."""
+# Chunk: docs/chunks/task_aware_investigations - Orchestrate multi-repo investigation
+def create_task_investigation(
+    task_dir: Path,
+    short_name: str,
+) -> dict:
+    """Create investigation in task directory context.
 
-    pass
-
-
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Add dependents to subsystem
-def add_dependents_to_subsystem(
-    subsystem_path: Path,
-    dependents: list[dict],
-) -> None:
-    """Update subsystem OVERVIEW.md frontmatter to include dependents list.
+    Orchestrates multi-repo investigation creation:
+    1. Creates investigation in external repo
+    2. Creates external.yaml in each project with causal ordering
+    3. Updates external investigation's OVERVIEW.md with dependents
 
     Args:
-        subsystem_path: Path to the subsystem directory containing OVERVIEW.md
-        dependents: List of {artifact_type, artifact_id, repo} dicts to add as dependents
+        task_dir: Path to the task directory containing .ve-task.yaml
+        short_name: Short name for the investigation
+
+    Returns:
+        Dict with keys:
+        - external_investigation_path: Path to created investigation in external repo
+        - project_refs: Dict mapping project repo ref to created external.yaml path
 
     Raises:
-        FileNotFoundError: If OVERVIEW.md doesn't exist in subsystem_path
+        TaskInvestigationError: If any step fails, with user-friendly message
     """
-    overview_path = subsystem_path / "OVERVIEW.md"
-    if not overview_path.exists():
-        raise FileNotFoundError(f"OVERVIEW.md not found in {subsystem_path}")
+    from investigations import Investigations
 
-    update_frontmatter_field(overview_path, "dependents", dependents)
+    # 1. Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskInvestigationError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # 2. Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskInvestigationError(
+            f"External investigation repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # 3. Get current SHA from external repo
+    try:
+        pinned_sha = get_current_sha(external_repo_path)
+    except ValueError as e:
+        raise TaskInvestigationError(
+            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
+        )
+
+    # 4. Create investigation in external repo
+    investigations = Investigations(external_repo_path)
+    external_investigation_path = investigations.create_investigation(short_name)
+    external_artifact_id = external_investigation_path.name
+
+    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    dependents = []
+    project_refs = {}
+
+    for project_ref in config.projects:
+        # Resolve project path
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+        except FileNotFoundError:
+            raise TaskInvestigationError(
+                f"Project directory '{project_ref}' not found or not accessible"
+            )
+
+        # Get current tips for this project's causal ordering
+        try:
+            index = ArtifactIndex(project_path)
+            tips = index.find_tips(ArtifactType.INVESTIGATION)
+        except Exception:
+            tips = []
+
+        # Create external.yaml with created_after
+        external_yaml_path = create_external_yaml(
+            project_path=project_path,
+            short_name=short_name,
+            external_repo_ref=config.external_artifact_repo,
+            external_artifact_id=external_artifact_id,
+            pinned_sha=pinned_sha,
+            created_after=tips,
+            artifact_type=ArtifactType.INVESTIGATION,
+        )
+
+        # Build dependent entry using ExternalArtifactRef format
+        dependents.append({
+            "artifact_type": ArtifactType.INVESTIGATION.value,
+            "artifact_id": short_name,
+            "repo": project_ref,
+        })
+
+        # Track created path
+        project_refs[project_ref] = external_yaml_path
+
+    # 7. Update external investigation's OVERVIEW.md with dependents
+    add_dependents_to_investigation(external_investigation_path, dependents)
+
+    # 8. Return results
+    return {
+        "external_investigation_path": external_investigation_path,
+        "project_refs": project_refs,
+    }
+
+
+# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation listing
+def list_task_investigations(task_dir: Path) -> list[dict]:
+    """List investigations from external repo with their dependents.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        List of dicts with keys: name, status, dependents
+        Sorted by investigation name descending.
+
+    Raises:
+        TaskInvestigationError: If external repo not accessible
+    """
+    from investigations import Investigations
+
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskInvestigationError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskInvestigationError(
+            f"External investigation repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # List investigations from external repo
+    investigations = Investigations(external_repo_path)
+    artifact_index = ArtifactIndex(external_repo_path)
+
+    # Get investigations in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.INVESTIGATION)
+    investigation_list = list(reversed(ordered))
+
+    results = []
+    for investigation_name in investigation_list:
+        frontmatter = investigations.parse_investigation_frontmatter(investigation_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        # Convert ExternalArtifactRef objects to dicts for API compatibility
+        dependents = [
+            {"artifact_type": d.artifact_type.value, "artifact_id": d.artifact_id, "repo": d.repo}
+            for d in frontmatter.dependents
+        ] if frontmatter else []
+        results.append({
+            "name": investigation_name,
+            "status": status,
+            "dependents": dependents,
+        })
+
+    return results
 
 
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Orchestrate multi-repo subsystem
