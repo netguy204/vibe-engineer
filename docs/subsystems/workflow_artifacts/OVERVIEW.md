@@ -51,6 +51,8 @@ chunks:
   relationship: implements
 - chunk_id: consolidate_ext_ref_utils
   relationship: implements
+- chunk_id: external_resolve_all_types
+  relationship: implements
 - chunk_id: sync_all_workflows
   relationship: implements
 code_references:
@@ -126,6 +128,15 @@ code_references:
 - ref: src/external_refs.py#load_external_ref
   implements: External reference loading and validation
   compliance: COMPLIANT
+- ref: src/external_resolve.py#find_artifact_in_project
+  implements: Generic artifact finding for any artifact type
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_artifact_task_directory
+  implements: Generic artifact resolution in task directory mode
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_artifact_single_repo
+  implements: Generic artifact resolution in single repo mode
+  compliance: COMPLIANT
 - ref: src/sync.py#find_external_refs
   implements: External reference finder for all workflow artifact types
   compliance: COMPLIANT
@@ -187,7 +198,7 @@ proposed_chunks:
     to work with any workflow artifact type. Detect type from directory path (chunks/,
     narratives/, investigations/, subsystems/). Display appropriate files (GOAL.md+PLAN.md
     for chunks, OVERVIEW.md for others). Use consolidated external reference utilities.'
-  chunk_directory: null
+  chunk_directory: external_resolve_all_types
 - prompt: 'Task-aware narrative commands: Extend ve narrative create and ve narrative
     list to detect task directory context. When in task directory: create narrative
     in external repo with dependents, create external.yaml in projects; list from
@@ -656,6 +667,13 @@ External chunk references now participate in local causal ordering:
   `external_resolve.py`, `task_utils.py`, `artifact_ordering.py`) to use the new module.
   Moved `ARTIFACT_MAIN_FILE` and `ARTIFACT_DIR_NAME` constants to external_refs.py.
 
+- **external_resolve_all_types** - Extended `ve external resolve` to work with all
+  workflow artifact types (chunks, narratives, investigations, subsystems). Created
+  generic `find_artifact_in_project()`, `resolve_artifact_task_directory()`, and
+  `resolve_artifact_single_repo()` functions. Updated `ResolveResult` dataclass to use
+  `artifact_type`, `artifact_id`, `main_content`, `secondary_content` fields. CLI
+  auto-detects artifact type from directory path and displays type-appropriate files.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -693,11 +711,10 @@ External chunk references now participate in local causal ordering:
    artifact type and `--artifact` option for filtering by artifact ID. Existing `--chunk`
    option maintained for backward compatibility.
 
-7. **Extend ve external resolve to all workflow types** - Currently only resolves chunks.
-   Should detect artifact type from path and display appropriate files.
-   - Impact: High
-   - Status: Not yet scheduled
-   - Dependencies: #5
+7. ~~**Extend ve external resolve to all workflow types**~~ - **RESOLVED** by chunk
+   external_resolve_all_types. `ve external resolve` now auto-detects artifact type from
+   directory path and displays appropriate files (GOAL.md+PLAN.md for chunks, OVERVIEW.md
+   for others). Works in both task directory mode and single repo mode.
 
 #### Task-Aware Commands for Non-Chunk Types
 
