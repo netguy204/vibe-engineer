@@ -1,0 +1,33 @@
+# Multi-Project Task
+
+You're in a **task directory** coordinating work across multiple repositories.
+
+## Projects
+
+| Role | Repository |
+|------|------------|
+| **External Artifacts** | `{{external_artifact_repo}}` |
+{{#projects}}
+| Participating | `{{.}}` |
+{{/projects}}
+
+Workflow artifacts (chunks, narratives, subsystems, investigations) live in the external repo. Implementation happens in participating projects.
+
+## Commands
+
+All commands work from task root. You can also `cd` into a project for project-specific work.
+
+**Artifact commands:** `/chunk-create`, `/chunk-plan`, `/chunk-implement`, `/chunk-complete`
+
+**Other artifacts:** `/narrative-create`, `/subsystem-discover`, `/investigation-create`
+
+Run `ve chunk list` to see task-level chunks. Use `/help` for detailed command guidance.
+
+## Backreferences
+
+When implementing, add backreferences to the **project-local** path:
+```python
+# Chunk: docs/chunks/{{chunk_name}}
+```
+
+This points to the project's external.yaml, which resolves to the external repo.
