@@ -63,6 +63,8 @@ chunks:
   relationship: implements
 - chunk_id: task_status_command
   relationship: implements
+- chunk_id: similarity_prefix_suggest
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -210,6 +212,16 @@ code_references:
   compliance: COMPLIANT
 - ref: src/ve.py#_format_grouped_artifact_list
   implements: Output formatter for grouped artifact listing
+  compliance: COMPLIANT
+- ref: src/chunks.py#SuggestPrefixResult
+  implements: Result dataclass for prefix suggestion analysis
+  compliance: COMPLIANT
+- ref: src/chunks.py#suggest_prefix
+  implements: TF-IDF similarity-based prefix suggestion for chunks
+  compliance: DEVIATION
+  deviation_reason: Does not dereference external artifacts in single-repo mode
+- ref: src/ve.py#suggest_prefix_cmd
+  implements: CLI command for chunk prefix suggestion
   compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
@@ -431,6 +443,26 @@ Consolidated external reference utilities supporting all artifact types:
 - `ARTIFACT_MAIN_FILE` - Maps artifact types to their main document (GOAL.md/OVERVIEW.md)
 - `ARTIFACT_DIR_NAME` - Maps artifact types to their directory names (chunks, narratives, etc.)
 
+**Dereferencing external artifacts:**
+
+External artifacts are references to content stored in another repository. "Dereferencing"
+means resolving that reference to access the actual content (e.g., reading a GOAL.md from
+an external chunk). This capability is essential for:
+
+- **Content analysis**: Operations like TF-IDF similarity need the actual text content
+- **Cross-repo visibility**: Agents working in project repos need to see external content
+- **Validation**: Checking that referenced symbols or structures actually exist
+
+Dereferencing can happen in two modes:
+1. **Task directory mode**: The external repo is available as a local worktree. Dereference
+   by resolving the repo path via `resolve_repo_directory()` and reading files directly.
+2. **Single repo mode**: The external repo must be fetched. Use the repo cache
+   (`~/.ve-cache/repos/`) to clone/fetch the external repository and read at the pinned SHA.
+
+The `ve external resolve` command implements dereferencing for display purposes. Code that
+needs to analyze external artifact content should follow the same pattern: detect external
+references, resolve the external repository path, and read the content from there.
+
 ### Artifact Ordering (`src/artifact_ordering.py`)
 
 Cached ordering system for workflow artifacts based on causal DAG ordering.
@@ -521,6 +553,34 @@ External artifact references now participate in local causal ordering:
 - External artifacts use "EXTERNAL" pseudo-status for tip eligibility (always tip-eligible)
 - Task-aware create commands automatically populate `created_after` with current tips
 - Staleness detection triggers on external.yaml directory changes
+
+### suggest_prefix Does Not Dereference External Artifacts (ACTIVE)
+
+**Introduced by**: chunk similarity_prefix_suggest
+
+The `suggest_prefix()` function in `src/chunks.py` computes TF-IDF similarity between
+chunks to suggest naming prefixes. When operating in **task directory context**, it
+correctly aggregates chunks from the external repo and all project repos by resolving
+their paths directly.
+
+However, when operating in **single-repo (project) context**, it only considers local
+chunks with a `GOAL.md` file present. External artifact references (directories with
+`external.yaml` but no `GOAL.md`) are silently skipped because `goal_path.exists()`
+returns False.
+
+**Impact**: In project context, prefix suggestions don't consider semantically similar
+chunks that happen to be external references. This can lead to suboptimal naming when
+a project has external chunks that share a naming convention.
+
+**Correct behavior**: Should dereference external artifacts to access their GOAL.md
+content, following the pattern established by `ve external resolve`:
+1. Detect external reference via `is_external_artifact()`
+2. Load the reference via `load_external_ref()`
+3. Resolve the external repository (via cache for single-repo mode)
+4. Read GOAL.md from the resolved path at the pinned SHA
+
+**Workaround**: Run `ve chunk suggest-prefix` from the task directory rather than
+from within a project directory to get complete corpus coverage.
 
 ## Chunk Relationships
 
