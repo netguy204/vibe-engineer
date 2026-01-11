@@ -7,6 +7,7 @@ description: Implement the active chunk.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 1. Determine the currently active chunk by running `ve chunk list --latest`. We

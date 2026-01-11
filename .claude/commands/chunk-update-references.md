@@ -41,7 +41,7 @@ The `::` separator indicates nesting (class::method, outer::inner::method).
      comment at the new location includes this chunk
    - When removing a reference (code deleted or concept obsolete), remove the
      corresponding backreference comment from the source code if present
-   - Backreference format: `# Chunk: docs/chunks/NNNN-short_name - Brief description`
+   - Backreference format: `# Chunk: docs/chunks/short_name - Brief description`
    - If the code has backreferences from multiple chunks, preserve all that still apply
 
 5. If all referenced symbols either still exist or can be updated unambiguously

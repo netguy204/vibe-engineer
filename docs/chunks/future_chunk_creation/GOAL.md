@@ -15,29 +15,27 @@ code_paths:
 - tests/test_task_utils.py
 code_references:
 - ref: src/chunks.py#Chunks::get_current_chunk
-  implements: Returns highest-numbered IMPLEMENTING chunk, ignoring FUTURE/ACTIVE/SUPERSEDED/HISTORICAL
+  implements: "Returns the first IMPLEMENTING chunk in causal order, ignoring FUTURE/ACTIVE/SUPERSEDED/HISTORICAL"
 - ref: src/chunks.py#Chunks::activate_chunk
-  implements: Transitions FUTURE chunk to IMPLEMENTING, enforcing single IMPLEMENTING
-    constraint
+  implements: "Transitions FUTURE chunk to IMPLEMENTING, enforcing single IMPLEMENTING constraint"
 - ref: src/chunks.py#Chunks::create_chunk
-  implements: Extended with status parameter to support FUTURE and IMPLEMENTING statuses
+  implements: "Extended with status parameter to support FUTURE and IMPLEMENTING statuses"
 - ref: src/ve.py#create
-  implements: CLI command with --future flag for creating FUTURE chunks
+  implements: "CLI command with --future flag for creating FUTURE chunks"
 - ref: src/ve.py#list_chunks
-  implements: CLI command showing status in brackets, --latest uses get_current_chunk
+  implements: "CLI command showing status, --latest uses get_current_chunk to find IMPLEMENTING chunk"
 - ref: src/ve.py#activate
-  implements: CLI command to activate a FUTURE chunk to IMPLEMENTING
+  implements: "CLI command to activate a FUTURE chunk to IMPLEMENTING status"
 - ref: src/task_utils.py#update_frontmatter_field
-  implements: Reusable utility for modifying YAML frontmatter fields
+  implements: "Reusable utility for modifying YAML frontmatter fields including status"
 - ref: src/task_utils.py#create_task_chunk
-  implements: Extended to pass status parameter for cross-repo chunk creation
+  implements: "Extended with status parameter for cross-repo chunk creation supporting FUTURE/IMPLEMENTING"
 - ref: src/templates/chunk/GOAL.md.jinja2
-  implements: Template with FUTURE status documentation and Jinja status variable
+  implements: "Template with FUTURE status documentation, Jinja status variable, and FUTURE/IMPLEMENTING examples"
 - ref: src/templates/commands/chunk-create.md.jinja2
-  implements: Skill with task context conditional and checks for IMPLEMENTING chunk, defaults to --future
+  implements: "Skill with step 3 checking for IMPLEMENTING chunk and deciding whether to use --future flag"
 - ref: docs/trunk/SPEC.md
-  implements: Specification updated with FUTURE status, --future flag, and ve chunk
-    activate
+  implements: "Specification updated with FUTURE status, --future flag, and ve chunk activate command"
 narrative: null
 created_after:
 - symbolic_code_refs

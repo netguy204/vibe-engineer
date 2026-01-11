@@ -7,6 +7,7 @@ description: Update code references in the current chunk and move both the PLAN.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 1. Determine the currently active chunk by running `ve chunk list --latest`. We
@@ -47,8 +48,8 @@ search for it - run it directly via Bash.
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet. 
 
-3. Extract the sequential ID for the chunk from the prefix number in the chunk
-   directory. We will call this <chunk_id> below.
+3. The chunk directory short name (e.g., `audit_seqnum_refs` from
+   `docs/chunks/audit_seqnum_refs`) is the `<chunk_id>` used by CLI commands below.
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct
