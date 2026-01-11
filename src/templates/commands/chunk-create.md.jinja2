@@ -58,6 +58,16 @@ completely in order:
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
 
+6. **Check for investigation origin.** If this chunk was derived from an
+   investigation's `proposed_chunks` (e.g., the user referenced an investigation
+   or you can identify that the work originated from exploratory findings):
+
+   - Set the `investigation` field in the chunk's frontmatter to the investigation
+     directory name (e.g., `investigation: memory_leak` for
+     `docs/investigations/memory_leak/`)
+   - Update the investigation's OVERVIEW.md to add this chunk's directory to the
+     corresponding `proposed_chunks` entry's `chunk_directory` field
+
 **Note on FUTURE chunks:** A FUTURE chunk is queued for later work. When the user
 is ready to start working on it, they can run `ve chunk activate <chunk_id>` to
 change its status from FUTURE to IMPLEMENTING. Only one chunk can be IMPLEMENTING
