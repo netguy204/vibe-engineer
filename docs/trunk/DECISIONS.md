@@ -162,3 +162,35 @@ only ephemeral trunks, then I haven't solved the problem.
 **Consequences**: Authors must think in terms of project root when writing references (e.g., `docs/chunks/0001/GOAL.md` instead of `../chunks/0001/GOAL.md`). Agents navigating from task directories will need special handling, which is deferred to a future decision.
 
 **Revisit If**: If task directory navigation becomes a significant use case that this convention makes awkward, or if tooling emerges that makes file-relative paths easier for agents to handle.
+
+---
+
+### DEC-005: Commands do not prescribe git operations
+
+**Date**: 2026-01-11
+
+**Status**: ACCEPTED
+
+**Decision**: Vibe Engineering commands and slash command templates must not prescribe when or how git operations (commits, pushes, etc.) occur. Git history management is the operator's responsibility.
+
+**Context**: As DEC-002 establishes, vibe engineering does not assume a git repository. Beyond that assumption, even when git is present, different operators have different commit strategies: some prefer atomic commits per feature, others squash, others use conventional commits, etc. Prescribing commit behavior couples the workflow to operator preferences it has no business dictating.
+
+**Alternatives Considered**:
+- Include commit steps in slash commands: Convenient but assumes git and imposes commit granularity
+- Make commit steps optional via flags: Adds complexity and still implies a default behavior
+- Leave git operations entirely to the operator: Respects autonomy and DEC-002
+
+**Rationale**: The vibe engineering workflow produces artifacts (chunks, narratives, investigations, subsystems). How those artifacts flow through version control is orthogonal to the workflow itself. Operators may:
+- Not use git at all
+- Use git but prefer manual commit timing
+- Use automated tooling that handles commits
+- Work across multiple repositories with different strategies
+
+By staying silent on git operations, ve commands remain composable with any version control strategy.
+
+**Consequences**:
+- Slash command templates must not include commit/push steps
+- CLI commands should not auto-commit (they may check for clean working tree as a safety measure, but that's validation, not prescription)
+- Documentation may mention git as one recovery option among others, but should not present it as the assumed workflow
+
+**Revisit If**: If a compelling use case emerges where ve-managed commits provide significant value that cannot be achieved through external tooling.
