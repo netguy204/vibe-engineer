@@ -1,10 +1,11 @@
 """Tests for cross-repository chunk management models."""
-# Chunk: docs/chunks/cross_repo_schemas - Validation tests for TaskConfig, ExternalChunkRef, ChunkDependent
+# Chunk: docs/chunks/cross_repo_schemas - Validation tests for TaskConfig, ChunkDependent
+# Chunk: docs/chunks/consolidate_ext_refs - Validation tests for ExternalArtifactRef
 
 import pytest
 from pydantic import ValidationError
 
-from models import TaskConfig, ExternalChunkRef, ChunkDependent, ExternalArtifactRef, ArtifactType
+from models import TaskConfig, ChunkDependent, ExternalArtifactRef, ArtifactType
 
 
 class TestTaskConfig:
@@ -52,50 +53,6 @@ class TestTaskConfig:
             TaskConfig(
                 external_artifact_repo="acme/sub/chunks",
                 projects=["acme/repo1"],
-            )
-
-
-class TestExternalChunkRef:
-    """Tests for the ExternalChunkRef schema."""
-
-    def test_external_chunk_ref_rejects_missing_org(self):
-        """Rejects repo without org/repo format."""
-        with pytest.raises(ValidationError):
-            ExternalChunkRef(
-                repo="myproject",  # Missing org/
-                chunk="0001-feature",
-            )
-
-    def test_external_chunk_ref_rejects_invalid_repo_chars(self):
-        """Rejects repo with spaces or special characters."""
-        with pytest.raises(ValidationError):
-            ExternalChunkRef(
-                repo="my org/project",  # Space in org
-                chunk="0001-feature",
-            )
-
-    def test_external_chunk_ref_rejects_invalid_chunk(self):
-        """Rejects invalid chunk directory name."""
-        with pytest.raises(ValidationError):
-            ExternalChunkRef(
-                repo="acme/myproject",
-                chunk="chunk with spaces",
-            )
-
-    def test_external_chunk_ref_rejects_invalid_pinned(self):
-        """Rejects pinned SHA that isn't 40 hex characters."""
-        with pytest.raises(ValidationError):
-            ExternalChunkRef(
-                repo="acme/myproject",
-                chunk="0001-feature",
-                pinned="abc123",  # Too short
-            )
-
-        with pytest.raises(ValidationError):
-            ExternalChunkRef(
-                repo="acme/myproject",
-                chunk="0001-feature",
-                pinned="G" * 40,  # Invalid hex character
             )
 
 

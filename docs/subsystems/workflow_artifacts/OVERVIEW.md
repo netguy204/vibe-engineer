@@ -1,5 +1,5 @@
 ---
-status: REFACTORING
+status: STABLE
 chunks:
 - chunk_id: implement_chunk_start
   relationship: implements
@@ -113,9 +113,6 @@ code_references:
 - ref: src/models.py#VALID_INVESTIGATION_TRANSITIONS
   implements: Investigation state transition rules
   compliance: COMPLIANT
-- ref: src/models.py#ExternalChunkRef
-  implements: External chunk reference schema (legacy, for backward compatibility)
-  compliance: PARTIAL
 - ref: src/models.py#ExternalArtifactRef
   implements: Generic external artifact reference schema for any workflow type
   compliance: COMPLIANT
@@ -262,84 +259,6 @@ proposed_chunks:
 created_after:
 - template_system
 ---
-<!--
-DO NOT DELETE THIS COMMENT until the subsystem reaches STABLE status.
-This documents the frontmatter schema and guides subsystem discovery.
-
-STATUS VALUES:
-- DISCOVERING: Initial exploration phase; boundaries and invariants being identified
-- DOCUMENTED: Core patterns captured; deviations tracked but not actively prioritized
-- REFACTORING: Active consolidation work in progress; agents should improve compliance
-- STABLE: Subsystem well-understood; changes should be rare and deliberate
-- DEPRECATED: Subsystem being phased out; see notes for migration guidance
-
-AGENT BEHAVIOR BY STATUS:
-- DOCUMENTED: When working on a chunk that touches this subsystem, document any new
-  deviations you discover in the Known Deviations section below. Do NOT prioritize
-  fixing deviations as part of your chunk work—your chunk has its own goals.
-- REFACTORING: When working on a chunk that touches this subsystem, attempt to leave
-  the subsystem better than you found it. If your chunk work touches code that deviates
-  from the subsystem's patterns, improve that code as part of your work (where relevant
-  to your chunk's scope). This is "opportunistic improvement"—not a mandate to fix
-  everything, but to improve what you touch.
-
-STATUS TRANSITIONS:
-- DISCOVERING -> DOCUMENTED: When Intent, Scope, and Invariants sections are populated
-  and the operator confirms they capture the essential pattern
-- DOCUMENTED -> REFACTORING: When the operator decides to prioritize consolidation work
-- REFACTORING -> STABLE: When all known deviations have been resolved
-- REFACTORING -> DOCUMENTED: When consolidation is paused (deviations remain but are
-  no longer being actively prioritized)
-- Any -> DEPRECATED: When the subsystem is being replaced or removed
-
-CHUNKS:
-- Records chunks that relate to this subsystem
-- Format: list of {chunk_id, relationship} where:
-  - chunk_id: The chunk directory name (e.g., "0005-validation_enhancements")
-  - relationship: "implements" (contributed code) or "uses" (depends on the subsystem)
-- This array grows over time as chunks reference this subsystem
-- Example:
-  chunks:
-    - chunk_id: "0005-validation_enhancements"
-      relationship: implements
-    - chunk_id: "0008-chunk_completion"
-      relationship: uses
-
-CODE_REFERENCES:
-- Symbolic references to code related to this subsystem
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Each reference includes a compliance level:
-  - COMPLIANT: Fully follows the subsystem's patterns (canonical implementation)
-  - PARTIAL: Partially follows but has some deviations
-  - NON_COMPLIANT: Does not follow the patterns (deviation to be addressed)
-- Example:
-  code_references:
-    - ref: src/validation.py#validate_frontmatter
-      implements: "Core validation logic"
-      compliance: COMPLIANT
-    - ref: src/validation.py#ValidationError
-      implements: "Error type for validation failures"
-      compliance: COMPLIANT
-    - ref: src/legacy/old_validator.py#validate
-      implements: "Legacy validation (uses string matching instead of regex)"
-      compliance: NON_COMPLIANT
-    - ref: src/api/handler.py#process_input
-      implements: "Input processing with inline validation"
-      compliance: PARTIAL
-
-PROPOSED_CHUNKS:
-- Tracks consolidation work that has been proposed but not yet created as chunks
-- Format: list of {prompt, chunk_directory} where:
-  - prompt: Description of the consolidation work needed
-  - chunk_directory: null until a chunk is created, then the directory name
-- Use `ve chunk list-proposed` to see all proposed chunks across the system
-- Example:
-  proposed_chunks:
-    - prompt: "Migrate old_validator.py to use the validation subsystem's regex patterns"
-      chunk_directory: null
-    - prompt: "Add validation subsystem integration to third_party.py"
-      chunk_directory: "0015-third_party_validation"
--->
 
 # workflow_artifacts
 
@@ -569,30 +488,27 @@ for status management with transition validation.
 Chunks now use `ve chunk create` consistent with other workflow types. The `start`
 command remains as a backward-compatible alias.
 
-### External References Only for Chunks (PARTIALLY RESOLVED)
+### ~~External References Only for Chunks~~ (RESOLVED)
 
-**Location**: `src/task_utils.py`, `src/models.py`
+**Resolved by**: chunks consolidate_ext_refs, consolidate_ext_ref_utils, task_aware_narrative_cmds,
+task_aware_investigations, task_aware_subsystem_cmds
 
-**Resolved**: chunk consolidate_ext_refs created `ExternalArtifactRef` model that supports
-all artifact types. The model has `artifact_type` and `artifact_id` fields instead of
-chunk-specific `chunk` field. `ChunkDependent` and `ChunkFrontmatter` now use
-`ExternalArtifactRef`. `create_external_yaml()` now supports creating external references
-for any artifact type via the `artifact_type` parameter.
-
-**Remaining work**: The CLI commands and utilities only create external references for
-chunks. Additional chunks are needed to extend task-aware commands (`ve narrative create`,
-`ve investigation create`, `ve subsystem discover`) to support external references.
+`ExternalArtifactRef` model supports all artifact types with `artifact_type` and `artifact_id`
+fields. The legacy `ExternalChunkRef` model was removed (no backward compatibility needed as
+no external.yaml files existed). All task-aware CLI commands (`ve narrative create/list`,
+`ve investigation create/list`, `ve subsystem discover/list`) now support external references
+in task directory mode.
 
 ### ~~External Chunk References Not in Causal Ordering~~ (RESOLVED)
 
 **Resolved by**: chunk external_chunk_causal
 
-External chunk references now participate in local causal ordering:
-- `ExternalChunkRef` model has `created_after: list[str]` field for local ordering
-- `ArtifactIndex._enumerate_artifacts()` includes directories with `external.yaml` (no GOAL.md)
+External artifact references now participate in local causal ordering:
+- `ExternalArtifactRef` model has `created_after: list[str]` field for local ordering
+- `ArtifactIndex._enumerate_artifacts()` includes directories with `external.yaml` (no main doc)
 - `ArtifactIndex._build_index_for_type()` reads `created_after` from `external.yaml`
-- External chunks use "EXTERNAL" pseudo-status for tip eligibility (always tip-eligible)
-- `create_task_chunk()` automatically populates `created_after` with current tips
+- External artifacts use "EXTERNAL" pseudo-status for tip eligibility (always tip-eligible)
+- Task-aware create commands automatically populate `created_after` with current tips
 - Staleness detection triggers on external.yaml directory changes
 
 ## Chunk Relationships

@@ -277,45 +277,6 @@ class TaskConfig(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/cross_repo_schemas - External chunk reference
-# Chunk: docs/chunks/external_chunk_causal - Local causal ordering for external refs
-class ExternalChunkRef(BaseModel):
-    """Reference to a chunk in another repository.
-
-    Used for both:
-    - external.yaml files in participating repos (with track/pinned)
-    - dependents list in external chunk GOAL.md (without track/pinned)
-    """
-
-    repo: str  # GitHub-style org/repo format
-    chunk: str  # Chunk directory name
-    track: str | None = None  # Branch to follow (optional)
-    pinned: str | None = None  # 40-char SHA (optional)
-    created_after: list[str] = []  # Local causal ordering (for external.yaml)
-
-    @field_validator("repo")
-    @classmethod
-    def validate_repo(cls, v: str) -> str:
-        """Validate repo is in org/repo format."""
-        return _require_valid_repo_ref(v, "repo")
-
-    @field_validator("chunk")
-    @classmethod
-    def validate_chunk(cls, v: str) -> str:
-        """Validate chunk is a valid directory name."""
-        return _require_valid_dir_name(v, "chunk")
-
-    @field_validator("pinned")
-    @classmethod
-    def validate_pinned(cls, v: str | None) -> str | None:
-        """Validate pinned is a 40-character hex SHA if provided."""
-        if v is None:
-            return v
-        if not SHA_PATTERN.match(v):
-            raise ValueError("pinned must be a 40-character lowercase hex SHA")
-        return v
-
-
 # Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference
 class ExternalArtifactRef(BaseModel):
     """Reference to a workflow artifact in another repository.
