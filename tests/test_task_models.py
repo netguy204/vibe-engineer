@@ -1,4 +1,5 @@
 """Tests for cross-repository chunk management models."""
+# Chunk: docs/chunks/cross_repo_schemas - Validation tests for TaskConfig, ExternalChunkRef, ChunkDependent
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +14,7 @@ class TestTaskConfig:
         """Rejects empty projects list."""
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="acme/chunks",
+                external_artifact_repo="acme/chunks",
                 projects=[],
             )
 
@@ -21,13 +22,13 @@ class TestTaskConfig:
         """Rejects repo references without org/repo format."""
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="chunks",  # Missing org/
+                external_artifact_repo="chunks",  # Missing org/
                 projects=["acme/repo1"],
             )
 
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="acme/chunks",
+                external_artifact_repo="acme/chunks",
                 projects=["repo1"],  # Missing org/
             )
 
@@ -35,13 +36,13 @@ class TestTaskConfig:
         """Rejects org or repo names with spaces or special characters."""
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="my org/chunks",  # Space in org
+                external_artifact_repo="my org/chunks",  # Space in org
                 projects=["acme/repo1"],
             )
 
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="acme/chunks",
+                external_artifact_repo="acme/chunks",
                 projects=["acme/repo@name"],  # @ in repo
             )
 
@@ -49,7 +50,7 @@ class TestTaskConfig:
         """Rejects references with multiple slashes."""
         with pytest.raises(ValidationError):
             TaskConfig(
-                external_chunk_repo="acme/sub/chunks",
+                external_artifact_repo="acme/sub/chunks",
                 projects=["acme/repo1"],
             )
 

@@ -32,6 +32,9 @@ from task_utils import (
     list_task_chunks,
     get_current_task_chunk,
     TaskChunkError,
+    create_task_narrative,
+    list_task_narratives,
+    TaskNarrativeError,
 )
 from sync import (
     sync_task_directory,
@@ -391,6 +394,7 @@ def narrative():
 
 
 # Chunk: docs/chunks/narrative_cli_commands - Create narrative command
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative creation
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -406,6 +410,12 @@ def create_narrative(short_name, project_dir):
     # Normalize to lowercase
     short_name = short_name.lower()
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _create_task_narrative(project_dir, short_name)
+        return
+
+    # Single-repo mode
     narratives = Narratives(project_dir)
     narrative_path = narratives.create_narrative(short_name)
 
@@ -414,13 +424,39 @@ def create_narrative(short_name, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative creation
+def _create_task_narrative(task_dir: pathlib.Path, short_name: str):
+    """Handle narrative creation in task directory (cross-repo mode)."""
+    try:
+        result = create_task_narrative(task_dir, short_name)
+    except TaskNarrativeError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_narrative_path"]
+    click.echo(f"Created narrative in external repo: {external_path.relative_to(task_dir)}/")
+
+    for project_ref, yaml_path in result["project_refs"].items():
+        # Show the narrative directory, not the yaml file
+        narrative_dir = yaml_path.parent
+        click.echo(f"Created reference in {project_ref}: {narrative_dir.relative_to(task_dir)}/")
+
+
 # Chunk: docs/chunks/artifact_list_ordering - List narratives command
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative listing
 @narrative.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_narratives(project_dir):
     """List all narratives."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _list_task_narratives(project_dir)
+        return
+
+    # Single-repo mode
     narratives = Narratives(project_dir)
     artifact_index = ArtifactIndex(project_dir)
 
@@ -440,6 +476,30 @@ def list_narratives(project_dir):
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         tip_indicator = " *" if narrative_name in tips else ""
         click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
+
+
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative listing handler
+def _list_task_narratives(task_dir: pathlib.Path):
+    """Handle narrative listing in task directory (cross-repo mode)."""
+    try:
+        narrative_list = list_task_narratives(task_dir)
+        if not narrative_list:
+            click.echo("No narratives found", err=True)
+            raise SystemExit(1)
+
+        for narrative_info in narrative_list:
+            name = narrative_info["name"]
+            status = narrative_info["status"]
+            dependents = narrative_info["dependents"]
+
+            click.echo(f"docs/narratives/{name} [{status}]")
+            if dependents:
+                # Format dependents as: repo (artifact_id), repo (artifact_id)
+                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
+                click.echo(f"  dependents: {', '.join(dep_strs)}")
+    except TaskNarrativeError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/valid_transitions - Status command

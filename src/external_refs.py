@@ -120,6 +120,7 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
     return ExternalArtifactRef.model_validate(data)
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Original implementation in task_utils.py
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use artifact_type and artifact_id fields
 # Chunk: docs/chunks/external_chunk_causal - created_after parameter for causal ordering
 def create_external_yaml(

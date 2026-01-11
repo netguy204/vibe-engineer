@@ -136,7 +136,7 @@ class TaskInit:
         """
         config_path = self.cwd / ".ve-task.yaml"
         config_data = {
-            "external_chunk_repo": self.external,
+            "external_artifact_repo": self.external,
             "projects": self.projects,
         }
 

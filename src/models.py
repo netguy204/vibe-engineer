@@ -248,20 +248,23 @@ SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
 # Chunk: docs/chunks/cross_repo_schemas - Cross-repo task configuration
+# Chunk: docs/chunks/task_aware_narrative_cmds - Renamed to external_artifact_repo
 class TaskConfig(BaseModel):
-    """Configuration for cross-repository chunk management.
+    """Configuration for cross-repository workflow artifact management.
 
     All repository references use GitHub's org/repo format.
+    The external_artifact_repo specifies where all external workflow artifacts
+    (chunks, narratives, investigations, subsystems) are stored.
     """
 
-    external_chunk_repo: str  # org/repo format
+    external_artifact_repo: str  # org/repo format
     projects: list[str]  # list of org/repo format
 
-    @field_validator("external_chunk_repo")
+    @field_validator("external_artifact_repo")
     @classmethod
-    def validate_external_chunk_repo(cls, v: str) -> str:
-        """Validate external_chunk_repo is in org/repo format."""
-        return _require_valid_repo_ref(v, "external_chunk_repo")
+    def validate_external_artifact_repo(cls, v: str) -> str:
+        """Validate external_artifact_repo is in org/repo format."""
+        return _require_valid_repo_ref(v, "external_artifact_repo")
 
     @field_validator("projects")
     @classmethod
@@ -489,6 +492,7 @@ VALID_NARRATIVE_TRANSITIONS: dict[NarrativeStatus, set[NarrativeStatus]] = {
 
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter schema
 # Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/task_aware_narrative_cmds - Added dependents field
 class NarrativeFrontmatter(BaseModel):
     """Frontmatter schema for narrative OVERVIEW.md files.
 
@@ -499,6 +503,7 @@ class NarrativeFrontmatter(BaseModel):
     advances_trunk_goal: str | None = None
     proposed_chunks: list[ProposedChunk] = []
     created_after: list[str] = []
+    dependents: list[ExternalArtifactRef] = []  # For cross-repo narratives
 
 
 # Chunk: docs/chunks/investigation_commands - Investigation frontmatter schema
