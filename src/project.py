@@ -140,28 +140,29 @@ class Project:
         return result
 
     def _init_gitignore(self) -> InitResult:
-        """Ensure .gitignore excludes the artifact ordering cache.
+        """Ensure .gitignore excludes VE runtime files.
 
-        Creates .gitignore if it doesn't exist, or appends the entry
+        Creates .gitignore if it doesn't exist, or appends missing entries
         if not already present. Idempotent.
         """
         result = InitResult()
         gitignore_path = self.project_dir / ".gitignore"
-        entry = ".artifact-order.json"
+        entries = [".artifact-order.json", ".ve/"]
 
         if gitignore_path.exists():
             content = gitignore_path.read_text()
-            if entry in content:
+            missing_entries = [e for e in entries if e not in content]
+            if not missing_entries:
                 result.skipped.append(".gitignore")
             else:
-                # Append entry, ensuring newline before if needed
+                # Append missing entries, ensuring newline before if needed
                 if content and not content.endswith("\n"):
                     content += "\n"
-                content += f"{entry}\n"
+                content += "\n".join(missing_entries) + "\n"
                 gitignore_path.write_text(content)
                 result.created.append(".gitignore")
         else:
-            gitignore_path.write_text(f"{entry}\n")
+            gitignore_path.write_text("\n".join(entries) + "\n")
             result.created.append(".gitignore")
 
         return result
