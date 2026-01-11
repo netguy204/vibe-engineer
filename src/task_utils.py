@@ -1500,3 +1500,82 @@ def list_task_artifacts_grouped(
         },
         "projects": project_results,
     }
+
+
+# Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
+def list_task_proposed_chunks(task_dir: Path) -> dict:
+    """List proposed chunks from task context grouped by repository.
+
+    Collects proposed chunks from investigations, narratives, and subsystems
+    across all repositories in the task (external repo + project repos).
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        Dict with keys:
+        - external: {repo, proposed_chunks: [{prompt, source_type, source_id}]}
+        - projects: [{repo, proposed_chunks: [...]}]
+
+    Raises:
+        TaskChunkError: If external repo not accessible
+    """
+    from investigations import Investigations
+    from narratives import Narratives
+    from subsystems import Subsystems
+
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskChunkError(
+            f"External repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # Collect proposed chunks from external repo
+    chunks = Chunks(external_repo_path)
+    investigations = Investigations(external_repo_path)
+    narratives = Narratives(external_repo_path)
+    subsystems = Subsystems(external_repo_path)
+
+    external_proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+
+    # Build project lists
+    project_results = []
+    for project_ref in config.projects:
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+        except FileNotFoundError:
+            # Skip inaccessible projects
+            continue
+
+        # Collect proposed chunks from this project
+        proj_chunks = Chunks(project_path)
+        proj_investigations = Investigations(project_path)
+        proj_narratives = Narratives(project_path)
+        proj_subsystems = Subsystems(project_path)
+
+        proj_proposed = proj_chunks.list_proposed_chunks(
+            proj_investigations, proj_narratives, proj_subsystems
+        )
+
+        project_results.append({
+            "repo": project_ref,
+            "proposed_chunks": proj_proposed,
+        })
+
+    return {
+        "external": {
+            "repo": config.external_artifact_repo,
+            "proposed_chunks": external_proposed,
+        },
+        "projects": project_results,
+    }

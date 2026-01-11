@@ -45,6 +45,7 @@ from task_utils import (
     TaskPromoteError,
     list_task_artifacts_grouped,
     TaskArtifactListError,
+    list_task_proposed_chunks,
 )
 from sync import (
     sync_task_directory,
@@ -295,22 +296,13 @@ def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks command
-@chunk.command("list-proposed")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_proposed_chunks(project_dir):
-    """List all proposed chunks that haven't been created yet."""
-    chunks = Chunks(project_dir)
-    investigations = Investigations(project_dir)
-    narratives = Narratives(project_dir)
-    subsystems = Subsystems(project_dir)
+# Chunk: docs/chunks/task_list_proposed - Helper to format proposed chunks by source
+def _format_proposed_chunks_by_source(proposed: list[dict]) -> None:
+    """Format proposed chunks grouped by source artifact.
 
-    proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
-
-    if not proposed:
-        click.echo("No proposed chunks found", err=True)
-        raise SystemExit(0)
-
+    Args:
+        proposed: List of proposed chunk dicts with source_type and source_id keys
+    """
     # Group by source
     by_source: dict[str, list[dict]] = {}
     for item in proposed:
@@ -328,6 +320,79 @@ def list_proposed_chunks(project_dir):
             if len(prompt) > 80:
                 prompt = prompt[:77] + "..."
             click.echo(f"  - {prompt}")
+
+
+# Chunk: docs/chunks/task_list_proposed - Grouped proposed chunks formatter
+def _format_grouped_proposed_chunks(grouped_data: dict) -> None:
+    """Format and display grouped proposed chunk listing output.
+
+    Args:
+        grouped_data: Dict from list_task_proposed_chunks with external and projects keys
+    """
+    external = grouped_data["external"]
+    projects = grouped_data["projects"]
+
+    # Check if there are any proposed chunks at all
+    has_external = bool(external["proposed_chunks"])
+    has_projects = any(p["proposed_chunks"] for p in projects)
+
+    if not has_external and not has_projects:
+        click.echo("No proposed chunks found", err=True)
+        raise SystemExit(0)
+
+    # Display external artifacts section
+    click.echo(f"# External Artifacts ({external['repo']})")
+    if external["proposed_chunks"]:
+        _format_proposed_chunks_by_source(external["proposed_chunks"])
+    else:
+        click.echo("No proposed chunks")
+    click.echo()
+
+    # Display each project's proposed chunks
+    for project in projects:
+        click.echo(f"# {project['repo']} (local)")
+        if project["proposed_chunks"]:
+            _format_proposed_chunks_by_source(project["proposed_chunks"])
+        else:
+            click.echo("No proposed chunks")
+        click.echo()
+
+
+# Chunk: docs/chunks/task_list_proposed - Task directory proposed chunk listing handler
+def _list_task_proposed_chunks(task_dir: pathlib.Path):
+    """Handle proposed chunk listing in task directory (cross-repo mode)."""
+    try:
+        grouped_data = list_task_proposed_chunks(task_dir)
+        _format_grouped_proposed_chunks(grouped_data)
+    except TaskChunkError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+# Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks command
+# Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
+@chunk.command("list-proposed")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_proposed_chunks_cmd(project_dir):
+    """List all proposed chunks that haven't been created yet."""
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _list_task_proposed_chunks(project_dir)
+        return
+
+    # Single-repo mode
+    chunks = Chunks(project_dir)
+    investigations = Investigations(project_dir)
+    narratives = Narratives(project_dir)
+    subsystems = Subsystems(project_dir)
+
+    proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+
+    if not proposed:
+        click.echo("No proposed chunks found", err=True)
+        raise SystemExit(0)
+
+    _format_proposed_chunks_by_source(proposed)
 
 
 # Chunk: docs/chunks/future_chunk_creation - Activate FUTURE chunk

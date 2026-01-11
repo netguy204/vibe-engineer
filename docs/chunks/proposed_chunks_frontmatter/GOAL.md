@@ -31,7 +31,7 @@ code_references:
   implements: Parse and validate narrative OVERVIEW.md frontmatter
 - ref: src/chunks.py#Chunks::list_proposed_chunks
   implements: Collect proposed chunks across investigations, narratives, and subsystems
-- ref: src/ve.py#list_proposed_chunks
+- ref: src/ve.py#list_proposed_chunks_cmd
   implements: CLI command 've chunk list-proposed'
 - ref: src/templates/narrative/OVERVIEW.md.jinja2
   implements: Narrative template with proposed_chunks frontmatter
