@@ -24,9 +24,9 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
                 project = cwd / "proj"
-                make_ve_initialized_git_repo(project)
+                make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
 
                 result = runner.invoke(
                     cli,
@@ -45,7 +45,7 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 project = cwd / "proj"
-                make_ve_initialized_git_repo(project)
+                make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
 
                 result = runner.invoke(
                     cli,
@@ -64,7 +64,7 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
 
                 result = runner.invoke(
                     cli,
@@ -86,7 +86,7 @@ class TestTaskInitCommand:
                 external.mkdir()
                 (external / "docs" / "chunks").mkdir(parents=True)
                 project = cwd / "proj"
-                make_ve_initialized_git_repo(project)
+                make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
 
                 result = runner.invoke(
                     cli,
@@ -109,8 +109,14 @@ class TestTaskInitCommand:
                 subprocess.run(
                     ["git", "init"], cwd=external, check=True, capture_output=True
                 )
+                subprocess.run(
+                    ["git", "remote", "add", "origin", "https://github.com/acme/ext.git"],
+                    cwd=external,
+                    check=True,
+                    capture_output=True,
+                )
                 project = cwd / "proj"
-                make_ve_initialized_git_repo(project)
+                make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
 
                 result = runner.invoke(
                     cli,
@@ -129,11 +135,17 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
                 project = cwd / "proj"
                 project.mkdir()
                 subprocess.run(
                     ["git", "init"], cwd=project, check=True, capture_output=True
+                )
+                subprocess.run(
+                    ["git", "remote", "add", "origin", "https://github.com/acme/proj.git"],
+                    cwd=project,
+                    check=True,
+                    capture_output=True,
                 )
 
                 result = runner.invoke(
@@ -156,9 +168,9 @@ class TestTaskInitCommand:
                     "external_artifact_repo: ext\nprojects:\n  - proj\n"
                 )
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
                 project = cwd / "proj"
-                make_ve_initialized_git_repo(project)
+                make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
 
                 result = runner.invoke(
                     cli,
@@ -176,7 +188,7 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
 
                 result = runner.invoke(
                     cli,
@@ -194,11 +206,11 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 external = cwd / "ext"
-                make_ve_initialized_git_repo(external)
+                make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
                 proj1 = cwd / "proj1"
-                make_ve_initialized_git_repo(proj1)
+                make_ve_initialized_git_repo(proj1, remote_url="https://github.com/acme/proj1.git")
                 proj2 = cwd / "proj2"
-                make_ve_initialized_git_repo(proj2)
+                make_ve_initialized_git_repo(proj2, remote_url="https://github.com/acme/proj2.git")
 
                 result = runner.invoke(
                     cli,
@@ -217,9 +229,9 @@ class TestTaskInitCommand:
                 assert result.exit_code == 0
                 assert (cwd / ".ve-task.yaml").exists()
 
-                # Verify both projects are in the config
+                # Verify both projects are in the config (now with resolved org/repo)
                 import yaml
 
                 with open(cwd / ".ve-task.yaml") as f:
                     config = yaml.safe_load(f)
-                assert config["projects"] == ["proj1", "proj2"]
+                assert config["projects"] == ["acme/proj1", "acme/proj2"]

@@ -29,11 +29,15 @@ def runner():
     return CliRunner()
 
 
-def make_ve_initialized_git_repo(path):
+def make_ve_initialized_git_repo(path, remote_url=None):
     """Helper to create a VE-initialized git repository with a commit.
 
     Creates a git repo with docs/{chunks,narratives,investigations,subsystems}
     directories and an initial commit so HEAD exists.
+
+    Args:
+        path: Path where the repository will be created
+        remote_url: Optional remote URL to configure as 'origin'
     """
     path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
@@ -63,6 +67,14 @@ def make_ve_initialized_git_repo(path):
         check=True,
         capture_output=True,
     )
+    # Optionally configure remote origin
+    if remote_url is not None:
+        subprocess.run(
+            ["git", "remote", "add", "origin", remote_url],
+            cwd=path,
+            check=True,
+            capture_output=True,
+        )
 
 
 def setup_task_directory(tmp_path, external_name="ext", project_names=None):
