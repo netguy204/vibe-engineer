@@ -1,4 +1,7 @@
-"""Integration tests for task-aware chunk listing."""
+"""Integration tests for task-aware chunk listing.
+
+# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
+"""
 
 import subprocess
 
@@ -53,6 +56,36 @@ Test chunk for {short_name}.
     return chunk_dir
 
 
+def create_local_chunk(project_path, short_name, status="ACTIVE"):
+    """Create a local chunk in a project (not an external reference).
+
+    Args:
+        project_path: Path to the project directory
+        short_name: e.g., "local_fix"
+        status: Chunk status (default "ACTIVE")
+
+    Returns:
+        Path to the created chunk directory
+    """
+    chunk_dir = project_path / "docs" / "chunks" / short_name
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+
+    goal_content = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+---
+
+# Chunk Goal
+
+Local chunk for {short_name}.
+"""
+    (chunk_dir / "GOAL.md").write_text(goal_content)
+    return chunk_dir
+
+
 class TestChunkListInTaskDirectory:
     """Tests for ve chunk list in task directory context."""
 
@@ -70,8 +103,10 @@ class TestChunkListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/chunks/0001-auth_token" in result.output
-        assert "docs/chunks/0002-auth_validation" in result.output
+        # New grouped output format shows external header
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "0001-auth_token" in result.output
+        assert "0002-auth_validation" in result.output
 
     def test_shows_dependents_for_each_chunk(self, tmp_path):
         """Displays dependents for each chunk when in task directory."""
@@ -94,10 +129,11 @@ class TestChunkListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/chunks/0001-auth_token" in result.output
-        assert "dependents:" in result.output
-        assert "acme/service_a (0005-auth_token)" in result.output
-        assert "acme/service_b (0009-auth_token)" in result.output
+        assert "0001-auth_token" in result.output
+        # New format shows "referenced by:" with repo names only
+        assert "→ referenced by:" in result.output
+        assert "acme/service_a" in result.output
+        assert "acme/service_b" in result.output
 
     def test_latest_returns_implementing_chunk_from_external_repo(self, tmp_path):
         """--latest returns implementing chunk from external repo."""
@@ -140,7 +176,8 @@ projects:
         )
 
         assert result.exit_code == 1
-        assert "External chunk repository" in result.output
+        # Error message now comes from generic artifact listing
+        assert "External repository" in result.output
         assert "not found" in result.output
 
     def test_error_when_no_chunks_in_external_repo(self, tmp_path):
@@ -171,6 +208,94 @@ projects:
 
         assert result.exit_code == 1
         assert "No implementing chunk found" in result.output
+
+    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
+    def test_shows_grouped_output_with_external_and_local(self, tmp_path):
+        """Shows grouped output with both external and local chunks."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["service_a"]
+        )
+
+        # Create chunk in external repo
+        create_chunk_in_external_repo(external_path, "0001", "cross_cutting")
+
+        # Create local chunk in project
+        create_local_chunk(project_paths[0], "local_fix")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["chunk", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        # Should show external header first
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "cross_cutting" in result.output
+        # Should show local project header
+        assert "# acme/service_a (local)" in result.output
+        assert "local_fix" in result.output
+
+    def test_shows_tip_indicator_for_tip_chunks(self, tmp_path):
+        """Shows (tip) indicator for chunks that are tips."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create chunk - should be a tip since nothing depends on it
+        create_chunk_in_external_repo(external_path, "0001", "only_chunk")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["chunk", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        assert "(tip)" in result.output
+
+    def test_excludes_external_refs_from_local_listing(self, tmp_path):
+        """External references in projects should not appear in local section."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["service_a"]
+        )
+
+        # Create chunk in external repo with dependents
+        dependents = [
+            {"artifact_type": "chunk", "artifact_id": "ext_ref", "repo": "acme/service_a"}
+        ]
+        create_chunk_in_external_repo(
+            external_path, "0001", "cross_cutting", dependents=dependents
+        )
+
+        # Create external.yaml reference in project (simulating task chunk creation)
+        ext_ref_dir = project_paths[0] / "docs" / "chunks" / "ext_ref"
+        ext_ref_dir.mkdir(parents=True)
+        (ext_ref_dir / "external.yaml").write_text(
+            """artifact_type: chunk
+artifact_id: 0001-cross_cutting
+repo: acme/ext
+track: main
+pinned: abc123
+"""
+        )
+
+        # Also create a real local chunk
+        create_local_chunk(project_paths[0], "real_local")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["chunk", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        # External ref should not appear in local section
+        assert "# acme/service_a (local)" in result.output
+        assert "real_local" in result.output
+        # External reference shouldn't be listed as a local artifact
+        lines = result.output.split('\n')
+        local_section_started = False
+        for line in lines:
+            if "# acme/service_a (local)" in line:
+                local_section_started = True
+            if local_section_started and "ext_ref" in line:
+                assert False, "External reference should not appear in local section"
 
 
 class TestChunkListOutsideTaskDirectory:

@@ -43,6 +43,8 @@ from task_utils import (
     TaskSubsystemError,
     promote_artifact,
     TaskPromoteError,
+    list_task_artifacts_grouped,
+    TaskArtifactListError,
 )
 from sync import (
     sync_task_directory,
@@ -220,7 +222,62 @@ def list_chunks(latest, project_dir):
             click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
 
+# Chunk: docs/chunks/task_status_command - Grouped artifact listing output formatter
+def _format_grouped_artifact_list(
+    grouped_data: dict,
+    artifact_type_dir: str,
+) -> None:
+    """Format and display grouped artifact listing output.
+
+    Args:
+        grouped_data: Dict from list_task_artifacts_grouped with external and projects keys
+        artifact_type_dir: Directory name for the artifact type (e.g., "chunks", "narratives")
+    """
+    external = grouped_data["external"]
+    projects = grouped_data["projects"]
+
+    # Check if there are any artifacts at all
+    has_external = bool(external["artifacts"])
+    has_projects = any(p["artifacts"] for p in projects)
+
+    if not has_external and not has_projects:
+        click.echo(f"No {artifact_type_dir} found", err=True)
+        raise SystemExit(1)
+
+    # Display external artifacts
+    if external["artifacts"]:
+        click.echo(f"# External Artifacts ({external['repo']})")
+        for artifact in external["artifacts"]:
+            name = artifact["name"]
+            status = artifact["status"]
+            is_tip = artifact.get("is_tip", False)
+            tip_indicator = " (tip)" if is_tip else ""
+
+            click.echo(f"{name} [{status}]{tip_indicator}")
+
+            # Show dependents for external artifacts
+            dependents = artifact.get("dependents", [])
+            if dependents:
+                repos = sorted(set(d["repo"] for d in dependents))
+                click.echo(f"  → referenced by: {', '.join(repos)}")
+        click.echo()
+
+    # Display each project's local artifacts
+    for project in projects:
+        if project["artifacts"]:
+            click.echo(f"# {project['repo']} (local)")
+            for artifact in project["artifacts"]:
+                name = artifact["name"]
+                status = artifact["status"]
+                is_tip = artifact.get("is_tip", False)
+                tip_indicator = " (tip)" if is_tip else ""
+
+                click.echo(f"{name} [{status}]{tip_indicator}")
+            click.echo()
+
+
 # Chunk: docs/chunks/list_task_aware - Task directory chunk listing handler
+# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
     """Handle chunk listing in task directory (cross-repo mode)."""
     try:
@@ -231,22 +288,9 @@ def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
                 raise SystemExit(1)
             click.echo(f"docs/chunks/{current_chunk}")
         else:
-            chunk_list = list_task_chunks(task_dir)
-            if not chunk_list:
-                click.echo("No chunks found", err=True)
-                raise SystemExit(1)
-
-            for chunk_info in chunk_list:
-                name = chunk_info["name"]
-                status = chunk_info["status"]
-                dependents = chunk_info["dependents"]
-
-                click.echo(f"docs/chunks/{name} [{status}]")
-                if dependents:
-                    # Format dependents as: repo (artifact_id), repo (artifact_id)
-                    dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
-                    click.echo(f"  dependents: {', '.join(dep_strs)}")
-    except TaskChunkError as e:
+            grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
+            _format_grouped_artifact_list(grouped_data, "chunks")
+    except (TaskChunkError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
@@ -487,25 +531,13 @@ def list_narratives(project_dir):
 
 
 # Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative listing handler
+# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_narratives(task_dir: pathlib.Path):
     """Handle narrative listing in task directory (cross-repo mode)."""
     try:
-        narrative_list = list_task_narratives(task_dir)
-        if not narrative_list:
-            click.echo("No narratives found", err=True)
-            raise SystemExit(1)
-
-        for narrative_info in narrative_list:
-            name = narrative_info["name"]
-            status = narrative_info["status"]
-            dependents = narrative_info["dependents"]
-
-            click.echo(f"docs/narratives/{name} [{status}]")
-            if dependents:
-                # Format dependents as: repo (artifact_id), repo (artifact_id)
-                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
-                click.echo(f"  dependents: {', '.join(dep_strs)}")
-    except TaskNarrativeError as e:
+        grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.NARRATIVE)
+        _format_grouped_artifact_list(grouped_data, "narratives")
+    except (TaskNarrativeError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
@@ -639,25 +671,13 @@ def list_subsystems(project_dir):
 
 
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem listing handler
+# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_subsystems(task_dir: pathlib.Path):
     """Handle subsystem listing in task directory (cross-repo mode)."""
     try:
-        subsystem_list = list_task_subsystems(task_dir)
-        if not subsystem_list:
-            click.echo("No subsystems found", err=True)
-            raise SystemExit(1)
-
-        for subsystem_info in subsystem_list:
-            name = subsystem_info["name"]
-            status = subsystem_info["status"]
-            dependents = subsystem_info["dependents"]
-
-            click.echo(f"docs/subsystems/{name} [{status}]")
-            if dependents:
-                # Format dependents as: repo (artifact_id), repo (artifact_id)
-                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
-                click.echo(f"  dependents: {', '.join(dep_strs)}")
-    except TaskSubsystemError as e:
+        grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.SUBSYSTEM)
+        _format_grouped_artifact_list(grouped_data, "subsystems")
+    except (TaskSubsystemError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
@@ -936,25 +956,13 @@ def list_investigations(state, project_dir):
 
 
 # Chunk: docs/chunks/task_aware_investigations - Task directory investigation listing handler
+# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_investigations(task_dir: pathlib.Path):
     """Handle investigation listing in task directory (cross-repo mode)."""
     try:
-        investigation_list = list_task_investigations(task_dir)
-        if not investigation_list:
-            click.echo("No investigations found", err=True)
-            raise SystemExit(1)
-
-        for investigation_info in investigation_list:
-            name = investigation_info["name"]
-            status = investigation_info["status"]
-            dependents = investigation_info["dependents"]
-
-            click.echo(f"docs/investigations/{name} [{status}]")
-            if dependents:
-                # Format dependents as: repo (artifact_id), repo (artifact_id)
-                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
-                click.echo(f"  dependents: {', '.join(dep_strs)}")
-    except TaskInvestigationError as e:
+        grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.INVESTIGATION)
+        _format_grouped_artifact_list(grouped_data, "investigations")
+    except (TaskInvestigationError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 

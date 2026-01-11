@@ -1,6 +1,7 @@
 """Integration tests for task-aware investigation listing.
 
 # Chunk: docs/chunks/task_aware_investigations - Task-aware investigation list tests
+# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
 """
 
 import subprocess
@@ -67,6 +68,48 @@ No findings yet.
     return investigation_dir
 
 
+def create_local_investigation(project_path, short_name, status="ONGOING"):
+    """Create a local investigation in a project (not an external reference).
+
+    Args:
+        project_path: Path to the project directory
+        short_name: e.g., "local_investigation"
+        status: Investigation status (default "ONGOING")
+
+    Returns:
+        Path to the created investigation directory
+    """
+    investigation_dir = project_path / "docs" / "investigations" / short_name
+    investigation_dir.mkdir(parents=True, exist_ok=True)
+
+    overview_content = f"""---
+status: {status}
+trigger: null
+proposed_chunks: []
+---
+
+# Investigation: {short_name}
+
+## Trigger
+
+Local investigation for {short_name}.
+
+## Testable Hypotheses
+
+No hypotheses yet.
+
+## Exploration Log
+
+No explorations yet.
+
+## Findings
+
+No findings yet.
+"""
+    (investigation_dir / "OVERVIEW.md").write_text(overview_content)
+    return investigation_dir
+
+
 class TestInvestigationListInTaskDirectory:
     """Tests for ve investigation list in task directory context."""
 
@@ -84,8 +127,10 @@ class TestInvestigationListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/investigations/memory_leak" in result.output
-        assert "docs/investigations/slow_query" in result.output
+        # New grouped output format shows external header
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "memory_leak" in result.output
+        assert "slow_query" in result.output
 
     def test_shows_dependents_for_each_investigation(self, tmp_path):
         """Displays dependents for each investigation when in task directory."""
@@ -108,8 +153,9 @@ class TestInvestigationListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/investigations/memory_leak" in result.output
-        assert "dependents:" in result.output
+        assert "memory_leak" in result.output
+        # New format shows "referenced by:" with repo names only
+        assert "→ referenced by:" in result.output
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
@@ -165,6 +211,47 @@ projects:
         assert result.exit_code == 1
         assert "No investigations found" in result.output
 
+    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
+    def test_shows_grouped_output_with_external_and_local(self, tmp_path):
+        """Shows grouped output with both external and local investigations."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["service_a"]
+        )
+
+        # Create investigation in external repo
+        create_investigation_in_external_repo(external_path, "cross_cutting")
+
+        # Create local investigation in project
+        create_local_investigation(project_paths[0], "local_investigation")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["investigation", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        # Should show external header first
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "cross_cutting" in result.output
+        # Should show local project header
+        assert "# acme/service_a (local)" in result.output
+        assert "local_investigation" in result.output
+
+    def test_shows_tip_indicator_for_tip_investigations(self, tmp_path):
+        """Shows (tip) indicator for investigations that are tips."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create investigation - should be a tip since nothing depends on it
+        create_investigation_in_external_repo(external_path, "only_investigation")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["investigation", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        assert "(tip)" in result.output
+
 
 class TestInvestigationListOutsideTaskDirectory:
     """Tests for ve investigation list outside task directory context."""
@@ -197,5 +284,5 @@ Test investigation.
 
         assert result.exit_code == 0
         assert "docs/investigations/my_investigation [ONGOING]" in result.output
-        # Should NOT have dependents line in single-repo mode
-        assert "dependents:" not in result.output
+        # Should NOT have grouped headers in single-repo mode
+        assert "# External Artifacts" not in result.output
