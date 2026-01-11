@@ -7,23 +7,16 @@ description: Create a chunk PLAN.md file containing the technical breakdown for 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 1. Determine the currently active chunk by running `ve chunk list --latest`. We
    will refer to the directory returned by this command below as <chunk
    directory>
 
-2. Run `ve chunk suggest-prefix <chunk_name>` (using just the directory name,
-   not the full path) to check if this chunk should be renamed for better
-   semantic clustering. If a prefix is suggested:
-   - Present the suggestion to the operator: "This chunk is similar to
-     `{prefix}_*` chunks. Consider renaming to `{prefix}_{current_name}`?"
-   - If the operator accepts, use `mv` to rename the chunk directory
-   - Update <chunk directory> to the new path before continuing
+2. Study <chunk directory>/GOAL.md
 
-3. Study <chunk directory>/GOAL.md
-
-4. In light of the broader project objective in docs/trunk/GOAL.md and the
+3. In light of the broader project objective in docs/trunk/GOAL.md and the
    guiding architecture decisions in docs/trunk/DECISIONS.md and the existing
    codebase: Complete the template in <chunk directory>/PLAN.md with a detailed
    sequence of steps that will achieve the goal. If a chunk is part of a

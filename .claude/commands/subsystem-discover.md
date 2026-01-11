@@ -7,6 +7,7 @@ description: Guide collaborative discovery of an emergent subsystem.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 The operator has provided the following input:
@@ -20,8 +21,8 @@ $ARGUMENTS
 Examine `$ARGUMENTS` to determine whether this is:
 
 1. **Existing subsystem** (continuing discovery): If `$ARGUMENTS` matches pattern
-   `docs/subsystems/NNNN-*` or just `NNNN-*` (e.g., `0001-validation`,
-   `docs/subsystems/0002-frontmatter`), this is a request to continue discovery
+   `docs/subsystems/<short_name>` or just `<short_name>` (e.g., `validation`,
+   `docs/subsystems/frontmatter`), this is a request to continue discovery
    on an existing subsystem. Skip to the **Resuming Discovery** section below.
 
 2. **New subsystem** (starting discovery): Otherwise, treat `$ARGUMENTS` as a
@@ -74,7 +75,7 @@ When `$ARGUMENTS` is a new description, derive and confirm a short name:
    ve subsystem discover <confirmed_name>
    ```
 
-5. Note the created directory path (e.g., `docs/subsystems/0003-frontmatter_handling`).
+5. Note the created directory path (e.g., `docs/subsystems/frontmatter_handling`).
    We'll refer to this as `<subsystem_directory>` below.
 
 ---
@@ -301,9 +302,9 @@ Find chunks that relate to this subsystem.
 1. **Update subsystem's chunks frontmatter array**:
    ```yaml
    chunks:
-     - chunk_id: "0005-validation_enhancements"
+     - chunk_id: "validation_enhancements"
        relationship: implements
-     - chunk_id: "0008-chunk_completion"
+     - chunk_id: "chunk_completion"
        relationship: uses
    ```
 

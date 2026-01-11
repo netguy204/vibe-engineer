@@ -7,6 +7,7 @@ description: Update code references in the current chunk and move both the PLAN.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 1. Determine the currently active chunk by running `ve chunk list --latest`. We
@@ -20,12 +21,14 @@ search for it - run it directly via Bash.
    involved in the change.
 
    Record these locations in the code_references field using **symbolic references**:
+
    - Format: `{file_path}#{symbol_path}` where symbol_path uses `::` for nesting
    - Examples:
      - `src/chunks.py#Chunks` - reference to a class
      - `src/chunks.py#Chunks::create_chunk` - reference to a method
      - `src/ve.py#validate_short_name` - reference to a standalone function
      - `src/models.py` - reference to an entire module (no symbol)
+
 
    Each reference should include:
    - `ref`: The symbolic reference string
@@ -34,10 +37,12 @@ search for it - run it directly via Bash.
    Example code_references:
    ```yaml
    code_references:
+
      - ref: src/chunks.py#Chunks::validate_chunk_complete
        implements: "Chunk completion validation logic"
      - ref: src/symbols.py#extract_symbols
        implements: "Python AST-based symbol extraction"
+
    ```
 
    When we mark a goal as historical, we are saying that there is so much
@@ -47,8 +52,8 @@ search for it - run it directly via Bash.
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet. 
 
-3. Extract the sequential ID for the chunk from the prefix number in the chunk
-   directory. We will call this <chunk_id> below.
+3. The chunk directory short name (e.g., `audit_seqnum_refs` from
+   `docs/chunks/audit_seqnum_refs`) is the `<chunk_id>` used by CLI commands below.
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct

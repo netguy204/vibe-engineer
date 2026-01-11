@@ -41,6 +41,16 @@ CODE_PATHS:
 CODE_REFERENCES:
 - Populated after implementation, before PR
 - Uses symbolic references to identify code locations
+{% if task_context %}
+- Format: {project}::{file_path}#{symbol_path}
+- The :: after project separates project from path; :: within symbol indicates nesting
+- Example:
+  code_references:
+    - ref: dotter::xr#worktrees
+      implements: "Worktree creation command"
+    - ref: vibe-engineer::src/chunks.py#Chunks::create
+      implements: "Chunk creation logic"
+{% else %}
 - Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
 - Example:
   code_references:
@@ -50,6 +60,7 @@ CODE_REFERENCES:
       implements: "Durability guarantees"
     - ref: src/utils.py#validate_input
       implements: "Input validation logic"
+{% endif %}
 
 NARRATIVE:
 - If this chunk was derived from a narrative document, reference the narrative directory name.

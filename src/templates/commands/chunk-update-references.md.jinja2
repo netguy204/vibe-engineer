@@ -10,6 +10,15 @@ $ARGUMENTS
 
 ## Symbolic Reference Format
 
+{% if task_context %}
+Code references use symbolic references in the format `{project}::{file_path}#{symbol_path}`:
+- `dotter::src/main.py#App` - class App in dotter project
+- `dotter::xr#worktrees` - function in dotter project
+- `vibe-engineer::src/chunks.py#Chunks::create` - nested method in vibe-engineer
+- `dotter::src/models.py` - entire module (no symbol)
+
+The first `::` separates project from path. The `::` within symbols indicates nesting.
+{% else %}
 Code references use symbolic references in the format `{file_path}#{symbol_path}`:
 - `src/chunks.py#Chunks` - reference to a class
 - `src/chunks.py#Chunks::create_chunk` - reference to a method
@@ -17,6 +26,7 @@ Code references use symbolic references in the format `{file_path}#{symbol_path}
 - `src/models.py` - reference to an entire module (no symbol)
 
 The `::` separator indicates nesting (class::method, outer::inner::method).
+{% endif %}
 
 ---
 

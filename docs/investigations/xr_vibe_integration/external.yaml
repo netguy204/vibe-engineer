@@ -1,0 +1,7 @@
+artifact_id: xr_vibe_integration
+artifact_type: investigation
+created_after:
+- alphabetical_chunk_grouping
+pinned: 4e383bc3f3d8c0fa1dc7cc0d2622ed295a0d7ae1
+repo: cloudcapitalco/architecture
+track: main
