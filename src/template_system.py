@@ -95,6 +95,29 @@ class ActiveInvestigation:
         return self._project_dir / "docs" / "investigations" / self.id / "OVERVIEW.md"
 
 
+# Chunk: docs/chunks/task_init_scaffolding - Task context for template rendering
+# Subsystem: docs/subsystems/template_system - Unified template rendering
+@dataclass
+class TaskContext:
+    """Holds task-level context for template rendering.
+
+    Used when rendering templates in a task directory context, where artifacts
+    are created in an external repo and implementation spans multiple projects.
+    """
+
+    external_artifact_repo: str
+    projects: list[str]
+    task_context: bool = True  # Flag for conditional blocks in templates
+
+    def as_dict(self) -> dict:
+        """Return context as dict suitable for Jinja2 rendering."""
+        return {
+            "external_artifact_repo": self.external_artifact_repo,
+            "projects": self.projects,
+            "task_context": self.task_context,
+        }
+
+
 # Chunk: docs/chunks/canonical_template_module - Unified template context holder
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass

@@ -5,6 +5,12 @@ description: Start a new investigation or redirect to a simpler chunk workflow.
 ## Tips
 
 {% include "partials/common-tips.md.jinja2" %}
+{% if task_context %}
+
+**Task Context:** This command creates artifacts in the external artifact repo
+(`{{ external_artifact_repo }}`). The investigation OVERVIEW.md will be created
+there. Exploration may span all participating projects.
+{% endif %}
 
 ## Instructions
 

@@ -7,7 +7,7 @@ code_paths:
 - src/ve.py
 - src/task_utils.py
 - src/templates/chunk/GOAL.md.jinja2
-- src/templates/commands/chunk-create.md
+- src/templates/commands/chunk-create.md.jinja2
 - tests/test_chunks.py
 - tests/test_chunk_start.py
 - tests/test_chunk_list.py
@@ -21,7 +21,7 @@ code_references:
     constraint
 - ref: src/chunks.py#Chunks::create_chunk
   implements: Extended with status parameter to support FUTURE and IMPLEMENTING statuses
-- ref: src/ve.py#start
+- ref: src/ve.py#create
   implements: CLI command with --future flag for creating FUTURE chunks
 - ref: src/ve.py#list_chunks
   implements: CLI command showing status in brackets, --latest uses get_current_chunk
@@ -34,7 +34,7 @@ code_references:
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: Template with FUTURE status documentation and Jinja status variable
 - ref: src/templates/commands/chunk-create.md.jinja2
-  implements: Skill checks for IMPLEMENTING chunk and defaults to --future
+  implements: Skill with task context conditional and checks for IMPLEMENTING chunk, defaults to --future
 - ref: docs/trunk/SPEC.md
   implements: Specification updated with FUTURE status, --future flag, and ve chunk
     activate
