@@ -9,6 +9,7 @@ dependencies = [
     "jinja2",
     "pydantic",
     "pyyaml",
+    "scikit-learn",
 ]
 
 [project.scripts]

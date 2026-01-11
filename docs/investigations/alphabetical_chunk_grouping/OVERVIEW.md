@@ -3,13 +3,13 @@ status: SOLVED
 trigger: "Alphabetical filesystem ordering creates semantic grouping opportunity after sequence prefix removal"
 proposed_chunks:
   - prompt: "Implement similarity-based prefix suggestion at chunk planning time using TF-IDF pairwise comparison"
-    chunk_directory: null
+    chunk_directory: similarity_prefix_suggest
   - prompt: "Add characteristic naming prompt for cluster seeds when no similar chunks exist"
     chunk_directory: null
   - prompt: "Implement ve cluster list command to show prefix clusters and identify singletons/superclusters"
     chunk_directory: null
   - prompt: "Implement ve cluster rename command for batch prefix renaming with reference updates"
-    chunk_directory: null
+    chunk_directory: cluster_rename
   - prompt: "Update CLAUDE.md with chunk naming guidance preferring initiative nouns over artifact types"
     chunk_directory: null
 created_after: ["chunk_reference_decay"]

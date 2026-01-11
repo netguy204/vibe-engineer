@@ -7,6 +7,7 @@
 # Chunk: docs/chunks/future_chunk_creation - Current/activate chunk operations
 # Chunk: docs/chunks/bidirectional_refs - Subsystem validation
 # Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks
+# Chunk: docs/chunks/similarity_prefix_suggest - Prefix suggestion feature
 
 from __future__ import annotations
 
@@ -46,6 +47,16 @@ class ValidationResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     chunk_name: str | None = None
+
+
+# Chunk: docs/chunks/similarity_prefix_suggest - Prefix suggestion result
+@dataclass
+class SuggestPrefixResult:
+    """Result of prefix suggestion analysis."""
+
+    suggested_prefix: str | None
+    similar_chunks: list[tuple[str, float]]  # (chunk_name, similarity_score)
+    reason: str
 
 
 # Chunk: docs/chunks/implement_chunk_start - Core chunk class
@@ -783,3 +794,216 @@ def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str], project: str)
             if is_parent_of(qualified_a, qualified_b) or is_parent_of(qualified_b, qualified_a):
                 return True
     return False
+
+
+# Chunk: docs/chunks/similarity_prefix_suggest - Extract text from GOAL.md
+def extract_goal_text(goal_path: pathlib.Path) -> str:
+    """Extract text content from GOAL.md, skipping frontmatter and HTML comments.
+
+    Args:
+        goal_path: Path to the GOAL.md file.
+
+    Returns:
+        Extracted text content, stripped of frontmatter and comments.
+    """
+    if not goal_path.exists():
+        return ""
+
+    content = goal_path.read_text()
+
+    # Remove YAML frontmatter
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            content = parts[2]
+
+    # Remove HTML comments
+    content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+
+    return content.strip()
+
+
+# Chunk: docs/chunks/similarity_prefix_suggest - Get prefix from chunk name
+def get_chunk_prefix(chunk_name: str) -> str:
+    """Get alphabetical prefix (first word before underscore).
+
+    Args:
+        chunk_name: The chunk directory name.
+
+    Returns:
+        The first underscore-delimited word, or the full name if no underscore.
+    """
+    return chunk_name.split("_")[0]
+
+
+# Chunk: docs/chunks/similarity_prefix_suggest - Main prefix suggestion function
+def suggest_prefix(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    threshold: float = 0.4,
+    top_k: int = 5,
+) -> SuggestPrefixResult:
+    """Suggest a prefix for a chunk based on TF-IDF similarity to existing chunks.
+
+    Context determines corpus:
+    - Task directory: aggregates chunks from external repo + all project repos
+    - Project directory: uses only local project chunks
+
+    Args:
+        project_dir: Path to the project or task directory.
+        chunk_id: The chunk ID to analyze.
+        threshold: Minimum similarity score to consider (default 0.4).
+        top_k: Number of most similar chunks to consider (default 5).
+
+    Returns:
+        SuggestPrefixResult containing:
+        - suggested_prefix: str or None if no strong suggestion
+        - similar_chunks: list of (chunk_name, similarity_score) tuples
+        - reason: str explaining why the suggestion was or wasn't made
+    """
+    from collections import Counter
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    from task_utils import is_task_directory, load_task_config, resolve_repo_directory
+
+    project_dir = pathlib.Path(project_dir)
+
+    # Build corpus based on context
+    corpus_chunks: list[tuple[str, pathlib.Path]] = []  # (chunk_name, goal_path)
+
+    if is_task_directory(project_dir):
+        # Task context: aggregate from external repo + all projects
+        config = load_task_config(project_dir)
+
+        # Add chunks from external repo
+        try:
+            external_path = resolve_repo_directory(project_dir, config.external_artifact_repo)
+            external_chunks = Chunks(external_path)
+            for name in external_chunks.enumerate_chunks():
+                goal_path = external_chunks.get_chunk_goal_path(name)
+                if goal_path and goal_path.exists():
+                    corpus_chunks.append((name, goal_path))
+        except FileNotFoundError:
+            pass
+
+        # Add chunks from each project
+        for project_ref in config.projects:
+            try:
+                proj_path = resolve_repo_directory(project_dir, project_ref)
+                proj_chunks = Chunks(proj_path)
+                for name in proj_chunks.enumerate_chunks():
+                    goal_path = proj_chunks.get_chunk_goal_path(name)
+                    if goal_path and goal_path.exists():
+                        corpus_chunks.append((name, goal_path))
+            except FileNotFoundError:
+                pass
+    else:
+        # Project context: use only local chunks
+        chunks = Chunks(project_dir)
+        for name in chunks.enumerate_chunks():
+            goal_path = chunks.get_chunk_goal_path(name)
+            if goal_path and goal_path.exists():
+                corpus_chunks.append((name, goal_path))
+
+    # Find target chunk in corpus
+    target_idx = None
+    for i, (name, _) in enumerate(corpus_chunks):
+        if name == chunk_id:
+            target_idx = i
+            break
+
+    if target_idx is None:
+        # Try resolving chunk_id
+        local_chunks = Chunks(project_dir)
+        resolved = local_chunks.resolve_chunk_id(chunk_id)
+        if resolved:
+            for i, (name, _) in enumerate(corpus_chunks):
+                if name == resolved:
+                    target_idx = i
+                    break
+
+    if target_idx is None:
+        return SuggestPrefixResult(
+            suggested_prefix=None,
+            similar_chunks=[],
+            reason=f"Chunk '{chunk_id}' not found in corpus",
+        )
+
+    # Check minimum corpus size (need at least 2 other chunks)
+    other_count = len(corpus_chunks) - 1
+    if other_count < 2:
+        return SuggestPrefixResult(
+            suggested_prefix=None,
+            similar_chunks=[],
+            reason=f"Too few chunks for meaningful similarity (need at least 3 total, have {len(corpus_chunks)})",
+        )
+
+    # Extract text from all chunks
+    texts = []
+    for _, goal_path in corpus_chunks:
+        text = extract_goal_text(goal_path)
+        texts.append(text if text else " ")  # Empty text causes TF-IDF issues
+
+    # Build TF-IDF vectors
+    vectorizer = TfidfVectorizer(
+        stop_words="english",
+        max_features=500,
+        ngram_range=(1, 2),
+    )
+
+    try:
+        tfidf_matrix = vectorizer.fit_transform(texts)
+    except ValueError:
+        # Can happen if all documents are empty after stop word removal
+        return SuggestPrefixResult(
+            suggested_prefix=None,
+            similar_chunks=[],
+            reason="Could not build similarity model (insufficient text content)",
+        )
+
+    # Compute similarity between target and all others
+    target_vec = tfidf_matrix[target_idx]
+    similarities = cosine_similarity(target_vec, tfidf_matrix)[0]
+
+    # Find top-k similar chunks (excluding self)
+    indexed_sims = []
+    for i, sim in enumerate(similarities):
+        if i != target_idx:
+            indexed_sims.append((i, sim))
+
+    indexed_sims.sort(key=lambda x: -x[1])  # Sort by similarity descending
+    top_similar = indexed_sims[:top_k]
+
+    # Filter by threshold
+    above_threshold = [(i, sim) for i, sim in top_similar if sim >= threshold]
+
+    if not above_threshold:
+        # Return the top similar chunks even if below threshold
+        similar_chunks = [(corpus_chunks[i][0], sim) for i, sim in top_similar]
+        return SuggestPrefixResult(
+            suggested_prefix=None,
+            similar_chunks=similar_chunks,
+            reason=f"No chunks above similarity threshold ({threshold}). May be a new cluster seed.",
+        )
+
+    # Get similar chunk names and their prefixes
+    similar_chunks = [(corpus_chunks[i][0], sim) for i, sim in above_threshold]
+    prefixes = [get_chunk_prefix(name) for name, _ in similar_chunks]
+
+    # Count prefix occurrences
+    prefix_counts = Counter(prefixes)
+    most_common_prefix, count = prefix_counts.most_common(1)[0]
+
+    # Check if majority share the prefix
+    if count > len(prefixes) / 2:
+        return SuggestPrefixResult(
+            suggested_prefix=most_common_prefix,
+            similar_chunks=similar_chunks,
+            reason=f"Majority of similar chunks ({count}/{len(prefixes)}) share prefix '{most_common_prefix}'",
+        )
+    else:
+        return SuggestPrefixResult(
+            suggested_prefix=None,
+            similar_chunks=similar_chunks,
+            reason=f"Similar chunks have different prefixes (no common majority): {dict(prefix_counts)}",
+        )
