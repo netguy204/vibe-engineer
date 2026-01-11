@@ -1,12 +1,14 @@
-"""Sync external chunk references to match current repository state.
+"""Sync external artifact references to match current repository state.
 
 This module provides functionality for the `ve sync` command, which updates
 `pinned` fields in external.yaml files to match the current HEAD of external
-chunk repositories.
+artifact repositories. Supports all workflow artifact types: chunks, narratives,
+investigations, and subsystems.
 """
 # Chunk: docs/chunks/ve_sync_command - Sync external references
 # Chunk: docs/chunks/external_resolve - Use repo cache for single-repo mode
 # Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
+# Chunk: docs/chunks/sync_all_workflows - Extend sync to all workflow artifact types
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +16,7 @@ from pathlib import Path
 import yaml
 
 import repo_cache
-from external_refs import is_external_artifact, load_external_ref
+from external_refs import ARTIFACT_DIR_NAME, is_external_artifact, load_external_ref
 from git_utils import get_current_sha
 from models import ArtifactType
 from task_utils import (
@@ -29,32 +31,54 @@ from task_utils import (
 class SyncResult:
     """Result of syncing a single external reference."""
 
-    chunk_id: str
+    artifact_id: str
+    artifact_type: ArtifactType
     old_sha: str
     new_sha: str
     updated: bool
     error: str | None = None
 
+    @property
+    def formatted_id(self) -> str:
+        """Format artifact ID with type prefix (e.g., 'chunk:my_feature')."""
+        return f"{self.artifact_type.value}:{self.artifact_id}"
 
-def find_external_refs(project_path: Path) -> list[Path]:
-    """Find all external.yaml files in a project's docs/chunks directory.
+
+def find_external_refs(
+    project_path: Path,
+    artifact_types: list[ArtifactType] | None = None,
+) -> list[tuple[Path, ArtifactType]]:
+    """Find all external.yaml files across workflow artifact directories.
+
+    Searches for external references in all artifact type directories (chunks,
+    narratives, investigations, subsystems) or a filtered subset.
 
     Args:
         project_path: Path to the project directory
+        artifact_types: Optional list of artifact types to search. If None,
+            searches all artifact types.
 
     Returns:
-        List of paths to external.yaml files
+        List of tuples (external_yaml_path, artifact_type) for each external
+        reference found.
     """
-    chunks_dir = project_path / "docs" / "chunks"
-    if not chunks_dir.exists():
-        return []
+    # Default to all artifact types if not specified
+    types_to_search = artifact_types if artifact_types is not None else list(ArtifactType)
 
-    external_refs = []
-    for chunk_dir in chunks_dir.iterdir():
-        if chunk_dir.is_dir() and is_external_artifact(chunk_dir, ArtifactType.CHUNK):
-            external_yaml = chunk_dir / "external.yaml"
-            if external_yaml.exists():
-                external_refs.append(external_yaml)
+    external_refs: list[tuple[Path, ArtifactType]] = []
+
+    for artifact_type in types_to_search:
+        dir_name = ARTIFACT_DIR_NAME[artifact_type]
+        artifact_dir = project_path / "docs" / dir_name
+
+        if not artifact_dir.exists():
+            continue
+
+        for item_dir in artifact_dir.iterdir():
+            if item_dir.is_dir() and is_external_artifact(item_dir, artifact_type):
+                external_yaml = item_dir / "external.yaml"
+                if external_yaml.exists():
+                    external_refs.append((external_yaml, artifact_type))
 
     return external_refs
 
@@ -88,18 +112,21 @@ def sync_task_directory(
     task_dir: Path,
     dry_run: bool = False,
     project_filter: list[str] | None = None,
-    chunk_filter: list[str] | None = None,
+    artifact_filter: list[str] | None = None,
+    artifact_types: list[ArtifactType] | None = None,
 ) -> list[SyncResult]:
     """Sync external references in task directory mode.
 
-    Iterates all projects, finds external.yaml files, resolves current SHA
-    from external chunk repo (local worktree), and updates pinned fields.
+    Iterates all projects, finds external.yaml files across all workflow
+    artifact types, resolves current SHA from external repo (local worktree),
+    and updates pinned fields.
 
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         dry_run: If True, report changes without modifying files
         project_filter: If provided, only sync specified projects
-        chunk_filter: If provided, only sync specified chunk IDs
+        artifact_filter: If provided, only sync specified artifact IDs
+        artifact_types: If provided, only sync specified artifact types
 
     Returns:
         List of SyncResult for each external reference processed
@@ -136,23 +163,24 @@ def sync_task_directory(
             # Skip projects that don't exist in task dir
             continue
 
-        external_refs = find_external_refs(project_path)
+        external_refs = find_external_refs(project_path, artifact_types=artifact_types)
 
-        for external_yaml in external_refs:
-            chunk_dir = external_yaml.parent
-            chunk_id = chunk_dir.name
+        for external_yaml, artifact_type in external_refs:
+            artifact_dir = external_yaml.parent
+            artifact_id = artifact_dir.name
 
-            # Apply chunk filter
-            if chunk_filter and chunk_id not in chunk_filter:
+            # Apply artifact filter
+            if artifact_filter and artifact_id not in artifact_filter:
                 continue
 
             # Load current external ref
             try:
-                ref = load_external_ref(chunk_dir)
+                ref = load_external_ref(artifact_dir)
             except Exception as e:
                 results.append(
                     SyncResult(
-                        chunk_id=f"{project_ref}:{chunk_id}",
+                        artifact_id=f"{project_ref}:{artifact_id}",
+                        artifact_type=artifact_type,
                         old_sha="",
                         new_sha="",
                         updated=False,
@@ -172,7 +200,8 @@ def sync_task_directory(
                 except (FileNotFoundError, ValueError) as e:
                     results.append(
                         SyncResult(
-                            chunk_id=f"{project_ref}:{chunk_id}",
+                            artifact_id=f"{project_ref}:{artifact_id}",
+                            artifact_type=artifact_type,
                             old_sha=ref.pinned or "",
                             new_sha="",
                             updated=False,
@@ -191,7 +220,8 @@ def sync_task_directory(
 
             results.append(
                 SyncResult(
-                    chunk_id=f"{project_ref}:{chunk_id}",
+                    artifact_id=f"{project_ref}:{artifact_id}",
+                    artifact_type=artifact_type,
                     old_sha=old_sha,
                     new_sha=ref_sha,
                     updated=would_update,
@@ -204,39 +234,43 @@ def sync_task_directory(
 def sync_single_repo(
     repo_path: Path,
     dry_run: bool = False,
-    chunk_filter: list[str] | None = None,
+    artifact_filter: list[str] | None = None,
+    artifact_types: list[ArtifactType] | None = None,
 ) -> list[SyncResult]:
     """Sync external references in single repo mode.
 
-    Finds external.yaml files, uses repo cache to resolve current SHA
-    from external repository, and updates pinned fields.
+    Finds external.yaml files across all workflow artifact types, uses repo
+    cache to resolve current SHA from external repository, and updates pinned
+    fields.
 
     Args:
         repo_path: Path to the repository
         dry_run: If True, report changes without modifying files
-        chunk_filter: If provided, only sync specified chunk IDs
+        artifact_filter: If provided, only sync specified artifact IDs
+        artifact_types: If provided, only sync specified artifact types
 
     Returns:
         List of SyncResult for each external reference processed
     """
     results = []
-    external_refs = find_external_refs(repo_path)
+    external_refs = find_external_refs(repo_path, artifact_types=artifact_types)
 
-    for external_yaml in external_refs:
-        chunk_dir = external_yaml.parent
-        chunk_id = chunk_dir.name
+    for external_yaml, artifact_type in external_refs:
+        artifact_dir = external_yaml.parent
+        artifact_id = artifact_dir.name
 
-        # Apply chunk filter
-        if chunk_filter and chunk_id not in chunk_filter:
+        # Apply artifact filter
+        if artifact_filter and artifact_id not in artifact_filter:
             continue
 
         # Load current external ref
         try:
-            ref = load_external_ref(chunk_dir)
+            ref = load_external_ref(artifact_dir)
         except Exception as e:
             results.append(
                 SyncResult(
-                    chunk_id=chunk_id,
+                    artifact_id=artifact_id,
+                    artifact_type=artifact_type,
                     old_sha="",
                     new_sha="",
                     updated=False,
@@ -252,7 +286,8 @@ def sync_single_repo(
         except ValueError as e:
             results.append(
                 SyncResult(
-                    chunk_id=chunk_id,
+                    artifact_id=artifact_id,
+                    artifact_type=artifact_type,
                     old_sha=ref.pinned or "",
                     new_sha="",
                     updated=False,
@@ -269,7 +304,8 @@ def sync_single_repo(
 
         results.append(
             SyncResult(
-                chunk_id=chunk_id,
+                artifact_id=artifact_id,
+                artifact_type=artifact_type,
                 old_sha=old_sha,
                 new_sha=remote_sha,
                 updated=would_update,

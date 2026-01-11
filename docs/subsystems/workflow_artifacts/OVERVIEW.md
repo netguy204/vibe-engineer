@@ -53,6 +53,8 @@ chunks:
   relationship: implements
 - chunk_id: external_resolve_all_types
   relationship: implements
+- chunk_id: sync_all_workflows
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -134,6 +136,15 @@ code_references:
   compliance: COMPLIANT
 - ref: src/external_resolve.py#resolve_artifact_single_repo
   implements: Generic artifact resolution in single repo mode
+  compliance: COMPLIANT
+- ref: src/sync.py#find_external_refs
+  implements: External reference finder for all workflow artifact types
+  compliance: COMPLIANT
+- ref: src/sync.py#sync_task_directory
+  implements: Task directory sync with artifact type filtering
+  compliance: COMPLIANT
+- ref: src/sync.py#sync_single_repo
+  implements: Single repo sync with artifact type filtering
   compliance: COMPLIANT
 - ref: src/ve.py#create
   implements: Chunk creation CLI command
@@ -694,11 +705,11 @@ External chunk references now participate in local causal ordering:
    `detect_artifact_type_from_path()`. Updated all import sites (`sync.py`,
    `external_resolve.py`, `task_utils.py`, `artifact_ordering.py`) to use the new module.
 
-6. **Extend ve sync to all workflow types** - Currently only syncs chunks. Should find
-   and update external.yaml in all workflow artifact directories.
-   - Impact: High
-   - Status: Not yet scheduled
-   - Dependencies: #5
+6. ~~**Extend ve sync to all workflow types**~~ - **RESOLVED** by chunk sync_all_workflows.
+   `ve sync` now finds and updates external.yaml files in all workflow artifact directories
+   (chunks, narratives, investigations, subsystems). Added `--type` option for filtering by
+   artifact type and `--artifact` option for filtering by artifact ID. Existing `--chunk`
+   option maintained for backward compatibility.
 
 7. ~~**Extend ve external resolve to all workflow types**~~ - **RESOLVED** by chunk
    external_resolve_all_types. `ve external resolve` now auto-detects artifact type from

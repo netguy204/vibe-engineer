@@ -24,7 +24,7 @@ from investigations import Investigations
 from narratives import Narratives
 from project import Project
 from subsystems import Subsystems
-from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus
+from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus, ArtifactType
 from task_init import TaskInit
 from task_utils import (
     is_task_directory,
@@ -824,33 +824,56 @@ def status(investigation_id, new_status, project_dir):
 
 
 # Chunk: docs/chunks/ve_sync_command - Sync external references
+# Chunk: docs/chunks/sync_all_workflows - Extended to all workflow artifact types
 @cli.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--project", "projects", multiple=True, help="Sync only specified project(s) (task directory only)")
-@click.option("--chunk", "chunks", multiple=True, help="Sync only specified chunk(s)")
+@click.option("--chunk", "chunks", multiple=True, help="Sync only specified chunk(s) (deprecated, use --artifact)")
+@click.option("--artifact", "artifacts", multiple=True, help="Sync only specified artifact(s)")
+@click.option(
+    "--type", "artifact_type",
+    type=click.Choice(["chunk", "narrative", "investigation", "subsystem"]),
+    help="Sync only specified artifact type"
+)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def sync(dry_run, projects, chunks, project_dir):
-    """Sync external chunk references to current repository state."""
+def sync(dry_run, projects, chunks, artifacts, artifact_type, project_dir):
+    """Sync external artifact references to current repository state.
+
+    Searches for external.yaml files in docs/chunks/, docs/narratives/,
+    docs/investigations/, and docs/subsystems/ directories, then updates
+    their pinned SHA to match the current state of the external repository.
+    """
     # Convert filter tuples to lists (or None if empty)
     project_filter = list(projects) if projects else None
-    chunk_filter = list(chunks) if chunks else None
+
+    # Combine --chunk and --artifact filters for backward compatibility
+    artifact_filter = list(artifacts) if artifacts else []
+    if chunks:
+        artifact_filter.extend(chunks)
+    artifact_filter = artifact_filter if artifact_filter else None
+
+    # Convert artifact type string to ArtifactType
+    artifact_types = None
+    if artifact_type:
+        artifact_types = [ArtifactType(artifact_type)]
 
     # Check if we're in a task directory
     if is_task_directory(project_dir):
-        _sync_task_directory(project_dir, dry_run, project_filter, chunk_filter)
+        _sync_task_directory(project_dir, dry_run, project_filter, artifact_filter, artifact_types)
     else:
         # Single repo mode
         if project_filter:
             click.echo("Error: --project can only be used in task directory context", err=True)
             raise SystemExit(1)
-        _sync_single_repo(project_dir, dry_run, chunk_filter)
+        _sync_single_repo(project_dir, dry_run, artifact_filter, artifact_types)
 
 
 def _sync_task_directory(
     task_dir: pathlib.Path,
     dry_run: bool,
     project_filter: list[str] | None,
-    chunk_filter: list[str] | None,
+    artifact_filter: list[str] | None,
+    artifact_types: list[ArtifactType] | None,
 ):
     """Handle sync in task directory mode."""
     try:
@@ -858,7 +881,8 @@ def _sync_task_directory(
             task_dir,
             dry_run=dry_run,
             project_filter=project_filter,
-            chunk_filter=chunk_filter,
+            artifact_filter=artifact_filter,
+            artifact_types=artifact_types,
         )
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
@@ -874,11 +898,12 @@ def _sync_task_directory(
 def _sync_single_repo(
     repo_path: pathlib.Path,
     dry_run: bool,
-    chunk_filter: list[str] | None,
+    artifact_filter: list[str] | None,
+    artifact_types: list[ArtifactType] | None,
 ):
     """Handle sync in single repo mode."""
     # Check if there are any external refs
-    external_refs = find_external_refs(repo_path)
+    external_refs = find_external_refs(repo_path, artifact_types=artifact_types)
     if not external_refs:
         click.echo("No external references found")
         return
@@ -886,7 +911,8 @@ def _sync_single_repo(
     results = sync_single_repo(
         repo_path,
         dry_run=dry_run,
-        chunk_filter=chunk_filter,
+        artifact_filter=artifact_filter,
+        artifact_types=artifact_types,
     )
 
     _display_sync_results(results, dry_run)
@@ -899,18 +925,21 @@ def _display_sync_results(results: list, dry_run: bool):
     prefix = "[dry-run] " if dry_run else ""
 
     for result in results:
+        # Format the display ID to include artifact type
+        display_id = f"{result.artifact_type.value}:{result.artifact_id}"
+
         if result.error:
-            click.echo(f"{prefix}Error syncing {result.chunk_id}: {result.error}", err=True)
+            click.echo(f"{prefix}Error syncing {display_id}: {result.error}", err=True)
             error_count += 1
         elif result.updated:
             old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
             new_abbrev = result.new_sha[:7] if result.new_sha else "(none)"
             verb = "Would update" if dry_run else "Updated"
-            click.echo(f"{prefix}{result.chunk_id}: {old_abbrev} -> {new_abbrev} ({verb})")
+            click.echo(f"{prefix}{display_id}: {old_abbrev} -> {new_abbrev} ({verb})")
             updated_count += 1
         else:
             old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
-            click.echo(f"{prefix}{result.chunk_id}: {old_abbrev} (already current)")
+            click.echo(f"{prefix}{display_id}: {old_abbrev} (already current)")
 
     # Summary
     total = len(results)
