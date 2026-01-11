@@ -789,7 +789,7 @@ def narrative_task_directory(tmp_path, tmp_path_factory):
 
     # Create .ve-task.yaml
     (task_dir / ".ve-task.yaml").write_text(
-        "external_chunk_repo: acme/narratives-repo\n"
+        "external_artifact_repo: acme/narratives-repo\n"
         "projects:\n"
         "  - acme/service-a\n"
     )
