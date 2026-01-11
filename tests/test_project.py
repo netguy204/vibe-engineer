@@ -121,6 +121,38 @@ class TestProjectInit:
         assert any(".claude/commands/" in f for f in result.created)
 
 
+class TestProjectInitChunks:
+    """Tests for Project.init() chunks directory creation."""
+
+    def test_init_creates_chunks_directory(self, temp_project):
+        """init() creates docs/chunks/ directory."""
+        project = Project(temp_project)
+        project.init()
+        chunks_dir = temp_project / "docs" / "chunks"
+        assert chunks_dir.exists()
+        assert chunks_dir.is_dir()
+
+    def test_init_reports_chunks_created(self, temp_project):
+        """init() reports docs/chunks/ in the created list."""
+        project = Project(temp_project)
+        result = project.init()
+        assert "docs/chunks/" in result.created
+
+    def test_init_skips_existing_chunks_directory(self, temp_project):
+        """init() skips docs/chunks/ if it already exists (idempotent)."""
+        project = Project(temp_project)
+
+        # Create chunks dir before init
+        chunks_dir = temp_project / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        result = project.init()
+
+        # Should be skipped, not created
+        assert "docs/chunks/" in result.skipped
+        assert "docs/chunks/" not in result.created
+
+
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.
 
@@ -138,10 +170,11 @@ class TestProjectInitIdempotency:
         # First run creates everything
         assert len(result1.created) > 0
 
-        # Second run: trunk, CLAUDE.md, narratives are skipped (user content)
+        # Second run: trunk, CLAUDE.md, narratives, chunks are skipped (user content)
         assert any("docs/trunk/" in f for f in result2.skipped)
         assert "CLAUDE.md" in result2.skipped
         assert "docs/narratives/" in result2.skipped
+        assert "docs/chunks/" in result2.skipped
 
         # Commands are always updated (in created, not skipped)
         assert any(".claude/commands/" in f for f in result2.created)
@@ -203,8 +236,8 @@ class TestProjectInitIdempotency:
 
         # Second run - user content skipped, commands created (updated)
         result2 = project.init()
-        # Trunk + CLAUDE.md + narratives should be skipped
-        assert len(result2.skipped) >= 5  # 4 trunk files + CLAUDE.md
+        # Trunk + CLAUDE.md + narratives + chunks should be skipped
+        assert len(result2.skipped) >= 6  # 4 trunk files + CLAUDE.md + narratives
         # Commands should be in created (updated)
         assert len(result2.created) > 0
 

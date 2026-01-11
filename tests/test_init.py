@@ -88,3 +88,34 @@ class TestInitCommand:
                 assert result.exit_code == 0
                 assert pathlib.Path("CLAUDE.md").exists()
                 assert pathlib.Path("docs/trunk/GOAL.md").exists()
+
+    def test_init_creates_chunks_directory(self, runner, temp_project):
+        """ve init creates docs/chunks/ directory."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert (temp_project / "docs" / "chunks").exists()
+        assert (temp_project / "docs" / "chunks").is_dir()
+
+    def test_init_chunks_in_created_output(self, runner, temp_project):
+        """ve init includes docs/chunks/ in its Created output."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "docs/chunks/" in result.output
+
+    def test_init_chunks_idempotent(self, runner, temp_project):
+        """ve init skips chunks directory if it already exists."""
+        # Create chunks dir before init
+        (temp_project / "docs" / "chunks").mkdir(parents=True)
+
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert (temp_project / "docs" / "chunks").exists()

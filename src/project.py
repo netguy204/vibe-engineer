@@ -102,6 +102,20 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/init_creates_chunks_dir - Chunks directory creation
+    def _init_chunks(self) -> InitResult:
+        """Create docs/chunks/ directory for chunk documents."""
+        result = InitResult()
+        chunks_dir = self.project_dir / "docs" / "chunks"
+
+        if chunks_dir.exists():
+            result.skipped.append("docs/chunks/")
+        else:
+            chunks_dir.mkdir(parents=True, exist_ok=True)
+            result.created.append("docs/chunks/")
+
+        return result
+
     # Chunk: docs/chunks/project_init_command - CLAUDE.md creation
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Subsystem: docs/subsystems/template_system - Uses render_template
@@ -138,6 +152,7 @@ class Project:
             self._init_commands(),
             self._init_claude_md(),
             self._init_narratives(),
+            self._init_chunks(),
         ]:
             result.created.extend(sub_result.created)
             result.skipped.extend(sub_result.skipped)
