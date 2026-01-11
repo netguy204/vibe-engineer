@@ -21,7 +21,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 2
+    CURRENT_VERSION = 3
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -85,6 +85,7 @@ class StateStore:
         migrations = {
             1: self._migrate_v1,
             2: self._migrate_v2,
+            3: self._migrate_v3,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -146,6 +147,15 @@ class StateStore:
             """
         )
 
+    def _migrate_v3(self) -> None:
+        """Add completion_retries field for ACTIVE status verification."""
+        self.connection.executescript(
+            """
+            -- Add completion_retries column for tracking ACTIVE status retry attempts
+            ALTER TABLE work_units ADD COLUMN completion_retries INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -175,8 +185,8 @@ class StateStore:
                 """
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     completion_retries, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -186,6 +196,7 @@ class StateStore:
                     work_unit.worktree,
                     work_unit.priority,
                     work_unit.session_id,
+                    work_unit.completion_retries,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -240,7 +251,7 @@ class StateStore:
             """
             UPDATE work_units
             SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
-                priority = ?, session_id = ?, updated_at = ?
+                priority = ?, session_id = ?, completion_retries = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -250,6 +261,7 @@ class StateStore:
                 work_unit.worktree,
                 work_unit.priority,
                 work_unit.session_id,
+                work_unit.completion_retries,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -429,6 +441,13 @@ class StateStore:
         except (IndexError, KeyError):
             session_id = None
 
+        try:
+            completion_retries = (
+                row["completion_retries"] if row["completion_retries"] is not None else 0
+            )
+        except (IndexError, KeyError):
+            completion_retries = 0
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -437,6 +456,7 @@ class StateStore:
             worktree=row["worktree"],
             priority=priority,
             session_id=session_id,
+            completion_retries=completion_retries,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

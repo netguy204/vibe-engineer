@@ -50,6 +50,7 @@ class WorkUnit(BaseModel):
     worktree: Optional[str] = None  # Git worktree path, if assigned
     priority: int = 0  # Scheduling priority (higher = more urgent)
     session_id: Optional[str] = None  # Agent session ID for suspended sessions
+    completion_retries: int = 0  # Retry count for ACTIVE status verification
     created_at: datetime
     updated_at: datetime
 
@@ -74,6 +75,7 @@ class WorkUnit(BaseModel):
             "worktree": self.worktree,
             "priority": self.priority,
             "session_id": self.session_id,
+            "completion_retries": self.completion_retries,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -115,12 +117,14 @@ class OrchestratorConfig(BaseModel):
 
     max_agents: int = 2  # Maximum concurrent agents
     dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
+    max_completion_retries: int = 2  # Max retries for ACTIVE status verification
 
     def model_dump_json_serializable(self) -> dict:
         """Return a JSON-serializable dict representation."""
         return {
             "max_agents": self.max_agents,
             "dispatch_interval_seconds": self.dispatch_interval_seconds,
+            "max_completion_retries": self.max_completion_retries,
         }
 
 

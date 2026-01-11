@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
+# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.
@@ -276,6 +277,89 @@ class AgentRunner:
                 completed=completed,
                 suspended=False,
                 session_id=session_id,
+            )
+
+    async def resume_for_active_status(
+        self,
+        chunk: str,
+        worktree_path: Path,
+        session_id: str,
+        log_callback: Optional[callable] = None,
+    ) -> AgentResult:
+        """Resume an agent session to complete ACTIVE status marking.
+
+        Called when /chunk-complete finished but the GOAL.md status was not
+        updated to ACTIVE. This resumes the session with a targeted reminder.
+
+        Args:
+            chunk: Chunk name
+            worktree_path: Path to the worktree
+            session_id: Session ID from the original COMPLETE phase run
+            log_callback: Optional callback for logging messages
+
+        Returns:
+            AgentResult with outcome of the resume
+        """
+        prompt = (
+            "The /chunk-complete command finished but the chunk's GOAL.md status was "
+            "not updated to ACTIVE. Please complete the final step:\n\n"
+            "1. Open the chunk's GOAL.md file\n"
+            "2. Change the frontmatter `status: IMPLEMENTING` to `status: ACTIVE`\n"
+            "3. Remove the large comment block that starts with "
+            "'DO NOT DELETE THIS COMMENT BLOCK'\n\n"
+            "This is the final step to complete the chunk."
+        )
+
+        options = ClaudeAgentOptions(
+            cwd=str(worktree_path),
+            permission_mode="bypassPermissions",
+            max_turns=20,  # Should be quick - just editing one file
+            resume=session_id,
+        )
+
+        new_session_id: Optional[str] = None
+        error: Optional[str] = None
+        completed = False
+
+        try:
+            async for message in query(prompt=prompt, options=options):
+                if log_callback:
+                    log_callback(message)
+
+                if isinstance(message, dict):
+                    if message.get("type") == "init":
+                        new_session_id = message.get("session_id")
+
+                if isinstance(message, ResultMessage):
+                    result_text = getattr(message, "result", None)
+                    is_error = getattr(message, "is_error", False)
+
+                    if is_error:
+                        error = result_text or "Resume returned error"
+                    elif result_text and _is_error_result(result_text):
+                        error = result_text
+                    else:
+                        completed = True
+
+                if isinstance(message, AssistantMessage):
+                    if hasattr(message, "session_id"):
+                        new_session_id = message.session_id
+
+        except Exception as e:
+            error = str(e)
+
+        if error:
+            return AgentResult(
+                completed=False,
+                suspended=False,
+                session_id=new_session_id or session_id,
+                error=error,
+            )
+        else:
+            return AgentResult(
+                completed=completed,
+                suspended=False,
+                session_id=new_session_id or session_id,
             )
 
 

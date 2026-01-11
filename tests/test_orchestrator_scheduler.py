@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_scheduling - Scheduler tests
+# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification tests
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -7,7 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from orchestrator.scheduler import Scheduler, SchedulerError, create_scheduler
+from orchestrator.scheduler import (
+    Scheduler,
+    SchedulerError,
+    create_scheduler,
+    verify_chunk_active_status,
+    VerificationStatus,
+    VerificationResult,
+)
 from orchestrator.models import (
     AgentResult,
     OrchestratorConfig,
@@ -217,9 +225,23 @@ class TestPhaseAdvancement:
 
     @pytest.mark.asyncio
     async def test_advance_complete_marks_done(
-        self, scheduler, state_store, mock_worktree_manager
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
         """Advancing from COMPLETE marks work unit DONE."""
+        # Set up chunk with ACTIVE status (required for completion)
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
             chunk="test",
@@ -371,3 +393,269 @@ class TestSchedulerLifecycle:
 
         assert scheduler._stop_event.is_set()
         await stop_task
+
+
+class TestVerifyChunkActiveStatus:
+    """Tests for the verify_chunk_active_status helper."""
+
+    def test_returns_active_when_status_active(self, tmp_path):
+        """Returns ACTIVE when GOAL.md has status: ACTIVE."""
+        # Create chunk directory with GOAL.md
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.ACTIVE
+        assert result.error is None
+
+    def test_returns_implementing_when_status_implementing(self, tmp_path):
+        """Returns IMPLEMENTING when GOAL.md has status: IMPLEMENTING."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.IMPLEMENTING
+        assert result.error is None
+
+    def test_returns_error_when_goal_md_missing(self, tmp_path):
+        """Returns ERROR when GOAL.md doesn't exist."""
+        # Create chunk directory but no GOAL.md
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.ERROR
+        assert "not found" in result.error
+
+    def test_returns_error_when_no_frontmatter(self, tmp_path):
+        """Returns ERROR when GOAL.md has no frontmatter."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text("# Chunk Goal\n\nNo frontmatter here.")
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.ERROR
+        assert "frontmatter" in result.error.lower()
+
+    def test_returns_error_when_status_missing(self, tmp_path):
+        """Returns ERROR when frontmatter has no status field."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.ERROR
+        assert "status" in result.error.lower()
+
+    def test_returns_error_for_unexpected_status(self, tmp_path):
+        """Returns ERROR for unexpected status values like FUTURE."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+
+        assert result.status == VerificationStatus.ERROR
+        assert "FUTURE" in result.error
+
+
+class TestActiveStatusVerification:
+    """Tests for ACTIVE status verification in the scheduler."""
+
+    @pytest.mark.asyncio
+    async def test_advance_complete_proceeds_when_active(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Completion proceeds when status is ACTIVE."""
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mock worktree manager to return our tmp_path
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.DONE
+
+    @pytest.mark.asyncio
+    async def test_advance_complete_retries_when_implementing(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Retries when status is IMPLEMENTING."""
+        # Set up chunk with IMPLEMENTING status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+---
+
+# Chunk Goal
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        # Mock resume_for_active_status to return an error (simulating failure)
+        mock_agent_runner.resume_for_active_status = AsyncMock(
+            return_value=AgentResult(
+                completed=False,
+                suspended=False,
+                error="Failed to update status",
+            )
+        )
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            session_id="session123",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Should have called resume_for_active_status
+        mock_agent_runner.resume_for_active_status.assert_called_once()
+
+        # Should have incremented retry counter
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.completion_retries == 1
+
+    @pytest.mark.asyncio
+    async def test_advance_complete_marks_needs_attention_after_max_retries(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Marks NEEDS_ATTENTION after max retries exceeded."""
+        # Set up chunk with IMPLEMENTING status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+---
+
+# Chunk Goal
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            completion_retries=2,  # Already at max
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+
+    @pytest.mark.asyncio
+    async def test_advance_complete_marks_needs_attention_on_error(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Marks NEEDS_ATTENTION when verification returns ERROR."""
+        # Set up chunk directory but with unparseable GOAL.md
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text("No frontmatter here")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION

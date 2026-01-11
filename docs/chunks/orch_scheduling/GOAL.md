@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -18,94 +18,72 @@ code_paths:
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_cli.py
 - tests/test_orchestrator_integration.py
-code_references: []
+code_references:
+  - ref: src/orchestrator/worktree.py#WorktreeManager
+    implements: "Git worktree lifecycle management for isolated chunk execution"
+  - ref: src/orchestrator/worktree.py#WorktreeManager::create_worktree
+    implements: "Creates git worktree for chunk at .ve/chunks/<chunk>/worktree/"
+  - ref: src/orchestrator/worktree.py#WorktreeManager::remove_worktree
+    implements: "Removes worktree and optionally its branch"
+  - ref: src/orchestrator/worktree.py#WorktreeManager::merge_to_base
+    implements: "Merges chunk branch back to base branch on completion"
+  - ref: src/orchestrator/agent.py#AgentRunner
+    implements: "Agent execution using Claude Agent SDK"
+  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
+    implements: "Single phase execution with session-per-phase semantics"
+  - ref: src/orchestrator/agent.py#create_log_callback
+    implements: "Transcript capture to .ve/chunks/<chunk>/log/<phase>.txt"
+  - ref: src/orchestrator/scheduler.py#Scheduler
+    implements: "Dispatch loop for scheduling work units to agents"
+  - ref: src/orchestrator/scheduler.py#Scheduler::start
+    implements: "Main scheduler loop that checks for READY work and spawns agents"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_dispatch_tick
+    implements: "One dispatch cycle - spawns agents up to max_agents slots"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+    implements: "Phase progression and merge-on-complete logic"
+  - ref: src/orchestrator/scheduler.py#create_scheduler
+    implements: "Factory function to create configured scheduler"
+  - ref: src/orchestrator/models.py#OrchestratorConfig
+    implements: "Configuration model with max_agents and dispatch_interval_seconds"
+  - ref: src/orchestrator/models.py#AgentResult
+    implements: "Result model for agent phase execution"
+  - ref: src/orchestrator/state.py#StateStore::_migrate_v2
+    implements: "Schema migration adding priority, session_id, and config table"
+  - ref: src/orchestrator/state.py#StateStore::get_ready_queue
+    implements: "Ready queue ordered by priority DESC, created_at ASC"
+  - ref: src/orchestrator/state.py#StateStore::get_config
+    implements: "Config key-value retrieval"
+  - ref: src/orchestrator/state.py#StateStore::set_config
+    implements: "Config key-value storage"
+  - ref: src/orchestrator/api.py#inject_endpoint
+    implements: "POST /work-units/inject - adds chunk to work pool"
+  - ref: src/orchestrator/api.py#queue_endpoint
+    implements: "GET /work-units/queue - shows ready queue by priority"
+  - ref: src/orchestrator/api.py#prioritize_endpoint
+    implements: "PATCH /work-units/{chunk}/priority - updates priority"
+  - ref: src/orchestrator/api.py#get_config_endpoint
+    implements: "GET /config - retrieves daemon configuration"
+  - ref: src/orchestrator/api.py#update_config_endpoint
+    implements: "PATCH /config - updates daemon configuration"
+  - ref: src/orchestrator/api.py#_detect_initial_phase
+    implements: "Phase detection logic for inject command"
+  - ref: src/orchestrator/daemon.py#_run_daemon_async
+    implements: "Async daemon runner with scheduler integration"
+  - ref: src/ve.py#orch_inject
+    implements: "ve orch inject CLI command"
+  - ref: src/ve.py#orch_queue
+    implements: "ve orch queue CLI command"
+  - ref: src/ve.py#orch_prioritize
+    implements: "ve orch prioritize CLI command"
+  - ref: src/ve.py#orch_config
+    implements: "ve orch config CLI command"
+  - ref: src/orchestrator/__init__.py
+    implements: "Package exports for scheduling layer components"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
 created_after: ["orch_foundation"]
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
--->
 
 # Chunk Goal
 

@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
+# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -9,9 +10,14 @@ The scheduler runs a background loop that:
 
 import asyncio
 import logging
+import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import StrEnum
 from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from orchestrator.agent import AgentRunner, create_log_callback
 from orchestrator.models import (
@@ -26,6 +32,91 @@ from orchestrator.worktree import WorktreeManager, WorktreeError
 
 
 logger = logging.getLogger(__name__)
+
+
+class VerificationStatus(StrEnum):
+    """Result of verifying chunk ACTIVE status."""
+
+    ACTIVE = "ACTIVE"  # Status is ACTIVE, proceed with commit/merge
+    IMPLEMENTING = "IMPLEMENTING"  # Still IMPLEMENTING, needs retry
+    ERROR = "ERROR"  # Error parsing or reading GOAL.md
+
+
+@dataclass
+class VerificationResult:
+    """Result from verifying chunk's GOAL.md status."""
+
+    status: VerificationStatus
+    error: Optional[str] = None
+
+
+def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
+    """Verify that a chunk's GOAL.md has status: ACTIVE.
+
+    Reads the chunk's GOAL.md from the worktree and parses the frontmatter
+    to check the status field.
+
+    Args:
+        worktree_path: Path to the worktree containing the chunk
+        chunk: The chunk directory name
+
+    Returns:
+        VerificationResult indicating ACTIVE, IMPLEMENTING, or ERROR
+    """
+    goal_path = worktree_path / "docs" / "chunks" / chunk / "GOAL.md"
+
+    if not goal_path.exists():
+        return VerificationResult(
+            status=VerificationStatus.ERROR,
+            error=f"GOAL.md not found at {goal_path}",
+        )
+
+    try:
+        content = goal_path.read_text()
+
+        # Extract YAML frontmatter (between --- markers)
+        frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+        if not frontmatter_match:
+            return VerificationResult(
+                status=VerificationStatus.ERROR,
+                error="No YAML frontmatter found in GOAL.md",
+            )
+
+        frontmatter = yaml.safe_load(frontmatter_match.group(1))
+        if frontmatter is None:
+            return VerificationResult(
+                status=VerificationStatus.ERROR,
+                error="Empty YAML frontmatter in GOAL.md",
+            )
+
+        status = frontmatter.get("status")
+        if status is None:
+            return VerificationResult(
+                status=VerificationStatus.ERROR,
+                error="No 'status' field in GOAL.md frontmatter",
+            )
+
+        if status == "ACTIVE":
+            return VerificationResult(status=VerificationStatus.ACTIVE)
+        elif status == "IMPLEMENTING":
+            return VerificationResult(status=VerificationStatus.IMPLEMENTING)
+        else:
+            # Other statuses like FUTURE, SUPERSEDED, etc. are unexpected here
+            return VerificationResult(
+                status=VerificationStatus.ERROR,
+                error=f"Unexpected status '{status}' in GOAL.md (expected ACTIVE)",
+            )
+
+    except yaml.YAMLError as e:
+        return VerificationResult(
+            status=VerificationStatus.ERROR,
+            error=f"Failed to parse YAML frontmatter: {e}",
+        )
+    except Exception as e:
+        return VerificationResult(
+            status=VerificationStatus.ERROR,
+            error=f"Error reading GOAL.md: {e}",
+        )
 
 
 class SchedulerError(Exception):
@@ -311,16 +402,89 @@ class Scheduler:
         next_phase = next_phase_map.get(current_phase)
 
         if next_phase is None:
-            # Work unit complete - check for uncommitted changes first
+            # Work unit complete - verify ACTIVE status before commit/merge
             logger.info(f"Work unit {chunk} completed all phases")
+
+            # Get worktree path for verification
+            worktree_path = self.worktree_manager.get_worktree_path(chunk)
+
+            # Verify the chunk's GOAL.md has status: ACTIVE
+            verification = verify_chunk_active_status(worktree_path, chunk)
+            logger.info(
+                f"Verification result for {chunk}: {verification.status.value}"
+            )
+
+            if verification.status == VerificationStatus.IMPLEMENTING:
+                # Agent didn't finish marking ACTIVE - check retry count
+                if work_unit.completion_retries >= self.config.max_completion_retries:
+                    logger.warning(
+                        f"Chunk {chunk} still IMPLEMENTING after "
+                        f"{work_unit.completion_retries} retries"
+                    )
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Chunk status still IMPLEMENTING after "
+                        f"{work_unit.completion_retries} retries",
+                    )
+                    return
+
+                # Resume the agent to finish marking ACTIVE
+                work_unit.completion_retries += 1
+                work_unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(work_unit)
+
+                logger.info(
+                    f"Resuming agent for {chunk} to mark ACTIVE "
+                    f"(attempt {work_unit.completion_retries})"
+                )
+
+                log_dir = self.worktree_manager.get_log_path(chunk)
+                log_callback = create_log_callback(
+                    chunk, WorkUnitPhase.COMPLETE, log_dir
+                )
+
+                try:
+                    result = await self.agent_runner.resume_for_active_status(
+                        chunk=chunk,
+                        worktree_path=worktree_path,
+                        session_id=work_unit.session_id,
+                        log_callback=log_callback,
+                    )
+
+                    # Update session_id if it changed
+                    if result.session_id:
+                        work_unit.session_id = result.session_id
+                        self.store.update_work_unit(work_unit)
+
+                    # Re-handle the result (will call _advance_phase again if completed)
+                    await self._handle_agent_result(work_unit, result)
+                except Exception as e:
+                    logger.error(f"Error resuming agent for {chunk}: {e}")
+                    await self._mark_needs_attention(
+                        work_unit, f"Resume for ACTIVE status failed: {e}"
+                    )
+                return
+
+            elif verification.status == VerificationStatus.ERROR:
+                logger.error(
+                    f"Verification error for {chunk}: {verification.error}"
+                )
+                await self._mark_needs_attention(work_unit, verification.error)
+                return
+
+            # Status is ACTIVE - proceed with commit/merge
+            logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
 
             # Check for uncommitted changes that need to be committed
             if self.worktree_manager.has_uncommitted_changes(chunk):
-                logger.info(f"Uncommitted changes detected for {chunk}, running commit phase")
+                logger.info(
+                    f"Uncommitted changes detected for {chunk}, running commit phase"
+                )
                 # Run the /commit skill to properly commit changes
-                worktree_path = self.worktree_manager.get_worktree_path(chunk)
                 log_dir = self.worktree_manager.get_log_path(chunk)
-                log_callback = create_log_callback(chunk, WorkUnitPhase.COMPLETE, log_dir)
+                log_callback = create_log_callback(
+                    chunk, WorkUnitPhase.COMPLETE, log_dir
+                )
 
                 try:
                     result = await self.agent_runner.run_commit(
