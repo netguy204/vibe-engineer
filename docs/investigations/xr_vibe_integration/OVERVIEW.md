@@ -46,7 +46,7 @@ PROPOSED_CHUNKS:
 ## Trigger
 
 The dotter repository contains XR, a cross-repository development environment tool that
-manages task directories, git worktrees, and dependency discovery. FIBE Engineering (ve)
+manages task directories, git worktrees, and dependency discovery. Vibe Engineering (ve)
 creates durable documentation artifacts (chunks, narratives, investigations, subsystems)
 that capture semantic understanding of projects.
 
