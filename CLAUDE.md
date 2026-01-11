@@ -15,12 +15,12 @@ Read GOAL.md first to understand the project's purpose before making changes.
 
 ## Chunks (`docs/chunks/`)
 
-Work is organized into "chunks" - discrete units of implementation stored in `docs/chunks/`. Each chunk directory (e.g., `docs/chunks/0001-feature_name/`) contains:
+Work is organized into "chunks" - discrete units of implementation stored in `docs/chunks/`. Each chunk directory (e.g., `docs/chunks/feature_name/`) contains:
 
 - **GOAL.md** - What this chunk accomplishes and its success criteria
 - **PLAN.md** - Technical breakdown of how the chunk will be implemented
 
-Chunks are numbered sequentially. To understand recent work, read the highest-numbered chunk's GOAL.md.
+Chunks use short names as identifiers, with `created_after` frontmatter providing causal ordering. To understand recent work, use `ve chunk list --latest`.
 
 ### Chunk Lifecycle
 
@@ -33,7 +33,7 @@ Chunks are numbered sequentially. To understand recent work, read the highest-nu
 
 Chunk GOAL.md files may reference other artifact types in their frontmatter:
 
-- **narrative**: References a narrative directory (e.g., `0003-investigations`) that this chunk helps implement
+- **narrative**: References a narrative directory (e.g., `investigations`) that this chunk helps implement
 - **subsystems**: List of subsystem relationships indicating which subsystems this chunk implements or uses
 
 When you see these references, read the referenced artifact to understand the broader context.
@@ -63,7 +63,7 @@ When a chunk references a subsystem with relationship `implements`, the chunk co
 
 ## Investigations (`docs/investigations/`)
 
-Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation directory (e.g., `docs/investigations/0001-memory_leak/`) contains an OVERVIEW.md with:
+Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation directory (e.g., `docs/investigations/memory_leak/`) contains an OVERVIEW.md with:
 
 - **Trigger** - What prompted the investigation (the observed problem or question)
 - **Success Criteria** - What "done" looks like (specific, verifiable outcomes)
@@ -128,13 +128,23 @@ Use these slash commands for artifact management:
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
 
+## What Counts as "Code"
+
+In this project, "code" includes:
+
+- **Python source files** (`src/**/*.py`) - The CLI implementation
+- **Command templates** (`.claude/commands/*.md`) - Slash command definitions that govern agent behavior
+- **Test files** (`tests/**/*.py`) - Test implementations
+
+When completing a chunk, populate `code_references` with all modified files, including command templates. Command templates are executable instructions for agents and are maintained with the same rigor as source code.
+
 ## Code Backreferences
 
 Source code may contain backreference comments that link code back to the documentation that created or governs it:
 
 ```python
-# Chunk: docs/chunks/0012-symbolic_code_refs - Symbolic code reference format
-# Subsystem: docs/subsystems/0001-template_system - Unified template rendering
+# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
+# Subsystem: docs/subsystems/template_system - Unified template rendering
 ```
 
 **What backreferences mean:**
