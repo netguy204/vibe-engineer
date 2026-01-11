@@ -4,7 +4,9 @@ These utilities operate entirely on local worktrees within a task directory,
 avoiding network operations. They form the foundation for the `ve sync` command.
 """
 # Chunk: docs/chunks/ve_sync_foundation - Git utility functions
+# Chunk: docs/chunks/task_config_local_paths - get_github_org_repo function
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -149,3 +151,64 @@ def is_git_repository(path: Path) -> bool:
         return True
     except subprocess.CalledProcessError:
         return False
+
+
+# Chunk: docs/chunks/task_config_local_paths - Extract org/repo from git remote
+def get_github_org_repo(path: Path) -> str:
+    """Extract the GitHub org/repo from a repository's origin remote URL.
+
+    Works for both regular git clones and worktrees.
+
+    Args:
+        path: Path to the git repository (or worktree)
+
+    Returns:
+        The org/repo string (e.g., "btaylor/dotter")
+
+    Raises:
+        ValueError: If path doesn't exist, is not a git repo, has no origin
+            remote, or the remote URL is not a GitHub URL
+    """
+    if not path.exists():
+        raise ValueError(f"Path does not exist: {path}")
+
+    if not path.is_dir():
+        raise ValueError(f"Path is not a directory: {path}")
+
+    # Get the remote URL
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        remote_url = result.stdout.strip()
+    except subprocess.CalledProcessError:
+        # Could be no git repo or no origin remote - check which
+        if not is_git_repository(path):
+            raise ValueError(f"Not a git repository: {path}")
+        raise ValueError(f"No origin remote configured for: {path}")
+
+    if not remote_url:
+        raise ValueError(f"No origin remote configured for: {path}")
+
+    # Parse the remote URL to extract org/repo
+    # Pattern covers:
+    # - https://github.com/org/repo.git
+    # - https://github.com/org/repo
+    # - git@github.com:org/repo.git
+    # - git@github.com:org/repo
+    # - ssh://git@github.com/org/repo.git
+    # - ssh://git@github.com/org/repo
+
+    # HTTPS or ssh:// protocol
+    https_pattern = r"github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?$"
+    match = re.search(https_pattern, remote_url)
+
+    if match:
+        org, repo = match.groups()
+        return f"{org}/{repo}"
+
+    raise ValueError(f"Remote URL is not a GitHub URL: {remote_url}")

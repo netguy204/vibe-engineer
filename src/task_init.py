@@ -1,13 +1,14 @@
 """Business logic for ve task init command."""
 # Chunk: docs/chunks/task_init - Task directory initialization
 # Chunk: docs/chunks/task_init_scaffolding - Task CLAUDE.md and commands scaffolding
+# Chunk: docs/chunks/task_config_local_paths - Local path resolution
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-from git_utils import is_git_repository
+from git_utils import get_github_org_repo, is_git_repository
 from template_system import TaskContext, render_template, render_to_directory
 
 
@@ -56,7 +57,30 @@ def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
     return None
 
 
+# Chunk: docs/chunks/task_config_local_paths - Resolve to org/repo format
+def _resolve_to_org_repo(cwd: Path, repo_ref: str) -> str:
+    """Resolve a repo reference to org/repo format from its git remote.
+
+    Args:
+        cwd: Task directory containing repositories
+        repo_ref: Either org/repo format or plain directory name
+
+    Returns:
+        The org/repo string extracted from the git remote URL
+
+    Raises:
+        ValueError: If directory doesn't exist, is not a git repo,
+            or has no origin remote configured
+    """
+    path = _resolve_repo_path(cwd, repo_ref)
+    if path is None:
+        raise ValueError(f"Directory '{repo_ref}' does not exist")
+
+    return get_github_org_repo(path)
+
+
 # Chunk: docs/chunks/task_init - Task initialization class
+# Chunk: docs/chunks/task_config_local_paths - Local path resolution in TaskInit
 class TaskInit:
     """Initialize a task directory for cross-repository work."""
 
@@ -65,15 +89,20 @@ class TaskInit:
 
         Args:
             cwd: Current working directory where .ve-task.yaml will be created
-            external: External chunk repository (org/repo format)
-            projects: List of participating projects (org/repo format)
+            external: External chunk repository (org/repo format or plain directory name)
+            projects: List of participating projects (org/repo format or plain directory names)
         """
         self.cwd = cwd
         self.external = external
         self.projects = projects
+        # Resolved values are populated during validate()
+        self._resolved_external: str | None = None
+        self._resolved_projects: list[str] | None = None
 
     def validate(self) -> list[str]:
         """Validate the task init configuration.
+
+        Resolves local directory names to org/repo format from git remotes.
 
         Returns:
             List of validation error messages, empty if valid.
@@ -90,23 +119,29 @@ class TaskInit:
             errors.append("At least one --project is required")
             return errors
 
-        # Check 3: Validate external directory
-        errors.extend(self._validate_directory(self.external))
+        # Check 3: Validate and resolve external directory
+        external_errors, resolved_external = self._validate_and_resolve(self.external)
+        errors.extend(external_errors)
+        self._resolved_external = resolved_external
 
-        # Check 4: Validate each project directory
+        # Check 4: Validate and resolve each project directory
+        resolved_projects = []
         for project in self.projects:
-            errors.extend(self._validate_directory(project))
+            project_errors, resolved_project = self._validate_and_resolve(project)
+            errors.extend(project_errors)
+            resolved_projects.append(resolved_project)
+        self._resolved_projects = resolved_projects
 
         return errors
 
-    def _validate_directory(self, repo_ref: str) -> list[str]:
-        """Validate a single directory.
+    def _validate_and_resolve(self, repo_ref: str) -> tuple[list[str], str | None]:
+        """Validate a directory and resolve it to org/repo format.
 
         Args:
             repo_ref: Repository reference (org/repo format or plain name)
 
         Returns:
-            List of error messages for this directory.
+            Tuple of (error messages, resolved org/repo or None if errors)
         """
         errors: list[str] = []
         path = _resolve_repo_path(self.cwd, repo_ref)
@@ -114,21 +149,36 @@ class TaskInit:
         # Check if directory exists
         if path is None:
             errors.append(f"Directory '{repo_ref}' does not exist")
-            return errors
+            return errors, None
 
         # Check if it's a git repository
         if not is_git_repository(path):
             errors.append(f"Directory '{repo_ref}' is not a git repository")
-            return errors
+            return errors, None
 
         # Check if VE-initialized (docs/chunks/ exists)
         if not (path / "docs" / "chunks").exists():
             errors.append(
                 f"Directory '{repo_ref}' is not a Vibe Engineer project (missing docs/chunks/)"
             )
-            return errors
+            return errors, None
 
-        return errors
+        # Try to resolve to org/repo from git remote
+        try:
+            org_repo = get_github_org_repo(path)
+            return errors, org_repo
+        except ValueError as e:
+            # Provide clear error message with original input
+            error_msg = str(e)
+            if "no origin remote" in error_msg.lower():
+                errors.append(f"Directory '{repo_ref}' has no origin remote configured")
+            elif "not a github url" in error_msg.lower():
+                errors.append(
+                    f"Directory '{repo_ref}' remote is not a GitHub URL"
+                )
+            else:
+                errors.append(f"Directory '{repo_ref}': {error_msg}")
+            return errors, None
 
     # Chunk: docs/chunks/task_init_scaffolding - Render task CLAUDE.md
     def _render_claude_md(self) -> list[str]:
@@ -188,9 +238,14 @@ class TaskInit:
 
         # Create .ve-task.yaml
         config_path = self.cwd / ".ve-task.yaml"
+
+        # Use resolved values from validate()
+        external_repo = self._resolved_external or self.external
+        projects = self._resolved_projects or self.projects
+
         config_data = {
-            "external_artifact_repo": self.external,
-            "projects": self.projects,
+            "external_artifact_repo": external_repo,
+            "projects": projects,
         }
 
         with open(config_path, "w") as f:
@@ -205,7 +260,7 @@ class TaskInit:
 
         return TaskInitResult(
             config_path=config_path,
-            external_repo=self.external,
-            projects=self.projects,
+            external_repo=external_repo,
+            projects=projects,
             created_files=created_files,
         )

@@ -18,8 +18,8 @@ code_references:
   implements: Task initialization class
 - ref: src/task_init.py#TaskInit::validate
   implements: Checks already exists, no projects, directory validation
-- ref: src/task_init.py#TaskInit::_validate_directory
-  implements: Checks existence, git repo, VE-initialized
+- ref: src/task_init.py#TaskInit::_validate_and_resolve
+  implements: Checks existence, git repo, VE-initialized, and resolves to org/repo
 - ref: src/task_init.py#TaskInit::execute
   implements: Creates .ve-task.yaml and coordinates scaffolding (CLAUDE.md and commands added by task_init_scaffolding)
 - ref: src/git_utils.py#is_git_repository

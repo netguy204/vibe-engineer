@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from git_utils import get_current_sha, is_git_repository, resolve_ref
+from git_utils import get_current_sha, get_github_org_repo, is_git_repository, resolve_ref
 
 
 # Regex to match a valid 40-character hex SHA
@@ -337,3 +337,148 @@ class TestResolveRemoteRef:
 
         sha = resolve_remote_ref("octocat/Hello-World")
         assert SHA_PATTERN.match(sha)
+
+
+@pytest.fixture
+def git_repo_with_remote(tmp_path):
+    """Create a git repository with an origin remote URL."""
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    (tmp_path / "README.md").write_text("# Test\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    return tmp_path
+
+
+class TestGetGithubOrgRepo:
+    """Tests for get_github_org_repo function."""
+
+    def test_https_url_with_git_suffix(self, git_repo_with_remote):
+        """Extracts org/repo from HTTPS URL with .git suffix."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://github.com/btaylor/dotter.git"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        result = get_github_org_repo(git_repo_with_remote)
+        assert result == "btaylor/dotter"
+
+    def test_https_url_without_git_suffix(self, git_repo_with_remote):
+        """Extracts org/repo from HTTPS URL without .git suffix."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://github.com/acme/project"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        result = get_github_org_repo(git_repo_with_remote)
+        assert result == "acme/project"
+
+    def test_ssh_url_with_git_suffix(self, git_repo_with_remote):
+        """Extracts org/repo from SSH URL with .git suffix."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:btaylor/dotter.git"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        result = get_github_org_repo(git_repo_with_remote)
+        assert result == "btaylor/dotter"
+
+    def test_ssh_url_without_git_suffix(self, git_repo_with_remote):
+        """Extracts org/repo from SSH URL without .git suffix."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:acme/project"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        result = get_github_org_repo(git_repo_with_remote)
+        assert result == "acme/project"
+
+    def test_ssh_protocol_url(self, git_repo_with_remote):
+        """Extracts org/repo from ssh:// protocol URL."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "ssh://git@github.com/btaylor/dotter.git"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        result = get_github_org_repo(git_repo_with_remote)
+        assert result == "btaylor/dotter"
+
+    def test_no_remote_configured_raises(self, git_repo_with_remote):
+        """Raises ValueError when no origin remote is configured."""
+        with pytest.raises(ValueError) as exc_info:
+            get_github_org_repo(git_repo_with_remote)
+        assert "no origin remote" in str(exc_info.value).lower()
+
+    def test_not_a_git_repo_raises(self, tmp_path):
+        """Raises ValueError when path is not a git repository."""
+        with pytest.raises(ValueError) as exc_info:
+            get_github_org_repo(tmp_path)
+        assert "not a git repository" in str(exc_info.value).lower()
+
+    def test_nonexistent_path_raises(self, tmp_path):
+        """Raises ValueError when path does not exist."""
+        nonexistent = tmp_path / "does_not_exist"
+        with pytest.raises(ValueError) as exc_info:
+            get_github_org_repo(nonexistent)
+        assert "does not exist" in str(exc_info.value).lower()
+
+    def test_works_with_worktree(self, git_repo_with_remote, tmp_path_factory):
+        """Extracts org/repo from worktree (uses parent repo's remote)."""
+        # Set up remote on main repo
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://github.com/btaylor/dotter.git"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        # Create a branch for worktree
+        subprocess.run(
+            ["git", "branch", "worktree-branch"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        # Create worktree
+        worktree_dir = tmp_path_factory.mktemp("worktree")
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree_dir), "worktree-branch"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        # Test from worktree
+        result = get_github_org_repo(worktree_dir)
+        assert result == "btaylor/dotter"
+
+    def test_non_github_url_raises(self, git_repo_with_remote):
+        """Raises ValueError for non-GitHub remote URLs."""
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://gitlab.com/acme/project.git"],
+            cwd=git_repo_with_remote,
+            check=True,
+            capture_output=True,
+        )
+        with pytest.raises(ValueError) as exc_info:
+            get_github_org_repo(git_repo_with_remote)
+        assert "not a github url" in str(exc_info.value).lower()
