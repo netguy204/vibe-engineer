@@ -49,6 +49,8 @@ chunks:
   relationship: implements
 - chunk_id: consolidate_ext_refs
   relationship: implements
+- chunk_id: consolidate_ext_ref_utils
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -110,8 +112,17 @@ code_references:
 - ref: src/models.py#ArtifactType
   implements: Workflow artifact type enum (moved from artifact_ordering.py)
   compliance: COMPLIANT
-- ref: src/task_utils.py#create_external_yaml
+- ref: src/external_refs.py
+  implements: Consolidated external artifact reference utilities
+  compliance: COMPLIANT
+- ref: src/external_refs.py#is_external_artifact
+  implements: Generic external artifact detection for any workflow type
+  compliance: COMPLIANT
+- ref: src/external_refs.py#create_external_yaml
   implements: External reference creation with causal ordering support
+  compliance: COMPLIANT
+- ref: src/external_refs.py#load_external_ref
+  implements: External reference loading and validation
   compliance: COMPLIANT
 - ref: src/ve.py#create
   implements: Chunk creation CLI command
@@ -156,7 +167,7 @@ proposed_chunks:
     artifact_type), load_external_ref(path), create_external_yaml(path, ref), and
     detect_artifact_type_from_path(path). Migrate chunk-specific code from task_utils.py
     to use these generic utilities.'
-  chunk_directory: null
+  chunk_directory: consolidate_ext_ref_utils
 - prompt: 'Extend ve sync to all workflow types: Update ve sync to find and update
     external.yaml files in docs/narratives/, docs/investigations/, and docs/subsystems/
     directories, not just docs/chunks/. Use the consolidated external reference utilities.'
@@ -411,12 +422,20 @@ Active artifact dataclasses provide template context:
 - `TemplateContext` holder ensures only one active artifact at a time
 - Used by `render_to_directory()` for artifact instantiation
 
-### External References (`src/task_utils.py`, `src/models.py`)
+### External References (`src/external_refs.py`, `src/models.py`)
 
-Cross-repo pattern (currently chunks only):
-- `ExternalChunkRef` model for `external.yaml` content
-- `TaskConfig` model for `.ve-task.yaml`
-- `create_external_yaml()`, `load_external_ref()` utilities
+Consolidated external reference utilities supporting all artifact types:
+- `ExternalArtifactRef` model for `external.yaml` content (type-agnostic)
+- `ExternalChunkRef` model (legacy, for backward compatibility)
+- `TaskConfig` model for `.ve-task.yaml` (in `src/task_utils.py`)
+
+**Utilities in `src/external_refs.py`:**
+- `is_external_artifact(path, artifact_type)` - Detect external references for any artifact type
+- `load_external_ref(path)` - Load and validate external.yaml
+- `create_external_yaml(path, ref)` - Create external.yaml files
+- `detect_artifact_type_from_path(path)` - Infer artifact type from directory path
+- `ARTIFACT_MAIN_FILE` - Maps artifact types to their main document (GOAL.md/OVERVIEW.md)
+- `ARTIFACT_DIR_NAME` - Maps artifact types to their directory names (chunks, narratives, etc.)
 
 ### Artifact Ordering (`src/artifact_ordering.py`)
 
@@ -619,6 +638,13 @@ External chunk references now participate in local causal ordering:
   Extended `create_external_yaml()` to support any artifact type. This is the foundation
   for extending external reference support to narratives, investigations, and subsystems.
 
+- **consolidate_ext_ref_utils** - Created `src/external_refs.py` module consolidating
+  external artifact reference utilities. Implements generic `is_external_artifact()`,
+  `load_external_ref()`, `create_external_yaml()`, `detect_artifact_type_from_path()`
+  functions that work for any artifact type. Updated all import sites (`sync.py`,
+  `external_resolve.py`, `task_utils.py`, `artifact_ordering.py`) to use the new module.
+  Moved `ARTIFACT_MAIN_FILE` and `ARTIFACT_DIR_NAME` constants to external_refs.py.
+
 ## Consolidation Chunks
 
 ### Pending Consolidation
@@ -644,13 +670,11 @@ External chunk references now participate in local causal ordering:
    Created `ExternalArtifactRef` model with `artifact_type` and `artifact_id` fields.
    `ChunkDependent` and `ChunkFrontmatter` now use `ExternalArtifactRef`.
 
-5. **Consolidate external reference utilities** - Create `src/external_refs.py` with
-   generic utilities: `is_external_artifact()`, `load_external_ref()`,
-   `create_external_yaml()`, `detect_artifact_type_from_path()`. Migrate chunk-specific
-   code to use these.
-   - Impact: Medium
-   - Status: Not yet scheduled
-   - Dependencies: #4
+5. ~~**Consolidate external reference utilities**~~ - **RESOLVED** by chunk
+   consolidate_ext_ref_utils. Created `src/external_refs.py` with generic utilities:
+   `is_external_artifact()`, `load_external_ref()`, `create_external_yaml()`,
+   `detect_artifact_type_from_path()`. Updated all import sites (`sync.py`,
+   `external_resolve.py`, `task_utils.py`, `artifact_ordering.py`) to use the new module.
 
 6. **Extend ve sync to all workflow types** - Currently only syncs chunks. Should find
    and update external.yaml in all workflow artifact directories.
