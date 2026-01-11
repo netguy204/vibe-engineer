@@ -28,7 +28,7 @@ from models import (
     ChunkStatus,
     extract_short_name,
 )
-from symbols import is_parent_of, parse_reference, extract_symbols
+from symbols import is_parent_of, parse_reference, extract_symbols, qualify_ref
 from template_system import ActiveChunk, TemplateContext, render_to_directory
 
 if TYPE_CHECKING:
@@ -432,10 +432,12 @@ class Chunks:
             candidate_is_symbolic = self._is_symbolic_format(candidate_refs_raw)
 
             # Handle overlap based on format combinations
+            # Chunk: docs/chunks/project_qualified_refs - Use "." as local project context
+            local_project = "."
             if target_is_symbolic and candidate_is_symbolic:
                 # Both symbolic: use compute_symbolic_overlap
                 candidate_refs = self._extract_symbolic_refs(candidate_refs_raw)
-                if compute_symbolic_overlap(target_refs, candidate_refs):
+                if compute_symbolic_overlap(target_refs, candidate_refs, local_project):
                     affected.append(name)
             elif not target_is_symbolic and not candidate_is_symbolic:
                 # Both line-based: use old line number comparison
@@ -448,14 +450,14 @@ class Chunks:
                             break
             else:
                 # Mixed formats: extract file paths and check file-level overlap
-                # For symbolic refs, extract just the file path portion
+                # For symbolic refs, qualify and extract just the file path portion
                 if target_is_symbolic:
-                    target_files = {parse_reference(r)[0] for r in target_refs}
+                    target_files = {parse_reference(qualify_ref(r, local_project))[1] for r in target_refs}
                     candidate_files = set(self.parse_code_references(candidate_refs_raw).keys())
                 else:
                     target_files = set(target_refs_dict.keys())
                     candidate_refs = self._extract_symbolic_refs(candidate_refs_raw)
-                    candidate_files = {parse_reference(r)[0] for r in candidate_refs}
+                    candidate_files = {parse_reference(qualify_ref(r, local_project))[1] for r in candidate_refs}
 
                 # Any shared file means potential overlap
                 if target_files & candidate_files:
@@ -543,6 +545,7 @@ class Chunks:
         )
 
     # Chunk: docs/chunks/symbolic_code_refs - Validate symbol existence
+    # Chunk: docs/chunks/project_qualified_refs - Qualify ref before parsing
     def _validate_symbol_exists(self, ref: str) -> list[str]:
         """Validate that a symbolic reference points to an existing symbol.
 
@@ -552,7 +555,9 @@ class Chunks:
         Returns:
             List of warning messages (empty if valid).
         """
-        file_path, symbol_path = parse_reference(ref)
+        # Qualify the ref with local project context before parsing
+        qualified_ref = qualify_ref(ref, ".")
+        _, file_path, symbol_path = parse_reference(qualified_ref)
 
         # Check if file exists
         full_path = self.project_dir / file_path
@@ -752,7 +757,8 @@ class Chunks:
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic reference overlap logic
-def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:
+# Chunk: docs/chunks/project_qualified_refs - Qualify refs before comparison
+def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str], project: str) -> bool:
     """Determine if two lists of symbolic references have any overlap.
 
     Overlap occurs when any reference in refs_a is a parent of, child of,
@@ -761,6 +767,7 @@ def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:
     Args:
         refs_a: List of symbolic reference strings.
         refs_b: List of symbolic reference strings.
+        project: Project context for qualifying non-qualified refs.
 
     Returns:
         True if any overlap exists, False otherwise.
@@ -770,7 +777,9 @@ def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str]) -> bool:
 
     for ref_a in refs_a:
         for ref_b in refs_b:
-            # Check both directions since is_parent_of is not symmetric
-            if is_parent_of(ref_a, ref_b) or is_parent_of(ref_b, ref_a):
+            # Qualify refs and check both directions since is_parent_of is not symmetric
+            qualified_a = qualify_ref(ref_a, project)
+            qualified_b = qualify_ref(ref_b, project)
+            if is_parent_of(qualified_a, qualified_b) or is_parent_of(qualified_b, qualified_a):
                 return True
     return False

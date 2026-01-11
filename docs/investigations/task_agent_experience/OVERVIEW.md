@@ -11,7 +11,7 @@ proposed_chunks:
   - prompt: "Add ve chunk list --all (or ve task status) showing artifacts grouped by location with per-group causal ordering"
     chunk_directory: null
   - prompt: "Extend SymbolicReference for project-qualified paths (org/repo::path#symbol format) to support task-level code_references across multiple projects"
-    chunk_directory: null
+    chunk_directory: project_qualified_refs
 created_after: ["alphabetical_chunk_grouping"]
 ---
 

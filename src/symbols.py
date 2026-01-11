@@ -82,39 +82,129 @@ def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> N
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Parse reference into components
-def parse_reference(ref: str) -> tuple[str, str | None]:
-    """Parse a symbolic reference into file path and symbol path.
+# Chunk: docs/chunks/project_qualified_refs - Extended for project qualification
+def parse_reference(
+    ref: str, *, current_project: str | None = None
+) -> tuple[str, str, str | None]:
+    """Parse a symbolic reference into project, file path, and symbol path.
+
+    Supports project-qualified references in the format:
+        org/repo::file_path#symbol_path
+
+    The result always includes a project - either from an explicit qualifier
+    in the reference, or from the current_project parameter.
 
     Args:
-        ref: Reference string in format {file_path} or {file_path}#{symbol_path}
+        ref: Reference string in formats:
+            - file_path (requires current_project)
+            - file_path#symbol_path (requires current_project)
+            - org/repo::file_path (project-qualified)
+            - org/repo::file_path#symbol_path (project-qualified)
+        current_project: Project context for non-qualified references. Required
+            when the reference has no explicit project qualifier.
 
     Returns:
-        Tuple of (file_path, symbol_path) where symbol_path is None for
-        file-only references.
+        Tuple of (project, file_path, symbol_path) where:
+        - project is always a string (explicit qualifier or current_project)
+        - file_path is the path to the file
+        - symbol_path is the symbol path (None for file-only references)
+
+    Raises:
+        ValueError: If the reference has no explicit project qualifier and
+            current_project is not provided.
     """
-    if "#" in ref:
-        file_path, symbol_path = ref.split("#", 1)
-        return file_path, symbol_path
-    return ref, None
+    project: str | None = None
+    file_and_symbol = ref
+
+    # Check for project qualifier (::) - must come before # if present
+    # The :: in symbol paths (e.g., Bar::baz) comes after # so we only
+    # check for :: before the first #
+    hash_pos = ref.find("#")
+    if hash_pos == -1:
+        # No symbol delimiter, check whole string for ::
+        double_colon_pos = ref.find("::")
+    else:
+        # Only check for :: before the # symbol delimiter
+        double_colon_pos = ref[:hash_pos].find("::")
+
+    if double_colon_pos != -1:
+        # Split on first :: only (which must be before any #)
+        project = ref[:double_colon_pos]
+        file_and_symbol = ref[double_colon_pos + 2:]
+
+    # If no explicit project, use current_project
+    if project is None:
+        project = current_project
+
+    # Project must be known
+    if project is None:
+        raise ValueError(
+            f"Reference '{ref}' has no project qualifier and current_project was not provided"
+        )
+
+    # Parse file path and symbol
+    if "#" in file_and_symbol:
+        file_path, symbol_path = file_and_symbol.split("#", 1)
+        return project, file_path, symbol_path
+
+    return project, file_and_symbol, None
+
+
+# Chunk: docs/chunks/project_qualified_refs - Qualify a reference string
+def qualify_ref(ref: str, project: str) -> str:
+    """Ensure a reference string is project-qualified.
+
+    If the reference already has a project qualifier, returns it unchanged.
+    Otherwise, prepends the project qualifier.
+
+    Args:
+        ref: Reference string (may or may not be qualified).
+        project: Project to use if ref is not already qualified.
+
+    Returns:
+        Project-qualified reference string.
+    """
+    # Check for :: before # (project delimiter must come before symbol delimiter)
+    hash_pos = ref.find("#")
+    if hash_pos == -1:
+        check_portion = ref
+    else:
+        check_portion = ref[:hash_pos]
+
+    if "::" in check_portion:
+        return ref  # Already qualified
+    return f"{project}::{ref}"
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
+# Chunk: docs/chunks/project_qualified_refs - Requires qualified references
 def is_parent_of(parent: str, child: str) -> bool:
     """Check if parent reference hierarchically contains child reference.
 
+    Both references must be project-qualified (contain ::). Use qualify_ref()
+    to ensure refs are qualified before calling this function.
+
     A reference is a parent of another if:
+    - Same project
     - Same file and parent has no symbol (file contains all symbols)
     - Same file and symbol, and parent's symbol is a prefix of child's symbol
 
     Args:
-        parent: Potential parent reference.
-        child: Potential child reference.
+        parent: Potential parent reference (must be project-qualified).
+        child: Potential child reference (must be project-qualified).
 
     Returns:
         True if parent contains child, False otherwise.
+
+    Raises:
+        ValueError: If either reference is not project-qualified.
     """
-    parent_file, parent_symbol = parse_reference(parent)
-    child_file, child_symbol = parse_reference(child)
+    parent_project, parent_file, parent_symbol = parse_reference(parent)
+    child_project, child_file, child_symbol = parse_reference(child)
+
+    # Different projects are never in a parent-child relationship
+    if parent_project != child_project:
+        return False
 
     # Different files are never in a parent-child relationship
     if parent_file != child_file:

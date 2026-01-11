@@ -272,3 +272,72 @@ class TestSubsystemFrontmatterCreatedAfter:
             created_after=["template_system", "frontmatter_parsing"]
         )
         assert frontmatter.created_after == ["template_system", "frontmatter_parsing"]
+
+
+# Chunk: docs/chunks/project_qualified_refs - Project-qualified SymbolicReference tests
+class TestSymbolicReferenceWithProjectQualification:
+    """Tests for SymbolicReference with project-qualified paths."""
+
+    def test_valid_project_qualified_with_class(self):
+        """Project-qualified class reference validates successfully."""
+        ref = SymbolicReference(ref="acme/proj::src/foo.py#Bar", implements="Something")
+        assert ref.ref == "acme/proj::src/foo.py#Bar"
+
+    def test_valid_project_qualified_file_only(self):
+        """Project-qualified file-only reference validates successfully."""
+        ref = SymbolicReference(ref="acme/proj::src/foo.py", implements="Something")
+        assert ref.ref == "acme/proj::src/foo.py"
+
+    def test_valid_project_qualified_with_nested_symbol(self):
+        """Project-qualified nested symbol reference validates successfully."""
+        ref = SymbolicReference(ref="acme/proj::src/foo.py#Bar::baz", implements="Something")
+        assert ref.ref == "acme/proj::src/foo.py#Bar::baz"
+
+    def test_backward_compatible_local_reference(self):
+        """Non-qualified local reference still validates."""
+        ref = SymbolicReference(ref="src/foo.py#Bar", implements="Something")
+        assert ref.ref == "src/foo.py#Bar"
+
+    def test_invalid_empty_project_qualifier(self):
+        """Reference with empty project qualifier (::path) is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="::src/foo.py", implements="Something")
+        assert "project qualifier cannot be empty" in str(exc_info.value).lower()
+
+    def test_invalid_project_format_no_slash(self):
+        """Project qualifier without org/repo format is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="justproject::src/foo.py", implements="Something")
+        assert "org/repo" in str(exc_info.value).lower()
+
+    def test_invalid_project_format_multiple_slashes(self):
+        """Project qualifier with multiple slashes is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="org/repo/extra::src/foo.py", implements="Something")
+        assert "slash" in str(exc_info.value).lower() or "org/repo" in str(exc_info.value).lower()
+
+    def test_invalid_project_empty_org(self):
+        """Project qualifier with empty org (/repo) is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="/repo::src/foo.py", implements="Something")
+        assert "org" in str(exc_info.value).lower() or "empty" in str(exc_info.value).lower()
+
+    def test_invalid_project_empty_repo(self):
+        """Project qualifier with empty repo (org/) is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="org/::src/foo.py", implements="Something")
+        assert "repo" in str(exc_info.value).lower() or "empty" in str(exc_info.value).lower()
+
+    def test_invalid_multiple_double_colon(self):
+        """Reference with multiple :: before # is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="acme/a::b/c::src/foo.py", implements="Something")
+        # The second :: would be treated as part of the file path which is fine,
+        # but actually this creates ambiguity. Let me rethink...
+        # Actually per the plan: "Multiple :: delimiters should be invalid"
+        assert "multiple" in str(exc_info.value).lower() or "::" in str(exc_info.value)
+
+    def test_valid_complex_project_names(self):
+        """Project with dots and hyphens in names validates."""
+        ref = SymbolicReference(ref="my-org/my.project::src/foo.py#Bar", implements="Something")
+        assert ref.ref == "my-org/my.project::src/foo.py#Bar"
