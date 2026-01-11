@@ -341,16 +341,18 @@ class CodeReference(BaseModel):
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference
+# Chunk: docs/chunks/project_qualified_refs - Project-qualified path support
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
-    Format: {file_path} or {file_path}#{symbol_path}
+    Format: {file_path}, {file_path}#{symbol_path}, or {org/repo::file_path}#{symbol_path}
 
     Examples:
         - src/chunks.py (entire module)
         - src/chunks.py#Chunks (class)
         - src/chunks.py#Chunks::create_chunk (method)
         - src/ve.py#validate_short_name (standalone function)
+        - acme/project::src/foo.py#Bar (class in another project)
 
     For subsystem documentation, the optional compliance field indicates how well
     the referenced code follows the subsystem's patterns:
@@ -359,14 +361,19 @@ class SymbolicReference(BaseModel):
         - NON_COMPLIANT: Does not follow the patterns (deviation to be addressed)
     """
 
-    ref: str  # format: {file_path} or {file_path}#{symbol_path}
+    ref: str  # format: {file_path}, {file_path}#{symbol_path}, or {org/repo::...}
     implements: str  # description of what this reference implements
     compliance: ComplianceLevel | None = None  # optional, used in subsystem docs
 
     @field_validator("ref")
     @classmethod
     def validate_ref(cls, v: str) -> str:
-        """Validate ref field format."""
+        """Validate ref field format.
+
+        Supports both local references and project-qualified references:
+        - Local: file_path or file_path#symbol_path
+        - Qualified: org/repo::file_path or org/repo::file_path#symbol_path
+        """
         if not v:
             raise ValueError("ref cannot be empty")
 
@@ -376,8 +383,39 @@ class SymbolicReference(BaseModel):
         if v.count("#") > 1:
             raise ValueError("ref cannot contain multiple # characters")
 
+        # Check for project qualifier (:: must come before # if present)
+        hash_pos = v.find("#")
+        if hash_pos == -1:
+            ref_before_symbol = v
+        else:
+            ref_before_symbol = v[:hash_pos]
+
+        # Check for :: in the portion before #
+        double_colon_pos = ref_before_symbol.find("::")
+        if double_colon_pos != -1:
+            project = ref_before_symbol[:double_colon_pos]
+            file_path_part = ref_before_symbol[double_colon_pos + 2:]
+
+            # Validate that there's no second :: before #
+            if "::" in file_path_part:
+                raise ValueError("ref cannot have multiple :: delimiters before #")
+
+            # Validate project qualifier is not empty
+            if not project:
+                raise ValueError("project qualifier cannot be empty before ::")
+
+            # Validate project is in org/repo format using existing validator
+            _require_valid_repo_ref(project, "project qualifier")
+
+            # Check that file path portion is not empty
+            if not file_path_part:
+                raise ValueError("file path cannot be empty after ::")
+        else:
+            # No project qualifier, ref_before_symbol is the file path
+            file_path_part = ref_before_symbol
+
         if "#" in v:
-            file_path, symbol_path = v.split("#", 1)
+            symbol_path = v.split("#", 1)[1]
             if not symbol_path:
                 raise ValueError("symbol path cannot be empty after #")
 
