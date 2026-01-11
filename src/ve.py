@@ -416,6 +416,44 @@ def overlap(chunk_id, project_dir):
         click.echo(f"docs/chunks/{name}")
 
 
+# Chunk: docs/chunks/similarity_prefix_suggest - Suggest prefix command
+@chunk.command("suggest-prefix")
+@click.argument("chunk_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--threshold", type=float, default=0.4, help="Minimum similarity threshold (default: 0.4)")
+@click.option("--top-k", type=int, default=5, help="Number of similar chunks to consider (default: 5)")
+def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
+    """Suggest a prefix for a chunk based on similarity to existing chunks.
+
+    Computes TF-IDF similarity between the target chunk's GOAL.md and all other
+    chunks. If the most similar chunks share a common prefix, suggests using
+    that prefix for better semantic clustering.
+    """
+    from chunks import suggest_prefix
+
+    result = suggest_prefix(project_dir, chunk_id, threshold=threshold, top_k=top_k)
+
+    if result.suggested_prefix is None and not result.similar_chunks:
+        # Chunk not found or error
+        click.echo(f"Error: {result.reason}", err=True)
+        raise SystemExit(1)
+
+    if result.suggested_prefix:
+        click.echo(f"Suggested prefix: {result.suggested_prefix}")
+        click.echo("")
+        click.echo("Similar chunks (informing this suggestion):")
+        for name, similarity in result.similar_chunks:
+            click.echo(f"  - {name} (similarity: {similarity:.2f})")
+    else:
+        click.echo("No prefix suggestion.")
+        click.echo(f"Reason: {result.reason}")
+        if result.similar_chunks:
+            click.echo("")
+            click.echo("Most similar chunks:")
+            for name, similarity in result.similar_chunks:
+                click.echo(f"  - {name} (similarity: {similarity:.2f})")
+
+
 # Chunk: docs/chunks/chunk_validate - Validate chunk for completion
 # Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
 @chunk.command()
