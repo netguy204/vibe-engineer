@@ -139,6 +139,7 @@ class TestInvestigationFrontmatter:
         assert frontmatter.trigger is None
 
 
+# Chunk: docs/chunks/chunk_frontmatter_model - Test suite for ChunkFrontmatter
 class TestChunkFrontmatter:
     """Tests for ChunkFrontmatter model validation."""
 

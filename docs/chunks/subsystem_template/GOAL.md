@@ -3,14 +3,14 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/subsystem/OVERVIEW.md
-- src/templates/chunk/PLAN.md
+- src/templates/subsystem/OVERVIEW.md.jinja2
+- src/templates/chunk/PLAN.md.jinja2
 code_references:
-- ref: src/templates/subsystem/OVERVIEW.md
+- ref: src/templates/subsystem/OVERVIEW.md.jinja2
   implements: Subsystem discovery guide template with frontmatter schema docs, Intent,
     Scope, Invariants, Implementation Locations, Known Deviations, Chunk Relationships,
     and Consolidation Chunks sections
-- ref: src/templates/chunk/PLAN.md
+- ref: src/templates/chunk/PLAN.md.jinja2
   implements: Subsystem Considerations section guiding agents to check subsystems
     during planning and document deviations based on subsystem status
 - ref: src/models.py#ComplianceLevel
