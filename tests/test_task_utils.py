@@ -9,6 +9,7 @@ from task_utils import (
     load_task_config,
     load_external_ref,
     resolve_repo_directory,
+    resolve_project_ref,
     get_next_chunk_id,
     create_external_yaml,
     add_dependents_to_chunk,
@@ -122,6 +123,71 @@ class TestLoadExternalRef:
         )
         with pytest.raises(ValidationError):
             load_external_ref(tmp_path)
+
+
+# Chunk: docs/chunks/accept_full_artifact_paths - Tests for flexible project resolution
+class TestResolveProjectRef:
+    """Tests for resolve_project_ref."""
+
+    def test_full_org_repo_found(self):
+        """cloudcapitalco/dotter -> cloudcapitalco/dotter."""
+        available = ["cloudcapitalco/dotter", "acme/service-a"]
+        result = resolve_project_ref("cloudcapitalco/dotter", available)
+        assert result == "cloudcapitalco/dotter"
+
+    def test_just_repo_name_resolved(self):
+        """dotter -> cloudcapitalco/dotter (when only one match)."""
+        available = ["cloudcapitalco/dotter", "acme/service-a"]
+        result = resolve_project_ref("dotter", available)
+        assert result == "cloudcapitalco/dotter"
+
+    def test_repo_name_ambiguous_error(self):
+        """repo when acme/repo and other/repo exist -> error listing both."""
+        available = ["acme/repo", "other/repo", "third/service"]
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_project_ref("repo", available)
+
+        assert "ambiguous" in str(exc_info.value).lower()
+        assert "acme/repo" in str(exc_info.value)
+        assert "other/repo" in str(exc_info.value)
+
+    def test_full_org_repo_not_found_error(self):
+        """acme/unknown -> error listing available projects."""
+        available = ["cloudcapitalco/dotter", "acme/service-a"]
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_project_ref("acme/unknown", available)
+
+        assert "not found" in str(exc_info.value).lower()
+        assert "available" in str(exc_info.value).lower()
+
+    def test_repo_name_not_found_error(self):
+        """unknown -> error listing available projects."""
+        available = ["cloudcapitalco/dotter", "acme/service-a"]
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_project_ref("unknown", available)
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_single_project_matches(self):
+        """Works with single project in list."""
+        available = ["acme/myproject"]
+        result = resolve_project_ref("myproject", available)
+        assert result == "acme/myproject"
+
+    def test_exact_match_with_similar_names(self):
+        """Doesn't match partial names - only exact suffix match."""
+        available = ["acme/service-a", "acme/service-ab"]
+
+        # "service-a" should match exactly, not "service-ab"
+        result = resolve_project_ref("service-a", available)
+        assert result == "acme/service-a"
+
+        # "service-ab" should also match exactly
+        result = resolve_project_ref("service-ab", available)
+        assert result == "acme/service-ab"
 
 
 class TestResolveRepoDirectory:

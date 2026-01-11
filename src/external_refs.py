@@ -123,6 +123,152 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
 # Chunk: docs/chunks/chunk_create_task_aware - Original implementation in task_utils.py
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use artifact_type and artifact_id fields
 # Chunk: docs/chunks/external_chunk_causal - created_after parameter for causal ordering
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path normalization
+def normalize_artifact_path(
+    input_path: str,
+    search_path: Path | None = None,
+    external_repo_name: str | None = None,
+) -> tuple[ArtifactType, str]:
+    """Normalize flexible artifact path to (type, artifact_id).
+
+    Accepts any reasonable path format and returns the canonical tuple of
+    artifact type and artifact ID.
+
+    Args:
+        input_path: User-provided path in any supported format.
+        search_path: Project path to search when input is just an artifact name.
+        external_repo_name: External repo directory name to strip if present.
+
+    Returns:
+        Tuple of (ArtifactType, artifact_id).
+
+    Raises:
+        ValueError: If artifact cannot be found, path is ambiguous, or absolute.
+
+    Supported input formats:
+        1. architecture/docs/chunks/foo -> strips leading directory, returns (CHUNK, "foo")
+        2. docs/chunks/foo -> standard format, returns (CHUNK, "foo")
+        3. chunks/foo -> infers docs/, returns (CHUNK, "foo")
+        4. foo -> searches for artifact, returns (detected_type, "foo") or raises error
+        5. docs/chunks/foo/ -> strips trailing slash
+    """
+    # Reject absolute paths
+    if input_path.startswith("/"):
+        raise ValueError(
+            f"Absolute paths are not supported: {input_path}. "
+            f"Use a relative path like 'docs/chunks/artifact_name'."
+        )
+
+    # Strip trailing slashes
+    input_path = input_path.rstrip("/")
+
+    # Split into parts
+    parts = input_path.split("/")
+
+    # If first part matches external_repo_name, strip it
+    if external_repo_name and parts and parts[0] == external_repo_name:
+        parts = parts[1:]
+
+    # Build reverse lookup: directory name -> ArtifactType
+    dir_to_type = {v: k for k, v in ARTIFACT_DIR_NAME.items()}
+
+    # Check for docs/{type}/ pattern
+    if len(parts) >= 3 and parts[0] == "docs" and parts[1] in dir_to_type:
+        artifact_type = dir_to_type[parts[1]]
+        artifact_id = parts[2]  # The artifact directory name
+        return (artifact_type, artifact_id)
+
+    # Check for {type}/ pattern (without docs)
+    if len(parts) >= 2 and parts[0] in dir_to_type:
+        artifact_type = dir_to_type[parts[0]]
+        artifact_id = parts[1]  # The artifact directory name
+        return (artifact_type, artifact_id)
+
+    # If just an artifact name, search search_path for a match
+    if len(parts) == 1:
+        artifact_name = parts[0]
+
+        if search_path is None:
+            raise ValueError(
+                f"Cannot resolve artifact '{artifact_name}' without a search path. "
+                f"Use a full path like 'docs/chunks/{artifact_name}' or "
+                f"'docs/investigations/{artifact_name}'."
+            )
+
+        # Search all artifact directories
+        found: list[tuple[ArtifactType, str]] = []
+        for artifact_type, dir_name in ARTIFACT_DIR_NAME.items():
+            artifact_dir = search_path / "docs" / dir_name / artifact_name
+            if artifact_dir.exists() and artifact_dir.is_dir():
+                found.append((artifact_type, artifact_name))
+
+        if len(found) == 0:
+            # List available artifact types for the error message
+            type_dirs = ", ".join(ARTIFACT_DIR_NAME.values())
+            raise ValueError(
+                f"Artifact '{artifact_name}' not found in {search_path}. "
+                f"Searched in: {type_dirs}"
+            )
+
+        if len(found) > 1:
+            # Ambiguous - exists in multiple directories
+            locations = [f"docs/{ARTIFACT_DIR_NAME[t]}/{name}" for t, name in found]
+            raise ValueError(
+                f"Artifact '{artifact_name}' is ambiguous. "
+                f"Found in multiple locations: {', '.join(locations)}. "
+                f"Please specify the full path."
+            )
+
+        return found[0]
+
+    # Could not parse the path
+    raise ValueError(
+        f"Cannot parse artifact path: {input_path}. "
+        f"Expected format: 'docs/{{type}}/{{name}}' or just '{{name}}'."
+    )
+
+
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path prefix stripping
+def strip_artifact_path_prefix(
+    input_id: str,
+    artifact_type: ArtifactType,
+) -> str:
+    """Strip docs/{type}/ prefix from artifact identifier if present.
+
+    A simpler utility for cases where the artifact type is already known
+    (e.g., in `ve chunk validate`) and we just need to strip path prefixes.
+
+    Args:
+        input_id: User-provided identifier (e.g., "docs/chunks/foo" or "foo").
+        artifact_type: Expected artifact type.
+
+    Returns:
+        Just the artifact ID/shortname.
+    """
+    # Strip trailing slashes
+    input_id = input_id.rstrip("/")
+
+    # Get the expected directory name for this type
+    dir_name = ARTIFACT_DIR_NAME[artifact_type]
+
+    # Split into parts
+    parts = input_id.split("/")
+
+    # Check for docs/{type}/{id} pattern
+    if len(parts) >= 3 and parts[0] == "docs" and parts[1] == dir_name:
+        return parts[2]
+
+    # Check for {type}/{id} pattern
+    if len(parts) >= 2 and parts[0] == dir_name:
+        return parts[1]
+
+    # Return as-is if no recognized prefix
+    return input_id
+
+
+# Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml in project directory
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format
+# Chunk: docs/chunks/external_chunk_causal - Added created_after parameter
 def create_external_yaml(
     project_path: Path,
     short_name: str,

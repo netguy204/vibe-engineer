@@ -414,3 +414,208 @@ class TestArtifactDirName:
         assert ARTIFACT_DIR_NAME[ArtifactType.NARRATIVE] == "narratives"
         assert ARTIFACT_DIR_NAME[ArtifactType.INVESTIGATION] == "investigations"
         assert ARTIFACT_DIR_NAME[ArtifactType.SUBSYSTEM] == "subsystems"
+
+
+# Chunk: docs/chunks/accept_full_artifact_paths - Tests for flexible path normalization
+class TestNormalizeArtifactPath:
+    """Tests for normalize_artifact_path utility."""
+
+    def test_standard_path_docs_chunks(self):
+        """docs/chunks/foo -> (CHUNK, 'foo')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/chunks/foo")
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_standard_path_docs_investigations(self):
+        """docs/investigations/bar -> (INVESTIGATION, 'bar')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/investigations/bar")
+        assert result == (ArtifactType.INVESTIGATION, "bar")
+
+    def test_standard_path_docs_narratives(self):
+        """docs/narratives/baz -> (NARRATIVE, 'baz')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/narratives/baz")
+        assert result == (ArtifactType.NARRATIVE, "baz")
+
+    def test_standard_path_docs_subsystems(self):
+        """docs/subsystems/qux -> (SUBSYSTEM, 'qux')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/subsystems/qux")
+        assert result == (ArtifactType.SUBSYSTEM, "qux")
+
+    def test_path_with_external_repo_prefix(self):
+        """architecture/docs/chunks/foo -> (CHUNK, 'foo') with external_repo_name."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path(
+            "architecture/docs/chunks/foo",
+            external_repo_name="architecture",
+        )
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_type_without_docs_prefix_chunks(self):
+        """chunks/foo -> (CHUNK, 'foo')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("chunks/foo")
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_type_without_docs_prefix_investigations(self):
+        """investigations/bar -> (INVESTIGATION, 'bar')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("investigations/bar")
+        assert result == (ArtifactType.INVESTIGATION, "bar")
+
+    def test_trailing_slash_stripped(self):
+        """docs/chunks/foo/ -> (CHUNK, 'foo')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/chunks/foo/")
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_just_artifact_name_searches(self, tmp_path):
+        """foo -> searches and finds in chunks/."""
+        from external_refs import normalize_artifact_path
+
+        # Create artifact in chunks directory
+        (tmp_path / "docs" / "chunks" / "foo").mkdir(parents=True)
+
+        result = normalize_artifact_path("foo", search_path=tmp_path)
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_just_artifact_name_finds_investigation(self, tmp_path):
+        """bar -> searches and finds in investigations/."""
+        from external_refs import normalize_artifact_path
+
+        # Create artifact in investigations directory
+        (tmp_path / "docs" / "investigations" / "bar").mkdir(parents=True)
+
+        result = normalize_artifact_path("bar", search_path=tmp_path)
+        assert result == (ArtifactType.INVESTIGATION, "bar")
+
+    def test_just_artifact_name_ambiguous_error(self, tmp_path):
+        """foo exists in both chunks/ and investigations/ -> raises error."""
+        from external_refs import normalize_artifact_path
+
+        # Create artifact in both directories
+        (tmp_path / "docs" / "chunks" / "foo").mkdir(parents=True)
+        (tmp_path / "docs" / "investigations" / "foo").mkdir(parents=True)
+
+        with pytest.raises(ValueError) as exc_info:
+            normalize_artifact_path("foo", search_path=tmp_path)
+
+        assert "ambiguous" in str(exc_info.value).lower()
+        assert "foo" in str(exc_info.value)
+
+    def test_artifact_name_not_found_error(self, tmp_path):
+        """nonexistent -> raises error."""
+        from external_refs import normalize_artifact_path
+
+        # Create docs structure but not the artifact
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        with pytest.raises(ValueError) as exc_info:
+            normalize_artifact_path("nonexistent", search_path=tmp_path)
+
+        assert "not found" in str(exc_info.value).lower()
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_absolute_path_rejected(self):
+        """/absolute/path -> raises error."""
+        from external_refs import normalize_artifact_path
+
+        with pytest.raises(ValueError) as exc_info:
+            normalize_artifact_path("/absolute/path/to/artifact")
+
+        assert "absolute" in str(exc_info.value).lower()
+
+    def test_artifact_name_without_search_path_error(self):
+        """Just artifact name without search_path -> raises error."""
+        from external_refs import normalize_artifact_path
+
+        with pytest.raises(ValueError) as exc_info:
+            normalize_artifact_path("my_artifact")
+
+        assert "search path" in str(exc_info.value).lower()
+
+    def test_multiple_trailing_slashes(self):
+        """docs/chunks/foo// -> (CHUNK, 'foo')."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path("docs/chunks/foo//")
+        assert result == (ArtifactType.CHUNK, "foo")
+
+    def test_external_repo_prefix_with_type_only(self):
+        """architecture/chunks/foo -> (CHUNK, 'foo') when external_repo_name matches."""
+        from external_refs import normalize_artifact_path
+
+        result = normalize_artifact_path(
+            "architecture/chunks/foo",
+            external_repo_name="architecture",
+        )
+        assert result == (ArtifactType.CHUNK, "foo")
+
+
+# Chunk: docs/chunks/accept_full_artifact_paths - Tests for prefix stripping
+class TestStripArtifactPathPrefix:
+    """Tests for strip_artifact_path_prefix utility."""
+
+    def test_strips_docs_chunks_prefix(self):
+        """docs/chunks/foo -> foo."""
+        from external_refs import strip_artifact_path_prefix
+
+        result = strip_artifact_path_prefix("docs/chunks/foo", ArtifactType.CHUNK)
+        assert result == "foo"
+
+    def test_strips_docs_investigations_prefix(self):
+        """docs/investigations/bar -> bar."""
+        from external_refs import strip_artifact_path_prefix
+
+        result = strip_artifact_path_prefix("docs/investigations/bar", ArtifactType.INVESTIGATION)
+        assert result == "bar"
+
+    def test_strips_type_only_prefix(self):
+        """chunks/foo -> foo."""
+        from external_refs import strip_artifact_path_prefix
+
+        result = strip_artifact_path_prefix("chunks/foo", ArtifactType.CHUNK)
+        assert result == "foo"
+
+    def test_returns_as_is_for_plain_name(self):
+        """foo -> foo (no prefix to strip)."""
+        from external_refs import strip_artifact_path_prefix
+
+        result = strip_artifact_path_prefix("foo", ArtifactType.CHUNK)
+        assert result == "foo"
+
+    def test_strips_trailing_slash(self):
+        """docs/chunks/foo/ -> foo."""
+        from external_refs import strip_artifact_path_prefix
+
+        result = strip_artifact_path_prefix("docs/chunks/foo/", ArtifactType.CHUNK)
+        assert result == "foo"
+
+    def test_wrong_type_prefix_returns_as_is(self):
+        """docs/investigations/foo with CHUNK type -> docs/investigations/foo."""
+        from external_refs import strip_artifact_path_prefix
+
+        # When the type doesn't match, we return as-is (the caller knows the expected type)
+        result = strip_artifact_path_prefix("docs/investigations/foo", ArtifactType.CHUNK)
+        # This returns as-is because investigations != chunks
+        assert result == "docs/investigations/foo"
+
+    def test_all_artifact_types(self):
+        """Test all artifact types work correctly."""
+        from external_refs import strip_artifact_path_prefix
+
+        # Test each type
+        assert strip_artifact_path_prefix("docs/chunks/c", ArtifactType.CHUNK) == "c"
+        assert strip_artifact_path_prefix("docs/narratives/n", ArtifactType.NARRATIVE) == "n"
+        assert strip_artifact_path_prefix("docs/investigations/i", ArtifactType.INVESTIGATION) == "i"
+        assert strip_artifact_path_prefix("docs/subsystems/s", ArtifactType.SUBSYSTEM) == "s"

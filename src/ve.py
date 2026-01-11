@@ -21,6 +21,7 @@ import pathlib
 import click
 
 from chunks import Chunks
+from external_refs import strip_artifact_path_prefix
 from investigations import Investigations
 from narratives import Narratives
 from project import Project
@@ -399,11 +400,15 @@ def list_proposed_chunks_cmd(project_dir):
 
 
 # Chunk: docs/chunks/future_chunk_creation - Activate FUTURE chunk
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def activate(chunk_id, project_dir):
     """Activate a FUTURE chunk by changing its status to IMPLEMENTING."""
+    # Normalize chunk_id to strip path prefixes
+    chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
+
     chunks = Chunks(project_dir)
 
     try:
@@ -416,6 +421,7 @@ def activate(chunk_id, project_dir):
 
 
 # Chunk: docs/chunks/valid_transitions - Status command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command()
 @click.argument("chunk_id")
 @click.argument("new_status", required=False, default=None)
@@ -423,6 +429,9 @@ def activate(chunk_id, project_dir):
 def status(chunk_id, new_status, project_dir):
     """Show or update chunk status."""
     from models import extract_short_name
+
+    # Normalize chunk_id to strip path prefixes
+    chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
     chunks = Chunks(project_dir)
 
@@ -467,11 +476,15 @@ def status(chunk_id, new_status, project_dir):
 
 
 # Chunk: docs/chunks/chunk_overlap_command - Find overlapping chunks
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def overlap(chunk_id, project_dir):
     """Find chunks with overlapping code references."""
+    # Normalize chunk_id to strip path prefixes
+    chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
+
     chunks = Chunks(project_dir)
 
     try:
@@ -485,6 +498,7 @@ def overlap(chunk_id, project_dir):
 
 
 # Chunk: docs/chunks/similarity_prefix_suggest - Suggest prefix command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command("suggest-prefix")
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -498,6 +512,9 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
     that prefix for better semantic clustering.
     """
     from chunks import suggest_prefix
+
+    # Normalize chunk_id to strip path prefixes
+    chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
     result = suggest_prefix(project_dir, chunk_id, threshold=threshold, top_k=top_k)
 
@@ -524,11 +541,16 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
 
 # Chunk: docs/chunks/chunk_validate - Validate chunk for completion
 # Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def validate(chunk_id, project_dir):
     """Validate chunk is ready for completion."""
+    # Normalize chunk_id to strip path prefixes (if provided)
+    if chunk_id is not None:
+        chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
+
     chunks = Chunks(project_dir)
     result = chunks.validate_chunk_complete(chunk_id)
 
@@ -712,6 +734,7 @@ def _list_task_narratives(task_dir: pathlib.Path):
 
 
 # Chunk: docs/chunks/valid_transitions - Status command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @narrative.command()
 @click.argument("narrative_id")
 @click.argument("new_status", required=False, default=None)
@@ -719,6 +742,9 @@ def _list_task_narratives(task_dir: pathlib.Path):
 def status(narrative_id, new_status, project_dir):
     """Show or update narrative status."""
     from models import extract_short_name
+
+    # Normalize narrative_id to strip path prefixes
+    narrative_id = strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)
 
     narratives = Narratives(project_dir)
 
@@ -910,11 +936,15 @@ def _create_task_subsystem(task_dir: pathlib.Path, short_name: str):
 
 
 # Chunk: docs/chunks/bidirectional_refs - Validate subsystem command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def validate(subsystem_id, project_dir):
     """Validate subsystem frontmatter and chunk references."""
+    # Normalize subsystem_id to strip path prefixes
+    subsystem_id = strip_artifact_path_prefix(subsystem_id, ArtifactType.SUBSYSTEM)
+
     subsystems = Subsystems(project_dir)
 
     # Check if subsystem exists
@@ -935,12 +965,16 @@ def validate(subsystem_id, project_dir):
 
 
 # Chunk: docs/chunks/subsystem_status_transitions - Status command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.argument("new_status", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(subsystem_id, new_status, project_dir):
     """Show or update subsystem status."""
+    # Normalize subsystem_id to strip path prefixes
+    subsystem_id = strip_artifact_path_prefix(subsystem_id, ArtifactType.SUBSYSTEM)
+
     subsystems = Subsystems(project_dir)
 
     # Resolve subsystem_id (could be shortname or full ID)
@@ -990,11 +1024,15 @@ def status(subsystem_id, new_status, project_dir):
 
 
 # Chunk: docs/chunks/subsystem_impact_resolution - Subsystem overlap command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def overlap(chunk_id, project_dir):
     """Find subsystems with code references overlapping a chunk's changes."""
+    # Normalize chunk_id to strip path prefixes
+    chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
+
     subsystems = Subsystems(project_dir)
     chunks = Chunks(project_dir)
 
@@ -1137,6 +1175,7 @@ def _list_task_investigations(task_dir: pathlib.Path):
 
 
 # Chunk: docs/chunks/valid_transitions - Status command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @investigation.command()
 @click.argument("investigation_id")
 @click.argument("new_status", required=False, default=None)
@@ -1144,6 +1183,9 @@ def _list_task_investigations(task_dir: pathlib.Path):
 def status(investigation_id, new_status, project_dir):
     """Show or update investigation status."""
     from models import extract_short_name
+
+    # Normalize investigation_id to strip path prefixes
+    investigation_id = strip_artifact_path_prefix(investigation_id, ArtifactType.INVESTIGATION)
 
     investigations = Investigations(project_dir)
 
@@ -1366,21 +1408,39 @@ def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, 
 
 
 # Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
-def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id: str) -> ArtifactType:
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path normalization
+def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id: str) -> tuple[ArtifactType, str]:
     """Detect artifact type by searching for the artifact in project directories.
+
+    Also normalizes the artifact ID by stripping path prefixes if present.
 
     Args:
         project_path: Path to the project directory
-        local_artifact_id: Local artifact ID to find
+        local_artifact_id: Local artifact ID to find (can include path prefixes)
 
     Returns:
-        The detected ArtifactType
+        Tuple of (ArtifactType, normalized_artifact_id)
 
     Raises:
         TaskChunkError: If artifact is not found in any artifact directory
     """
-    from external_refs import ARTIFACT_DIR_NAME
+    from external_refs import ARTIFACT_DIR_NAME, normalize_artifact_path
 
+    # First try to normalize using path-based detection
+    try:
+        artifact_type, artifact_id = normalize_artifact_path(
+            local_artifact_id,
+            search_path=project_path,
+        )
+        # Verify the artifact exists
+        artifact_dir = project_path / "docs" / ARTIFACT_DIR_NAME[artifact_type] / artifact_id
+        if artifact_dir.exists():
+            return (artifact_type, artifact_id)
+    except ValueError:
+        # Fall through to legacy search
+        pass
+
+    # Legacy search: search all artifact directories
     for artifact_type, dir_name in ARTIFACT_DIR_NAME.items():
         artifacts_dir = project_path / "docs" / dir_name
         if not artifacts_dir.exists():
@@ -1388,7 +1448,7 @@ def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id:
         for artifact_dir in artifacts_dir.iterdir():
             if artifact_dir.is_dir():
                 if artifact_dir.name == local_artifact_id or artifact_dir.name.startswith(f"{local_artifact_id}-"):
-                    return artifact_type
+                    return (artifact_type, artifact_dir.name)
 
     raise TaskChunkError(f"Artifact '{local_artifact_id}' not found in any artifact directory")
 
@@ -1424,10 +1484,11 @@ def _resolve_external_task_directory(
 
     # Find artifact and detect type
     artifact_type = None
+    resolved_artifact_id = local_artifact_id
     for project_ref in projects_to_search:
         try:
             project_path = resolve_repo_directory(task_dir, project_ref)
-            artifact_type = _detect_artifact_type_from_id(project_path, local_artifact_id)
+            artifact_type, resolved_artifact_id = _detect_artifact_type_from_id(project_path, local_artifact_id)
             break
         except (FileNotFoundError, TaskChunkError):
             continue
@@ -1439,7 +1500,7 @@ def _resolve_external_task_directory(
     try:
         result = resolve_artifact_task_directory(
             task_dir,
-            local_artifact_id,
+            resolved_artifact_id,
             artifact_type,
             at_pinned=at_pinned,
             project_filter=project_filter,
@@ -1461,7 +1522,7 @@ def _resolve_external_single_repo(
     """Handle resolve in single repo mode."""
     # Detect artifact type from the repo
     try:
-        artifact_type = _detect_artifact_type_from_id(repo_path, local_artifact_id)
+        artifact_type, resolved_artifact_id = _detect_artifact_type_from_id(repo_path, local_artifact_id)
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -1469,7 +1530,7 @@ def _resolve_external_single_repo(
     try:
         result = resolve_artifact_single_repo(
             repo_path,
-            local_artifact_id,
+            resolved_artifact_id,
             artifact_type,
             at_pinned=at_pinned,
         )
@@ -1556,6 +1617,7 @@ def promote(artifact_path, new_name, project_dir):
 
 
 # Chunk: docs/chunks/copy_as_external - Copy external artifact command
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @artifact.command("copy-external")
 @click.argument("artifact_path")
 @click.argument("target_project")
@@ -1567,9 +1629,10 @@ def copy_external(artifact_path, target_project, new_name, cwd):
     Creates an external.yaml in the target project that references an artifact
     already present in the external artifact repository.
 
-    ARTIFACT_PATH is the path relative to the external repo (e.g., "docs/chunks/my_chunk").
+    ARTIFACT_PATH accepts flexible formats: "docs/chunks/my_chunk", "chunks/my_chunk",
+    or just "my_chunk" (if unambiguous).
 
-    TARGET_PROJECT is the project reference from task config (e.g., "acme/proj").
+    TARGET_PROJECT accepts flexible formats: "acme/proj" or just "proj" (if unambiguous).
     """
     try:
         result = copy_artifact_as_external(

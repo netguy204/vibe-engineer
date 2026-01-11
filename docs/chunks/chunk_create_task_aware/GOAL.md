@@ -14,8 +14,8 @@ code_references:
   implements: Validator for GitHub org/repo format
 - ref: src/models.py#TaskConfig
   implements: Model with org/repo format validation for external_artifact_repo and projects
-- ref: src/models.py#ExternalChunkRef
-  implements: Unified model for both external.yaml and dependents list
+- ref: src/models.py#ExternalArtifactRef
+  implements: Unified model for both external.yaml and dependents list (replaced ExternalChunkRef)
 - ref: src/models.py#ChunkDependent
   implements: Model for chunk GOAL.md frontmatter with dependents
 - ref: src/task_utils.py#resolve_repo_directory
@@ -35,7 +35,7 @@ code_references:
 - ref: tests/test_task_chunk_create.py
   implements: Integration tests for task-aware chunk creation
 - ref: tests/test_task_models.py
-  implements: Unit tests for TaskConfig, ExternalChunkRef, ChunkDependent
+  implements: Unit tests for TaskConfig, ExternalArtifactRef, ChunkDependent
 - ref: tests/test_task_utils.py
   implements: Unit tests for task utility functions
 narrative: cross_repo_chunks

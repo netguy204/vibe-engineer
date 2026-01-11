@@ -16,11 +16,64 @@ from external_refs import (
     is_external_artifact,
     load_external_ref,
     create_external_yaml,
+    normalize_artifact_path,
     ARTIFACT_MAIN_FILE,
     ARTIFACT_DIR_NAME,
 )
 from git_utils import get_current_sha
 from models import TaskConfig, ExternalArtifactRef, ArtifactType
+
+
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible project reference resolution
+def resolve_project_ref(
+    project_input: str,
+    available_projects: list[str],
+) -> str:
+    """Resolve flexible project reference to canonical org/repo format.
+
+    Accepts either full org/repo format or just repo name and resolves
+    to the full format from available projects.
+
+    Args:
+        project_input: User-provided project identifier (e.g., "dotter" or "acme/dotter").
+        available_projects: List of valid project refs from task config.
+
+    Returns:
+        Canonical org/repo format.
+
+    Raises:
+        ValueError: If no match found or multiple ambiguous matches.
+    """
+    # If project_input contains /, validate it exists in available_projects
+    if "/" in project_input:
+        if project_input in available_projects:
+            return project_input
+        # Not found - raise error with available projects
+        raise ValueError(
+            f"Project '{project_input}' not found in available projects. "
+            f"Available: {', '.join(available_projects)}"
+        )
+
+    # No slash - search available_projects for repos ending with /{project_input}
+    matches = [
+        proj for proj in available_projects
+        if proj.endswith(f"/{project_input}")
+    ]
+
+    if len(matches) == 0:
+        raise ValueError(
+            f"Project '{project_input}' not found in available projects. "
+            f"Available: {', '.join(available_projects)}"
+        )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Project '{project_input}' is ambiguous. "
+            f"Matches: {', '.join(matches)}. "
+            f"Please specify the full org/repo format."
+        )
+
+    return matches[0]
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Detect task directory
@@ -1589,6 +1642,7 @@ class TaskCopyExternalError(Exception):
 
 
 # Chunk: docs/chunks/copy_as_external - Copy artifact as external reference
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact and project resolution
 def copy_artifact_as_external(
     task_dir: Path,
     artifact_path: str,
@@ -1602,8 +1656,9 @@ def copy_artifact_as_external(
 
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
-        artifact_path: Path relative to external repo (e.g., "docs/chunks/my_chunk")
-        target_project: Project ref from task config (e.g., "acme/proj")
+        artifact_path: Flexible path to artifact (e.g., "docs/chunks/my_chunk",
+                       "chunks/my_chunk", or just "my_chunk")
+        target_project: Flexible project ref (e.g., "acme/proj" or just "proj")
         new_name: Optional new name for the artifact in destination
 
     Returns:
@@ -1613,11 +1668,6 @@ def copy_artifact_as_external(
     Raises:
         TaskCopyExternalError: If any step fails, with user-friendly message.
     """
-    from external_refs import (
-        detect_artifact_type_from_path,
-        ARTIFACT_DIR_NAME,
-    )
-
     # 1. Load task config
     try:
         config = load_task_config(task_dir)
@@ -1634,28 +1684,28 @@ def copy_artifact_as_external(
             f"External artifact repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
-    # 3. Build full source path and verify artifact exists
-    source_path = external_repo_path / artifact_path
-    if not source_path.exists():
-        raise TaskCopyExternalError(
-            f"Artifact '{artifact_path}' does not exist in external repository"
-        )
-
-    # 4. Detect artifact type from path
+    # 3. Normalize artifact path with external repo context
     try:
-        artifact_type = detect_artifact_type_from_path(Path(artifact_path))
+        artifact_type, artifact_id = normalize_artifact_path(
+            artifact_path,
+            search_path=external_repo_path,
+            external_repo_name=external_repo_path.name,
+        )
     except ValueError as e:
         raise TaskCopyExternalError(str(e))
 
-    # Extract artifact ID from path (the directory name)
-    artifact_id = source_path.name
-
-    # 5. Resolve target project path and validate it's in task config
-    if target_project not in config.projects:
+    # 4. Verify the artifact exists in external repo
+    source_path = external_repo_path / "docs" / ARTIFACT_DIR_NAME[artifact_type] / artifact_id
+    if not source_path.exists():
         raise TaskCopyExternalError(
-            f"Target project '{target_project}' is not a valid project in task configuration. "
-            f"Available projects: {', '.join(config.projects)}"
+            f"Artifact '{artifact_id}' does not exist in external repository at {source_path}"
         )
+
+    # 5. Resolve flexible project reference
+    try:
+        target_project = resolve_project_ref(target_project, config.projects)
+    except ValueError as e:
+        raise TaskCopyExternalError(str(e))
 
     try:
         target_project_path = resolve_repo_directory(task_dir, target_project)
