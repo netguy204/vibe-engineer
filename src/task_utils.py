@@ -642,7 +642,6 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
         TaskNarrativeError: If external repo not accessible
     """
     from narratives import Narratives
-    from artifact_ordering import ArtifactIndex
 
     # Load task config
     try:
