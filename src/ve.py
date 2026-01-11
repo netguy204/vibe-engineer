@@ -41,6 +41,8 @@ from task_utils import (
     create_task_subsystem,
     list_task_subsystems,
     TaskSubsystemError,
+    promote_artifact,
+    TaskPromoteError,
 )
 from sync import (
     sync_task_directory,
@@ -1335,6 +1337,45 @@ def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_on
             click.echo(result.secondary_content)
         else:
             click.echo("(not found)")
+
+
+# Chunk: docs/chunks/artifact_promote - Artifact command group
+@cli.group()
+def artifact():
+    """Artifact management commands."""
+    pass
+
+
+# Chunk: docs/chunks/artifact_promote - Promote artifact command
+@artifact.command()
+@click.argument("artifact_path", type=click.Path(exists=True, path_type=pathlib.Path))
+@click.option("--name", "new_name", type=str, help="New name for artifact in destination")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def promote(artifact_path, new_name, project_dir):
+    """Promote a local artifact to the task-level external repository.
+
+    Moves an artifact (chunk, investigation, narrative, or subsystem) from a
+    project's docs/ directory to the external artifact repository, leaving
+    behind an external reference.
+
+    ARTIFACT_PATH is the path to the local artifact directory to promote.
+    """
+    # Resolve artifact_path relative to project_dir if needed
+    if not artifact_path.is_absolute():
+        artifact_path = project_dir / artifact_path
+
+    try:
+        result = promote_artifact(artifact_path, new_name=new_name)
+    except TaskPromoteError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_artifact_path"]
+    external_yaml_path = result["external_yaml_path"]
+
+    click.echo(f"Promoted artifact to external repo: {external_path}")
+    click.echo(f"Created external reference: {external_yaml_path}")
 
 
 if __name__ == "__main__":
