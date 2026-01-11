@@ -126,3 +126,27 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
 11. Mark the chunk status as active in the front matter and remove the comment
     explaining the structure of the front matter from the <chunk
     directory>/GOAL.md file
+{% if task_context %}
+
+12. **Commit in the artifact repo:** Create a commit in the external artifact repo
+    (`{{ external_artifact_repo }}`) to capture the completed chunk's GOAL.md changes.
+    This commit must happen before the sync step so the pinned SHA includes the
+    completed artifact.
+
+    ```bash
+    cd <path-to-{{ external_artifact_repo }}>
+    git add docs/chunks/<chunk_id>/
+    git commit -m "Complete chunk: <chunk_id>"
+    ```
+
+13. **Sync external references:** Run `ve sync` to update pinned SHAs in all
+    external.yaml files across participating projects. This ensures that external
+    references point to commits that actually contain the referenced artifacts.
+
+    Without this step, external references may point to SHAs that predate the
+    artifact's existence (if the reference was created before the artifact was
+    committed and pushed).
+
+    The sync will update pinned SHAs to the current HEAD of each external repo,
+    capturing all recently completed work.
+{% endif %}

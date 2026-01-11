@@ -295,9 +295,9 @@ class ArtifactIndex:
     ) -> bool:
         """Check if the index is stale for the given artifact type.
 
-        Staleness is determined by comparing directory sets. Since created_after
-        is immutable after creation, we only need to detect when artifacts are
-        added or removed - not when contents change.
+        Staleness is determined by:
+        1. Directory set changes (artifacts added or removed)
+        2. File modification times (any artifact file newer than the index)
         """
         type_key = artifact_type.value
         type_index = index.get(type_key, {})
@@ -312,7 +312,23 @@ class ArtifactIndex:
         stored_directories = set(type_index.get("directories", []))
         current_directories = _enumerate_artifacts(artifact_dir, artifact_type)
 
-        return stored_directories != current_directories
+        if stored_directories != current_directories:
+            return True
+
+        # Check if any artifact files are newer than the index
+        index_mtime = self._index_file.stat().st_mtime if self._index_file.exists() else 0
+        for artifact_name in current_directories:
+            artifact_path = artifact_dir / artifact_name
+            # Check GOAL.md / OVERVIEW.md
+            goal_path = artifact_path / ARTIFACT_MAIN_FILE[artifact_type]
+            if goal_path.exists() and goal_path.stat().st_mtime > index_mtime:
+                return True
+            # Check external.yaml for external artifacts
+            external_path = artifact_path / "external.yaml"
+            if external_path.exists() and external_path.stat().st_mtime > index_mtime:
+                return True
+
+        return False
 
     # Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
     # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in index building

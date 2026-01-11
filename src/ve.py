@@ -21,7 +21,7 @@ import pathlib
 import click
 
 from chunks import Chunks
-from external_refs import strip_artifact_path_prefix
+from external_refs import strip_artifact_path_prefix, is_external_artifact
 from investigations import Investigations
 from narratives import Narratives
 from project import Project
@@ -222,7 +222,23 @@ def list_chunks(latest, project_dir):
 
         for chunk_name in chunk_list:
             frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
-            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            if frontmatter:
+                status = frontmatter.status.value
+            else:
+                # Check if it's an external chunk - try to resolve and get real status
+                chunk_path = project_dir / "docs" / "chunks" / chunk_name
+                if is_external_artifact(chunk_path, ArtifactType.CHUNK):
+                    location = chunks.resolve_chunk_location(chunk_name)
+                    if location and location.cached_content:
+                        ext_frontmatter = chunks._parse_frontmatter_from_content(location.cached_content)
+                        if ext_frontmatter:
+                            status = ext_frontmatter.status.value
+                        else:
+                            status = "EXTERNAL"
+                    else:
+                        status = "EXTERNAL"
+                else:
+                    status = "UNKNOWN"
             tip_indicator = " *" if chunk_name in tips else ""
             click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
