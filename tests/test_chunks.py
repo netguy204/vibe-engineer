@@ -375,67 +375,67 @@ class TestSymbolicOverlap:
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py"]
         refs_b = ["src/foo.py"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
     def test_parent_contains_child(self):
         """foo.py#Bar and foo.py#Bar::baz overlap (parent contains child)."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar"]
         refs_b = ["src/foo.py#Bar::baz"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
     def test_child_overlaps_with_parent(self):
         """Child also overlaps with parent (symmetric)."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar::baz"]
         refs_b = ["src/foo.py#Bar"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
     def test_different_symbols_same_file_no_overlap(self):
         """foo.py#Bar and foo.py#Qux do not overlap (different symbols)."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar"]
         refs_b = ["src/foo.py#Qux"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is False
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is False
 
     def test_file_reference_overlaps_any_symbol(self):
         """foo.py (whole module) overlaps with any symbol in that module."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py"]
         refs_b = ["src/foo.py#Bar"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
         refs_a = ["src/foo.py"]
         refs_b = ["src/foo.py#Bar::baz"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
     def test_different_files_no_overlap(self):
         """References to different files never overlap."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar"]
         refs_b = ["src/baz.py#Bar"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is False
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is False
 
     def test_empty_refs_no_overlap(self):
         """Empty reference lists don't overlap."""
         from chunks import compute_symbolic_overlap
-        assert compute_symbolic_overlap([], ["src/foo.py"]) is False
-        assert compute_symbolic_overlap(["src/foo.py"], []) is False
-        assert compute_symbolic_overlap([], []) is False
+        assert compute_symbolic_overlap([], ["src/foo.py"], ".") is False
+        assert compute_symbolic_overlap(["src/foo.py"], [], ".") is False
+        assert compute_symbolic_overlap([], [], ".") is False
 
     def test_multiple_refs_any_overlap(self):
         """Multiple refs: overlap if any pair overlaps."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar", "src/baz.py#Qux"]
         refs_b = ["src/foo.py#Bar::method"]  # overlaps with refs_a[0]
-        assert compute_symbolic_overlap(refs_a, refs_b) is True
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is True
 
     def test_multiple_refs_no_overlap(self):
         """Multiple refs: no overlap if no pair overlaps."""
         from chunks import compute_symbolic_overlap
         refs_a = ["src/foo.py#Bar", "src/baz.py#Qux"]
         refs_b = ["src/foo.py#Other", "src/baz.py#Different"]
-        assert compute_symbolic_overlap(refs_a, refs_b) is False
+        assert compute_symbolic_overlap(refs_a, refs_b, ".") is False
 
 
 class TestValidateSubsystemRefs:

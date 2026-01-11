@@ -11,7 +11,7 @@ proposed_chunks:
   - prompt: "Enhance artifact list commands to show grouped-by-location output as default in task context (external repo artifacts + each project's local artifacts with per-group causal ordering)"
     chunk_directory: task_status_command
   - prompt: "Extend SymbolicReference for project-qualified paths (org/repo::path#symbol format) to support task-level code_references across multiple projects"
-    chunk_directory: null
+    chunk_directory: project_qualified_refs
 created_after: ["alphabetical_chunk_grouping"]
 ---
 

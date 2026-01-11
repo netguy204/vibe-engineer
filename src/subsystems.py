@@ -19,7 +19,7 @@ import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS, extract_short_name
-from symbols import is_parent_of, parse_reference
+from symbols import is_parent_of, parse_reference, qualify_ref
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
 if TYPE_CHECKING:
@@ -419,6 +419,7 @@ class Subsystems:
         return results
 
     # Chunk: docs/chunks/subsystem_impact_resolution - Compute reference overlap
+    # Chunk: docs/chunks/project_qualified_refs - Qualify refs before comparison
     def _find_overlapping_refs(
         self, chunk_refs: list[str], subsystem_refs: list[str]
     ) -> list[str]:
@@ -432,11 +433,14 @@ class Subsystems:
             List of subsystem reference strings that overlap.
         """
         overlapping: list[str] = []
+        local_project = "."
 
         for subsystem_ref in subsystem_refs:
+            qualified_subsystem = qualify_ref(subsystem_ref, local_project)
             for chunk_ref in chunk_refs:
+                qualified_chunk = qualify_ref(chunk_ref, local_project)
                 # Check both directions: chunk->subsystem and subsystem->chunk
-                if is_parent_of(chunk_ref, subsystem_ref) or is_parent_of(subsystem_ref, chunk_ref):
+                if is_parent_of(qualified_chunk, qualified_subsystem) or is_parent_of(qualified_subsystem, qualified_chunk):
                     overlapping.append(subsystem_ref)
                     break  # Don't add the same ref multiple times
 
