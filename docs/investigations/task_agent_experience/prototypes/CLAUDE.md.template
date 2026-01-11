@@ -1,0 +1,102 @@
+# Multi-Project Task
+
+You are working in a **task directory** that coordinates work across multiple repositories. This is a vibe engineering workflow for cross-repository development.
+
+## This Task
+
+{{#task_description}}
+<!-- Operator can optionally add a description of what this task is about -->
+{{/task_description}}
+
+**External Artifact Repository**: `{{external_artifact_repo}}`
+This is where cross-cutting workflow artifacts (chunks, narratives, investigations, subsystems) are stored.
+
+**Participating Projects**:
+{{#projects}}
+- `{{.}}`
+{{/projects}}
+
+## How Task Context Works
+
+### The Two Contexts
+
+| Context | You're here when... | What you do here |
+|---------|---------------------|------------------|
+| **Task root** | `pwd` shows the task directory (has `.ve-task.yaml`) | Create/list cross-cutting artifacts, plan work across projects |
+| **Project** | `pwd` shows a project subdirectory | Implement code changes, run project-specific commands |
+
+### Creating Artifacts
+
+When you run `/chunk-create`, `/narrative-create`, `/subsystem-discover`, or `/investigation-create` from the task root:
+1. The artifact is created in the **external artifact repo**
+2. An `external.yaml` reference is created in each **participating project**
+3. This links the shared documentation to all affected codebases
+
+### Implementing Work
+
+To implement a chunk's changes in a specific project:
+
+```bash
+cd {{project_name}}    # Enter project context
+```
+
+Then use `/chunk-plan`, `/chunk-implement`, and `/chunk-complete` as usual. The project has its own CLAUDE.md with project-specific guidance.
+
+To return to task context:
+```bash
+cd ..    # or: cd {{task_root}}
+```
+
+## Commands by Context
+
+### Task Root Commands (run from here)
+
+| Command | Purpose |
+|---------|---------|
+| `/chunk-create` | Create a chunk in external repo with references in all projects |
+| `/narrative-create` | Create a narrative spanning all projects |
+| `/subsystem-discover` | Document a pattern that spans projects |
+| `/investigation-create` | Start an investigation for cross-project concerns |
+| `ve chunk list` | List chunks from external repo |
+| `ve narrative list` | List narratives from external repo |
+| `ve subsystem list` | List subsystems from external repo |
+
+### Project Commands (cd into project first)
+
+| Command | Purpose |
+|---------|---------|
+| `/chunk-plan` | Create implementation plan for the current chunk |
+| `/chunk-implement` | Implement the chunk's changes |
+| `/chunk-complete` | Mark chunk complete, update code references |
+| `/decision-create` | Record a project-specific decision |
+
+## The External Reference Pattern
+
+When you create a chunk from task context, each project gets an `external.yaml` file that points to the real chunk in the external repo:
+
+```
+project-a/docs/chunks/feature_name/external.yaml  →  points to  →  external-repo/docs/chunks/feature_name/GOAL.md
+```
+
+This means:
+- The chunk's GOAL.md and PLAN.md live in one place (external repo)
+- Each project knows about the chunk via its `external.yaml`
+- Implementation happens in each project's actual codebase
+
+## Getting Started
+
+1. **Understand the task**: Read any existing chunks with `ve chunk list`
+2. **Create work**: Use `/chunk-create` from task root to define new work
+3. **Implement**: `cd` into the relevant project and use `/chunk-plan` then `/chunk-implement`
+4. **Complete**: Run `/chunk-complete` from within the project
+
+## Artifacts Live in the External Repo
+
+All cross-cutting documentation lives in `{{external_artifact_repo}}`:
+- `docs/chunks/` - Chunk definitions
+- `docs/narratives/` - Multi-chunk initiatives
+- `docs/subsystems/` - Architectural patterns
+- `docs/investigations/` - Exploratory work
+- `docs/trunk/` - Project goals and decisions
+
+When you need to read or edit these artifacts, work in the external repo directory.
