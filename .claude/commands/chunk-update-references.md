@@ -10,6 +10,7 @@ $ARGUMENTS
 
 ## Symbolic Reference Format
 
+
 Code references use symbolic references in the format `{file_path}#{symbol_path}`:
 - `src/chunks.py#Chunks` - reference to a class
 - `src/chunks.py#Chunks::create_chunk` - reference to a method
@@ -17,6 +18,7 @@ Code references use symbolic references in the format `{file_path}#{symbol_path}
 - `src/models.py` - reference to an entire module (no symbol)
 
 The `::` separator indicates nesting (class::method, outer::inner::method).
+
 
 ---
 

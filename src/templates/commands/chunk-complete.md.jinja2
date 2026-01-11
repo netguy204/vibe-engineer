@@ -13,8 +13,17 @@ projects:
 - `{{ project }}`
 {% endfor %}
 
-References should use project-relative paths. The chunk GOAL.md is updated in the
-external artifact repo (`{{ external_artifact_repo }}`).
+References must use the **project-qualified format**: `{project}::{file_path}#{symbol_path}`
+
+The `::` after the project name separates it from the path within that project.
+This is different from the `::` used for symbol nesting (class::method).
+
+**Multi-project examples:**
+- `dotter::src/main.py#App` - class App in dotter project
+- `dotter::xr#worktrees` - function worktrees in dotter's xr file
+- `vibe-engineer::src/chunks.py#Chunks::create` - method in vibe-engineer project
+
+The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifact_repo }}`).
 {% endif %}
 
 ## Instructions
@@ -30,12 +39,22 @@ external artifact repo (`{{ external_artifact_repo }}`).
    involved in the change.
 
    Record these locations in the code_references field using **symbolic references**:
+{% if task_context %}
+   - Format: `{project}::{file_path}#{symbol_path}` where `::` after project separates
+     it from the path, and `::` within symbol indicates nesting (class::method)
+   - Examples:
+     - `dotter::src/main.py#App` - class App in dotter project
+     - `dotter::xr#worktrees` - function in dotter project
+     - `vibe-engineer::src/chunks.py#Chunks::create` - nested method in vibe-engineer
+     - `dotter::src/models.py` - entire module (no symbol)
+{% else %}
    - Format: `{file_path}#{symbol_path}` where symbol_path uses `::` for nesting
    - Examples:
      - `src/chunks.py#Chunks` - reference to a class
      - `src/chunks.py#Chunks::create_chunk` - reference to a method
      - `src/ve.py#validate_short_name` - reference to a standalone function
      - `src/models.py` - reference to an entire module (no symbol)
+{% endif %}
 
    Each reference should include:
    - `ref`: The symbolic reference string
@@ -44,10 +63,17 @@ external artifact repo (`{{ external_artifact_repo }}`).
    Example code_references:
    ```yaml
    code_references:
+{% if task_context %}
+     - ref: dotter::xr#run_ve_task_init
+       implements: "VE task initialization integration"
+     - ref: vibe-engineer::src/chunks.py#Chunks::validate
+       implements: "Chunk validation logic"
+{% else %}
      - ref: src/chunks.py#Chunks::validate_chunk_complete
        implements: "Chunk completion validation logic"
      - ref: src/symbols.py#extract_symbols
        implements: "Python AST-based symbol extraction"
+{% endif %}
    ```
 
    When we mark a goal as historical, we are saying that there is so much

@@ -20,7 +20,7 @@ Work is organized into "chunks" - discrete units of implementation stored in `do
 - **GOAL.md** - What this chunk accomplishes and its success criteria
 - **PLAN.md** - Technical breakdown of how the chunk will be implemented
 
-Chunks use short names as identifiers, with `created_after` frontmatter providing causal ordering. To understand recent work, use `ve chunk list --latest`.
+To understand recent work, use `ve chunk list --latest` to find the most recently created chunk.
 
 ### Chunk Lifecycle
 
@@ -44,7 +44,7 @@ When you see these references, read the referenced artifact to understand the br
 Narratives are multi-chunk initiatives that capture a high-level ambition decomposed into implementation steps. Each narrative directory contains an OVERVIEW.md with:
 
 - **Advances Trunk Goal** - How this narrative advances the project's goals
-- **Proposed Chunks** - List of chunk prompts and their corresponding chunk directories (in `proposed_chunks` frontmatter)
+- **Chunks** - List of chunk prompts and their corresponding chunk directories
 
 When a chunk references a narrative, read the narrative's OVERVIEW.md to understand the larger initiative the chunk belongs to.
 
@@ -56,60 +56,29 @@ Subsystems document emergent architectural patterns discovered in the codebase. 
 - **Scope** - What's in and out of scope
 - **Invariants** - Rules that must always hold
 - **Code References** - Symbolic references to implementations
-- **Proposed Chunks** - Consolidation work discovered but not yet implemented (in `proposed_chunks` frontmatter)
 
 Subsystem status values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
+
+**When to check subsystems**: Before implementing patterns that might already exist in the codebase, check `docs/subsystems/` for existing documentation. Subsystems capture how things *should* work, including known inconsistencies.
+
+**Subsystem status affects your behavior**:
+- `DISCOVERING` / `DOCUMENTED`: The pattern is documented but may have inconsistencies. Do NOT expand chunk scope to fix inconsistencies unless explicitly asked.
+- `REFACTORING`: Active consolidation work. You MAY expand scope for consistency improvements.
+- `STABLE`: The subsystem is authoritative. Follow its patterns for new code.
+- `DEPRECATED`: Avoid using this pattern; may suggest alternatives.
 
 When a chunk references a subsystem with relationship `implements`, the chunk contributes code to that subsystem. When the relationship is `uses`, the chunk depends on the subsystem's patterns.
 
 ## Investigations (`docs/investigations/`)
 
-Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation directory (e.g., `docs/investigations/memory_leak/`) contains an OVERVIEW.md with:
+Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation contains an OVERVIEW.md with:
 
-- **Trigger** - What prompted the investigation (the observed problem or question)
-- **Success Criteria** - What "done" looks like (specific, verifiable outcomes)
-- **Testable Hypotheses** - Beliefs to verify or falsify, each with a test approach
-- **Exploration Log** - Chronological record of what was tried and learned
-- **Findings** - Verified facts vs hypotheses/opinions, with supporting evidence
-- **Proposed Chunks** - Work items that emerge from findings (may be empty)
-- **Resolution Rationale** - Why the investigation was marked complete
+- **Trigger** - What prompted the investigation
+- **Success Criteria** - What "done" looks like
+- **Testable Hypotheses** - Beliefs to verify or falsify
+- **Proposed Chunks** - Work items that emerge from findings
 
-### Investigation Lifecycle
-
-1. **Create** - Use `/investigation-create` with a description of what you want to explore
-2. **Explore** - Work through hypotheses, documenting findings in the Exploration Log
-3. **Conclude** - Update Findings, add Proposed Chunks if action is needed
-4. **Resolve** - Set status to SOLVED, NOTED, or DEFERRED with rationale
-
-### Investigation Status Values
-
-| Status | Meaning | Use When |
-|--------|---------|----------|
-| `ONGOING` | Active exploration | Investigation is in progress |
-| `SOLVED` | Investigation question answered | Root cause found, solution identified. Proposed chunks may exist for implementation work. |
-| `NOTED` | Documented but no action needed | Findings useful for reference but don't warrant chunks |
-| `DEFERRED` | Paused for external reasons | Blocked on dependencies, time constraints, etc. |
-
-Note: `SOLVED` means the investigation is complete, not that all resulting work is done. Check `proposed_chunks` for follow-up implementation work.
-
-### When to Use Investigations vs Other Artifacts
-
-- **Investigation**: When you need to understand something before committing to action—unclear root cause, multiple hypotheses, exploration needed
-- **Chunk**: When you know what needs to be done and can proceed directly to implementation
-- **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
-
-## Proposed Chunks
-
-The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, subsystems, and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
-
-- **prompt**: The chunk prompt text describing the work
-- **chunk_directory**: `null` until a chunk is created, then the directory name
-
-Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet across the entire project. This helps identify pending work from all sources.
-
-The distinction between `chunks` (in subsystem frontmatter) and `proposed_chunks` is important:
-- `chunks`: Tracks relationships to already-created chunks (implements/uses)
-- `proposed_chunks`: Tracks proposed work that may or may not become chunks
+Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
 
 ## Available Commands
 
@@ -119,6 +88,7 @@ Use these slash commands for artifact management:
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
 - `/chunk-complete` - Mark a chunk complete and update references
+- `/cluster-rename` - Batch-rename chunks matching a prefix (e.g., `/cluster-rename old_prefix new_prefix`)
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
@@ -128,16 +98,6 @@ Use these slash commands for artifact management:
 1. Read `docs/trunk/GOAL.md` to understand the project
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
-
-## What Counts as "Code"
-
-In this project, "code" includes:
-
-- **Python source files** (`src/**/*.py`) - The CLI implementation
-- **Command templates** (`.claude/commands/*.md`) - Slash command definitions that govern agent behavior
-- **Test files** (`tests/**/*.py`) - Test implementations
-
-When completing a chunk, populate `code_references` with all modified files, including command templates. Command templates are executable instructions for agents and are maintained with the same rigor as source code.
 
 ## Code Backreferences
 
@@ -155,14 +115,3 @@ Source code may contain backreference comments that link code back to the docume
 **When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations.
 
 **When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
-
-## Development
-
-This project uses UV for package management. Run tests with `uv run pytest tests/`.
-
-As a developer of ve, When running a ve command in this repository, you should
-always use `uv run ve` to ensure that you're running the version of the code
-that you're editing.
- 
-Users of ve use a globally installed version of ve, but sincd you're developing
-the project itself, you should make sure you use the local version.

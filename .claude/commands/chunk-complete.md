@@ -21,12 +21,14 @@ search for it - run it directly via Bash.
    involved in the change.
 
    Record these locations in the code_references field using **symbolic references**:
+
    - Format: `{file_path}#{symbol_path}` where symbol_path uses `::` for nesting
    - Examples:
      - `src/chunks.py#Chunks` - reference to a class
      - `src/chunks.py#Chunks::create_chunk` - reference to a method
      - `src/ve.py#validate_short_name` - reference to a standalone function
      - `src/models.py` - reference to an entire module (no symbol)
+
 
    Each reference should include:
    - `ref`: The symbolic reference string
@@ -35,10 +37,12 @@ search for it - run it directly via Bash.
    Example code_references:
    ```yaml
    code_references:
+
      - ref: src/chunks.py#Chunks::validate_chunk_complete
        implements: "Chunk completion validation logic"
      - ref: src/symbols.py#extract_symbols
        implements: "Python AST-based symbol extraction"
+
    ```
 
    When we mark a goal as historical, we are saying that there is so much
