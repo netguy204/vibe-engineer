@@ -285,6 +285,78 @@ class TestSyncCommand:
         assert "error" in result.output.lower()
 
 
+class TestSyncCommandAllWorkflows:
+    """Tests for ve sync across all workflow artifact types."""
+
+    def test_sync_displays_artifact_type_in_output(self, runner, task_directory):
+        """Sync output shows artifact type prefix (e.g., chunk:name)."""
+        task_dir = task_directory["task_dir"]
+
+        result = runner.invoke(cli, ["sync", "--project-dir", str(task_dir)])
+
+        assert result.exit_code == 0
+        # Should show type prefix like "chunk:acme/service-a:0001-shared_feature"
+        assert "chunk:" in result.output
+
+    def test_sync_type_filter_chunks_only(self, runner, task_directory, tmp_path_factory):
+        """--type chunk only syncs chunk external refs."""
+        task_dir = task_directory["task_dir"]
+
+        # Get the project dir for service-a
+        service_a_dir = task_dir / "service-a"
+
+        # Add a narrative external ref to service-a
+        narratives_dir = service_a_dir.resolve() / "docs" / "narratives" / "my_narrative"
+        narratives_dir.mkdir(parents=True)
+        (narratives_dir / "external.yaml").write_text(
+            f"artifact_type: narrative\n"
+            f"artifact_id: my_narrative\n"
+            f"repo: acme/chunks-repo\n"
+            f"track: main\n"
+            f"pinned: '{'0' * 40}'\n"
+        )
+
+        # Run sync with --type chunk
+        result = runner.invoke(
+            cli,
+            ["sync", "--type", "chunk", "--project-dir", str(task_dir)],
+        )
+
+        assert result.exit_code == 0
+        # Should only show chunks, not narratives
+        assert "chunk:" in result.output
+        assert "narrative:" not in result.output
+
+    def test_sync_artifact_filter(self, runner, task_directory):
+        """--artifact filter syncs only specified artifacts."""
+        task_dir = task_directory["task_dir"]
+
+        result = runner.invoke(
+            cli,
+            ["sync", "--artifact", "0001-shared_feature", "--project-dir", str(task_dir)],
+        )
+
+        assert result.exit_code == 0
+        assert "0001-shared_feature" in result.output
+
+    def test_sync_artifact_and_chunk_filters_combined(self, runner, task_directory):
+        """--artifact and --chunk filters are combined."""
+        task_dir = task_directory["task_dir"]
+
+        # --chunk is deprecated but should still work and combine with --artifact
+        result = runner.invoke(
+            cli,
+            [
+                "sync",
+                "--chunk", "0001-shared_feature",
+                "--project-dir", str(task_dir),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "0001-shared_feature" in result.output
+
+
 class TestSyncCommandSingleRepo:
     """Tests for ve sync in single repo mode."""
 
@@ -313,3 +385,33 @@ class TestSyncCommandSingleRepo:
         assert result.exit_code == 0
         assert "0001-external" in result.output
         assert "Updated 1 of 1" in result.output
+
+    def test_sync_single_repo_finds_all_artifact_types(self, runner, git_repo, monkeypatch):
+        """Syncs external refs from all artifact type directories."""
+        import sync
+
+        # Create external refs in multiple artifact type directories
+        for dir_name, type_name in [
+            ("chunks", "chunk"),
+            ("narratives", "narrative"),
+        ]:
+            artifact_dir = git_repo / "docs" / dir_name / f"my_{type_name}"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "external.yaml").write_text(
+                f"artifact_type: {type_name}\n"
+                f"artifact_id: my_{type_name}\n"
+                f"repo: octocat/Hello-World\n"
+                f"track: master\n"
+                f"pinned: '{'0' * 40}'\n"
+            )
+
+        # Mock repo_cache.resolve_ref
+        mock_sha = "a" * 40
+        monkeypatch.setattr(sync.repo_cache, "resolve_ref", lambda *args, **kwargs: mock_sha)
+
+        result = runner.invoke(cli, ["sync", "--project-dir", str(git_repo)])
+
+        assert result.exit_code == 0
+        assert "chunk:" in result.output
+        assert "narrative:" in result.output
+        assert "Updated 2 of 2" in result.output
