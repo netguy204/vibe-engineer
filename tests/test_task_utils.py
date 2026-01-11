@@ -22,7 +22,7 @@ class TestIsTaskDirectory:
 
     def test_is_task_directory_true(self, tmp_path):
         """Returns True when .ve-task.yaml exists."""
-        (tmp_path / ".ve-task.yaml").write_text("external_chunk_repo: acme/chunks\n")
+        (tmp_path / ".ve-task.yaml").write_text("external_artifact_repo: acme/chunks\n")
         assert is_task_directory(tmp_path) is True
 
     def test_is_task_directory_false(self, tmp_path):
@@ -55,21 +55,21 @@ class TestLoadTaskConfig:
         """Loads and returns TaskConfig from valid YAML."""
         config_file = tmp_path / ".ve-task.yaml"
         config_file.write_text(
-            "external_chunk_repo: acme/chunks\n"
+            "external_artifact_repo: acme/chunks\n"
             "projects:\n"
             "  - acme/repo1\n"
             "  - acme/repo2\n"
         )
         config = load_task_config(tmp_path)
         assert isinstance(config, TaskConfig)
-        assert config.external_chunk_repo == "acme/chunks"
+        assert config.external_artifact_repo == "acme/chunks"
         assert config.projects == ["acme/repo1", "acme/repo2"]
 
     def test_load_task_config_invalid(self, tmp_path):
         """Raises ValidationError for invalid YAML."""
         config_file = tmp_path / ".ve-task.yaml"
         config_file.write_text(
-            "external_chunk_repo: acme/chunks\n"
+            "external_artifact_repo: acme/chunks\n"
             "projects: []\n"  # Empty projects list is invalid
         )
         with pytest.raises(ValidationError):

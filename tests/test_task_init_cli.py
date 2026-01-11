@@ -171,7 +171,7 @@ class TestTaskInitCommand:
 
                 cwd = pathlib.Path.cwd()
                 (cwd / ".ve-task.yaml").write_text(
-                    "external_chunk_repo: ext\nprojects:\n  - proj\n"
+                    "external_artifact_repo: ext\nprojects:\n  - proj\n"
                 )
                 external = cwd / "ext"
                 make_ve_initialized_git_repo(external)

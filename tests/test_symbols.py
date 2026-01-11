@@ -108,7 +108,7 @@ class TestExtractSymbols:
             assert "SymbolicReference" in symbols
             assert "TaskConfig" in symbols
             # Should find methods
-            assert "TaskConfig::validate_external_chunk_repo" in symbols
+            assert "TaskConfig::validate_external_artifact_repo" in symbols
 
 
 class TestParseReference:

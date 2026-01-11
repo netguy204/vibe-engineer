@@ -5,6 +5,7 @@ parent_chunk: null
 code_paths:
 - src/models.py
 - src/task_utils.py
+- src/external_refs.py
 - src/ve.py
 - tests/test_task_chunk_create.py
 - tests/test_task_models.py
@@ -12,7 +13,7 @@ code_references:
 - ref: src/models.py#_require_valid_repo_ref
   implements: Validator for GitHub org/repo format
 - ref: src/models.py#TaskConfig
-  implements: Model with org/repo format validation for external_chunk_repo and projects
+  implements: Model with org/repo format validation for external_artifact_repo and projects
 - ref: src/models.py#ExternalChunkRef
   implements: Unified model for both external.yaml and dependents list
 - ref: src/models.py#ChunkDependent
@@ -21,7 +22,7 @@ code_references:
   implements: Resolves org/repo reference to filesystem path
 - ref: src/task_utils.py#get_next_chunk_id
   implements: Calculates next sequential chunk ID for a project
-- ref: src/task_utils.py#create_external_yaml
+- ref: src/external_refs.py#create_external_yaml
   implements: Writes external.yaml in project's chunk directory
 - ref: src/task_utils.py#add_dependents_to_chunk
   implements: Updates GOAL.md frontmatter with dependents

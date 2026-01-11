@@ -123,7 +123,7 @@ def full_task_directory(tmp_path, tmp_path_factory):
 
     # Create .ve-task.yaml
     (task_dir / ".ve-task.yaml").write_text(
-        "external_chunk_repo: acme/chunks-repo\n"
+        "external_artifact_repo: acme/chunks-repo\n"
         "projects:\n"
         "  - acme/service-a\n"
         "  - acme/service-b\n"

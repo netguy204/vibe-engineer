@@ -136,10 +136,10 @@ def sync_task_directory(
 
     # Resolve external repo path
     try:
-        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
     except FileNotFoundError as e:
         raise TaskChunkError(
-            f"External chunk repository '{config.external_chunk_repo}' not found"
+            f"External chunk repository '{config.external_artifact_repo}' not found"
         ) from e
 
     # Get current SHA from external repo
@@ -191,8 +191,8 @@ def sync_task_directory(
 
             # Check if this ref points to our external repo
             # Note: In task directory mode, we only sync refs that point
-            # to the configured external_chunk_repo
-            if ref.repo != config.external_chunk_repo:
+            # to the configured external_artifact_repo
+            if ref.repo != config.external_artifact_repo:
                 # This external ref points elsewhere, try to resolve from local path
                 try:
                     ref_repo_path = resolve_repo_directory(task_dir, ref.repo)

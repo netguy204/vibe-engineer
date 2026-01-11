@@ -55,6 +55,8 @@ chunks:
   relationship: implements
 - chunk_id: sync_all_workflows
   relationship: implements
+- chunk_id: task_aware_narrative_cmds
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -161,6 +163,18 @@ code_references:
 - ref: src/artifact_ordering.py#ArtifactIndex::find_tips
   implements: Identify artifacts with no dependents
   compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_narrative
+  implements: Task-aware narrative creation with external references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#list_task_narratives
+  implements: Task-aware narrative listing from external repo
+  compliance: COMPLIANT
+- ref: src/ve.py#_create_task_narrative
+  implements: CLI handler for task-aware narrative creation
+  compliance: COMPLIANT
+- ref: src/ve.py#_list_task_narratives
+  implements: CLI handler for task-aware narrative listing
+  compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
     Define chunk lifecycle states (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL)
@@ -204,7 +218,7 @@ proposed_chunks:
     in external repo with dependents, create external.yaml in projects; list from
     external repo showing dependents. Follow the pattern established by chunk task-aware
     commands.'
-  chunk_directory: null
+  chunk_directory: task_aware_narrative_cmds
 - prompt: 'Task-aware investigation commands: Extend ve investigation create and ve
     investigation list to detect task directory context. When in task directory: create
     investigation in external repo with dependents, create external.yaml in projects;
@@ -653,6 +667,14 @@ External chunk references now participate in local causal ordering:
   and `ve investigation status` CLI commands. Updated `/chunk-complete` and
   `/investigation-create` slash commands to reference the new status commands.
 
+- **task_aware_narrative_cmds** - Extended `ve narrative create` and `ve narrative list`
+  with task directory context detection. When in task directory: creates narrative in
+  external repo with dependents, creates `external.yaml` in projects with causal ordering;
+  lists narratives from external repo showing dependents. Added `TaskNarrativeError`,
+  `add_dependents_to_narrative()`, `create_task_narrative()`, `list_task_narratives()`
+  to `task_utils.py`. Added `dependents` field to `NarrativeFrontmatter`. Renamed
+  `external_chunk_repo` to `external_artifact_repo` in `TaskConfig` for generality.
+
 - **consolidate_ext_refs** - Created `ExternalArtifactRef` model as a type-agnostic
   replacement for `ExternalChunkRef`. Added `artifact_type` and `artifact_id` fields.
   Moved `ArtifactType` enum from `artifact_ordering.py` to `models.py` to enable import.
@@ -718,11 +740,14 @@ External chunk references now participate in local causal ordering:
 
 #### Task-Aware Commands for Non-Chunk Types
 
-8. **Task-aware narrative commands** - Extend `ve narrative create` and `ve narrative list`
-   for task directory context (create in external repo, list from external repo).
-   - Impact: High
-   - Status: Not yet scheduled
-   - Dependencies: #5
+8. ~~**Task-aware narrative commands**~~ - **RESOLVED** by chunk task_aware_narrative_cmds.
+   Extended `ve narrative create` and `ve narrative list` for task directory context.
+   When in task directory: creates narrative in external repo with dependents, creates
+   external.yaml in projects; lists from external repo showing dependents. Added
+   `TaskNarrativeError`, `add_dependents_to_narrative()`, `create_task_narrative()`,
+   and `list_task_narratives()` to `task_utils.py`. Added `dependents` field to
+   `NarrativeFrontmatter`. Renamed `external_chunk_repo` to `external_artifact_repo`
+   in `TaskConfig` for generality.
 
 9. **Task-aware investigation commands** - Extend `ve investigation create` and
    `ve investigation list` for task directory context.

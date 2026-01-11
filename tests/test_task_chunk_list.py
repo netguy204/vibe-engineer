@@ -60,7 +60,7 @@ def setup_task_directory(tmp_path, external_name="ext", project_names=None):
 
     # Create .ve-task.yaml
     projects_yaml = "\n".join(f"  - acme/{name}" for name in project_names)
-    config_content = f"""external_chunk_repo: acme/{external_name}
+    config_content = f"""external_artifact_repo: acme/{external_name}
 projects:
 {projects_yaml}
 """
@@ -188,7 +188,7 @@ class TestChunkListInTaskDirectory:
         make_ve_initialized_git_repo(project_path)
 
         # Create config referencing missing external repo
-        config_content = """external_chunk_repo: acme/missing_ext
+        config_content = """external_artifact_repo: acme/missing_ext
 projects:
   - acme/proj
 """
