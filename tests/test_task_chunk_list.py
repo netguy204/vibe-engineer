@@ -136,7 +136,7 @@ class TestChunkListInTaskDirectory:
         assert "acme/service_b" in result.output
 
     def test_latest_returns_implementing_chunk_from_external_repo(self, tmp_path):
-        """--latest returns implementing chunk from external repo."""
+        """--latest returns implementing chunk from external repo with repo prefix."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
 
         # Create ACTIVE and IMPLEMENTING chunks
@@ -153,7 +153,9 @@ class TestChunkListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert result.output.strip() == "docs/chunks/0002-auth_validation"
+        # Chunk: docs/chunks/chunk_list_repo_source - Include repo ref in output
+        # In task context, output format is: {external_artifact_repo}::docs/chunks/{chunk_name}
+        assert result.output.strip() == "acme/ext::docs/chunks/0002-auth_validation"
 
     def test_error_when_external_repo_inaccessible(self, tmp_path):
         """Reports clear error when external repo not accessible."""

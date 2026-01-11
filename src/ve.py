@@ -283,15 +283,16 @@ def _format_grouped_artifact_list(
 
 # Chunk: docs/chunks/list_task_aware - Task directory chunk listing handler
 # Chunk: docs/chunks/task_status_command - Grouped artifact listing
+# Chunk: docs/chunks/chunk_list_repo_source - Include repo ref in --latest output
 def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
     """Handle chunk listing in task directory (cross-repo mode)."""
     try:
         if latest:
-            current_chunk = get_current_task_chunk(task_dir)
+            current_chunk, external_repo = get_current_task_chunk(task_dir)
             if current_chunk is None:
                 click.echo("No implementing chunk found", err=True)
                 raise SystemExit(1)
-            click.echo(f"docs/chunks/{current_chunk}")
+            click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
             _format_grouped_artifact_list(grouped_data, "chunks")

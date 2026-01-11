@@ -458,14 +458,17 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
 
 
 # Chunk: docs/chunks/list_task_aware - Task-aware current chunk
-def get_current_task_chunk(task_dir: Path) -> str | None:
+# Chunk: docs/chunks/chunk_list_repo_source - Return repo ref with chunk name
+def get_current_task_chunk(task_dir: Path) -> tuple[str | None, str]:
     """Get the current (IMPLEMENTING) chunk from external repo.
 
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
 
     Returns:
-        The chunk directory name if an IMPLEMENTING chunk exists, None otherwise.
+        Tuple of (chunk_name, external_artifact_repo):
+        - chunk_name: The chunk directory name if an IMPLEMENTING chunk exists, None otherwise
+        - external_artifact_repo: The external_artifact_repo from task config
 
     Raises:
         TaskChunkError: If external repo not accessible
@@ -488,7 +491,7 @@ def get_current_task_chunk(task_dir: Path) -> str | None:
 
     # Get current chunk from external repo
     chunks = Chunks(external_repo_path)
-    return chunks.get_current_chunk()
+    return (chunks.get_current_chunk(), config.external_artifact_repo)
 
 
 # Chunk: docs/chunks/task_aware_narrative_cmds - Task narrative error class
