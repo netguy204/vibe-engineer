@@ -33,7 +33,7 @@ class TestTaskInitValidate:
     def test_returns_error_when_task_directory_already_exists(self, tmp_path):
         """Returns error when .ve-task.yaml already exists."""
         (tmp_path / ".ve-task.yaml").write_text(
-            "external_chunk_repo: acme/ext\nprojects:\n  - acme/proj\n"
+            "external_artifact_repo: acme/ext\nprojects:\n  - acme/proj\n"
         )
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external)
@@ -217,7 +217,7 @@ class TestTaskInitExecute:
         assert result.config_path == tmp_path / ".ve-task.yaml"
 
     def test_yaml_contains_correct_content(self, tmp_path):
-        """Created YAML has correct external_chunk_repo and projects."""
+        """Created YAML has correct external_artifact_repo and projects."""
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external)
         proj1 = tmp_path / "proj1"
@@ -242,5 +242,5 @@ class TestTaskInitExecute:
         init.execute()
 
         config = load_task_config(tmp_path)
-        assert config.external_chunk_repo == "acme/ext"
+        assert config.external_artifact_repo == "acme/ext"
         assert config.projects == ["acme/proj"]

@@ -292,6 +292,7 @@ class TestChunkDirectoryInTemplates:
 class TestParseFrontmatterDependents:
     """Tests for parsing dependents from chunk frontmatter.
 
+    # Chunk: docs/chunks/cross_repo_schemas - Frontmatter dependents parsing tests
     # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
     """
 

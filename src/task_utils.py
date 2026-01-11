@@ -273,10 +273,10 @@ def create_task_chunk(
 
     # 2. Resolve external repo path
     try:
-        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
     except FileNotFoundError:
         raise TaskChunkError(
-            f"External chunk repository '{config.external_chunk_repo}' not found or not accessible"
+            f"External chunk repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
     # 3. Get current SHA from external repo
@@ -284,7 +284,7 @@ def create_task_chunk(
         pinned_sha = get_current_sha(external_repo_path)
     except ValueError as e:
         raise TaskChunkError(
-            f"Failed to resolve HEAD SHA in external repository '{config.external_chunk_repo}': {e}"
+            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
         )
 
     # 4. Create chunk in external repo
@@ -322,7 +322,7 @@ def create_task_chunk(
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=project_artifact_id,
-            external_repo_ref=config.external_chunk_repo,
+            external_repo_ref=config.external_artifact_repo,
             external_artifact_id=external_artifact_id,
             pinned_sha=pinned_sha,
             created_after=tips,
@@ -374,10 +374,10 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
 
     # Resolve external repo path
     try:
-        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
     except FileNotFoundError:
         raise TaskChunkError(
-            f"External chunk repository '{config.external_chunk_repo}' not found or not accessible"
+            f"External chunk repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
     # List chunks from external repo
@@ -426,12 +426,205 @@ def get_current_task_chunk(task_dir: Path) -> str | None:
 
     # Resolve external repo path
     try:
-        external_repo_path = resolve_repo_directory(task_dir, config.external_chunk_repo)
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
     except FileNotFoundError:
         raise TaskChunkError(
-            f"External chunk repository '{config.external_chunk_repo}' not found or not accessible"
+            f"External chunk repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
     # Get current chunk from external repo
     chunks = Chunks(external_repo_path)
     return chunks.get_current_chunk()
+
+
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task narrative error class
+class TaskNarrativeError(Exception):
+    """Error during task narrative creation with user-friendly message."""
+
+    pass
+
+
+# Chunk: docs/chunks/task_aware_narrative_cmds - Add dependents to narrative
+def add_dependents_to_narrative(
+    narrative_path: Path,
+    dependents: list[dict],
+) -> None:
+    """Update narrative OVERVIEW.md frontmatter to include dependents list.
+
+    Args:
+        narrative_path: Path to the narrative directory containing OVERVIEW.md
+        dependents: List of {artifact_type, artifact_id, repo} dicts to add as dependents
+
+    Raises:
+        FileNotFoundError: If OVERVIEW.md doesn't exist in narrative_path
+    """
+    overview_path = narrative_path / "OVERVIEW.md"
+    if not overview_path.exists():
+        raise FileNotFoundError(f"OVERVIEW.md not found in {narrative_path}")
+
+    update_frontmatter_field(overview_path, "dependents", dependents)
+
+
+# Chunk: docs/chunks/task_aware_narrative_cmds - Orchestrate multi-repo narrative
+def create_task_narrative(
+    task_dir: Path,
+    short_name: str,
+) -> dict:
+    """Create narrative in task directory context.
+
+    Orchestrates multi-repo narrative creation:
+    1. Creates narrative in external repo
+    2. Creates external.yaml in each project with causal ordering
+    3. Updates external narrative's OVERVIEW.md with dependents
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+        short_name: Short name for the narrative
+
+    Returns:
+        Dict with keys:
+        - external_narrative_path: Path to created narrative in external repo
+        - project_refs: Dict mapping project repo ref to created external.yaml path
+
+    Raises:
+        TaskNarrativeError: If any step fails, with user-friendly message
+    """
+    from narratives import Narratives
+
+    # 1. Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskNarrativeError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # 2. Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskNarrativeError(
+            f"External narrative repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # 3. Get current SHA from external repo
+    try:
+        pinned_sha = get_current_sha(external_repo_path)
+    except ValueError as e:
+        raise TaskNarrativeError(
+            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
+        )
+
+    # 4. Create narrative in external repo
+    narratives = Narratives(external_repo_path)
+    external_narrative_path = narratives.create_narrative(short_name)
+    external_artifact_id = external_narrative_path.name
+
+    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    dependents = []
+    project_refs = {}
+
+    for project_ref in config.projects:
+        # Resolve project path
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+        except FileNotFoundError:
+            raise TaskNarrativeError(
+                f"Project directory '{project_ref}' not found or not accessible"
+            )
+
+        # Get current tips for this project's causal ordering
+        try:
+            index = ArtifactIndex(project_path)
+            tips = index.find_tips(ArtifactType.NARRATIVE)
+        except Exception:
+            tips = []
+
+        # Create external.yaml with created_after
+        external_yaml_path = create_external_yaml(
+            project_path=project_path,
+            short_name=short_name,
+            external_repo_ref=config.external_artifact_repo,
+            external_artifact_id=external_artifact_id,
+            pinned_sha=pinned_sha,
+            created_after=tips,
+            artifact_type=ArtifactType.NARRATIVE,
+        )
+
+        # Build dependent entry using ExternalArtifactRef format
+        dependents.append({
+            "artifact_type": ArtifactType.NARRATIVE.value,
+            "artifact_id": short_name,
+            "repo": project_ref,
+        })
+
+        # Track created path
+        project_refs[project_ref] = external_yaml_path
+
+    # 7. Update external narrative's OVERVIEW.md with dependents
+    add_dependents_to_narrative(external_narrative_path, dependents)
+
+    # 8. Return results
+    return {
+        "external_narrative_path": external_narrative_path,
+        "project_refs": project_refs,
+    }
+
+
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative listing
+def list_task_narratives(task_dir: Path) -> list[dict]:
+    """List narratives from external repo with their dependents.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        List of dicts with keys: name, status, dependents
+        Sorted by narrative name descending.
+
+    Raises:
+        TaskNarrativeError: If external repo not accessible
+    """
+    from narratives import Narratives
+    from artifact_ordering import ArtifactIndex
+
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskNarrativeError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskNarrativeError(
+            f"External narrative repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # List narratives from external repo
+    narratives = Narratives(external_repo_path)
+    artifact_index = ArtifactIndex(external_repo_path)
+
+    # Get narratives in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.NARRATIVE)
+    narrative_list = list(reversed(ordered))
+
+    results = []
+    for narrative_name in narrative_list:
+        frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        # Convert ExternalArtifactRef objects to dicts for API compatibility
+        dependents = [
+            {"artifact_type": d.artifact_type.value, "artifact_id": d.artifact_id, "repo": d.repo}
+            for d in frontmatter.dependents
+        ] if frontmatter else []
+        results.append({
+            "name": narrative_name,
+            "status": status,
+            "dependents": dependents,
+        })
+
+    return results
