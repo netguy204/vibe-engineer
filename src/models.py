@@ -511,6 +511,7 @@ class NarrativeFrontmatter(BaseModel):
 # Chunk: docs/chunks/investigation_commands - Investigation frontmatter schema
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Updated to use ProposedChunk
 # Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/task_aware_investigations - Added dependents field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 
@@ -521,6 +522,7 @@ class InvestigationFrontmatter(BaseModel):
     trigger: str | None = None
     proposed_chunks: list[ProposedChunk] = []
     created_after: list[str] = []
+    dependents: list[ExternalArtifactRef] = []  # For cross-repo investigations
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk frontmatter schema

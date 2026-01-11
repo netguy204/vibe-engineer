@@ -35,6 +35,9 @@ from task_utils import (
     create_task_narrative,
     list_task_narratives,
     TaskNarrativeError,
+    create_task_investigation,
+    list_task_investigations,
+    TaskInvestigationError,
     create_task_subsystem,
     list_task_subsystems,
     TaskSubsystemError,
@@ -822,6 +825,7 @@ def investigation():
 
 
 # Chunk: docs/chunks/investigation_commands - Create investigation command
+# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation creation
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -837,6 +841,12 @@ def create_investigation(short_name, project_dir):
     # Normalize to lowercase
     short_name = short_name.lower()
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _create_task_investigation(project_dir, short_name)
+        return
+
+    # Single-repo mode
     investigations = Investigations(project_dir)
     investigation_path = investigations.create_investigation(short_name)
 
@@ -845,14 +855,39 @@ def create_investigation(short_name, project_dir):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/task_aware_investigations - Task directory investigation creation
+def _create_task_investigation(task_dir: pathlib.Path, short_name: str):
+    """Handle investigation creation in task directory (cross-repo mode)."""
+    try:
+        result = create_task_investigation(task_dir, short_name)
+    except TaskInvestigationError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_investigation_path"]
+    click.echo(f"Created investigation in external repo: {external_path.relative_to(task_dir)}/")
+
+    for project_ref, yaml_path in result["project_refs"].items():
+        # Show the investigation directory, not the yaml file
+        investigation_dir = yaml_path.parent
+        click.echo(f"Created reference in {project_ref}: {investigation_dir.relative_to(task_dir)}/")
+
+
 # Chunk: docs/chunks/investigation_commands - List investigations command
 # Chunk: docs/chunks/artifact_list_ordering - Use ArtifactIndex for causal ordering
+# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation listing
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_investigations(state, project_dir):
     """List all investigations."""
     from artifact_ordering import ArtifactIndex, ArtifactType
+
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _list_task_investigations(project_dir)
+        return
 
     # Validate state filter if provided
     if state is not None:
@@ -896,6 +931,30 @@ def list_investigations(state, project_dir):
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
         tip_indicator = " *" if inv_name in tips else ""
         click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
+
+
+# Chunk: docs/chunks/task_aware_investigations - Task directory investigation listing handler
+def _list_task_investigations(task_dir: pathlib.Path):
+    """Handle investigation listing in task directory (cross-repo mode)."""
+    try:
+        investigation_list = list_task_investigations(task_dir)
+        if not investigation_list:
+            click.echo("No investigations found", err=True)
+            raise SystemExit(1)
+
+        for investigation_info in investigation_list:
+            name = investigation_info["name"]
+            status = investigation_info["status"]
+            dependents = investigation_info["dependents"]
+
+            click.echo(f"docs/investigations/{name} [{status}]")
+            if dependents:
+                # Format dependents as: repo (artifact_id), repo (artifact_id)
+                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
+                click.echo(f"  dependents: {', '.join(dep_strs)}")
+    except TaskInvestigationError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/valid_transitions - Status command

@@ -57,6 +57,8 @@ chunks:
   relationship: implements
 - chunk_id: task_aware_narrative_cmds
   relationship: implements
+- chunk_id: task_aware_investigations
+  relationship: implements
 - chunk_id: task_aware_subsystem_cmds
   relationship: implements
 code_references:
@@ -177,6 +179,18 @@ code_references:
 - ref: src/ve.py#_list_task_narratives
   implements: CLI handler for task-aware narrative listing
   compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_investigation
+  implements: Task-aware investigation creation with external references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#list_task_investigations
+  implements: Task-aware investigation listing from external repo
+  compliance: COMPLIANT
+- ref: src/ve.py#_create_task_investigation
+  implements: CLI handler for task-aware investigation creation
+  compliance: COMPLIANT
+- ref: src/ve.py#_list_task_investigations
+  implements: CLI handler for task-aware investigation listing
+  compliance: COMPLIANT
 - ref: src/task_utils.py#create_task_subsystem
   implements: Task-aware subsystem creation with external references
   compliance: COMPLIANT
@@ -221,7 +235,7 @@ proposed_chunks:
 - prompt: 'Extend ve sync to all workflow types: Update ve sync to find and update
     external.yaml files in docs/narratives/, docs/investigations/, and docs/subsystems/
     directories, not just docs/chunks/. Use the consolidated external reference utilities.'
-  chunk_directory: null
+  chunk_directory: sync_all_workflows
 - prompt: 'Extend ve external resolve to all workflow types: Update ve external resolve
     to work with any workflow artifact type. Detect type from directory path (chunks/,
     narratives/, investigations/, subsystems/). Display appropriate files (GOAL.md+PLAN.md
@@ -238,7 +252,7 @@ proposed_chunks:
     investigation in external repo with dependents, create external.yaml in projects;
     list from external repo showing dependents. Follow the pattern established by
     chunk task-aware commands.'
-  chunk_directory: null
+  chunk_directory: task_aware_investigations
 - prompt: 'Task-aware subsystem commands: Extend ve subsystem discover and ve subsystem
     list to detect task directory context. When in task directory: create subsystem
     in external repo with dependents, create external.yaml in projects; list from
@@ -689,6 +703,13 @@ External chunk references now participate in local causal ordering:
   to `task_utils.py`. Added `dependents` field to `NarrativeFrontmatter`. Renamed
   `external_chunk_repo` to `external_artifact_repo` in `TaskConfig` for generality.
 
+- **task_aware_investigations** - Extended `ve investigation create` and `ve investigation
+  list` with task directory context detection. When in task directory: creates investigation
+  in external repo with dependents, creates `external.yaml` in projects with causal ordering;
+  lists investigations from external repo showing dependents. Added `TaskInvestigationError`,
+  `add_dependents_to_investigation()`, `create_task_investigation()`, `list_task_investigations()`
+  to `task_utils.py`. Added `dependents` field to `InvestigationFrontmatter`.
+
 - **consolidate_ext_refs** - Created `ExternalArtifactRef` model as a type-agnostic
   replacement for `ExternalChunkRef`. Added `artifact_type` and `artifact_id` fields.
   Moved `ArtifactType` enum from `artifact_ordering.py` to `models.py` to enable import.
@@ -770,11 +791,13 @@ External chunk references now participate in local causal ordering:
    `NarrativeFrontmatter`. Renamed `external_chunk_repo` to `external_artifact_repo`
    in `TaskConfig` for generality.
 
-9. **Task-aware investigation commands** - Extend `ve investigation create` and
-   `ve investigation list` for task directory context.
-   - Impact: High
-   - Status: Not yet scheduled
-   - Dependencies: #5
+9. ~~**Task-aware investigation commands**~~ - **RESOLVED** by chunk task_aware_investigations.
+   Extended `ve investigation create` and `ve investigation list` for task directory context.
+   When in task directory: creates investigation in external repo with dependents, creates
+   external.yaml in projects; lists from external repo showing dependents. Added
+   `TaskInvestigationError`, `add_dependents_to_investigation()`, `create_task_investigation()`,
+   and `list_task_investigations()` to `task_utils.py`. Added `dependents` field to
+   `InvestigationFrontmatter`.
 
 10. ~~**Task-aware subsystem commands**~~ - **RESOLVED** by chunk task_aware_subsystem_cmds.
     Extended `ve subsystem discover` and `ve subsystem list` for task directory context.
