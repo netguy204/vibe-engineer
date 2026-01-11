@@ -7,6 +7,7 @@ description: Start a new investigation or redirect to a simpler chunk workflow.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 The operator has described something they want to explore or understand:

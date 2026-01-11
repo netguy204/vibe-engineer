@@ -7,6 +7,7 @@ description: Create a new chunk of work and refine its goal.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
+
 ## Instructions
 
 The operator wants to define a piece of work to do the following:

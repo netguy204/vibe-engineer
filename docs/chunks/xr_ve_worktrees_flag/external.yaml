@@ -1,0 +1,9 @@
+artifact_id: xr_ve_worktrees_flag
+artifact_type: chunk
+created_after:
+- audit_seqnum_refs
+- cluster_rename
+- similarity_prefix_suggest
+pinned: 4e383bc3f3d8c0fa1dc7cc0d2622ed295a0d7ae1
+repo: cloudcapitalco/architecture
+track: main
