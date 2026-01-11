@@ -9,7 +9,7 @@ proposed_chunks:
   - prompt: "Extend xr architecture command to include ve artifact information for ve-enabled repos"
     chunk_directory: null
   - prompt: "Add ve artifact promote command to move local artifacts to task-level external artifact repo"
-    chunk_directory: null
+    chunk_directory: artifact_promote
 created_after: ["alphabetical_chunk_grouping"]
 ---
 
