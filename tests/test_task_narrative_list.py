@@ -1,6 +1,7 @@
 """Integration tests for task-aware narrative listing.
 
 # Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative list tests
+# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
 """
 
 import subprocess
@@ -59,6 +60,40 @@ No chunks proposed yet.
     return narrative_dir
 
 
+def create_local_narrative(project_path, short_name, status="ACTIVE"):
+    """Create a local narrative in a project (not an external reference).
+
+    Args:
+        project_path: Path to the project directory
+        short_name: e.g., "local_narrative"
+        status: Narrative status (default "ACTIVE")
+
+    Returns:
+        Path to the created narrative directory
+    """
+    narrative_dir = project_path / "docs" / "narratives" / short_name
+    narrative_dir.mkdir(parents=True, exist_ok=True)
+
+    overview_content = f"""---
+status: {status}
+advances_trunk_goal: null
+proposed_chunks: []
+---
+
+# Narrative: {short_name}
+
+## Advances Trunk Goal
+
+Local narrative for {short_name}.
+
+## Proposed Chunks
+
+No chunks proposed yet.
+"""
+    (narrative_dir / "OVERVIEW.md").write_text(overview_content)
+    return narrative_dir
+
+
 class TestNarrativeListInTaskDirectory:
     """Tests for ve narrative list in task directory context."""
 
@@ -76,8 +111,10 @@ class TestNarrativeListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/narratives/user_auth" in result.output
-        assert "docs/narratives/payment_flow" in result.output
+        # New grouped output format shows external header
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "user_auth" in result.output
+        assert "payment_flow" in result.output
 
     def test_shows_dependents_for_each_narrative(self, tmp_path):
         """Displays dependents for each narrative when in task directory."""
@@ -100,8 +137,9 @@ class TestNarrativeListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/narratives/user_auth" in result.output
-        assert "dependents:" in result.output
+        assert "user_auth" in result.output
+        # New format shows "referenced by:" with repo names only
+        assert "→ referenced by:" in result.output
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
@@ -157,6 +195,47 @@ projects:
         assert result.exit_code == 1
         assert "No narratives found" in result.output
 
+    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
+    def test_shows_grouped_output_with_external_and_local(self, tmp_path):
+        """Shows grouped output with both external and local narratives."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["service_a"]
+        )
+
+        # Create narrative in external repo
+        create_narrative_in_external_repo(external_path, "cross_cutting")
+
+        # Create local narrative in project
+        create_local_narrative(project_paths[0], "local_narrative")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["narrative", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        # Should show external header first
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "cross_cutting" in result.output
+        # Should show local project header
+        assert "# acme/service_a (local)" in result.output
+        assert "local_narrative" in result.output
+
+    def test_shows_tip_indicator_for_tip_narratives(self, tmp_path):
+        """Shows (tip) indicator for narratives that are tips."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create narrative with ACTIVE status - should be a tip since nothing depends on it
+        create_narrative_in_external_repo(external_path, "only_narrative", status="ACTIVE")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["narrative", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        assert "(tip)" in result.output
+
 
 class TestNarrativeListOutsideTaskDirectory:
     """Tests for ve narrative list outside task directory context."""
@@ -189,5 +268,5 @@ Test narrative.
 
         assert result.exit_code == 0
         assert "docs/narratives/my_narrative [ACTIVE]" in result.output
-        # Should NOT have dependents line in single-repo mode
-        assert "dependents:" not in result.output
+        # Should NOT have grouped headers in single-repo mode
+        assert "# External Artifacts" not in result.output

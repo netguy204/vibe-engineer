@@ -8,8 +8,8 @@ proposed_chunks:
     chunk_directory: null
   - prompt: "Add learning philosophy section to project CLAUDE.md template mentioning natural progression to narratives, subsystems, and tasks"
     chunk_directory: null
-  - prompt: "Add ve chunk list --all (or ve task status) showing artifacts grouped by location with per-group causal ordering"
-    chunk_directory: null
+  - prompt: "Enhance artifact list commands to show grouped-by-location output as default in task context (external repo artifacts + each project's local artifacts with per-group causal ordering)"
+    chunk_directory: task_status_command
   - prompt: "Extend SymbolicReference for project-qualified paths (org/repo::path#symbol format) to support task-level code_references across multiple projects"
     chunk_directory: null
 created_after: ["alphabetical_chunk_grouping"]
@@ -470,10 +470,10 @@ ALL commands work from task root. The distinction was wrong.
    - Dependencies: None
    - Notes: Keep this brief. Just a sentence or two in the "Getting Started" or a new "Growing with Vibe Engineering" section.
 
-4. **Add cross-project artifact listing**: Implement `ve chunk list --all` (or `ve task status`) that shows artifacts grouped by location: external repo first, then each project's local artifacts. Each group preserves its own causal ordering.
-   - Priority: Low
+4. **Add cross-project artifact listing**: ~~Implement `ve chunk list --all` (or `ve task status`) that shows artifacts grouped by location~~ **IMPLEMENTED** in chunk `task_status_command`. All artifact list commands (`ve chunk list`, `ve narrative list`, `ve investigation list`, `ve subsystem list`) now show grouped-by-location output in task context: external repo artifacts first (with dependents), then each project's local artifacts. Each group preserves its own causal ordering. Local artifacts that are external references are excluded from the local section.
+   - Priority: ~~Low~~ Done
    - Dependencies: None
-   - Notes: Useful for seeing complete picture across task. Group-by-location design sidesteps the causal ordering ambiguity.
+   - Notes: Implemented as default behavior rather than a separate flag or command.
 
 5. **Extend SymbolicReference for project-qualified paths**: Add support for `org/repo::path#symbol` format in code_references. This enables task-level chunks to have forward references to code in multiple participating projects.
    - Priority: High

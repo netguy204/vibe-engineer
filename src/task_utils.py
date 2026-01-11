@@ -17,6 +17,7 @@ from external_refs import (
     load_external_ref,
     create_external_yaml,
     ARTIFACT_MAIN_FILE,
+    ARTIFACT_DIR_NAME,
 )
 from git_utils import get_current_sha
 from models import TaskConfig, ExternalArtifactRef, ArtifactType
@@ -1020,6 +1021,13 @@ class TaskPromoteError(Exception):
     pass
 
 
+# Chunk: docs/chunks/task_status_command - Grouped task artifact listing
+class TaskArtifactListError(Exception):
+    """Error during task artifact listing with user-friendly message."""
+
+    pass
+
+
 # Chunk: docs/chunks/artifact_promote - Find task directory from artifact path
 def find_task_directory(start_path: Path) -> Path | None:
     """Walk up from start_path to find directory containing .ve-task.yaml.
@@ -1308,4 +1316,187 @@ def promote_artifact(
     return {
         "external_artifact_path": dest_path,
         "external_yaml_path": external_yaml_path,
+    }
+
+
+# Chunk: docs/chunks/task_status_command - Helper to list local artifacts with tips
+def _list_local_artifacts(
+    project_path: Path,
+    artifact_type: ArtifactType,
+) -> list[dict]:
+    """List local artifacts for a project, excluding external references.
+
+    Args:
+        project_path: Path to the project directory
+        artifact_type: Type of artifacts to list
+
+    Returns:
+        List of dicts with keys: name, status, is_tip
+        Sorted by causal ordering (newest first).
+    """
+    from chunks import Chunks
+    from narratives import Narratives
+    from investigations import Investigations
+    from subsystems import Subsystems
+
+    artifact_index = ArtifactIndex(project_path)
+    tips = set(artifact_index.find_tips(artifact_type))
+
+    # Get ordered list (oldest first) and reverse for newest first
+    ordered = artifact_index.get_ordered(artifact_type)
+    artifact_list = list(reversed(ordered))
+
+    # Get appropriate manager and parse frontmatter
+    results = []
+    for artifact_name in artifact_list:
+        # Check if this is an external reference - skip if so
+        artifact_dir = (
+            project_path / "docs" / ARTIFACT_DIR_NAME[artifact_type] / artifact_name
+        )
+        if is_external_artifact(artifact_dir, artifact_type):
+            continue
+
+        # Parse frontmatter based on artifact type
+        if artifact_type == ArtifactType.CHUNK:
+            manager = Chunks(project_path)
+            frontmatter = manager.parse_chunk_frontmatter(artifact_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        elif artifact_type == ArtifactType.NARRATIVE:
+            manager = Narratives(project_path)
+            frontmatter = manager.parse_narrative_frontmatter(artifact_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        elif artifact_type == ArtifactType.INVESTIGATION:
+            manager = Investigations(project_path)
+            frontmatter = manager.parse_investigation_frontmatter(artifact_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        elif artifact_type == ArtifactType.SUBSYSTEM:
+            manager = Subsystems(project_path)
+            frontmatter = manager.parse_subsystem_frontmatter(artifact_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        else:
+            status = "UNKNOWN"
+
+        results.append({
+            "name": artifact_name,
+            "status": status,
+            "is_tip": artifact_name in tips,
+        })
+
+    return results
+
+
+# Chunk: docs/chunks/task_status_command - Grouped task artifact listing
+def list_task_artifacts_grouped(
+    task_dir: Path,
+    artifact_type: ArtifactType,
+) -> dict:
+    """List artifacts from task context grouped by location.
+
+    Collects artifacts from all locations in a task (external repo + each project)
+    and groups them by source. External repo artifacts show their dependents;
+    local artifacts are filtered to exclude external references.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+        artifact_type: Type of artifacts to list
+
+    Returns:
+        Dict with keys:
+        - external: {repo, artifacts: [{name, status, dependents, is_tip}]}
+        - projects: [{repo, artifacts: [{name, status, is_tip}]}]
+
+    Raises:
+        TaskArtifactListError: If external repo not accessible
+    """
+    from chunks import Chunks
+    from narratives import Narratives
+    from investigations import Investigations
+    from subsystems import Subsystems
+
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskArtifactListError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskArtifactListError(
+            f"External repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # Build external artifacts list
+    artifact_index = ArtifactIndex(external_repo_path)
+    tips = set(artifact_index.find_tips(artifact_type))
+
+    # Get ordered list (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(artifact_type)
+    artifact_list = list(reversed(ordered))
+
+    # Get appropriate manager for external repo
+    if artifact_type == ArtifactType.CHUNK:
+        manager = Chunks(external_repo_path)
+    elif artifact_type == ArtifactType.NARRATIVE:
+        manager = Narratives(external_repo_path)
+    elif artifact_type == ArtifactType.INVESTIGATION:
+        manager = Investigations(external_repo_path)
+    elif artifact_type == ArtifactType.SUBSYSTEM:
+        manager = Subsystems(external_repo_path)
+    else:
+        raise TaskArtifactListError(f"Unknown artifact type: {artifact_type}")
+
+    # Parse external artifacts with dependents
+    external_artifacts = []
+    for artifact_name in artifact_list:
+        if artifact_type == ArtifactType.CHUNK:
+            frontmatter = manager.parse_chunk_frontmatter(artifact_name)
+        elif artifact_type == ArtifactType.NARRATIVE:
+            frontmatter = manager.parse_narrative_frontmatter(artifact_name)
+        elif artifact_type == ArtifactType.INVESTIGATION:
+            frontmatter = manager.parse_investigation_frontmatter(artifact_name)
+        elif artifact_type == ArtifactType.SUBSYSTEM:
+            frontmatter = manager.parse_subsystem_frontmatter(artifact_name)
+        else:
+            frontmatter = None
+
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        dependents = []
+        if frontmatter and hasattr(frontmatter, 'dependents') and frontmatter.dependents:
+            dependents = [
+                {"artifact_type": d.artifact_type.value, "artifact_id": d.artifact_id, "repo": d.repo}
+                for d in frontmatter.dependents
+            ]
+
+        external_artifacts.append({
+            "name": artifact_name,
+            "status": status,
+            "dependents": dependents,
+            "is_tip": artifact_name in tips,
+        })
+
+    # Build project lists
+    project_results = []
+    for project_ref in config.projects:
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+        except FileNotFoundError:
+            # Skip inaccessible projects
+            continue
+
+        local_artifacts = _list_local_artifacts(project_path, artifact_type)
+        project_results.append({
+            "repo": project_ref,
+            "artifacts": local_artifacts,
+        })
+
+    return {
+        "external": {
+            "repo": config.external_artifact_repo,
+            "artifacts": external_artifacts,
+        },
+        "projects": project_results,
     }

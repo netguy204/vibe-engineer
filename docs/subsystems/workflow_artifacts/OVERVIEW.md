@@ -61,6 +61,8 @@ chunks:
   relationship: implements
 - chunk_id: task_aware_subsystem_cmds
   relationship: implements
+- chunk_id: task_status_command
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -199,6 +201,15 @@ code_references:
   compliance: COMPLIANT
 - ref: src/ve.py#_list_task_subsystems
   implements: CLI handler for task-aware subsystem listing
+  compliance: COMPLIANT
+- ref: src/task_utils.py#list_task_artifacts_grouped
+  implements: Grouped task artifact listing with external and local sections
+  compliance: COMPLIANT
+- ref: src/task_utils.py#_list_local_artifacts
+  implements: List local artifacts for a project, excluding external references
+  compliance: COMPLIANT
+- ref: src/ve.py#_format_grouped_artifact_list
+  implements: Output formatter for grouped artifact listing
   compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.

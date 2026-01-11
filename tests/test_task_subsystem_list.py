@@ -1,6 +1,7 @@
 """Integration tests for task-aware subsystem listing.
 
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem list tests
+# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
 """
 
 import subprocess
@@ -74,6 +75,55 @@ None yet.
     return subsystem_dir
 
 
+def create_local_subsystem(project_path, short_name, status="DISCOVERING"):
+    """Create a local subsystem in a project (not an external reference).
+
+    Args:
+        project_path: Path to the project directory
+        short_name: e.g., "local_subsystem"
+        status: Subsystem status (default "DISCOVERING")
+
+    Returns:
+        Path to the created subsystem directory
+    """
+    subsystem_dir = project_path / "docs" / "subsystems" / short_name
+    subsystem_dir.mkdir(parents=True, exist_ok=True)
+
+    overview_content = f"""---
+status: {status}
+chunks: []
+code_references: []
+proposed_chunks: []
+---
+
+# Subsystem: {short_name}
+
+## Intent
+
+Local subsystem for {short_name}.
+
+## Scope
+
+### In Scope
+
+- Local scope items
+
+### Out of Scope
+
+- Nothing
+
+## Invariants
+
+- Local invariant
+
+## Code References
+
+None yet.
+"""
+    (subsystem_dir / "OVERVIEW.md").write_text(overview_content)
+    return subsystem_dir
+
+
 class TestSubsystemListInTaskDirectory:
     """Tests for ve subsystem list in task directory context."""
 
@@ -91,8 +141,10 @@ class TestSubsystemListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/subsystems/validation" in result.output
-        assert "docs/subsystems/template_system" in result.output
+        # New grouped output format shows external header
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "validation" in result.output
+        assert "template_system" in result.output
 
     def test_shows_dependents_for_each_subsystem(self, tmp_path):
         """Displays dependents for each subsystem when in task directory."""
@@ -115,8 +167,9 @@ class TestSubsystemListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "docs/subsystems/validation" in result.output
-        assert "dependents:" in result.output
+        assert "validation" in result.output
+        # New format shows "referenced by:" with repo names only
+        assert "→ referenced by:" in result.output
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
@@ -172,6 +225,47 @@ projects:
         assert result.exit_code == 1
         assert "No subsystems found" in result.output
 
+    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
+    def test_shows_grouped_output_with_external_and_local(self, tmp_path):
+        """Shows grouped output with both external and local subsystems."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["service_a"]
+        )
+
+        # Create subsystem in external repo
+        create_subsystem_in_external_repo(external_path, "cross_cutting")
+
+        # Create local subsystem in project
+        create_local_subsystem(project_paths[0], "local_subsystem")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["subsystem", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        # Should show external header first
+        assert "# External Artifacts (acme/ext)" in result.output
+        assert "cross_cutting" in result.output
+        # Should show local project header
+        assert "# acme/service_a (local)" in result.output
+        assert "local_subsystem" in result.output
+
+    def test_shows_tip_indicator_for_tip_subsystems(self, tmp_path):
+        """Shows (tip) indicator for subsystems that are tips."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create subsystem - should be a tip since nothing depends on it
+        create_subsystem_in_external_repo(external_path, "only_subsystem")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["subsystem", "list", "--project-dir", str(task_dir)]
+        )
+
+        assert result.exit_code == 0
+        assert "(tip)" in result.output
+
 
 class TestSubsystemListOutsideTaskDirectory:
     """Tests for ve subsystem list outside task directory context."""
@@ -205,5 +299,5 @@ Test subsystem.
 
         assert result.exit_code == 0
         assert "docs/subsystems/my_subsystem [DISCOVERING]" in result.output
-        # Should NOT have dependents line in single-repo mode
-        assert "dependents:" not in result.output
+        # Should NOT have grouped headers in single-repo mode
+        assert "# External Artifacts" not in result.output
