@@ -179,6 +179,52 @@ tests/
 
 Naming convention: `test_<module>.py` for unit tests, `test_<command>.py` for CLI tests.
 
+## Test Helper Reuse
+
+### Check Before You Copy
+
+Before writing a new test helper function, check `tests/conftest.py` for existing helpers that do what you need. Common patterns like creating git repositories, setting up directory structures, or configuring test environments often already exist.
+
+**Before writing any helper that:**
+- Creates or initializes directories
+- Sets up git repositories
+- Creates configuration files
+- Builds complex test fixtures
+
+**First search conftest.py** for similar functionality. If a helper exists but doesn't quite fit, prefer extending the existing helper over duplicating it.
+
+### When to Extract to conftest.py
+
+Extract a helper to `conftest.py` when:
+
+1. **You need it in a second file.** The moment you're about to copy a helper from one test file to another, stop. Move it to conftest.py instead.
+
+2. **The helper sets up common infrastructure.** Helpers that create git repos, initialize VE projects, or set up task directories are inherently reusable.
+
+3. **The helper is 10+ lines.** Large helpers that get copied become maintenance burdens—a bug fix must be applied everywhere.
+
+### Anti-Pattern: Copy-Paste Helpers
+
+When adding a new test file, resist the temptation to copy helper functions from a similar test file. This pattern caused 10 test files to each contain their own 60-line copy of the same helpers.
+
+**Wrong approach:**
+```python
+# test_task_foo.py - copying from test_task_bar.py
+def make_ve_initialized_git_repo(path):
+    # 30 lines of setup...
+
+def setup_task_directory(tmp_path):
+    # 30 lines of setup...
+```
+
+**Right approach:**
+```python
+# test_task_foo.py - importing from conftest
+from conftest import make_ve_initialized_git_repo, setup_task_directory
+```
+
+If the helper doesn't exist in conftest.py yet, add it there first, then import it.
+
 ## CI Requirements
 
 All tests must pass before code is merged:

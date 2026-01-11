@@ -1,4 +1,7 @@
-"""Integration tests for task-aware chunk creation."""
+"""Integration tests for task-aware investigation creation.
+
+# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation create tests
+"""
 
 import subprocess
 
@@ -6,102 +9,78 @@ import pytest
 from click.testing import CliRunner
 
 from ve import cli
-from task_utils import load_external_ref, load_task_config
+from task_utils import load_external_ref
 from conftest import make_ve_initialized_git_repo, setup_task_directory
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
-class TestChunkCreateInTaskDirectory:
-    """Tests for ve chunk start in task directory context."""
+class TestInvestigationCreateInTaskDirectory:
+    """Tests for ve investigation create in task directory context."""
 
-    def test_creates_external_chunk(self, tmp_path):
-        """Creates chunk in external repo when in task directory."""
+    def test_creates_external_investigation(self, tmp_path):
+        """Creates investigation in external repo when in task directory."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
-        assert "Created chunk in external repo" in result.output
+        assert "Created investigation in external repo" in result.output
 
-        # Verify chunk was created in external repo
-        chunk_dir = external_path / "docs" / "chunks" / "auth_token"
-        assert chunk_dir.exists()
-        assert (chunk_dir / "GOAL.md").exists()
+        # Verify investigation was created in external repo
+        investigation_dir = external_path / "docs" / "investigations" / "memory_leak"
+        assert investigation_dir.exists()
+        assert (investigation_dir / "OVERVIEW.md").exists()
 
     def test_creates_external_yaml_in_each_project(self, tmp_path):
-        """Creates external.yaml in each project's chunk directory."""
+        """Creates external.yaml in each project's investigation directory."""
         task_dir, _, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1", "proj2"]
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
 
         # Verify external.yaml in each project
         for project_path in project_paths:
-            chunk_dir = project_path / "docs" / "chunks" / "auth_token"
-            assert chunk_dir.exists()
-            external_yaml = chunk_dir / "external.yaml"
+            investigation_dir = project_path / "docs" / "investigations" / "memory_leak"
+            assert investigation_dir.exists()
+            external_yaml = investigation_dir / "external.yaml"
             assert external_yaml.exists()
 
-            # Verify content (updated for ExternalArtifactRef format)
-            # Chunk: docs/chunks/consolidate_ext_refs - Use artifact_id instead of chunk
-            ref = load_external_ref(chunk_dir)
+            # Verify content
+            ref = load_external_ref(investigation_dir)
             assert ref.repo == "acme/ext"
-            assert ref.artifact_id == "auth_token"
+            assert ref.artifact_id == "memory_leak"
             assert ref.track == "main"
             assert len(ref.pinned) == 40  # SHA length
 
-    def test_populates_dependents_in_external_chunk(self, tmp_path):
-        """Updates external chunk GOAL.md with dependents list."""
+    def test_populates_dependents_in_external_investigation(self, tmp_path):
+        """Updates external investigation OVERVIEW.md with dependents list."""
         task_dir, external_path, _ = setup_task_directory(
             tmp_path, project_names=["proj1", "proj2"]
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
 
-        # Verify dependents in external chunk GOAL.md
-        goal_path = external_path / "docs" / "chunks" / "auth_token" / "GOAL.md"
-        content = goal_path.read_text()
+        # Verify dependents in external investigation OVERVIEW.md
+        overview_path = external_path / "docs" / "investigations" / "memory_leak" / "OVERVIEW.md"
+        content = overview_path.read_text()
 
         assert "dependents:" in content
         assert "acme/proj1" in content
         assert "acme/proj2" in content
-        assert "auth_token" in content
-
-    def test_uses_correct_sequential_ids_per_project(self, tmp_path):
-        """Each project gets its own sequential chunk ID."""
-        task_dir, _, project_paths = setup_task_directory(
-            tmp_path, project_names=["proj1", "proj2"]
-        )
-
-        # Pre-create some chunks in proj2
-        proj2_chunks = project_paths[1] / "docs" / "chunks"
-        (proj2_chunks / "0001-existing").mkdir()
-        (proj2_chunks / "0002-another").mkdir()
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
-        )
-
-        assert result.exit_code == 0
-
-        # proj1 should get 0001, proj2 should get 0003
-        assert (project_paths[0] / "docs" / "chunks" / "auth_token").exists()
-        assert (project_paths[1] / "docs" / "chunks" / "auth_token").exists()
+        assert "memory_leak" in content
 
     def test_resolves_pinned_sha_from_external_repo(self, tmp_path):
         """Pinned SHA matches HEAD of external repo at creation time."""
@@ -119,14 +98,14 @@ class TestChunkCreateInTaskDirectory:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
 
         # Verify pinned SHA
-        chunk_dir = project_paths[0] / "docs" / "chunks" / "auth_token"
-        ref = load_external_ref(chunk_dir)
+        investigation_dir = project_paths[0] / "docs" / "investigations" / "memory_leak"
+        ref = load_external_ref(investigation_dir)
         assert ref.pinned == expected_sha
 
     def test_reports_all_created_paths(self, tmp_path):
@@ -137,17 +116,17 @@ class TestChunkCreateInTaskDirectory:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
-        assert "Created chunk in external repo:" in result.output
+        assert "Created investigation in external repo:" in result.output
         assert "Created reference in acme/proj1:" in result.output
         assert "Created reference in acme/proj2:" in result.output
 
 
-class TestChunkCreateOutsideTaskDirectory:
-    """Tests for ve chunk start outside task directory context."""
+class TestInvestigationCreateOutsideTaskDirectory:
+    """Tests for ve investigation create outside task directory context."""
 
     def test_behavior_unchanged(self, tmp_path):
         """Single-repo behavior unchanged when not in task directory."""
@@ -157,20 +136,20 @@ class TestChunkCreateOutsideTaskDirectory:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "my_feature", "--project-dir", str(project_path)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(project_path)]
         )
 
         assert result.exit_code == 0
-        assert "Created docs/chunks/my_feature" in result.output
+        assert "Created docs/investigations/memory_leak" in result.output
 
-        # Verify regular chunk was created (with GOAL.md, not external.yaml)
-        chunk_dir = project_path / "docs" / "chunks" / "my_feature"
-        assert (chunk_dir / "GOAL.md").exists()
-        assert not (chunk_dir / "external.yaml").exists()
+        # Verify regular investigation was created (with OVERVIEW.md, not external.yaml)
+        investigation_dir = project_path / "docs" / "investigations" / "memory_leak"
+        assert (investigation_dir / "OVERVIEW.md").exists()
+        assert not (investigation_dir / "external.yaml").exists()
 
 
-class TestChunkCreateErrorHandling:
-    """Tests for error handling in task-aware chunk creation."""
+class TestInvestigationCreateErrorHandling:
+    """Tests for error handling in task-aware investigation creation."""
 
     def test_error_when_external_repo_inaccessible(self, tmp_path):
         """Reports clear error when external repo directory missing."""
@@ -189,11 +168,11 @@ projects:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 1
-        assert "External chunk repository" in result.output
+        assert "External" in result.output
         assert "not found" in result.output
 
     def test_error_when_project_inaccessible(self, tmp_path):
@@ -213,7 +192,7 @@ projects:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 1
@@ -227,7 +206,7 @@ projects:
         # Create external dir (not a git repo)
         external_path = task_dir / "ext"
         external_path.mkdir()
-        (external_path / "docs" / "chunks").mkdir(parents=True)
+        (external_path / "docs" / "investigations").mkdir(parents=True)
 
         # Create project
         project_path = task_dir / "proj"
@@ -241,7 +220,7 @@ projects:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
+            cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 1
