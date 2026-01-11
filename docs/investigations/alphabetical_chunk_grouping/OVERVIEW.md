@@ -9,7 +9,7 @@ proposed_chunks:
   - prompt: "Implement ve cluster list command to show prefix clusters and identify singletons/superclusters"
     chunk_directory: null
   - prompt: "Implement ve cluster rename command for batch prefix renaming with reference updates"
-    chunk_directory: null
+    chunk_directory: cluster_rename
   - prompt: "Update CLAUDE.md with chunk naming guidance preferring initiative nouns over artifact types"
     chunk_directory: null
 created_after: ["chunk_reference_decay"]

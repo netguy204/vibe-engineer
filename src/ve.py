@@ -14,6 +14,7 @@
 # Chunk: docs/chunks/subsystem_impact_resolution - Subsystem overlap
 # Chunk: docs/chunks/investigation_commands - Investigation commands
 # Chunk: docs/chunks/external_resolve - External resolve command
+# Chunk: docs/chunks/cluster_rename - Cluster rename command
 
 import pathlib
 
@@ -436,6 +437,69 @@ def validate(chunk_id, project_dir):
         click.echo(warning, err=True)
 
     click.echo(f"Chunk {result.chunk_name} is ready for completion")
+
+
+# Chunk: docs/chunks/cluster_rename - Cluster rename command
+@chunk.command("cluster-rename")
+@click.argument("old_prefix")
+@click.argument("new_prefix")
+@click.option("--execute", is_flag=True, help="Apply changes (default is dry-run)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def cluster_rename_cmd(old_prefix, new_prefix, execute, project_dir):
+    """Rename all chunks matching OLD_PREFIX_ to NEW_PREFIX_.
+
+    By default, shows what would change without making modifications.
+    Use --execute to apply the changes.
+
+    Examples:
+
+        ve chunk cluster-rename task chunk_task
+
+        ve chunk cluster-rename old_name new_name --execute
+    """
+    from cluster_rename import cluster_rename, format_dry_run_output
+
+    try:
+        result = cluster_rename(project_dir, old_prefix, new_prefix, execute=execute)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    preview = result.preview
+
+    # Informative warning if git working tree is dirty
+    if result.git_dirty:
+        click.echo("Note: Git working tree has uncommitted changes.", err=True)
+        click.echo("")
+
+    # Format and display output
+    output = format_dry_run_output(preview, project_dir)
+    click.echo(output)
+
+    # Summary
+    num_dirs = len(preview.directories)
+    num_frontmatter = len(preview.frontmatter_updates)
+    num_backrefs = len(preview.backreference_updates)
+    num_prose = len(preview.prose_references)
+
+    if execute:
+        click.echo("")
+        click.echo(f"Renamed {num_dirs} directories")
+        click.echo(f"Updated {num_frontmatter} frontmatter references")
+        click.echo(f"Updated {num_backrefs} code backreferences")
+        if num_prose > 0:
+            click.echo(f"")
+            click.echo(f"NOTE: {num_prose} prose references require manual review (shown above)")
+    else:
+        click.echo("")
+        click.echo(f"Would rename {num_dirs} directories")
+        click.echo(f"Would update {num_frontmatter} frontmatter references")
+        click.echo(f"Would update {num_backrefs} code backreferences")
+        if num_prose > 0:
+            click.echo(f"")
+            click.echo(f"NOTE: {num_prose} prose references would require manual review")
+        click.echo("")
+        click.echo("Run with --execute to apply these changes.")
 
 
 # Chunk: docs/chunks/narrative_cli_commands - Narrative command group
