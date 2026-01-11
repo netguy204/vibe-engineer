@@ -18,7 +18,15 @@ chunks:
   relationship: implements
 - chunk_id: template_system_consolidation
   relationship: implements
+- chunk_id: template_drift_prevention
+  relationship: implements
 code_references:
+- ref: src/template_system.py#VeConfig
+  implements: VE project configuration dataclass with is_ve_source_repo flag
+  compliance: COMPLIANT
+- ref: src/template_system.py#load_ve_config
+  implements: Load .ve-config.yaml from project root
+  compliance: COMPLIANT
 - ref: src/template_system.py#RenderResult
   implements: Result dataclass tracking created/skipped/overwritten files
   compliance: COMPLIANT

@@ -1,0 +1,7 @@
+# VE Project Configuration
+# This file identifies project-level settings for vibe-engineer tooling.
+
+# Set to true in the vibe-engineer source repository.
+# When true, rendered templates include auto-generated headers warning
+# against direct editing.
+is_ve_source_repo: true

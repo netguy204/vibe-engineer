@@ -2,13 +2,20 @@
 # Chunk: docs/chunks/project_init_command - Project initialization
 # Chunk: docs/chunks/narrative_cli_commands - Narratives initialization
 # Chunk: docs/chunks/template_system_consolidation - Template system integration
+# Chunk: docs/chunks/template_drift_prevention - Pass VE config to template rendering
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import pathlib
 from dataclasses import dataclass, field
 
 from chunks import Chunks
-from template_system import TemplateContext, render_template, render_to_directory
+from template_system import (
+    TemplateContext,
+    VeConfig,
+    load_ve_config,
+    render_template,
+    render_to_directory,
+)
 
 
 # Chunk: docs/chunks/project_init_command - Initialization result tracking
@@ -21,11 +28,13 @@ class InitResult:
 
 
 # Chunk: docs/chunks/project_init_command - Core project class
+# Chunk: docs/chunks/template_drift_prevention - VE config loading
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 class Project:
     def __init__(self, project_dir: pathlib.Path):
         self.project_dir = project_dir
         self._chunks = None
+        self._ve_config = None
 
     @property
     def chunks(self) -> Chunks:
@@ -33,6 +42,13 @@ class Project:
         if self._chunks is None:
             self._chunks = Chunks(self.project_dir)
         return self._chunks
+
+    @property
+    def ve_config(self) -> VeConfig:
+        """Lazily load and return the VE config for this project."""
+        if self._ve_config is None:
+            self._ve_config = load_ve_config(self.project_dir)
+        return self._ve_config
 
     # Chunk: docs/chunks/project_init_command - Trunk document initialization
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
@@ -57,6 +73,7 @@ class Project:
     # Chunk: docs/chunks/project_init_command - Claude commands initialization
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Chunk: docs/chunks/task_init_scaffolding - task_context=False for project context
+    # Chunk: docs/chunks/template_drift_prevention - Pass ve_config to templates
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def _init_commands(self) -> InitResult:
         """Set up Claude commands by rendering templates.
@@ -73,9 +90,15 @@ class Project:
         # Use render_to_directory with overwrite=True to always update commands
         # Pass task_context=False to ensure project-context commands don't include
         # task-specific conditional content
+        # Pass ve_config so templates can conditionally render auto-generated headers
         context = TemplateContext()
         render_result = render_to_directory(
-            "commands", commands_dir, context=context, overwrite=True, task_context=False
+            "commands",
+            commands_dir,
+            context=context,
+            overwrite=True,
+            task_context=False,
+            ve_config=self.ve_config.as_dict(),
         )
 
         # Map RenderResult paths to relative path strings for InitResult
@@ -145,6 +168,7 @@ class Project:
 
     # Chunk: docs/chunks/project_init_command - CLAUDE.md creation
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
+    # Chunk: docs/chunks/template_drift_prevention - Pass ve_config to templates
     # Subsystem: docs/subsystems/template_system - Uses render_template
     def _init_claude_md(self) -> InitResult:
         """Create CLAUDE.md at project root from template.
@@ -158,8 +182,14 @@ class Project:
             result.skipped.append("CLAUDE.md")
         else:
             # Render the CLAUDE.md template directly
+            # Pass ve_config so template can conditionally render auto-generated header
             context = TemplateContext()
-            rendered = render_template("claude", "CLAUDE.md.jinja2", context=context)
+            rendered = render_template(
+                "claude",
+                "CLAUDE.md.jinja2",
+                context=context,
+                ve_config=self.ve_config.as_dict(),
+            )
             dest_file.write_text(rendered)
             result.created.append("CLAUDE.md")
 

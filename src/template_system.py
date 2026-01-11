@@ -1,14 +1,58 @@
 """Template system module - unified Jinja2 template rendering."""
 # Chunk: docs/chunks/canonical_template_module - Unified Jinja2 template rendering
 # Chunk: docs/chunks/template_system_consolidation - RenderResult and consolidation
+# Chunk: docs/chunks/template_drift_prevention - VE config loading
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 
 import pathlib
 from dataclasses import dataclass, field
 
 import jinja2
+import yaml
 
 from constants import template_dir
+
+
+# Chunk: docs/chunks/template_drift_prevention - VE project configuration
+# Subsystem: docs/subsystems/template_system - Unified template rendering
+@dataclass
+class VeConfig:
+    """VE project configuration loaded from .ve-config.yaml.
+
+    Attributes:
+        is_ve_source_repo: When True, rendered templates include auto-generated
+            headers warning against direct editing. Only true in the vibe-engineer
+            source repository itself.
+    """
+
+    is_ve_source_repo: bool = False
+
+    def as_dict(self) -> dict:
+        """Return config as dict suitable for Jinja2 rendering."""
+        return {"is_ve_source_repo": self.is_ve_source_repo}
+
+
+# Chunk: docs/chunks/template_drift_prevention - Load VE config from project
+# Subsystem: docs/subsystems/template_system - Unified template rendering
+def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
+    """Load .ve-config.yaml from project root.
+
+    Args:
+        project_dir: Path to the project root directory.
+
+    Returns:
+        VeConfig with values from the config file, or defaults if file is absent.
+    """
+    config_path = project_dir / ".ve-config.yaml"
+    if not config_path.exists():
+        return VeConfig()
+
+    with open(config_path) as f:
+        data = yaml.safe_load(f) or {}
+
+    return VeConfig(
+        is_ve_source_repo=data.get("is_ve_source_repo", False),
+    )
 
 
 # Chunk: docs/chunks/template_system_consolidation - Track rendering outcomes

@@ -1,3 +1,12 @@
+{% if ve_config is defined and ve_config.is_ve_source_repo %}
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+This file is rendered from: src/templates/claude/CLAUDE.md.jinja2
+Edit the source template, then run `ve init` to regenerate.
+-->
+
+{% endif %}
 # Vibe Engineering Workflow
 
 This project uses a documentation-driven development workflow. As an agent working on this codebase, familiarize yourself with these key locations.
@@ -138,3 +147,44 @@ Source code may contain backreference comments that link code back to the docume
 ## Development
 
 This project uses UV for package management. Run tests with `uv run pytest tests/`.
+{% if ve_config is defined and ve_config.is_ve_source_repo %}
+
+**IMPORTANT**: When working on the vibe-engineer codebase, always run the `ve` command under UV to use the development version:
+
+```bash
+# Correct - uses development version
+uv run ve init
+uv run ve chunk list
+
+# Incorrect - may use globally installed version
+ve init
+ve chunk list
+```
+
+This ensures you're testing your changes with the local development code, not a previously installed version.
+{% endif %}
+{% if ve_config is defined and ve_config.is_ve_source_repo %}
+
+## Template Editing Workflow
+
+This is the vibe-engineer source repository. Many files are **rendered from Jinja2 templates** and should not be edited directly.
+
+### Rendered Files and Their Sources
+
+| Rendered File | Source Template |
+|---------------|-----------------|
+| `CLAUDE.md` | `src/templates/claude/CLAUDE.md.jinja2` |
+| `.claude/commands/*.md` | `src/templates/commands/*.jinja2` |
+
+### Editing Workflow
+
+1. **Edit the source template** in `src/templates/`
+2. **Re-render** by running `ve init`
+3. **Verify** the rendered output matches expectations
+
+### Why This Matters
+
+Edits to rendered files will be **lost** when templates are re-rendered. Always modify the source template instead.
+
+If you see a rendered file with an `AUTO-GENERATED` header, that file is managed by the template system and should not be edited directly.
+{% endif %}

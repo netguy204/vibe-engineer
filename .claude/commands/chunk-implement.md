@@ -2,6 +2,17 @@
 description: Implement the active chunk.
 ---
 
+
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+This file is rendered from: src/templates/commands/chunk-implement.md.jinja2
+Edit the source template, then run `ve init` to regenerate.
+-->
+
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not

@@ -1072,3 +1072,149 @@ class TestConditionalBlocks:
             task_context=False,
         )
         assert "{%" not in result_project
+
+
+class TestVeConfig:
+    """Tests for VeConfig dataclass and load_ve_config function."""
+
+    def test_ve_config_defaults_to_false(self):
+        """VeConfig defaults to is_ve_source_repo=False."""
+        from template_system import VeConfig
+
+        config = VeConfig()
+        assert config.is_ve_source_repo is False
+
+    def test_ve_config_can_be_set_to_true(self):
+        """VeConfig can be initialized with is_ve_source_repo=True."""
+        from template_system import VeConfig
+
+        config = VeConfig(is_ve_source_repo=True)
+        assert config.is_ve_source_repo is True
+
+    def test_ve_config_as_dict_returns_dict(self):
+        """VeConfig.as_dict returns a dictionary suitable for Jinja2."""
+        from template_system import VeConfig
+
+        config = VeConfig(is_ve_source_repo=True)
+        result = config.as_dict()
+        assert isinstance(result, dict)
+        assert result["is_ve_source_repo"] is True
+
+    def test_load_ve_config_returns_defaults_when_file_missing(self, tmp_path):
+        """load_ve_config returns default VeConfig when .ve-config.yaml is missing."""
+        from template_system import load_ve_config
+
+        config = load_ve_config(tmp_path)
+        assert config.is_ve_source_repo is False
+
+    def test_load_ve_config_reads_is_ve_source_repo_true(self, tmp_path):
+        """load_ve_config reads is_ve_source_repo=true from config file."""
+        from template_system import load_ve_config
+
+        config_file = tmp_path / ".ve-config.yaml"
+        config_file.write_text("is_ve_source_repo: true\n")
+
+        config = load_ve_config(tmp_path)
+        assert config.is_ve_source_repo is True
+
+    def test_load_ve_config_reads_is_ve_source_repo_false(self, tmp_path):
+        """load_ve_config reads is_ve_source_repo=false from config file."""
+        from template_system import load_ve_config
+
+        config_file = tmp_path / ".ve-config.yaml"
+        config_file.write_text("is_ve_source_repo: false\n")
+
+        config = load_ve_config(tmp_path)
+        assert config.is_ve_source_repo is False
+
+    def test_load_ve_config_defaults_when_field_missing(self, tmp_path):
+        """load_ve_config returns default when is_ve_source_repo is not in file."""
+        from template_system import load_ve_config
+
+        config_file = tmp_path / ".ve-config.yaml"
+        config_file.write_text("other_field: value\n")
+
+        config = load_ve_config(tmp_path)
+        assert config.is_ve_source_repo is False
+
+    def test_load_ve_config_handles_empty_file(self, tmp_path):
+        """load_ve_config handles empty config file gracefully."""
+        from template_system import load_ve_config
+
+        config_file = tmp_path / ".ve-config.yaml"
+        config_file.write_text("")
+
+        config = load_ve_config(tmp_path)
+        assert config.is_ve_source_repo is False
+
+
+class TestVeConfigInTemplates:
+    """Tests for ve_config conditional rendering in templates."""
+
+    def test_auto_generated_header_renders_when_ve_source_repo_true(self):
+        """Auto-generated header appears when ve_config.is_ve_source_repo is True."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            ve_config={"is_ve_source_repo": True},
+        )
+        assert "AUTO-GENERATED FILE" in result
+        assert "DO NOT EDIT DIRECTLY" in result
+
+    def test_auto_generated_header_omitted_when_ve_source_repo_false(self):
+        """Auto-generated header is omitted when ve_config.is_ve_source_repo is False."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+            ve_config={"is_ve_source_repo": False},
+        )
+        assert "AUTO-GENERATED FILE" not in result
+        assert "DO NOT EDIT DIRECTLY" not in result
+
+    def test_auto_generated_header_omitted_when_ve_config_not_provided(self):
+        """Auto-generated header is omitted when ve_config is not provided."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "chunk-create.md.jinja2",
+        )
+        assert "AUTO-GENERATED FILE" not in result
+        assert "DO NOT EDIT DIRECTLY" not in result
+
+    def test_claude_md_template_workflow_section_renders_when_ve_source_repo_true(self):
+        """Template Editing Workflow section appears when ve_config.is_ve_source_repo is True."""
+        from template_system import render_template
+
+        result = render_template(
+            "claude",
+            "CLAUDE.md.jinja2",
+            ve_config={"is_ve_source_repo": True},
+        )
+        assert "## Template Editing Workflow" in result
+        assert "rendered from Jinja2 templates" in result
+
+    def test_claude_md_template_workflow_section_omitted_when_ve_source_repo_false(self):
+        """Template Editing Workflow section is omitted when ve_config.is_ve_source_repo is False."""
+        from template_system import render_template
+
+        result = render_template(
+            "claude",
+            "CLAUDE.md.jinja2",
+            ve_config={"is_ve_source_repo": False},
+        )
+        assert "## Template Editing Workflow" not in result
+
+    def test_claude_md_template_workflow_section_omitted_when_ve_config_not_provided(self):
+        """Template Editing Workflow section is omitted when ve_config is not provided."""
+        from template_system import render_template
+
+        result = render_template(
+            "claude",
+            "CLAUDE.md.jinja2",
+        )
+        assert "## Template Editing Workflow" not in result

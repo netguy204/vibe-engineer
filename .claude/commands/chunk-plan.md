@@ -2,6 +2,17 @@
 description: Create a chunk PLAN.md file containing the technical breakdown for the work in that chunk's GOAL.md file.
 ---
 
+
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+This file is rendered from: src/templates/commands/chunk-plan.md.jinja2
+Edit the source template, then run `ve init` to regenerate.
+-->
+
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not

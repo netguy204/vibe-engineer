@@ -1,7 +1,8 @@
 ---
 description: Update code references across all chunks and resolve or notify the operator about ambiguities.
 ---
-
+{% set source_template = "chunks-resolve-references.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
 1. Identify all active chunks with `grep -l "status: ACTIVE" docs/chunks/*/GOAL.md`
 
 2. In parallel sub-agents run `/chunk-update-references <path to goal>` for
