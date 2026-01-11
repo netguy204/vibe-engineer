@@ -35,6 +35,9 @@ from task_utils import (
     create_task_narrative,
     list_task_narratives,
     TaskNarrativeError,
+    create_task_subsystem,
+    list_task_subsystems,
+    TaskSubsystemError,
 )
 from sync import (
     sync_task_directory,
@@ -596,12 +599,19 @@ def subsystem():
 
 # Chunk: docs/chunks/subsystem_cli_scaffolding - List subsystems command
 # Chunk: docs/chunks/artifact_list_ordering - Use ArtifactIndex for causal ordering
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem listing
 @subsystem.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_subsystems(project_dir):
     """List all subsystems."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _list_task_subsystems(project_dir)
+        return
+
+    # Single-repo mode
     subsystems = Subsystems(project_dir)
     artifact_index = ArtifactIndex(project_dir)
 
@@ -623,7 +633,32 @@ def list_subsystems(project_dir):
         click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
 
 
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem listing handler
+def _list_task_subsystems(task_dir: pathlib.Path):
+    """Handle subsystem listing in task directory (cross-repo mode)."""
+    try:
+        subsystem_list = list_task_subsystems(task_dir)
+        if not subsystem_list:
+            click.echo("No subsystems found", err=True)
+            raise SystemExit(1)
+
+        for subsystem_info in subsystem_list:
+            name = subsystem_info["name"]
+            status = subsystem_info["status"]
+            dependents = subsystem_info["dependents"]
+
+            click.echo(f"docs/subsystems/{name} [{status}]")
+            if dependents:
+                # Format dependents as: repo (artifact_id), repo (artifact_id)
+                dep_strs = [f"{d['repo']} ({d['artifact_id']})" for d in dependents]
+                click.echo(f"  dependents: {', '.join(dep_strs)}")
+    except TaskSubsystemError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 # Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem command
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem discovery
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -639,6 +674,12 @@ def discover(shortname, project_dir):
     # Normalize to lowercase
     shortname = shortname.lower()
 
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        _create_task_subsystem(project_dir, shortname)
+        return
+
+    # Single-repo mode
     subsystems = Subsystems(project_dir)
 
     # Check for duplicates
@@ -653,6 +694,25 @@ def discover(shortname, project_dir):
     # Show path relative to project_dir
     relative_path = subsystem_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem creation handler
+def _create_task_subsystem(task_dir: pathlib.Path, short_name: str):
+    """Handle subsystem creation in task directory (cross-repo mode)."""
+    try:
+        result = create_task_subsystem(task_dir, short_name)
+    except TaskSubsystemError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_subsystem_path"]
+    click.echo(f"Created subsystem in external repo: {external_path.relative_to(task_dir)}/")
+
+    for project_ref, yaml_path in result["project_refs"].items():
+        # Show the subsystem directory, not the yaml file
+        subsystem_dir = yaml_path.parent
+        click.echo(f"Created reference in {project_ref}: {subsystem_dir.relative_to(task_dir)}/")
 
 
 # Chunk: docs/chunks/bidirectional_refs - Validate subsystem command

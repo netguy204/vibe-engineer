@@ -460,6 +460,7 @@ class ProposedChunk(BaseModel):
 # Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem frontmatter schema
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Added proposed_chunks field
 # Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Added dependents field
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -471,6 +472,7 @@ class SubsystemFrontmatter(BaseModel):
     code_references: list[SymbolicReference] = []
     proposed_chunks: list[ProposedChunk] = []
     created_after: list[str] = []
+    dependents: list[ExternalArtifactRef] = []  # For cross-repo subsystems
 
 
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative status enum

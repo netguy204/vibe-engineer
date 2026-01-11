@@ -628,3 +628,195 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
         })
 
     return results
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task subsystem error class
+class TaskSubsystemError(Exception):
+    """Error during task subsystem creation with user-friendly message."""
+
+    pass
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Add dependents to subsystem
+def add_dependents_to_subsystem(
+    subsystem_path: Path,
+    dependents: list[dict],
+) -> None:
+    """Update subsystem OVERVIEW.md frontmatter to include dependents list.
+
+    Args:
+        subsystem_path: Path to the subsystem directory containing OVERVIEW.md
+        dependents: List of {artifact_type, artifact_id, repo} dicts to add as dependents
+
+    Raises:
+        FileNotFoundError: If OVERVIEW.md doesn't exist in subsystem_path
+    """
+    overview_path = subsystem_path / "OVERVIEW.md"
+    if not overview_path.exists():
+        raise FileNotFoundError(f"OVERVIEW.md not found in {subsystem_path}")
+
+    update_frontmatter_field(overview_path, "dependents", dependents)
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Orchestrate multi-repo subsystem
+def create_task_subsystem(
+    task_dir: Path,
+    short_name: str,
+) -> dict:
+    """Create subsystem in task directory context.
+
+    Orchestrates multi-repo subsystem creation:
+    1. Creates subsystem in external repo
+    2. Creates external.yaml in each project with causal ordering
+    3. Updates external subsystem's OVERVIEW.md with dependents
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+        short_name: Short name for the subsystem
+
+    Returns:
+        Dict with keys:
+        - external_subsystem_path: Path to created subsystem in external repo
+        - project_refs: Dict mapping project repo ref to created external.yaml path
+
+    Raises:
+        TaskSubsystemError: If any step fails, with user-friendly message
+    """
+    from subsystems import Subsystems
+
+    # 1. Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskSubsystemError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # 2. Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskSubsystemError(
+            f"External subsystem repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # 3. Get current SHA from external repo
+    try:
+        pinned_sha = get_current_sha(external_repo_path)
+    except ValueError as e:
+        raise TaskSubsystemError(
+            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
+        )
+
+    # 4. Create subsystem in external repo
+    subsystems = Subsystems(external_repo_path)
+    external_subsystem_path = subsystems.create_subsystem(short_name)
+    external_artifact_id = external_subsystem_path.name
+
+    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    dependents = []
+    project_refs = {}
+
+    for project_ref in config.projects:
+        # Resolve project path
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+        except FileNotFoundError:
+            raise TaskSubsystemError(
+                f"Project directory '{project_ref}' not found or not accessible"
+            )
+
+        # Get current tips for this project's causal ordering
+        try:
+            index = ArtifactIndex(project_path)
+            tips = index.find_tips(ArtifactType.SUBSYSTEM)
+        except Exception:
+            tips = []
+
+        # Create external.yaml with created_after
+        external_yaml_path = create_external_yaml(
+            project_path=project_path,
+            short_name=short_name,
+            external_repo_ref=config.external_artifact_repo,
+            external_artifact_id=external_artifact_id,
+            pinned_sha=pinned_sha,
+            created_after=tips,
+            artifact_type=ArtifactType.SUBSYSTEM,
+        )
+
+        # Build dependent entry using ExternalArtifactRef format
+        dependents.append({
+            "artifact_type": ArtifactType.SUBSYSTEM.value,
+            "artifact_id": short_name,
+            "repo": project_ref,
+        })
+
+        # Track created path
+        project_refs[project_ref] = external_yaml_path
+
+    # 7. Update external subsystem's OVERVIEW.md with dependents
+    add_dependents_to_subsystem(external_subsystem_path, dependents)
+
+    # 8. Return results
+    return {
+        "external_subsystem_path": external_subsystem_path,
+        "project_refs": project_refs,
+    }
+
+
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem listing
+def list_task_subsystems(task_dir: Path) -> list[dict]:
+    """List subsystems from external repo with their dependents.
+
+    Args:
+        task_dir: Path to the task directory containing .ve-task.yaml
+
+    Returns:
+        List of dicts with keys: name, status, dependents
+        Sorted by causal ordering (newest first).
+
+    Raises:
+        TaskSubsystemError: If external repo not accessible
+    """
+    from subsystems import Subsystems
+
+    # Load task config
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        raise TaskSubsystemError(
+            f"Task configuration not found. Expected .ve-task.yaml in {task_dir}"
+        )
+
+    # Resolve external repo path
+    try:
+        external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+    except FileNotFoundError:
+        raise TaskSubsystemError(
+            f"External subsystem repository '{config.external_artifact_repo}' not found or not accessible"
+        )
+
+    # List subsystems from external repo
+    subsystems = Subsystems(external_repo_path)
+    artifact_index = ArtifactIndex(external_repo_path)
+
+    # Get subsystems in causal order (oldest first from index) and reverse for newest first
+    ordered = artifact_index.get_ordered(ArtifactType.SUBSYSTEM)
+    subsystem_list = list(reversed(ordered))
+
+    results = []
+    for subsystem_name in subsystem_list:
+        frontmatter = subsystems.parse_subsystem_frontmatter(subsystem_name)
+        status = frontmatter.status.value if frontmatter else "UNKNOWN"
+        # Convert ExternalArtifactRef objects to dicts for API compatibility
+        dependents = [
+            {"artifact_type": d.artifact_type.value, "artifact_id": d.artifact_id, "repo": d.repo}
+            for d in frontmatter.dependents
+        ] if frontmatter else []
+        results.append({
+            "name": subsystem_name,
+            "status": status,
+            "dependents": dependents,
+        })
+
+    return results
