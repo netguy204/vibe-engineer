@@ -548,6 +548,10 @@ class Chunks:
         subsystem_errors = self.validate_subsystem_refs(chunk_name)
         errors.extend(subsystem_errors)
 
+        # Chunk: docs/chunks/investigation_chunk_refs - Validate investigation reference
+        investigation_errors = self.validate_investigation_ref(chunk_name)
+        errors.extend(investigation_errors)
+
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
@@ -763,6 +767,43 @@ class Chunks:
                 errors.append(
                     f"Subsystem '{entry.subsystem_id}' does not exist in docs/subsystems/"
                 )
+
+        return errors
+
+    # Chunk: docs/chunks/investigation_chunk_refs - Investigation field for traceability
+    def validate_investigation_ref(self, chunk_id: str) -> list[str]:
+        """Validate investigation reference in a chunk's frontmatter.
+
+        Checks:
+        1. If investigation field is populated, the referenced investigation
+           directory exists in docs/investigations/
+
+        Args:
+            chunk_id: The chunk ID to validate.
+
+        Returns:
+            List of error messages (empty if valid or no reference).
+        """
+        errors: list[str] = []
+
+        # Get chunk frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            return []  # Chunk doesn't exist, nothing to validate
+
+        # Get investigation field (already validated by ChunkFrontmatter model)
+        if not frontmatter.investigation:
+            return []
+
+        # Investigations directory path
+        investigations_dir = self.project_dir / "docs" / "investigations"
+
+        # Check if investigation directory exists
+        investigation_path = investigations_dir / frontmatter.investigation
+        if not investigation_path.exists():
+            errors.append(
+                f"Investigation '{frontmatter.investigation}' does not exist in docs/investigations/"
+            )
 
         return errors
 

@@ -639,3 +639,127 @@ code_references: []
             ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
+
+
+# Chunk: docs/chunks/investigation_chunk_refs - Investigation field for traceability
+class TestInvestigationRefValidation:
+    """Tests for investigation reference validation in 've chunk validate'."""
+
+    def _write_frontmatter_with_investigation(
+        self,
+        chunk_path,
+        status: str,
+        code_references: list[dict],
+        investigation: str | None = None,
+    ):
+        """Helper to write GOAL.md with investigation field."""
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: {ref['ref']}")
+                refs_lines.append(f"    implements: \"{ref['implements']}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        investigation_yaml = f"investigation: {investigation}" if investigation else "investigation: null"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+narrative: null
+{investigation_yaml}
+subsystems: []
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def _create_investigation(self, temp_project, investigation_name):
+        """Helper to create an investigation directory with OVERVIEW.md."""
+        investigation_path = temp_project / "docs" / "investigations" / investigation_name
+        investigation_path.mkdir(parents=True, exist_ok=True)
+        overview_path = investigation_path / "OVERVIEW.md"
+        overview_path.write_text("""---
+status: SOLVED
+trigger: null
+proposed_chunks: []
+---
+
+# Investigation
+""")
+
+    def test_chunk_with_valid_investigation_ref_passes(self, runner, temp_project):
+        """Chunk with valid investigation reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create the investigation
+        self._create_investigation(temp_project, "memory_leak")
+
+        self._write_frontmatter_with_investigation(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            "memory_leak",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_invalid_investigation_ref_fails(self, runner, temp_project):
+        """Chunk with invalid investigation reference fails validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        self._write_frontmatter_with_investigation(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            "nonexistent_investigation",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "nonexistent_investigation" in result.output
+
+    def test_chunk_with_no_investigation_ref_passes(self, runner, temp_project):
+        """Chunk without investigation reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        self._write_frontmatter_with_investigation(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            None,
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0

@@ -41,6 +41,7 @@ code_references:
 - ref: tests/test_subsystems.py#TestSubsystemCreatedAfterPopulation
   implements: Tests for subsystem created_after population
 narrative: null
+investigation: artifact_sequence_numbering
 subsystems:
 - subsystem_id: workflow_artifacts
   relationship: implements

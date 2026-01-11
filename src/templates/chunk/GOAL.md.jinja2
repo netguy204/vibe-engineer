@@ -5,6 +5,7 @@ parent_chunk: null
 code_paths: []
 code_references: []
 narrative: null
+investigation: null
 subsystems: []
 created_after: {{ created_after | default([], true) | tojson }}
 ---
@@ -55,8 +56,16 @@ NARRATIVE:
 - If this chunk was derived from a narrative document, reference the narrative directory name.
 - When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
   frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed 
-  when this chunk is completed. 
+- If this is the final chunk of a narrative, the narrative status should be set to completed
+  when this chunk is completed.
+
+INVESTIGATION:
+- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
+  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
+- This provides traceability from implementation work back to exploratory findings.
+- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
+  hypotheses tested, and decisions made during exploration.
+- Validated by `ve chunk validate` to ensure referenced investigations exist.
 
 SUBSYSTEMS:
 - Optional list of subsystem references that this chunk relates to

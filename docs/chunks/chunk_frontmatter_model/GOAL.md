@@ -18,7 +18,8 @@ code_references:
   implements: Chunk lifecycle status StrEnum with FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED,
     HISTORICAL values
 - ref: src/models.py#ChunkFrontmatter
-  implements: Pydantic model for chunk GOAL.md frontmatter validation
+  implements: Pydantic model for chunk GOAL.md frontmatter validation with fields for
+    status, code_paths, code_references, and investigation (added by investigation_chunk_refs)
 - ref: src/chunks.py#Chunks::parse_chunk_frontmatter
   implements: Returns typed ChunkFrontmatter | None instead of dict | None
 - ref: src/chunks.py#Chunks::get_current_chunk
@@ -29,9 +30,11 @@ code_references:
   implements: Uses ChunkStatus.ACTIVE for status comparison and typed frontmatter
     access
 - ref: src/chunks.py#Chunks::validate_chunk_complete
-  implements: Uses typed ChunkStatus and frontmatter.code_references
+  implements: Uses typed ChunkStatus and frontmatter.code_references; calls validate_investigation_ref
 - ref: src/chunks.py#Chunks::validate_subsystem_refs
   implements: Uses typed frontmatter.subsystems access
+- ref: src/chunks.py#Chunks::validate_investigation_ref
+  implements: Validates investigation field reference exists in docs/investigations/ (added by investigation_chunk_refs)
 - ref: src/subsystems.py#Subsystems::find_overlapping_subsystems
   implements: Uses typed frontmatter.code_references and frontmatter.code_paths
 - ref: tests/test_models.py#TestChunkFrontmatter

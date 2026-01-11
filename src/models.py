@@ -540,6 +540,8 @@ class ChunkFrontmatter(BaseModel):
     code_paths: list[str] = []
     code_references: list[SymbolicReference] = []
     narrative: str | None = None
+    # Chunk: docs/chunks/investigation_chunk_refs - Investigation field for traceability
+    investigation: str | None = None
     subsystems: list[SubsystemRelationship] = []
     proposed_chunks: list[ProposedChunk] = []
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts

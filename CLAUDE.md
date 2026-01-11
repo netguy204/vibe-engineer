@@ -34,6 +34,7 @@ Chunks use short names as identifiers, with `created_after` frontmatter providin
 Chunk GOAL.md files may reference other artifact types in their frontmatter:
 
 - **narrative**: References a narrative directory (e.g., `investigations`) that this chunk helps implement
+- **investigation**: References an investigation directory (e.g., `memory_leak`) from which this chunk originated, providing traceability from implementation work back to exploratory findings
 - **subsystems**: List of subsystem relationships indicating which subsystems this chunk implements or uses
 
 When you see these references, read the referenced artifact to understand the broader context.

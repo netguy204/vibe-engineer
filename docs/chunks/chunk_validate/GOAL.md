@@ -8,18 +8,22 @@ code_paths:
 - src/models.py
 - tests/test_chunk_validate.py
 code_references:
-- ref: src/models.py#CodeRange
-  implements: Pydantic model for line-based code range
-- ref: src/models.py#CodeReference
-  implements: Pydantic model for file with code ranges
+- ref: src/models.py#SymbolicReference
+  implements: Pydantic model for symbolic code references with validation
 - ref: src/chunks.py#ValidationResult
   implements: Dataclass for structured error reporting
 - ref: src/chunks.py#Chunks::validate_chunk_complete
-  implements: Status and code_references validation
+  implements: Status, code_references, subsystem, and investigation validation
+- ref: src/chunks.py#Chunks::validate_investigation_ref
+  implements: Validation that referenced investigations exist
+- ref: src/chunks.py#Chunks::_validate_symbol_exists
+  implements: Symbol existence verification for code references
 - ref: src/ve.py#validate
   implements: CLI command interface - chunk validate command
-- ref: tests/test_chunk_validate.py
-  implements: Test coverage for all success criteria
+- ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
+  implements: Test coverage for investigation reference validation
+- ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
+  implements: Test coverage for symbolic reference validation
 created_after:
 - chunk_overlap_command
 ---
