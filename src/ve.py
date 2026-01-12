@@ -1776,6 +1776,52 @@ def copy_external(artifact_path, target_project, new_name, cwd):
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
+# Chunk: docs/chunks/remove_external_ref - Remove external artifact command
+@artifact.command("remove-external")
+@click.argument("artifact_path")
+@click.argument("target_project")
+@click.option("--cwd", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def remove_external(artifact_path, target_project, cwd):
+    """Remove an external artifact reference from a target project.
+
+    Inverse of copy-external. Removes the external.yaml from the target project
+    and updates the artifact's dependents list in the external repo.
+
+    ARTIFACT_PATH accepts flexible formats: "docs/chunks/my_chunk", "chunks/my_chunk",
+    or just "my_chunk" (if unambiguous).
+
+    TARGET_PROJECT accepts flexible formats: "acme/proj" or just "proj" (if unambiguous).
+    """
+    from task_utils import remove_artifact_from_external, TaskRemoveExternalError
+
+    try:
+        result = remove_artifact_from_external(
+            task_dir=cwd,
+            artifact_path=artifact_path,
+            target_project=target_project,
+        )
+    except TaskRemoveExternalError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report what was done
+    if result["removed"]:
+        click.echo(f"Removed external reference for '{artifact_path}' from '{target_project}'")
+        if result["directory_cleaned"]:
+            click.echo("  (empty directory cleaned up)")
+        if result["dependent_removed"]:
+            click.echo("  (updated dependents in source artifact)")
+
+        # Warn if artifact is now orphaned
+        if result["orphaned"]:
+            click.echo(
+                "\nWarning: This artifact has no remaining project links. "
+                "Consider removing it from the external repository if it's no longer needed."
+            )
+    else:
+        click.echo(f"No external reference found for '{artifact_path}' in '{target_project}' (already removed)")
+
+
 # Chunk: docs/chunks/orch_foundation - Orchestrator CLI commands
 @cli.group()
 def orch():
