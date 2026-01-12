@@ -7,6 +7,7 @@ code_references: []
 narrative: null
 investigation: null
 subsystems: []
+friction_entries: []
 created_after: {{ created_after | default([], true) | tojson }}
 ---
 
@@ -92,6 +93,22 @@ SUBSYSTEMS:
 - Validated by `ve chunk validate` to ensure referenced subsystems exist
 - When a chunk that implements a subsystem is completed, a reference should be added to
   that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
+
+FRICTION_ENTRIES:
+- Optional list of friction entries that this chunk addresses
+- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
+- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
+  - "full": This chunk fully resolves the friction entry
+  - "partial": This chunk partially addresses the friction entry
+- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
+- Example:
+  friction_entries:
+    - entry_id: F001
+      scope: full
+    - entry_id: F003
+      scope: partial
+- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
+- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
 
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk

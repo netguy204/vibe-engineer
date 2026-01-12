@@ -528,6 +528,7 @@ class InvestigationFrontmatter(BaseModel):
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk frontmatter schema
 # Chunk: docs/chunks/created_after_field - Causal ordering field
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
+# Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -546,6 +547,8 @@ class ChunkFrontmatter(BaseModel):
     proposed_chunks: list[ProposedChunk] = []
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []
+    # Chunk: docs/chunks/friction_chunk_linking - Friction entries addressed by this chunk
+    friction_entries: list["FrictionEntryReference"] = []
 
 
 # Chunk: docs/chunks/friction_template_and_cli - Friction log models
@@ -606,3 +609,32 @@ class FrictionFrontmatter(BaseModel):
 
     themes: list[FrictionTheme] = []
     proposed_chunks: list[FrictionProposedChunk] = []
+
+
+# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference for chunks
+# Regex for validating friction entry ID format: F followed by digits
+FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
+
+
+class FrictionEntryReference(BaseModel):
+    """Reference to a friction entry that a chunk addresses.
+
+    Used in chunk frontmatter to link chunks to the friction entries they resolve.
+    Provides "why did we do this work?" traceability from implementation back to
+    accumulated pain points.
+    """
+
+    entry_id: str  # e.g., "F001"
+    scope: Literal["full", "partial"] = "full"
+
+    @field_validator("entry_id")
+    @classmethod
+    def validate_entry_id(cls, v: str) -> str:
+        """Validate entry_id matches the friction entry ID pattern (F followed by digits)."""
+        if not v:
+            raise ValueError("entry_id cannot be empty")
+        if not FRICTION_ENTRY_ID_PATTERN.match(v):
+            raise ValueError(
+                "entry_id must match pattern F followed by digits (e.g., F001, F123)"
+            )
+        return v

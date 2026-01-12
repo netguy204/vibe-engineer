@@ -8,151 +8,158 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds bidirectional linking between chunks and friction log entries. The design from `docs/investigations/friction_log_artifact/OVERVIEW.md` specifies:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Chunk frontmatter field**: `friction_entries` array with `entry_id` (e.g., "F001") and `scope` ("full" or "partial")
+2. **Validation**: Ensure referenced friction entries exist in `docs/trunk/FRICTION.md`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The implementation follows existing patterns for chunk-to-artifact references:
+- Similar to `investigation` and `narrative` fields in frontmatter
+- Similar validation pattern to `validate_investigation_ref()` and `validate_narrative_ref()`
+- Uses the existing `Friction` class to parse and validate entries
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/friction_chunk_linking/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Key patterns to follow:**
+- Pydantic model for the frontmatter field (like `SubsystemRelationship`)
+- Validation method in `Chunks` class that returns `list[str]` errors
+- Integration with `validate_chunk_complete()` like other reference validations
+- CLI tests following the established patterns in `test_chunk_validate.py`
+
+**Test-driven approach**: Write failing tests first for:
+1. Valid friction_entries passes validation
+2. Invalid friction entry ID fails validation
+3. Chunks without friction_entries pass validation (optional field)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No relevant subsystems in `docs/subsystems/` for this chunk.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for friction entry validation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create test class `TestFrictionEntryRefValidation` in `tests/test_chunk_validate.py` following the pattern of `TestInvestigationRefValidation`:
 
-Example:
+1. `test_chunk_with_valid_friction_entries_passes` - Chunk referencing existing friction entries passes
+2. `test_chunk_with_invalid_friction_entry_fails` - Chunk referencing non-existent entry fails with error
+3. `test_chunk_with_no_friction_entries_passes` - Chunk without friction_entries field passes (optional)
+4. `test_chunk_with_partial_scope_passes` - Chunk with `scope: partial` passes validation
 
-### Step 1: Define the SegmentHeader struct
+Create helper method `_write_frontmatter_with_friction_entries()` similar to `_write_frontmatter_with_investigation()`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_chunk_validate.py`
 
-Location: src/segment/format.rs
+### Step 2: Add FrictionEntryReference model
 
-### Step 2: Implement header serialization
+Add Pydantic model to `src/models.py`:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+```python
+class FrictionEntryReference(BaseModel):
+    """Reference to a friction entry that a chunk addresses."""
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+    entry_id: str  # e.g., "F001"
+    scope: Literal["full", "partial"] = "full"
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+Include field validators:
+- `entry_id` must match pattern `F\d+` (F followed by digits)
+- `scope` must be "full" or "partial"
+
+Location: `src/models.py`
+
+### Step 3: Add friction_entries to ChunkFrontmatter
+
+Extend `ChunkFrontmatter` class in `src/models.py`:
+
+```python
+friction_entries: list[FrictionEntryReference] = []
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+Location: `src/models.py`
+
+### Step 4: Implement validate_friction_entries_ref method
+
+Add validation method to `Chunks` class in `src/chunks.py`:
+
+```python
+def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
+    """Validate friction entry references in a chunk's frontmatter.
+
+    Checks that each referenced friction entry ID exists in FRICTION.md.
+    """
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
+
+Implementation:
+1. Parse chunk frontmatter
+2. If `friction_entries` is empty, return `[]` (no errors)
+3. Use `Friction` class to parse FRICTION.md entries
+4. Check each referenced entry_id exists in parsed entries
+5. Return list of error messages for missing entries
+
+Location: `src/chunks.py`
+
+### Step 5: Integrate validation into validate_chunk_complete
+
+Add friction entry validation to `validate_chunk_complete()` method in `src/chunks.py`:
+
+```python
+# Validate friction entry references
+friction_errors = validation_chunks.validate_friction_entries_ref(chunk_name_to_validate)
+errors.extend(friction_errors)
 ```
--->
+
+Place this after narrative validation, following the established pattern.
+
+Location: `src/chunks.py`
+
+### Step 6: Update chunk GOAL.md template
+
+Add `friction_entries` to the GOAL.md Jinja2 template frontmatter:
+
+```yaml
+friction_entries: []
+```
+
+Add documentation in the template comments explaining:
+- Purpose: Links chunk to friction entries it addresses
+- Format: `[{entry_id: "F001", scope: "full"}, ...]`
+- When to populate: During `/chunk-create` when addressing known friction
+- Validation: `ve chunk validate` checks entries exist
+
+Location: `src/templates/chunk/GOAL.md.jinja2`
+
+### Step 7: Run tests and verify
+
+Run the full test suite to ensure:
+1. New friction entry validation tests pass
+2. Existing tests still pass (no regressions)
+3. Template renders correctly
+
+```bash
+uv run pytest tests/test_chunk_validate.py -v
+uv run pytest tests/test_models.py -v
+uv run pytest tests/ -v
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **`friction_template_and_cli` chunk**: Must be ACTIVE. Provides:
+  - `docs/trunk/FRICTION.md` template
+  - `src/friction.py#Friction` class with `parse_entries()` method
+  - `src/models.py#FrictionFrontmatter` and related models
 
-If there are no dependencies, delete this section.
--->
+The `friction_template_and_cli` chunk is already ACTIVE, so this dependency is satisfied.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **FRICTION.md might not exist**: If a chunk references friction entries but FRICTION.md doesn't exist, should validation:
+   - Fail with an error? (consistent with investigation/narrative validation)
+   - Pass with a warning? (friction log is optional)
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Decision**: Fail with a clear error. If the chunk claims to address friction, the friction log should exist. This is consistent with how investigation and narrative validation works.
+
+2. **Entry ID format validation**: Should we validate the entry_id format (e.g., `F\d+`) in the Pydantic model, or only check existence?
+
+   **Decision**: Validate format in Pydantic model. This catches typos early (e.g., "f001" vs "F001") before hitting the filesystem.
 
 ## Deviations
 

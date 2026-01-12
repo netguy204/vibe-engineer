@@ -1,15 +1,22 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/models.py
+  - src/chunks.py
+  - src/templates/chunk/GOAL.md.jinja2
+  - tests/test_chunk_validate.py
 code_references: []
 narrative: null
 investigation: friction_log_artifact
 subsystems: []
-created_after: ["orch_attention_queue", "orch_conflict_oracle", "orch_agent_skills", "orch_question_forward"]
+created_after:
+- orch_attention_queue
+- orch_conflict_oracle
+- orch_agent_skills
+- orch_question_forward
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
