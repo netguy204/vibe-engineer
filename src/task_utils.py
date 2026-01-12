@@ -1171,6 +1171,71 @@ def add_dependents_to_artifact(
     update_frontmatter_field(main_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/artifact_copy_backref - Append dependent with idempotency
+def append_dependent_to_artifact(
+    artifact_path: Path,
+    artifact_type: ArtifactType,
+    dependent: dict,
+) -> None:
+    """Append a dependent entry to artifact's frontmatter, preserving existing entries.
+
+    If an identical dependent already exists (same repo, artifact_type, artifact_id),
+    it will be updated with the new pinned SHA rather than duplicated.
+
+    Args:
+        artifact_path: Path to the artifact directory.
+        artifact_type: Type of artifact to determine main file.
+        dependent: Dict with keys: artifact_type, artifact_id, repo, pinned
+
+    Raises:
+        FileNotFoundError: If main file doesn't exist in artifact_path.
+    """
+    main_file = ARTIFACT_MAIN_FILE[artifact_type]
+    main_path = artifact_path / main_file
+
+    if not main_path.exists():
+        raise FileNotFoundError(f"{main_file} not found in {artifact_path}")
+
+    # Read existing frontmatter
+    content = main_path.read_text()
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
+    if not match:
+        raise ValueError(f"Could not parse frontmatter in {main_path}")
+
+    frontmatter_text = match.group(1)
+    body = match.group(2)
+    frontmatter = yaml.safe_load(frontmatter_text) or {}
+
+    # Get existing dependents or create empty list
+    existing_dependents = frontmatter.get("dependents", []) or []
+
+    # Check for existing entry with same (repo, artifact_type, artifact_id) key
+    # If found, update the pinned SHA; if not, append new entry
+    match_key = (dependent["repo"], dependent["artifact_type"], dependent["artifact_id"])
+    found = False
+
+    for i, existing in enumerate(existing_dependents):
+        existing_key = (
+            existing.get("repo"),
+            existing.get("artifact_type"),
+            existing.get("artifact_id"),
+        )
+        if existing_key == match_key:
+            # Update existing entry with new pinned SHA
+            existing_dependents[i] = dependent
+            found = True
+            break
+
+    if not found:
+        existing_dependents.append(dependent)
+
+    # Update frontmatter and write back
+    frontmatter["dependents"] = existing_dependents
+    new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+    new_content = f"---\n{new_frontmatter}---\n{body}"
+    main_path.write_text(new_content)
+
+
 # Chunk: docs/chunks/artifact_promote - Parse frontmatter for created_after
 def _get_artifact_created_after(artifact_path: Path, artifact_type: ArtifactType) -> list[str]:
     """Get the created_after field from an artifact's main file.
@@ -1646,6 +1711,7 @@ class TaskCopyExternalError(Exception):
 
 # Chunk: docs/chunks/copy_as_external - Copy artifact as external reference
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact and project resolution
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference update for copy-external
 def copy_artifact_as_external(
     task_dir: Path,
     artifact_path: str,
@@ -1755,7 +1821,18 @@ def copy_artifact_as_external(
         artifact_type=artifact_type,
     )
 
+    # 11. Update source artifact's dependents with back-reference
+    # Chunk: docs/chunks/artifact_copy_backref - Back-reference update for copy-external
+    dependent_entry = {
+        "artifact_type": artifact_type.value,
+        "artifact_id": dest_name,  # The name in the target project
+        "repo": target_project,
+        "pinned": pinned_sha,
+    }
+    append_dependent_to_artifact(source_path, artifact_type, dependent_entry)
+
     # Return result
     return {
         "external_yaml_path": external_yaml_path,
+        "source_updated": True,
     }

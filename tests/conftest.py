@@ -39,19 +39,29 @@ def make_ve_initialized_git_repo(path, remote_url=None):
         path: Path where the repository will be created
         remote_url: Optional remote URL to configure as 'origin'
     """
+    import os
+
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-b", "main"], cwd=path, check=True, capture_output=True)
+
+    # Create a clean environment without GIT_DIR/GIT_WORK_TREE
+    # These environment variables can leak from parent context (e.g., worktrees)
+    # and cause git to use the wrong repository
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+    subprocess.run(["git", "init", "-b", "main"], cwd=path, check=True, capture_output=True, env=clean_env)
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
         cwd=path,
         check=True,
         capture_output=True,
+        env=clean_env,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
         cwd=path,
         check=True,
         capture_output=True,
+        env=clean_env,
     )
     # Create all workflow artifact directories
     (path / "docs" / "chunks").mkdir(parents=True)
@@ -60,12 +70,13 @@ def make_ve_initialized_git_repo(path, remote_url=None):
     (path / "docs" / "subsystems").mkdir(parents=True)
     # Create initial commit so HEAD exists
     (path / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "."], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=path, check=True, capture_output=True, env=clean_env)
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         cwd=path,
         check=True,
         capture_output=True,
+        env=clean_env,
     )
     # Optionally configure remote origin
     if remote_url is not None:
@@ -74,6 +85,7 @@ def make_ve_initialized_git_repo(path, remote_url=None):
             cwd=path,
             check=True,
             capture_output=True,
+            env=clean_env,
         )
 
 

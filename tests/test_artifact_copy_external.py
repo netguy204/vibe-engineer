@@ -555,10 +555,10 @@ A feature chunk.
         first_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
         first_pinned = first_frontmatter["dependents"][0]["pinned"]
 
-        # Remove the external.yaml so we can copy again (simulating re-run scenario)
-        external_yaml = project_paths[0] / "docs" / "chunks" / "my_feature" / "external.yaml"
-        external_yaml.parent.rmdir()  # Remove the whole directory
-        external_yaml.parent.parent.joinpath("my_feature").mkdir(exist_ok=True)
+        # Remove the external.yaml directory so we can copy again (simulating re-run scenario)
+        import shutil
+        external_yaml_dir = project_paths[0] / "docs" / "chunks" / "my_feature"
+        shutil.rmtree(external_yaml_dir)
 
         # Make a commit in external repo to change the SHA
         subprocess.run(
