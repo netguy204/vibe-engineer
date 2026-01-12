@@ -151,6 +151,7 @@ class AgentRunner:
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",  # Trust agent in orchestrator context
             max_turns=100,  # Reasonable limit per phase
+            setting_sources=["project"],  # Enable project-level skills/commands
         )
 
         # Handle resume with answer
@@ -242,6 +243,7 @@ class AgentRunner:
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",
             max_turns=20,  # Commits should be quick
+            setting_sources=["project"],  # Enable project-level skills/commands
         )
 
         session_id: Optional[str] = None
@@ -324,6 +326,7 @@ class AgentRunner:
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",
             max_turns=20,  # Should be quick - just editing one file
+            setting_sources=["project"],  # Enable project-level skills/commands
             resume=session_id,
         )
 

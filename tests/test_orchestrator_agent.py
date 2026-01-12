@@ -237,6 +237,112 @@ class TestAgentRunnerPhaseExecution:
         assert "Unknown slash command" in result.error
 
 
+class TestSettingSourcesConfiguration:
+    """Tests for setting_sources configuration in ClaudeAgentOptions.
+
+    Verifies that all methods that create ClaudeAgentOptions include
+    setting_sources=["project"] to enable project-level skills/commands.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_phase_includes_setting_sources(self, project_dir, tmp_path):
+        """run_phase passes setting_sources=['project'] to options."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+            # Verify query was called with options containing setting_sources
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.setting_sources == ["project"]
+
+    @pytest.mark.asyncio
+    async def test_run_commit_includes_setting_sources(self, project_dir, tmp_path):
+        """run_commit passes setting_sources=['project'] to options."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        # Create chunk-commit skill file
+        commit_skill = project_dir / ".claude" / "commands" / "chunk-commit.md"
+        commit_skill.write_text("---\ndescription: Commit\n---\n\nCommit changes.")
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_commit(
+                chunk="test_chunk",
+                worktree_path=worktree_path,
+            )
+
+            # Verify query was called with options containing setting_sources
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.setting_sources == ["project"]
+
+    @pytest.mark.asyncio
+    async def test_resume_for_active_status_includes_setting_sources(
+        self, project_dir, tmp_path
+    ):
+        """resume_for_active_status passes setting_sources=['project'] to options."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.resume_for_active_status(
+                chunk="test_chunk",
+                worktree_path=worktree_path,
+                session_id="test-session-id",
+            )
+
+            # Verify query was called with options containing setting_sources
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.setting_sources == ["project"]
+
+
 class TestLogCallback:
     """Tests for log callback creation."""
 
