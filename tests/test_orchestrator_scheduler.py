@@ -1,6 +1,5 @@
 # Chunk: docs/chunks/orch_scheduling - Scheduler tests
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification tests
-# Chunk: docs/chunks/orch_question_forward - Question forwarding tests
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -1746,6 +1745,229 @@ ticket: null
         # 5. Verify pending_answer was cleared
         final = state_store.get_work_unit("test_chunk")
         assert final.pending_answer is None
+
+
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict integration tests
+class TestConflictChecking:
+    """Tests for conflict oracle integration in scheduler."""
+
+    @pytest.mark.asyncio
+    async def test_check_conflicts_empty_when_no_running(
+        self, scheduler, state_store
+    ):
+        """No conflicts when no other work units are running."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_check_conflicts_not_blocked_when_independent(
+        self, scheduler, state_store, tmp_path
+    ):
+        """Work units with INDEPENDENT verdict are not blocked."""
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with pre-cached INDEPENDENT verdict
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "INDEPENDENT"},
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a RUNNING work unit
+        running_unit = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(running_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_check_conflicts_blocked_when_serialize(
+        self, scheduler, state_store
+    ):
+        """Work units with SERIALIZE verdict are blocked by running units."""
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with pre-cached SERIALIZE verdict
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "SERIALIZE"},
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a RUNNING work unit
+        running_unit = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(running_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        assert "chunk_b" in blocking
+
+    @pytest.mark.asyncio
+    async def test_check_conflicts_serialize_not_blocked_when_ready(
+        self, scheduler, state_store
+    ):
+        """SERIALIZE verdict doesn't block when other chunk is just READY."""
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with pre-cached SERIALIZE verdict
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "SERIALIZE"},
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create another READY work unit (not running)
+        other_unit = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(other_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        # Not blocked because chunk_b is not RUNNING
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_ask_operator_blocks_running_not_ready(
+        self, scheduler, state_store
+    ):
+        """ASK_OPERATOR only blocks when other is RUNNING, not READY."""
+        now = datetime.now(timezone.utc)
+
+        # Test with READY: should NOT block
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "ASK_OPERATOR"},
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        other_ready = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(other_ready)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        assert blocking == []
+
+        # Now test with RUNNING: should block and mark needs attention
+        state_store.delete_work_unit("chunk_b")
+        work_unit2 = state_store.get_work_unit("chunk_a")
+        work_unit2.status = WorkUnitStatus.READY  # Reset status
+
+        other_running = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(other_running)
+
+        blocking = await scheduler._check_conflicts(work_unit2)
+        assert "chunk_b" in blocking
+
+        # Should be marked needs attention
+        updated = state_store.get_work_unit("chunk_a")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+
+    @pytest.mark.asyncio
+    async def test_conflict_override_independent_allows_dispatch(
+        self, scheduler, state_store
+    ):
+        """Operator override to INDEPENDENT allows dispatch even with ASK_OPERATOR."""
+        now = datetime.now(timezone.utc)
+
+        # Work unit with ASK_OPERATOR but INDEPENDENT override
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "ASK_OPERATOR"},
+            conflict_override="INDEPENDENT",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        running_unit = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(running_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_reanalyze_conflicts_clears_cached_verdicts(
+        self, scheduler, state_store
+    ):
+        """_reanalyze_conflicts clears cached verdicts for re-analysis."""
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with cached verdicts
+        work_unit = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            conflict_verdicts={"chunk_b": "SERIALIZE", "chunk_c": "INDEPENDENT"},
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._reanalyze_conflicts("chunk_a")
+
+        # Cached verdicts should be cleared
+        updated = state_store.get_work_unit("chunk_a")
+        assert updated.conflict_verdicts == {}
 
 
 # Chunk: docs/chunks/orch_question_forward - Question forwarding integration tests

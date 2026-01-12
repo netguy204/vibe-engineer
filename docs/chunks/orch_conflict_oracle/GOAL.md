@@ -1,96 +1,82 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+  - src/orchestrator/oracle.py
+  - src/orchestrator/models.py
+  - src/orchestrator/state.py
+  - src/orchestrator/api.py
+  - src/orchestrator/scheduler.py
+  - src/orchestrator/client.py
+  - src/ve.py
+  - tests/test_orchestrator_oracle.py
+  - tests/test_orchestrator_state.py
+  - tests/test_orchestrator_scheduler.py
+  - tests/test_orchestrator_cli.py
+  - tests/test_orchestrator_integration.py
+code_references:
+  - ref: src/orchestrator/oracle.py#ConflictOracle
+    implements: "Core conflict analysis class with progressive analysis by lifecycle stage"
+  - ref: src/orchestrator/oracle.py#ConflictOracle::analyze_conflict
+    implements: "Main conflict analysis entry point using stage-appropriate analysis"
+  - ref: src/orchestrator/oracle.py#ConflictOracle::should_serialize
+    implements: "Three-way verdict system (INDEPENDENT/SERIALIZE/ASK_OPERATOR)"
+  - ref: src/orchestrator/oracle.py#ConflictOracle::_analyze_completed_stage
+    implements: "Symbol-level conflict detection using code_references frontmatter"
+  - ref: src/orchestrator/oracle.py#ConflictOracle::_analyze_plan_stage
+    implements: "File overlap detection via PLAN.md Location: lines"
+  - ref: src/orchestrator/oracle.py#ConflictOracle::_extract_locations_from_plan
+    implements: "Parsing Location: lines from PLAN.md files"
+  - ref: src/orchestrator/oracle.py#AnalysisStage
+    implements: "Lifecycle stage constants for progressive analysis"
+  - ref: src/orchestrator/models.py#ConflictVerdict
+    implements: "Three-way verdict enum (INDEPENDENT/SERIALIZE/ASK_OPERATOR)"
+  - ref: src/orchestrator/models.py#ConflictAnalysis
+    implements: "Conflict analysis result model with overlapping files/symbols"
+  - ref: src/orchestrator/models.py#WorkUnit
+    implements: "Extended WorkUnit with conflict_verdicts and conflict_override fields"
+  - ref: src/orchestrator/state.py#StateStore::_migrate_v7
+    implements: "Database migration for conflict storage tables and columns"
+  - ref: src/orchestrator/state.py#StateStore::save_conflict_analysis
+    implements: "Conflict analysis persistence to SQLite"
+  - ref: src/orchestrator/state.py#StateStore::get_conflict_analysis
+    implements: "Retrieve conflict analysis for chunk pair"
+  - ref: src/orchestrator/state.py#StateStore::list_conflicts_for_chunk
+    implements: "List all conflicts involving a chunk"
+  - ref: src/orchestrator/state.py#StateStore::clear_conflicts_for_chunk
+    implements: "Clear stale conflicts on lifecycle advancement"
+  - ref: src/orchestrator/api.py#get_conflicts_endpoint
+    implements: "GET /conflicts/{chunk} API endpoint"
+  - ref: src/orchestrator/api.py#list_all_conflicts_endpoint
+    implements: "GET /conflicts API endpoint with verdict filter"
+  - ref: src/orchestrator/api.py#analyze_conflicts_endpoint
+    implements: "POST /conflicts/analyze API endpoint"
+  - ref: src/orchestrator/api.py#resolve_conflict_endpoint
+    implements: "POST /work-units/{chunk}/resolve API endpoint for operator resolution"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_check_conflicts
+    implements: "Conflict checking before dispatch; populates blocked_by"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_reanalyze_conflicts
+    implements: "Re-analyze conflicts on phase advancement for more precision"
+  - ref: src/orchestrator/client.py#OrchestratorClient::get_conflicts
+    implements: "Client method for getting conflicts for a chunk"
+  - ref: src/orchestrator/client.py#OrchestratorClient::analyze_conflicts
+    implements: "Client method for triggering conflict analysis"
+  - ref: src/orchestrator/client.py#OrchestratorClient::resolve_conflict
+    implements: "Client method for submitting operator resolution"
+  - ref: src/ve.py#orch_conflicts
+    implements: "ve orch conflicts CLI command"
+  - ref: src/ve.py#orch_resolve
+    implements: "ve orch resolve CLI command for operator resolution"
+  - ref: src/ve.py#orch_analyze
+    implements: "ve orch analyze CLI command for manual conflict analysis"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
-created_after: ["orch_inject_path_compat", "orch_submit_future_cmd"]
+created_after:
+- orch_inject_path_compat
+- orch_submit_future_cmd
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
--->
 
 # Chunk Goal
 

@@ -643,6 +643,155 @@ async def answer_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(updated.model_dump_json_serializable())
 
 
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis endpoints
+
+
+async def get_conflicts_endpoint(request: Request) -> JSONResponse:
+    """GET /conflicts/{chunk} - Get all conflict analyses for a chunk.
+
+    Returns all conflict analyses involving the specified chunk, ordered by
+    creation time (newest first).
+    """
+    chunk = request.path_params["chunk"]
+    store = _get_store()
+
+    conflicts = store.list_conflicts_for_chunk(chunk)
+
+    return JSONResponse({
+        "chunk": chunk,
+        "conflicts": [c.model_dump_json_serializable() for c in conflicts],
+        "count": len(conflicts),
+    })
+
+
+async def list_all_conflicts_endpoint(request: Request) -> JSONResponse:
+    """GET /conflicts - List all conflict analyses.
+
+    Optional query parameter:
+    - verdict: Filter by verdict (INDEPENDENT, SERIALIZE, ASK_OPERATOR)
+    """
+    store = _get_store()
+
+    from orchestrator.models import ConflictVerdict
+
+    # Optional verdict filter
+    verdict_param = request.query_params.get("verdict")
+    verdict_filter = None
+    if verdict_param:
+        try:
+            verdict_filter = ConflictVerdict(verdict_param)
+        except ValueError:
+            return _error_response(f"Invalid verdict: {verdict_param}")
+
+    conflicts = store.list_all_conflicts(verdict=verdict_filter)
+
+    return JSONResponse({
+        "conflicts": [c.model_dump_json_serializable() for c in conflicts],
+        "count": len(conflicts),
+    })
+
+
+async def analyze_conflicts_endpoint(request: Request) -> JSONResponse:
+    """POST /conflicts/analyze - Trigger conflict analysis between two chunks.
+
+    Request body:
+    {
+        "chunk_a": "chunk_name_1",
+        "chunk_b": "chunk_name_2"
+    }
+
+    Returns the conflict analysis result.
+    """
+    store = _get_store()
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    chunk_a = body.get("chunk_a")
+    chunk_b = body.get("chunk_b")
+
+    if not chunk_a or not chunk_b:
+        return _error_response("Missing required fields: chunk_a and chunk_b")
+
+    # Create oracle and analyze
+    from orchestrator.oracle import create_oracle
+
+    oracle = create_oracle(_project_dir, store)
+
+    try:
+        analysis = oracle.analyze_conflict(chunk_a, chunk_b)
+    except Exception as e:
+        return _error_response(f"Analysis failed: {e}", status_code=500)
+
+    return JSONResponse(analysis.model_dump_json_serializable())
+
+
+async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
+    """POST /work-units/{chunk}/resolve - Resolve an ASK_OPERATOR conflict.
+
+    Request body:
+    {
+        "other_chunk": "chunk_name",
+        "verdict": "parallelize" | "serialize"
+    }
+
+    Stores the operator's decision and updates the work unit accordingly.
+    """
+    chunk = request.path_params["chunk"]
+    store = _get_store()
+
+    # Get existing work unit
+    unit = store.get_work_unit(chunk)
+    if unit is None:
+        return _not_found_response("Work unit", chunk)
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    other_chunk = body.get("other_chunk")
+    verdict = body.get("verdict")
+
+    if not other_chunk or not verdict:
+        return _error_response("Missing required fields: other_chunk and verdict")
+
+    # Validate verdict
+    if verdict not in ("parallelize", "serialize"):
+        return _error_response("verdict must be 'parallelize' or 'serialize'")
+
+    from orchestrator.models import ConflictVerdict
+
+    # Map human-readable verdict to enum
+    resolved_verdict = (
+        ConflictVerdict.INDEPENDENT if verdict == "parallelize"
+        else ConflictVerdict.SERIALIZE
+    )
+
+    # Update conflict_verdicts on the work unit
+    unit.conflict_verdicts[other_chunk] = resolved_verdict.value
+    unit.updated_at = datetime.now(timezone.utc)
+
+    # If verdict is SERIALIZE, add to blocked_by if not already there
+    if resolved_verdict == ConflictVerdict.SERIALIZE:
+        if other_chunk not in unit.blocked_by:
+            unit.blocked_by.append(other_chunk)
+
+    try:
+        updated = store.update_work_unit(unit)
+    except ValueError as e:
+        return _error_response(str(e))
+
+    return JSONResponse({
+        "chunk": chunk,
+        "other_chunk": other_chunk,
+        "verdict": resolved_verdict.value,
+        "blocked_by": updated.blocked_by,
+    })
+
+
 # Application factory
 
 
@@ -673,13 +822,17 @@ def create_app(project_dir: Path) -> Starlette:
         Route("/config", endpoint=update_config_endpoint, methods=["PATCH"]),
         # Attention queue endpoint
         Route("/attention", endpoint=attention_endpoint, methods=["GET"]),
+        # Chunk: docs/chunks/orch_conflict_oracle - Conflict endpoints
+        Route("/conflicts", endpoint=list_all_conflicts_endpoint, methods=["GET"]),
+        Route("/conflicts/analyze", endpoint=analyze_conflicts_endpoint, methods=["POST"]),
+        Route("/conflicts/{chunk:path}", endpoint=get_conflicts_endpoint, methods=["GET"]),
         # Work unit endpoints
         Route("/work-units", endpoint=list_work_units_endpoint, methods=["GET"]),
         Route("/work-units", endpoint=create_work_unit_endpoint, methods=["POST"]),
         # Scheduling endpoints - must come before generic {chunk:path}
         Route("/work-units/inject", endpoint=inject_endpoint, methods=["POST"]),
         Route("/work-units/queue", endpoint=queue_endpoint, methods=["GET"]),
-        # Answer, history and priority endpoints must come before generic {chunk:path}
+        # Answer, history, priority and resolve endpoints must come before generic {chunk:path}
         Route(
             "/work-units/{chunk}/answer",
             endpoint=answer_endpoint,
@@ -694,6 +847,12 @@ def create_app(project_dir: Path) -> Starlette:
             "/work-units/{chunk}/priority",
             endpoint=prioritize_endpoint,
             methods=["PATCH"],
+        ),
+        # Chunk: docs/chunks/orch_conflict_oracle - Conflict resolution endpoint
+        Route(
+            "/work-units/{chunk}/resolve",
+            endpoint=resolve_conflict_endpoint,
+            methods=["POST"],
         ),
         # Generic work unit endpoints
         Route(

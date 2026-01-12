@@ -11,7 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from orchestrator.models import WorkUnit, WorkUnitPhase, WorkUnitStatus
+from orchestrator.models import (
+    ConflictAnalysis,
+    ConflictVerdict,
+    WorkUnit,
+    WorkUnitPhase,
+    WorkUnitStatus,
+)
 
 
 class StateStore:
@@ -21,7 +27,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 6
+    CURRENT_VERSION = 7
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -89,6 +95,7 @@ class StateStore:
             4: self._migrate_v4,
             5: self._migrate_v5,
             6: self._migrate_v6,
+            7: self._migrate_v7,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -190,6 +197,40 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_conflict_oracle - Conflict storage migration
+    def _migrate_v7(self) -> None:
+        """Add conflict analysis storage and work unit conflict fields."""
+        self.connection.executescript(
+            """
+            -- Add conflict_verdicts column (JSON) for storing verdicts against other chunks
+            ALTER TABLE work_units ADD COLUMN conflict_verdicts TEXT;
+
+            -- Add conflict_override column for operator overrides of ASK_OPERATOR verdicts
+            ALTER TABLE work_units ADD COLUMN conflict_override TEXT;
+
+            -- Create conflict_analyses table for storing detailed conflict analysis results
+            CREATE TABLE IF NOT EXISTS conflict_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chunk_a TEXT NOT NULL,
+                chunk_b TEXT NOT NULL,
+                verdict TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                reason TEXT NOT NULL,
+                analysis_stage TEXT NOT NULL,
+                overlapping_files TEXT,
+                overlapping_symbols TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(chunk_a, chunk_b)
+            );
+
+            -- Create index for fast lookup by chunk
+            CREATE INDEX IF NOT EXISTS idx_conflict_analyses_chunk_a
+                ON conflict_analyses(chunk_a);
+            CREATE INDEX IF NOT EXISTS idx_conflict_analyses_chunk_b
+                ON conflict_analyses(chunk_b);
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -213,6 +254,8 @@ class StateStore:
             ValueError: If a work unit with the same chunk already exists
         """
         blocked_by_json = json.dumps(work_unit.blocked_by)
+        # Chunk: docs/chunks/orch_conflict_oracle - Serialize conflict verdicts
+        conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
         try:
             self.connection.execute(
@@ -220,8 +263,8 @@ class StateStore:
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     conflict_verdicts, conflict_override, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -235,6 +278,8 @@ class StateStore:
                     work_unit.attention_reason,
                     work_unit.displaced_chunk,
                     work_unit.pending_answer,
+                    conflict_verdicts_json,
+                    work_unit.conflict_override,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -284,6 +329,8 @@ class StateStore:
             raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
 
         blocked_by_json = json.dumps(work_unit.blocked_by)
+        # Chunk: docs/chunks/orch_conflict_oracle - Serialize conflict verdicts
+        conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
         self.connection.execute(
             """
@@ -291,7 +338,7 @@ class StateStore:
             SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
                 priority = ?, session_id = ?, completion_retries = ?,
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
-                updated_at = ?
+                conflict_verdicts = ?, conflict_override = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -305,6 +352,8 @@ class StateStore:
                 work_unit.attention_reason,
                 work_unit.displaced_chunk,
                 work_unit.pending_answer,
+                conflict_verdicts_json,
+                work_unit.conflict_override,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -553,6 +602,18 @@ class StateStore:
         except (IndexError, KeyError):
             pending_answer = None
 
+        # Chunk: docs/chunks/orch_conflict_oracle - Parse conflict fields
+        try:
+            conflict_verdicts_str = row["conflict_verdicts"]
+            conflict_verdicts = json.loads(conflict_verdicts_str) if conflict_verdicts_str else {}
+        except (IndexError, KeyError):
+            conflict_verdicts = {}
+
+        try:
+            conflict_override = row["conflict_override"]
+        except (IndexError, KeyError):
+            conflict_override = None
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -565,8 +626,172 @@ class StateStore:
             attention_reason=attention_reason,
             displaced_chunk=displaced_chunk,
             pending_answer=pending_answer,
+            conflict_verdicts=conflict_verdicts,
+            conflict_override=conflict_override,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    # Chunk: docs/chunks/orch_conflict_oracle - Conflict persistence methods
+
+    def save_conflict_analysis(self, analysis: ConflictAnalysis) -> None:
+        """Save or update a conflict analysis.
+
+        Uses INSERT OR REPLACE to update existing analyses for the same chunk pair.
+        Chunk pairs are stored with alphabetical ordering for consistent lookup.
+
+        Args:
+            analysis: The conflict analysis to save
+        """
+        # Ensure consistent ordering for chunk pair
+        chunk_a, chunk_b = sorted([analysis.chunk_a, analysis.chunk_b])
+
+        overlapping_files_json = json.dumps(analysis.overlapping_files)
+        overlapping_symbols_json = json.dumps(analysis.overlapping_symbols)
+
+        self.connection.execute(
+            """
+            INSERT OR REPLACE INTO conflict_analyses
+                (chunk_a, chunk_b, verdict, confidence, reason, analysis_stage,
+                 overlapping_files, overlapping_symbols, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                chunk_a,
+                chunk_b,
+                analysis.verdict.value,
+                analysis.confidence,
+                analysis.reason,
+                analysis.analysis_stage,
+                overlapping_files_json,
+                overlapping_symbols_json,
+                analysis.created_at.isoformat(),
+            ),
+        )
+
+    def get_conflict_analysis(
+        self, chunk_a: str, chunk_b: str
+    ) -> Optional[ConflictAnalysis]:
+        """Get existing conflict analysis for a chunk pair.
+
+        Args:
+            chunk_a: First chunk name
+            chunk_b: Second chunk name
+
+        Returns:
+            The conflict analysis, or None if not found
+        """
+        # Ensure consistent ordering for lookup
+        sorted_a, sorted_b = sorted([chunk_a, chunk_b])
+
+        cursor = self.connection.execute(
+            """
+            SELECT * FROM conflict_analyses
+            WHERE chunk_a = ? AND chunk_b = ?
+            """,
+            (sorted_a, sorted_b),
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_conflict_analysis(row)
+
+    def list_conflicts_for_chunk(self, chunk: str) -> list[ConflictAnalysis]:
+        """Get all conflict analyses involving a chunk.
+
+        Args:
+            chunk: The chunk name to find conflicts for
+
+        Returns:
+            List of conflict analyses involving this chunk
+        """
+        cursor = self.connection.execute(
+            """
+            SELECT * FROM conflict_analyses
+            WHERE chunk_a = ? OR chunk_b = ?
+            ORDER BY created_at DESC
+            """,
+            (chunk, chunk),
+        )
+
+        return [self._row_to_conflict_analysis(row) for row in cursor.fetchall()]
+
+    def list_all_conflicts(
+        self, verdict: Optional[ConflictVerdict] = None
+    ) -> list[ConflictAnalysis]:
+        """Get all conflict analyses, optionally filtered by verdict.
+
+        Args:
+            verdict: Optional verdict to filter by
+
+        Returns:
+            List of conflict analyses
+        """
+        if verdict is not None:
+            cursor = self.connection.execute(
+                """
+                SELECT * FROM conflict_analyses
+                WHERE verdict = ?
+                ORDER BY created_at DESC
+                """,
+                (verdict.value,),
+            )
+        else:
+            cursor = self.connection.execute(
+                """
+                SELECT * FROM conflict_analyses
+                ORDER BY created_at DESC
+                """
+            )
+
+        return [self._row_to_conflict_analysis(row) for row in cursor.fetchall()]
+
+    def clear_conflicts_for_chunk(self, chunk: str) -> int:
+        """Clear all conflict analyses for a chunk.
+
+        Called when a chunk advances through its lifecycle and conflicts
+        should be re-analyzed with more precise information.
+
+        Args:
+            chunk: The chunk name to clear conflicts for
+
+        Returns:
+            Number of conflict analyses deleted
+        """
+        cursor = self.connection.execute(
+            """
+            DELETE FROM conflict_analyses
+            WHERE chunk_a = ? OR chunk_b = ?
+            """,
+            (chunk, chunk),
+        )
+        return cursor.rowcount
+
+    def _row_to_conflict_analysis(self, row: sqlite3.Row) -> ConflictAnalysis:
+        """Convert a database row to a ConflictAnalysis model."""
+        overlapping_files = (
+            json.loads(row["overlapping_files"])
+            if row["overlapping_files"]
+            else []
+        )
+        overlapping_symbols = (
+            json.loads(row["overlapping_symbols"])
+            if row["overlapping_symbols"]
+            else []
+        )
+
+        return ConflictAnalysis(
+            chunk_a=row["chunk_a"],
+            chunk_b=row["chunk_b"],
+            verdict=ConflictVerdict(row["verdict"]),
+            confidence=row["confidence"],
+            reason=row["reason"],
+            analysis_stage=row["analysis_stage"],
+            overlapping_files=overlapping_files,
+            overlapping_symbols=overlapping_symbols,
+            created_at=datetime.fromisoformat(row["created_at"]),
         )
 
 
