@@ -38,27 +38,30 @@ completely in order:
 3. **Determine whether to create a FUTURE or IMPLEMENTING chunk.** Apply these
    checks in priority order:
 
-   **Priority 1: Explicit user intent signals**
+   **Priority 1: Explicit user intent signals (CHECK THIS FIRST)**
 
-   First, scan the user's prompt for explicit timing signals:
+   BEFORE running any commands, scan the user's prompt for explicit timing signals.
+   This takes precedence over everything else:
 
-   - **FUTURE signals**: "future", "later", "queue", "backlog", "upcoming",
-     "not now", "after current work", "next up after", "when we're ready",
-     "eventually", "down the road"
-     → If found, use `--future`
+   - **FUTURE signals**: "future", "schedule", "scheduled", "later", "queue",
+     "queued", "backlog", "upcoming", "not now", "after current work",
+     "next up after", "when we're ready", "eventually", "down the road",
+     "for later", "defer", "deferred"
+     → If ANY of these are found, use `--future`. Do not proceed to Priority 2.
 
    - **IMPLEMENTING signals**: "now", "immediately", "start working on",
      "work on this next", "let's do this", "begin", "start this", "dive into",
-     "tackle this"
+     "tackle this", "right now", "today"
      → If found, do NOT use `--future` (but see step 3a for conflict handling)
 
    Note: Consider context when interpreting signals. "Start a future task"
-   contains "start" but clearly indicates FUTURE intent.
+   contains "start" but clearly indicates FUTURE intent. When in doubt, the
+   explicit timing word ("future", "schedule", etc.) takes precedence.
 
-   **Priority 2: Existing implementing chunk check**
+   **Priority 2: Existing implementing chunk check (ONLY if no explicit signal)**
 
-   If no explicit intent signal was found, run `ve chunk list --latest` to check
-   if there's already an IMPLEMENTING chunk:
+   If and only if no explicit intent signal was found in Priority 1, run
+   `ve chunk list --latest` to check if there's already an IMPLEMENTING chunk:
 
    - If there IS an IMPLEMENTING chunk → use `--future`
    - If there is NO IMPLEMENTING chunk (command exits with error or returns

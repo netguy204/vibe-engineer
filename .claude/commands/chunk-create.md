@@ -40,18 +40,63 @@ completely in order:
    ticket number is referenced, pass no argument to the command below in the
    <ticket number> placeholder.
 
-3. **Determine whether to create a FUTURE chunk.** Run `ve chunk list --latest`
-   to check if there's already an IMPLEMENTING chunk:
+3. **Determine whether to create a FUTURE or IMPLEMENTING chunk.** Apply these
+   checks in priority order:
 
-   - If there IS an IMPLEMENTING chunk, default to using `--future` when creating
-     this new chunk. Only skip `--future` if the user explicitly indicates they
-     want to work on this immediately instead of the current chunk.
+   **Priority 1: Explicit user intent signals (CHECK THIS FIRST)**
 
-   - If there is NO IMPLEMENTING chunk (command exits with error or returns nothing),
-     create the chunk normally without `--future`.
+   BEFORE running any commands, scan the user's prompt for explicit timing signals.
+   This takes precedence over everything else:
 
-   - Also analyze the user's prompt for signals like "later", "next", "after this",
-     "future", "queue up" - these all suggest using `--future`.
+   - **FUTURE signals**: "future", "schedule", "scheduled", "later", "queue",
+     "queued", "backlog", "upcoming", "not now", "after current work",
+     "next up after", "when we're ready", "eventually", "down the road",
+     "for later", "defer", "deferred"
+     → If ANY of these are found, use `--future`. Do not proceed to Priority 2.
+
+   - **IMPLEMENTING signals**: "now", "immediately", "start working on",
+     "work on this next", "let's do this", "begin", "start this", "dive into",
+     "tackle this", "right now", "today"
+     → If found, do NOT use `--future` (but see step 3a for conflict handling)
+
+   Note: Consider context when interpreting signals. "Start a future task"
+   contains "start" but clearly indicates FUTURE intent. When in doubt, the
+   explicit timing word ("future", "schedule", etc.) takes precedence.
+
+   **Priority 2: Existing implementing chunk check (ONLY if no explicit signal)**
+
+   If and only if no explicit intent signal was found in Priority 1, run
+   `ve chunk list --latest` to check if there's already an IMPLEMENTING chunk:
+
+   - If there IS an IMPLEMENTING chunk → use `--future`
+   - If there is NO IMPLEMENTING chunk (command exits with error or returns
+     nothing) → do NOT use `--future`
+
+3a. **Handle IMPLEMENTING conflicts.** If the user explicitly signaled they want
+    to work on this NOW (IMPLEMENTING signals detected), but `ve chunk list --latest`
+    shows an existing IMPLEMENTING chunk:
+
+    1. **Inform the user** of the conflict: "You want to start this chunk
+       immediately, but chunk X is currently being implemented."
+
+    2. **Offer to pause** the current chunk: "Would you like me to pause the
+       current chunk so we can start this one?"
+
+    3. **If the user agrees**, execute the safe pause protocol:
+       - Run `pytest tests/` and confirm all tests pass. If tests fail, inform
+         the user and do NOT proceed with the pause—the codebase should be
+         healthy before switching context.
+       - Add a "## Paused State" section to the current chunk's PLAN.md
+         documenting:
+         - Which steps have been completed
+         - What remains to be done
+         - Any work-in-progress context the next agent needs
+       - Run `ve chunk status <current_chunk_id> FUTURE` to change the current
+         chunk's status from IMPLEMENTING to FUTURE
+
+    4. **Then proceed** to create the new chunk as IMPLEMENTING (without `--future`)
+
+    If the user declines the pause, use `--future` for the new chunk instead.
 
 4. Run `ve chunk create <shortname> <ticket number> [--future]` and note the chunk
    directory name that is returned by the command. Include `--future` based on
