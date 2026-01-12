@@ -5,12 +5,10 @@ parent_chunk: null
 code_paths: []
 code_references: []
 narrative: null
-investigation: null
+investigation: parallel_agent_orchestration
 subsystems: []
-friction_entries:
-  - entry_id: "Over-eager conflict oracle causes unnecessary blocking"
-    scope: full
-created_after: ["artifact_copy_backref", "friction_claude_docs", "friction_template_and_cli", "orch_conflict_template_fix", "orch_sandbox_enforcement", "orch_blocked_lifecycle"]
+friction_entries: []
+created_after: ["artifact_copy_backref", "friction_chunk_linking", "friction_claude_docs", "remove_external_ref", "selective_project_linking"]
 ---
 
 <!--
@@ -87,6 +85,22 @@ SUBSYSTEMS:
 - When a chunk that implements a subsystem is completed, a reference should be added to
   that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
 
+FRICTION_ENTRIES:
+- Optional list of friction entries that this chunk addresses
+- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
+- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
+  - "full": This chunk fully resolves the friction entry
+  - "partial": This chunk partially addresses the friction entry
+- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
+- Example:
+  friction_entries:
+    - entry_id: F001
+      scope: full
+    - entry_id: F003
+      scope: partial
+- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
+- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
+
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk
   should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
@@ -121,56 +135,46 @@ WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
 
 ## Minor Goal
 
-Fix the orchestrator scheduler bug where work units remain stuck in NEEDS_ATTENTION
-status after their blocking work units complete. When a blocker completes and is
-removed from a work unit's `blocked_by` list, if that list becomes empty, the work
-unit should automatically transition from NEEDS_ATTENTION back to READY status.
+Add a web dashboard to the orchestrator that provides an "at a glance" interface for rapid re-orientation after interruptions. The dashboard enables operators to monitor parallel agent workflows, see what needs attention, and respond to questions without switching to the CLI.
 
-Currently, the scheduler correctly clears the `blocked_by` list but fails to update
-the status, leaving work units orphaned in NEEDS_ATTENTION with stale attention
-reasons. This requires manual intervention via `ve orch work-unit status <chunk> READY`.
+This is Phase 5 of the orchestrator implementation (per `docs/investigations/parallel_agent_orchestration/design.md`). It depends on the attention queue infrastructure from `orch_attention_queue`.
+
+**Technology choices:**
+- **FastAPI + Jinja2** for server-rendered HTML (lightweight, consistent with Python codebase)
+- **WebSocket** for real-time updates (attention queue changes + work unit status transitions)
+- **Basic actions** in UI (answer questions, resolve conflicts) with CLI for advanced operations
 
 ## Success Criteria
 
-- When a work unit's last blocker completes, the work unit transitions from
-  NEEDS_ATTENTION to READY automatically (no manual intervention required)
-- The `attention_reason` field is cleared on ANY transition to READY or RUNNING
-  (not just unblock scenarios - also manual status changes, retries, etc.)
-- The `blocked_by` list is cleared when a work unit transitions to RUNNING
-  (currently RUNNING work units still show stale blockers in `ve orch ps`)
-- `ve orch ps` output shows no stale reasons or blockers for active work units
-- Test coverage for the unblock-to-ready transition path
-- Test coverage for reason and blocked_by cleanup on status transitions
-- Existing orchestrator tests continue to pass
+1. **Dashboard serves at `/` when daemon is running**
+   - `ve orch start` spawns the daemon which serves HTTP on a configurable port
+   - Root URL shows the orchestrator dashboard
+   - Dashboard accessible at `http://localhost:<port>/` (port from config or default)
 
-## Investigation Context
+2. **Real-time attention queue view**
+   - WebSocket connection streams attention queue updates
+   - New attention items appear without page refresh
+   - Resolved items disappear without page refresh
+   - Each item shows: type, chunk, downstream impact (blocks:N), time waiting, question/context
 
-This bug was discovered during `/orchestrator-investigate` when three work units
-(`friction_chunk_linking`, `selective_project_linking`, `remove_external_ref`)
-were stuck in NEEDS_ATTENTION after their blocker `artifact_copy_backref` completed.
+3. **Process grid showing work unit status**
+   - RUNNING work units with current phase and elapsed time
+   - READY work units queued for execution
+   - BLOCKED work units with blocking reason visible
+   - Status changes stream via WebSocket
 
-**Observed behavior from logs:**
-```
-Removed artifact_copy_backref from friction_chunk_linking's blocked_by (remaining: [])
-Removed artifact_copy_backref from selective_project_linking's blocked_by (remaining: [])
-Removed artifact_copy_backref from remove_external_ref's blocked_by (remaining: [])
-```
+4. **Answer questions from the UI**
+   - Click on attention item to expand context
+   - Text input for free-form answers
+   - Option buttons for multiple-choice questions
+   - Submit answer triggers `ve orch answer` equivalent
 
-The `blocked_by` lists were correctly cleared, but the work units remained stuck
-with status=NEEDS_ATTENTION and stale attention_reason messages still referencing
-`artifact_copy_backref`.
+5. **Resolve conflicts from the UI**
+   - Conflict items show the two chunks and confidence level
+   - Buttons for "Parallelize anyway" vs "Serialize"
+   - Submit triggers `ve orch resolve` equivalent
 
-**Likely fix location:** The scheduler code that handles blocker completion
-(look for "Removed X from Y's blocked_by" log message) needs to check if
-`blocked_by` is now empty and, if so, transition status to READY and clear
-`attention_reason`.
-
-**Related issue #1:** The `attention_reason` field persists when work units are
-manually reset to READY or when they transition to RUNNING. This causes confusing
-output in `ve orch ps` where work units show reasons that no longer apply. The fix
-should clear `attention_reason` on any transition to READY or RUNNING.
-
-**Related issue #2:** The `blocked_by` list is not cleared when work units transition
-to RUNNING. Observed: `remove_external_ref` was RUNNING but still showed
-`friction_chunk_linking` in its BLOCKED BY column even though that chunk was DONE.
-The `blocked_by` list should be cleared when a work unit starts running.
+6. **Tests pass**
+   - Integration tests for WebSocket connection and message streaming
+   - Tests for answer/resolve endpoints
+   - Dashboard renders correctly with various queue states

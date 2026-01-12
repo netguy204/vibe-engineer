@@ -13,7 +13,7 @@ proposed_chunks:
   - prompt: "Conflict oracle: goal-level semantic comparison, plan-level file/symbol analysis, ve orch resolve command"
     chunk_directory: orch_conflict_oracle
   - prompt: "Orchestrator dashboard: web UI with WebSocket updates, attention queue view, process grid"
-    chunk_directory: null
+    chunk_directory: orch_dashboard
 created_after: ["task_agent_experience", "xr_vibe_integration"]
 ---
 

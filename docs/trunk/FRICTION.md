@@ -1,5 +1,6 @@
 ---
-themes: []
+themes:
+  - orchestrator
 proposed_chunks: []
 ---
 
@@ -58,3 +59,26 @@ Where:
 
 New entries are appended below this comment.
 -->
+
+### 2026-01-12 [orchestrator] Over-eager conflict oracle causes unnecessary blocking
+
+The orchestrator's conflict oracle flags conflicts too aggressively, causing work units
+to get stuck in NEEDS_ATTENTION when they could safely proceed. Issues encountered:
+
+1. **Stale blockers persist**: Work units show completed chunks in their `blocked_by`
+   list even after those chunks are DONE. Example: `remove_external_ref` showed
+   `friction_chunk_linking` as a blocker while RUNNING.
+
+2. **Status doesn't auto-transition**: When a blocker completes, the blocked work unit
+   stays in NEEDS_ATTENTION instead of transitioning to READY. Requires manual
+   `ve orch work-unit status <chunk> READY` intervention.
+
+3. **Attention reasons go stale**: The `attention_reason` field isn't cleared when
+   work units transition to READY or RUNNING, causing confusing `ve orch ps` output.
+
+4. **Code path overlap is too coarse**: Conflict detection based on `code_paths`
+   overlap doesn't consider whether chunks actually modify the same lines or functions.
+   Two chunks touching the same file aren't necessarily in conflict.
+
+Root cause: State cleanup isn't happening on status transitions. Created future chunk
+`orch_unblock_transition` to address the cleanup bugs.
