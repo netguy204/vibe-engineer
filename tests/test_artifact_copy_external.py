@@ -1,11 +1,14 @@
 """Tests for copying external artifacts as references.
 
 # Chunk: docs/chunks/copy_as_external - Copy artifact as external reference tests
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference creation tests
 """
 
+import re
 import subprocess
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from ve import cli
@@ -406,3 +409,253 @@ created_after: []
         )
 
         assert result.exit_code != 0
+
+
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference creation tests
+class TestCopyArtifactAsExternalBackReference:
+    """Tests for back-reference creation when copying artifacts as external."""
+
+    def _parse_frontmatter(self, file_path):
+        """Helper to parse YAML frontmatter from a file."""
+        content = file_path.read_text()
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+        if not match:
+            return {}
+        return yaml.safe_load(match.group(1)) or {}
+
+    def test_back_reference_created_on_copy(self, tmp_path):
+        """After copy_artifact_as_external(), source artifact's frontmatter has dependents entry."""
+        task_dir, external_path, project_paths = setup_task_directory(tmp_path)
+
+        # Create artifact in external repo
+        chunk_dir = external_path / "docs" / "chunks" / "my_feature"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text("""---
+status: ACTIVE
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+created_after: []
+dependents: []
+---
+
+# Chunk Goal
+
+A feature chunk.
+""")
+
+        # Copy as external reference to the project
+        result = copy_artifact_as_external(
+            task_dir=task_dir,
+            artifact_path="docs/chunks/my_feature",
+            target_project="acme/proj",
+        )
+
+        # Verify source artifact's frontmatter has dependents entry
+        source_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
+        assert "dependents" in source_frontmatter
+        assert len(source_frontmatter["dependents"]) == 1
+
+        dependent = source_frontmatter["dependents"][0]
+        assert dependent["artifact_type"] == "chunk"
+        assert dependent["artifact_id"] == "my_feature"  # Dest name (same as source since no --name)
+        assert dependent["repo"] == "acme/proj"  # Target project
+        assert len(dependent["pinned"]) == 40  # SHA
+
+        # Verify result indicates source was updated
+        assert result.get("source_updated") is True
+
+    def test_existing_dependents_preserved(self, tmp_path):
+        """Existing dependents entries are preserved when adding new back-reference."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["proj1", "proj2"]
+        )
+
+        # Create artifact with existing dependent
+        chunk_dir = external_path / "docs" / "chunks" / "shared_feature"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text("""---
+status: ACTIVE
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+created_after: []
+dependents:
+  - artifact_type: chunk
+    artifact_id: old_feature
+    repo: acme/old_project
+    pinned: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+
+# Chunk Goal
+
+A shared feature.
+""")
+
+        # Copy as external reference to the first project
+        copy_artifact_as_external(
+            task_dir=task_dir,
+            artifact_path="docs/chunks/shared_feature",
+            target_project="acme/proj1",
+        )
+
+        # Verify both old and new dependents exist
+        source_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
+        assert len(source_frontmatter["dependents"]) == 2
+
+        # Find old dependent
+        old_dep = next(
+            (d for d in source_frontmatter["dependents"] if d["repo"] == "acme/old_project"),
+            None,
+        )
+        assert old_dep is not None
+        assert old_dep["artifact_id"] == "old_feature"
+        assert old_dep["pinned"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        # Find new dependent
+        new_dep = next(
+            (d for d in source_frontmatter["dependents"] if d["repo"] == "acme/proj1"),
+            None,
+        )
+        assert new_dep is not None
+        assert new_dep["artifact_id"] == "shared_feature"
+
+    def test_idempotent_copy_no_duplicates(self, tmp_path):
+        """Re-running copy with same params doesn't create duplicate dependents."""
+        task_dir, external_path, project_paths = setup_task_directory(tmp_path)
+
+        # Create artifact in external repo
+        chunk_dir = external_path / "docs" / "chunks" / "my_feature"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text("""---
+status: ACTIVE
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+created_after: []
+dependents: []
+---
+
+# Chunk Goal
+
+A feature chunk.
+""")
+
+        # Copy as external reference once
+        copy_artifact_as_external(
+            task_dir=task_dir,
+            artifact_path="docs/chunks/my_feature",
+            target_project="acme/proj",
+        )
+
+        # Record the pinned SHA after first copy
+        first_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
+        first_pinned = first_frontmatter["dependents"][0]["pinned"]
+
+        # Remove the external.yaml so we can copy again (simulating re-run scenario)
+        external_yaml = project_paths[0] / "docs" / "chunks" / "my_feature" / "external.yaml"
+        external_yaml.parent.rmdir()  # Remove the whole directory
+        external_yaml.parent.parent.joinpath("my_feature").mkdir(exist_ok=True)
+
+        # Make a commit in external repo to change the SHA
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "Empty commit"],
+            cwd=external_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Copy again - this should update the pinned SHA, not create duplicate
+        copy_artifact_as_external(
+            task_dir=task_dir,
+            artifact_path="docs/chunks/my_feature",
+            target_project="acme/proj",
+        )
+
+        # Verify only one dependent entry exists
+        source_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
+        proj_deps = [
+            d for d in source_frontmatter["dependents"]
+            if d["repo"] == "acme/proj"
+            and d["artifact_type"] == "chunk"
+            and d["artifact_id"] == "my_feature"
+        ]
+        assert len(proj_deps) == 1
+
+        # The pinned SHA should be updated to the new SHA
+        assert proj_deps[0]["pinned"] != first_pinned
+
+    def test_back_reference_all_artifact_types(self, tmp_path):
+        """Back-reference works for all artifact types."""
+        task_dir, external_path, project_paths = setup_task_directory(tmp_path)
+
+        # Test each artifact type
+        artifact_configs = [
+            ("chunks", "test_chunk", "GOAL.md", "chunk", "ACTIVE"),
+            ("narratives", "test_narrative", "OVERVIEW.md", "narrative", "ACTIVE"),
+            ("investigations", "test_investigation", "OVERVIEW.md", "investigation", "ONGOING"),
+            ("subsystems", "test_subsystem", "OVERVIEW.md", "subsystem", "STABLE"),
+        ]
+
+        for dir_name, artifact_name, main_file, type_value, status in artifact_configs:
+            # Create artifact in external repo
+            artifact_dir = external_path / "docs" / dir_name / artifact_name
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / main_file).write_text(f"""---
+status: {status}
+created_after: []
+dependents: []
+---
+
+# {artifact_name}
+""")
+
+            # Copy as external reference
+            result = copy_artifact_as_external(
+                task_dir=task_dir,
+                artifact_path=f"docs/{dir_name}/{artifact_name}",
+                target_project="acme/proj",
+            )
+
+            # Verify back-reference was created
+            source_frontmatter = self._parse_frontmatter(artifact_dir / main_file)
+            assert "dependents" in source_frontmatter, f"Failed for {dir_name}"
+            assert len(source_frontmatter["dependents"]) == 1, f"Failed for {dir_name}"
+
+            dependent = source_frontmatter["dependents"][0]
+            assert dependent["artifact_type"] == type_value, f"Failed for {dir_name}"
+            assert dependent["artifact_id"] == artifact_name, f"Failed for {dir_name}"
+            assert dependent["repo"] == "acme/proj", f"Failed for {dir_name}"
+            assert len(dependent["pinned"]) == 40, f"Failed for {dir_name}"
+
+    def test_back_reference_with_new_name(self, tmp_path):
+        """Back-reference uses destination name when --name is provided."""
+        task_dir, external_path, project_paths = setup_task_directory(tmp_path)
+
+        # Create artifact in external repo
+        chunk_dir = external_path / "docs" / "chunks" / "original_name"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text("""---
+status: ACTIVE
+created_after: []
+dependents: []
+---
+
+# Original
+""")
+
+        # Copy with a new name
+        copy_artifact_as_external(
+            task_dir=task_dir,
+            artifact_path="docs/chunks/original_name",
+            target_project="acme/proj",
+            new_name="renamed_feature",
+        )
+
+        # Verify back-reference uses the destination name
+        source_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
+        dependent = source_frontmatter["dependents"][0]
+        assert dependent["artifact_id"] == "renamed_feature"  # Destination name

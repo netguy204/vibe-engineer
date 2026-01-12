@@ -8,151 +8,163 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extends `copy_artifact_as_external()` in `src/task_utils.py` to update the
+source artifact's `dependents` field after successfully creating the `external.yaml`
+in the target project. This implements the "back-reference" that makes the relationship
+bidirectional.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Build on:**
+- `add_dependents_to_artifact()` in `task_utils.py` - already handles updating
+  frontmatter `dependents` field for any artifact type
+- `ARTIFACT_MAIN_FILE` from `external_refs.py` - maps artifact types to main files
+  (GOAL.md for chunks, OVERVIEW.md for others)
+- Existing pattern in `promote_artifact()` - already updates source artifact's
+  `dependents` field
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Key insight**: The `add_dependents_to_artifact()` function already exists and can
+update the `dependents` field for any artifact type. We need to:
+1. Build the dependent entry with correct fields (`artifact_type`, `artifact_id`, `repo`, `pinned`)
+2. Handle preservation of existing dependents (append, not overwrite)
+3. Handle idempotency (don't duplicate entries on re-run)
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/artifact_copy_backref/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Strategy:**
+1. Create a helper function to append a dependent entry preserving existing entries
+2. Call this helper after creating `external.yaml` in `copy_artifact_as_external()`
+3. Update tests to verify back-reference creation
+
+Per DEC-005, no git operations are prescribed.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk USES the workflow artifacts
+  subsystem patterns for:
+  - External artifact references (`ExternalArtifactRef` model in `models.py`)
+  - Artifact main file mapping (`ARTIFACT_MAIN_FILE` in `external_refs.py`)
+  - Dependent update patterns (`add_dependents_to_artifact()` in `task_utils.py`)
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+  The subsystem is STABLE, so we follow its patterns exactly.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for back-reference creation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_artifact_copy_external.py` that verify the back-reference
+behavior:
 
-Example:
+1. **test_back_reference_created_on_copy** - After `copy_artifact_as_external()`,
+   verify the source artifact's frontmatter contains a `dependents` entry with:
+   - `artifact_type`: The artifact type being copied
+   - `artifact_id`: The destination name in target project
+   - `repo`: The target project identifier (org/repo format)
+   - `pinned`: The SHA at which the copy was made
 
-### Step 1: Define the SegmentHeader struct
+2. **test_existing_dependents_preserved** - Create source artifact with existing
+   `dependents` entries, run copy, verify old entries preserved alongside new entry
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **test_idempotent_copy_no_duplicates** - Run copy twice with same params, verify
+   only one dependent entry exists (no duplicates)
 
-Location: src/segment/format.rs
+4. **test_back_reference_all_artifact_types** - Verify back-reference works for
+   chunks, narratives, investigations, and subsystems
 
-### Step 2: Implement header serialization
+Location: `tests/test_artifact_copy_external.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 2: Create helper to append dependent preserving existing entries
 
-### Step 3: ...
+Add a new helper function `append_dependent_to_artifact()` in `src/task_utils.py`:
+
+```python
+def append_dependent_to_artifact(
+    artifact_path: Path,
+    artifact_type: ArtifactType,
+    dependent: dict,
+) -> None:
+    """Append a dependent entry to artifact's frontmatter, preserving existing entries.
+
+    If an identical dependent already exists (same repo, artifact_type, artifact_id),
+    it will be updated with the new pinned SHA rather than duplicated.
+
+    Args:
+        artifact_path: Path to the artifact directory.
+        artifact_type: Type of artifact to determine main file.
+        dependent: Dict with keys: artifact_type, artifact_id, repo, pinned
+    """
+```
+
+This function:
+1. Reads existing frontmatter from the artifact's main file
+2. Parses existing `dependents` list (or creates empty list)
+3. Checks for existing entry with same (repo, artifact_type, artifact_id)
+4. If exists, updates the `pinned` field; if not, appends new entry
+5. Writes updated frontmatter back
+
+Location: `src/task_utils.py`
+
+### Step 3: Update copy_artifact_as_external() to add back-reference
+
+Modify `copy_artifact_as_external()` in `src/task_utils.py` to:
+
+1. After successfully creating `external.yaml` (step 10 in current implementation)
+2. Build the dependent entry with:
+   - `artifact_type`: The artifact type (from step 3's normalization)
+   - `artifact_id`: The destination name (dest_name from step 6)
+   - `repo`: The target project (from step 5's resolution)
+   - `pinned`: The SHA from step 8
+3. Call `append_dependent_to_artifact()` on the source artifact in external repo
+4. Return result including new `source_updated` key
+
+Add backreference comment:
+```python
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference update for copy-external
+```
+
+Location: `src/task_utils.py`
+
+### Step 4: Verify all tests pass
+
+Run tests to verify implementation:
+```bash
+uv run pytest tests/test_artifact_copy_external.py -v
+uv run pytest tests/ -x --tb=short
+```
+
+Ensure no regressions in existing functionality.
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+Add at function level in `task_utils.py`:
+```
+# Chunk: docs/chunks/artifact_copy_backref - Append dependent with idempotency
+```
+for the new `append_dependent_to_artifact()` function.
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
+Update existing `copy_artifact_as_external()` comment to add:
 ```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference update for copy-external
 ```
-
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
-
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. All required infrastructure exists:
+- `copy_artifact_as_external()` in `task_utils.py` - the function to extend
+- `ARTIFACT_MAIN_FILE` in `external_refs.py` - maps artifact type to main file
+- `update_frontmatter_field()` in `task_utils.py` - for updating frontmatter
+- `setup_task_directory()` helper in `conftest.py` - for testing
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Frontmatter parsing edge cases**: The existing `update_frontmatter_field()`
+  replaces the entire field value. We need a slightly different approach to
+  preserve existing dependents. The `_get_artifact_created_after()` pattern in
+  `task_utils.py` shows how to read existing frontmatter fields, which we can
+  adapt for reading existing dependents.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Matching logic for idempotency**: The unique key for a dependent entry is
+  `(repo, artifact_type, artifact_id)`. When re-running copy with same params,
+  we should update the `pinned` SHA rather than create a duplicate. This ensures
+  the recorded SHA reflects the most recent copy operation.
 
 ## Deviations
 

@@ -1,15 +1,22 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/task_utils.py
+- tests/test_artifact_copy_external.py
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
-created_after: ["orch_attention_queue", "orch_conflict_oracle", "orch_agent_skills", "orch_question_forward"]
+subsystems:
+- subsystem_id: workflow_artifacts
+  relationship: uses
+created_after:
+- orch_attention_queue
+- orch_conflict_oracle
+- orch_agent_skills
+- orch_question_forward
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
