@@ -14,7 +14,6 @@ code_paths:
 - tests/test_orchestrator_state.py
 - tests/test_orchestrator_api.py
 - tests/test_orchestrator_cli.py
-- tests/test_orchestrator_integration.py
 code_references:
   - ref: src/orchestrator/__init__.py
     implements: "Package exports for orchestrator module"

@@ -8,151 +8,143 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds a simple `attention_reason` field to track why work units need
+operator attention. The implementation extends existing orchestrator infrastructure:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Model layer**: Add `attention_reason: Optional[str]` to the WorkUnit model
+2. **Persistence layer**: Add database migration for the new column
+3. **Scheduler layer**: Populate the field when transitioning to `NEEDS_ATTENTION`
+4. **CLI layer**: Display the reason in `ve orch ps` (truncated) and `ve orch work-unit show` (full)
+5. **API layer**: Return the field in `GET /work-units/{chunk}` responses
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The approach follows existing patterns in the orchestrator codebase:
+- SQLite migrations via `_migrate_vN()` methods in `state.py`
+- Pydantic models with `model_dump_json_serializable()` for API responses
+- Click CLI commands following existing `ve orch` patterns
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_attention_reason/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow docs/trunk/TESTING_PHILOSOPHY.md:
+- State persistence tests verify the field is stored, updated, and retrievable
+- Scheduler tests verify the field is populated for error and suspension cases
+- CLI tests verify the display format for both `ps` and `work-unit show` commands
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add attention_reason field to WorkUnit model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `attention_reason: Optional[str] = None` field to the WorkUnit model in
+`src/orchestrator/models.py`. Include in `model_dump_json_serializable()` output.
 
-Example:
+Add chunk backreference comment above the WorkUnit class.
 
-### Step 1: Define the SegmentHeader struct
+Location: src/orchestrator/models.py
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add database migration for attention_reason column
 
-Location: src/segment/format.rs
+Create `_migrate_v4()` in `src/orchestrator/state.py` that adds the
+`attention_reason TEXT` column to the `work_units` table. Increment
+`CURRENT_VERSION` to 4.
 
-### Step 2: Implement header serialization
+Update `_row_to_work_unit()` to read the new column with fallback for older
+databases. Update `create_work_unit()` and `update_work_unit()` to persist
+the field.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: src/orchestrator/state.py
 
-### Step 3: ...
+### Step 3: Populate attention_reason in scheduler
 
----
+Modify `_mark_needs_attention()` in `src/orchestrator/scheduler.py` to accept
+a `reason` parameter and store it in `work_unit.attention_reason`.
 
-**BACKREFERENCE COMMENTS**
+Update all callers of `_mark_needs_attention()`:
+- Error results: pass the error message
+- Suspension results: extract question text from `result.question`
+- Verification failures: pass descriptive message
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+Update `_handle_agent_result()` for suspended results to capture the question
+text as the attention reason (prefixed with "Question: ").
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+Location: src/orchestrator/scheduler.py
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+### Step 4: Display truncated reason in ve orch ps
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+Modify `orch_ps()` in `src/ve.py` to:
+- Check if any `NEEDS_ATTENTION` work units have an `attention_reason`
+- If so, add a REASON column to the table output
+- Truncate reasons to 30 characters with "..." suffix
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+Location: src/ve.py
+
+### Step 5: Add ve orch work-unit show command
+
+Add a new `work_unit_show()` command in `src/ve.py` under the `work_unit` group.
+
+The command:
+- Takes a chunk name as argument
+- Calls `client.get_work_unit(chunk)` to fetch details
+- Displays all fields in a formatted output including the full `attention_reason`
+- Supports `--json` flag for JSON output
+
+Location: src/ve.py
+
+### Step 6: Verify API returns attention_reason
+
+The existing `GET /work-units/{chunk}` endpoint already returns the full WorkUnit
+via `model_dump_json_serializable()`. Verify that `attention_reason` is included
+in the response.
+
+Location: src/orchestrator/api.py (verification only, no changes needed)
+
+### Step 7: Add state persistence tests
+
+Add `TestAttentionReasonPersistence` class in `tests/test_orchestrator_state.py`:
+- `test_stores_attention_reason`: Create unit with reason, verify it persists
+- `test_updates_attention_reason`: Update reason on existing unit
+- `test_attention_reason_null_by_default`: Verify None when not set
+- `test_clears_attention_reason`: Set reason then clear it
+- `test_attention_reason_preserved_in_list`: Verify included in list results
+
+Location: tests/test_orchestrator_state.py
+
+### Step 8: Add scheduler attention_reason tests
+
+Add `TestAttentionReason` class in `tests/test_orchestrator_scheduler.py`:
+- `test_suspended_result_captures_question_as_reason`: Verify question text captured
+- `test_suspended_result_without_question_uses_default`: Verify default message
+- `test_error_result_stores_error_as_reason`: Verify error message captured
+- `test_max_retries_stores_reason`: Verify retry exhaustion message
+- `test_verification_error_stores_reason`: Verify verification error captured
+
+Location: tests/test_orchestrator_scheduler.py
+
+### Step 9: Add CLI tests for work-unit show
+
+Add `TestWorkUnitShow` class in `tests/test_orchestrator_cli.py`:
+- `test_show_work_unit_basic`: Verify basic output format
+- `test_show_with_attention_reason`: Verify attention_reason displayed
+- `test_show_json_output`: Verify JSON format
+- `test_show_not_found`: Verify error handling
+
+Location: tests/test_orchestrator_cli.py
+
+### Step 10: Add CLI tests for ps with attention_reason
+
+Add tests to existing `TestOrchPs` class in `tests/test_orchestrator_cli.py`:
+- `test_ps_shows_attention_reason_column`: Verify REASON column appears
+- `test_ps_truncates_long_reason`: Verify truncation to 30 chars
+
+Location: tests/test_orchestrator_cli.py
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **orch_scheduling** (complete): Provides the scheduler infrastructure where
+  `_mark_needs_attention()` and `_handle_agent_result()` live
 
-If there are no dependencies, delete this section.
--->
+No external library dependencies.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **None identified**: This is a straightforward addition of a text field with
+  no complex logic or external dependencies.
 
 ## Deviations
 
