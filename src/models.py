@@ -546,3 +546,63 @@ class ChunkFrontmatter(BaseModel):
     proposed_chunks: list[ProposedChunk] = []
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Friction log models
+class FrictionTheme(BaseModel):
+    """A friction theme/category in the frontmatter.
+
+    Themes emerge organically as friction is logged. Agents see existing
+    themes when appending and cluster new entries accordingly.
+    """
+
+    id: str  # Short identifier like "code-refs"
+    name: str  # Human-readable name like "Code Reference Friction"
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        """Validate id is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("id cannot be empty")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate name is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("name cannot be empty")
+        return v
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Proposed chunk with friction addresses
+class FrictionProposedChunk(BaseModel):
+    """A proposed chunk that addresses friction entries.
+
+    Similar to ProposedChunk but includes an addresses array linking to
+    friction entry IDs for bidirectional traceability.
+    """
+
+    prompt: str
+    chunk_directory: str | None = None  # Populated when chunk is created
+    addresses: list[str] = []  # List of F-number IDs like ["F001", "F003"]
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        """Validate prompt is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("prompt cannot be empty")
+        return v
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Friction log frontmatter schema
+class FrictionFrontmatter(BaseModel):
+    """Frontmatter schema for FRICTION.md files.
+
+    Validates the YAML frontmatter in friction log documentation.
+    """
+
+    themes: list[FrictionTheme] = []
+    proposed_chunks: list[FrictionProposedChunk] = []
