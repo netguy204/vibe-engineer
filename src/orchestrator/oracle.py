@@ -393,9 +393,15 @@ class ConflictOracle:
             except Exception:
                 pass
 
+        # Chunk: docs/chunks/orch_conflict_template_fix - Strip template comments
+        # Strip HTML comments to avoid false positives from template boilerplate
+        # (e.g., example paths like src/segment/writer.rs in the GOAL.md template)
+        goal_a_cleaned = self._strip_html_comments(goal_a_content)
+        goal_b_cleaned = self._strip_html_comments(goal_b_content)
+
         # Simple heuristic: check for common terms that suggest overlap
         # This is a basic approach - LLM would be more accurate
-        overlap_terms = self._find_common_terms(goal_a_content, goal_b_content)
+        overlap_terms = self._find_common_terms(goal_a_cleaned, goal_b_cleaned)
 
         if overlap_terms:
             return ConflictAnalysis(
@@ -497,6 +503,21 @@ class ConflictOracle:
                 continue
 
         return sorted(files)
+
+    def _strip_html_comments(self, text: str) -> str:
+        """Remove HTML comment blocks from text.
+
+        Strips content between <!-- and --> markers, including the markers.
+        Handles multi-line comments.
+
+        Args:
+            text: Input text potentially containing HTML comments
+
+        Returns:
+            Text with HTML comments removed
+        """
+        # Chunk: docs/chunks/orch_conflict_template_fix - Strip template comments
+        return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
 
     def _find_common_terms(self, text_a: str, text_b: str) -> list[str]:
         """Find common significant terms between two texts.
