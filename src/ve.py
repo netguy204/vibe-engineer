@@ -2029,6 +2029,9 @@ def orch_inject(chunk, phase, priority, json_output, project_dir):
     from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
+    # Chunk: docs/chunks/orch_inject_path_compat - Normalize chunk path for CLI consistency
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
     client = create_client(project_dir)
     try:
         # Use the inject endpoint via generic request

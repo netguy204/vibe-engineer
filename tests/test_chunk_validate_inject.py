@@ -562,3 +562,82 @@ class TestChunkActivationOnInject:
         chunks = Chunks(temp_project)
         frontmatter = chunks.parse_chunk_frontmatter("displaced_chunk")
         assert frontmatter.status.value == "IMPLEMENTING"
+
+
+# Chunk: docs/chunks/orch_inject_path_compat - Path normalization tests
+class TestOrchInjectPathNormalization:
+    """Tests for path normalization in orch inject command.
+
+    The orchestrator inject command should accept chunk identifiers in
+    various formats, normalizing them to short names before processing.
+    """
+
+    def test_strip_artifact_path_prefix_full_path_with_trailing_slash(self):
+        """Full path with trailing slash is normalized to short name."""
+        from external_refs import strip_artifact_path_prefix
+        from models import ArtifactType
+
+        result = strip_artifact_path_prefix("docs/chunks/my_feature/", ArtifactType.CHUNK)
+        assert result == "my_feature"
+
+    def test_strip_artifact_path_prefix_full_path_without_trailing_slash(self):
+        """Full path without trailing slash is normalized to short name."""
+        from external_refs import strip_artifact_path_prefix
+        from models import ArtifactType
+
+        result = strip_artifact_path_prefix("docs/chunks/my_feature", ArtifactType.CHUNK)
+        assert result == "my_feature"
+
+    def test_strip_artifact_path_prefix_short_prefix(self):
+        """Short prefix path is normalized to short name."""
+        from external_refs import strip_artifact_path_prefix
+        from models import ArtifactType
+
+        result = strip_artifact_path_prefix("chunks/my_feature", ArtifactType.CHUNK)
+        assert result == "my_feature"
+
+    def test_strip_artifact_path_prefix_short_name(self):
+        """Short name passes through unchanged."""
+        from external_refs import strip_artifact_path_prefix
+        from models import ArtifactType
+
+        result = strip_artifact_path_prefix("my_feature", ArtifactType.CHUNK)
+        assert result == "my_feature"
+
+    def test_strip_artifact_path_prefix_multiple_trailing_slashes(self):
+        """Multiple trailing slashes are handled."""
+        from external_refs import strip_artifact_path_prefix
+        from models import ArtifactType
+
+        result = strip_artifact_path_prefix("docs/chunks/my_feature///", ArtifactType.CHUNK)
+        assert result == "my_feature"
+
+    def test_orch_inject_cli_normalizes_full_path(self, runner, temp_project):
+        """CLI command with full path fails with 'daemon not running', not 'chunk not found'.
+
+        This verifies that path normalization happens before validation,
+        so the error message indicates the chunk was found but the daemon
+        isn't available.
+        """
+        from chunks import Chunks
+
+        # Create a valid IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "test_chunk", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        write_goal_frontmatter(chunk_path, "IMPLEMENTING")
+        write_plan_with_content(chunk_path, has_content=True)
+
+        # Try to inject using full path - should fail with "daemon not running"
+        # rather than "chunk not found" (proving normalization worked)
+        result = runner.invoke(
+            cli,
+            ["orch", "inject", "docs/chunks/test_chunk/", "--project-dir", str(temp_project)]
+        )
+
+        # Should fail because daemon isn't running, not because chunk not found
+        assert result.exit_code != 0
+        # The error should be about daemon, not about chunk resolution
+        assert "daemon" in result.output.lower() or "not running" in result.output.lower() or "connection" in result.output.lower()

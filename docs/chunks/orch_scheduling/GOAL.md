@@ -17,7 +17,6 @@ code_paths:
 - tests/test_orchestrator_agent.py
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_cli.py
-- tests/test_orchestrator_integration.py
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager
     implements: "Git worktree lifecycle management for isolated chunk execution"
