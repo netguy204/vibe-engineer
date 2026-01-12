@@ -7,7 +7,7 @@ proposed_chunks:
   - prompt: "During ve task init, setup .claude/commands in task directory (symlink or copy from external repo)"
     chunk_directory: task_init_scaffolding
   - prompt: "Add learning philosophy section to project CLAUDE.md template mentioning natural progression to narratives, subsystems, and tasks"
-    chunk_directory: null
+    chunk_directory: learning_philosophy_docs
   - prompt: "Enhance artifact list commands to show grouped-by-location output as default in task context (external repo artifacts + each project's local artifacts with per-group causal ordering)"
     chunk_directory: task_status_command
   - prompt: "Extend SymbolicReference for project-qualified paths (org/repo::path#symbol format) to support task-level code_references across multiple projects"
