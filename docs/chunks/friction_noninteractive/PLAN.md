@@ -8,21 +8,26 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The implementation removes `prompt=True` from all Click options and uses a conditional
+prompting strategy:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Non-interactive mode detection**: When all required options (title, description,
+   impact, theme) are provided via CLI, the command runs without prompts.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Graceful prompt fallback**: When options are missing, the command attempts to prompt.
+   If prompting fails (non-interactive environment), it exits with a clear error message
+   specifying which option is missing.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/friction_noninteractive/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **New theme handling**: Added `--theme-name` option. When a theme doesn't exist:
+   - Interactive: Prompts for theme name
+   - Non-interactive: Requires `--theme-name` or fails with clear error
+
+4. **'new' keyword handling**: The `--theme new` syntax is blocked in non-interactive
+   mode since it requires prompting for the actual theme ID.
+
+Files modified:
+- `src/ve.py` - Updated `log_entry` command with conditional prompting
+- `tests/test_friction_cli.py` - Added non-interactive test class
 
 ## Subsystem Considerations
 

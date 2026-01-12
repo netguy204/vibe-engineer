@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -11,9 +11,9 @@ narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
 friction_entries: []
-created_after: ["orch_dashboard"]
+created_after:
+- orch_dashboard
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

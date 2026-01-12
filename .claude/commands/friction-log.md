@@ -31,11 +31,14 @@ $ARGUMENTS
 2. **Determine theme**: Read `docs/trunk/FRICTION.md` to see existing themes.
    Pick the best fit, or propose a new theme-id if none apply.
 
-3. **Log the entry**:
+3. **Log the entry** non-interactively:
    ```
-   ve friction log --title "<title>" --description "<description>" --impact <impact>
+   ve friction log --title "<title>" --description "<description>" --impact <impact> --theme <theme-id>
    ```
-   Select or create the theme when prompted.
+   For an existing theme, use its theme-id. For a new theme, also provide --theme-name:
+   ```
+   ve friction log --title "<title>" --description "<description>" --impact <impact> --theme <new-theme-id> --theme-name "<Theme Display Name>"
+   ```
 
 4. **Confirm**: Tell the operator the entry ID that was created.
 
@@ -52,9 +55,13 @@ Interview the operator with these questions:
 3. Read `docs/trunk/FRICTION.md` to see existing themes, then ask:
    > "Which theme fits best? [list existing themes] Or describe a new one."
 
-4. **Log the entry** using their answers:
+4. **Log the entry** non-interactively using their answers:
    ```
-   ve friction log --title "<title>" --description "<description>" --impact <impact>
+   ve friction log --title "<title>" --description "<description>" --impact <impact> --theme <theme-id>
+   ```
+   For a new theme, also provide --theme-name:
+   ```
+   ve friction log --title "<title>" --description "<description>" --impact <impact> --theme <new-theme-id> --theme-name "<Theme Display Name>"
    ```
 
 5. **Confirm**: Tell the operator the entry ID that was created.

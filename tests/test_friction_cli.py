@@ -35,8 +35,8 @@ class TestFrictionLogCommand:
                 "--description", "This is a test friction",
                 "--impact", "high",
                 "--theme", "test-theme",
+                "--theme-name", "Test Theme Friction",
             ],
-            input="Test Theme Friction\n"  # Answer for new theme name prompt
         )
         assert result.exit_code == 0
         assert "Created friction entry: F001" in result.output
@@ -59,12 +59,12 @@ class TestFrictionLogCommand:
                 "--description", "First description",
                 "--impact", "low",
                 "--theme", "test-theme",
+                "--theme-name", "Test Theme",
             ],
-            input="Test Theme\n"
         )
         assert "Created friction entry: F001" in result1.output
 
-        # Create second entry
+        # Create second entry (theme already exists, no theme-name needed)
         result2 = runner.invoke(
             cli,
             [
@@ -79,8 +79,8 @@ class TestFrictionLogCommand:
         assert result2.exit_code == 0
         assert "Created friction entry: F002" in result2.output
 
-    def test_friction_log_new_theme(self, runner, initialized_project):
-        """New theme added to frontmatter when using new theme ID."""
+    def test_friction_log_new_theme_interactive(self, runner, initialized_project):
+        """New theme added via interactive mode using 'new' keyword."""
         result = runner.invoke(
             cli,
             [
@@ -89,9 +89,9 @@ class TestFrictionLogCommand:
                 "--title", "New theme entry",
                 "--description", "Description",
                 "--impact", "medium",
-                "--theme", "new",
             ],
-            input="brand-new\nBrand New Friction\n"  # theme ID, then theme name
+            # Prompts: theme, theme ID, theme name
+            input="new\nbrand-new\nBrand New Friction\n"
         )
         assert result.exit_code == 0
 
@@ -113,15 +113,15 @@ class TestFrictionLogCommand:
                 "--description", "First",
                 "--impact", "low",
                 "--theme", "existing",
+                "--theme-name", "Existing Theme",
             ],
-            input="Existing Theme\n"
         )
 
         # Read frontmatter before second entry
         friction_path = initialized_project / "docs" / "trunk" / "FRICTION.md"
         content_before = friction_path.read_text()
 
-        # Add second entry with same theme
+        # Add second entry with same theme (no theme-name needed)
         result = runner.invoke(
             cli,
             [
@@ -150,11 +150,156 @@ class TestFrictionLogCommand:
                 "--description", "Test",
                 "--impact", "low",
                 "--theme", "test",
+                "--theme-name", "Test Theme",
             ],
-            input="Test\n"
         )
         assert result.exit_code == 1
         assert "does not exist" in result.output
+
+
+# Chunk: docs/chunks/friction_noninteractive - Non-interactive mode tests
+class TestFrictionLogNonInteractive:
+    """Tests for non-interactive friction log command."""
+
+    def test_friction_log_noninteractive_new_theme(self, runner, initialized_project):
+        """Non-interactive with new theme and theme-name succeeds without prompts."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Non-interactive entry",
+                "--description", "Created without prompts",
+                "--impact", "low",
+                "--theme", "new-theme",
+                "--theme-name", "New Theme Display Name",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Created friction entry: F001" in result.output
+
+        # Verify entry and theme exist in file
+        friction_path = initialized_project / "docs" / "trunk" / "FRICTION.md"
+        content = friction_path.read_text()
+        assert "F001" in content
+        assert "Non-interactive entry" in content
+        assert "new-theme" in content
+        assert "New Theme Display Name" in content
+
+    def test_friction_log_noninteractive_existing_theme(self, runner, initialized_project):
+        """Non-interactive with existing theme succeeds without theme-name."""
+        # First create an entry with a theme
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "First entry",
+                "--description", "First",
+                "--impact", "low",
+                "--theme", "existing",
+                "--theme-name", "Existing Theme",
+            ],
+        )
+
+        # Second entry with same theme - no theme-name needed
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Second entry",
+                "--description", "Second without theme-name",
+                "--impact", "medium",
+                "--theme", "existing",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Created friction entry: F002" in result.output
+
+    def test_friction_log_noninteractive_missing_theme_name_fails(self, runner, initialized_project):
+        """Non-interactive with new theme but no theme-name fails with clear error."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Entry",
+                "--description", "Description",
+                "--impact", "high",
+                "--theme", "brand-new-theme",
+                # Intentionally omitting --theme-name
+            ],
+        )
+        assert result.exit_code == 1
+        assert "brand-new-theme" in result.output
+        assert "--theme-name" in result.output
+
+    def test_friction_log_noninteractive_theme_new_keyword_fails(self, runner, initialized_project):
+        """Non-interactive with --theme 'new' fails with clear error."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Entry",
+                "--description", "Description",
+                "--impact", "blocking",
+                "--theme", "new",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "'new'" in result.output
+        assert "interactive" in result.output.lower()
+
+    def test_friction_log_partial_options_prompts(self, runner, initialized_project):
+        """Partial options provided triggers prompts for missing ones."""
+        # Provide title and description, but not impact or theme
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Partial entry",
+                "--description", "Has title and desc",
+            ],
+            input="low\ntest-theme\nTest Theme Name\n"  # Answers for impact, theme, theme-name
+        )
+        assert result.exit_code == 0
+        assert "Created friction entry: F001" in result.output
+
+    def test_friction_log_all_options_no_prompts(self, runner, initialized_project):
+        """All options provided - no prompts at all, even without input."""
+        # Create theme first
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Setup",
+                "--description", "Setup",
+                "--impact", "low",
+                "--theme", "existing",
+                "--theme-name", "Existing",
+            ],
+        )
+
+        # This should succeed without any input (no prompts triggered)
+        # If prompts were triggered, this would fail because there's no input
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Full options entry",
+                "--description", "All options provided",
+                "--impact", "high",
+                "--theme", "existing",
+            ],
+            input=""  # Empty input - prompts would cause failure
+        )
+        assert result.exit_code == 0
+        assert "Created friction entry: F002" in result.output
 
 
 class TestFrictionListCommand:
@@ -178,8 +323,8 @@ class TestFrictionListCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "test",
+                "--theme-name", "Test Theme",
             ],
-            input="Test Theme\n"
         )
         runner.invoke(
             cli,
@@ -216,8 +361,8 @@ class TestFrictionListCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "test",
+                "--theme-name", "Test Theme",
             ],
-            input="Test Theme\n"
         )
 
         result = runner.invoke(
@@ -240,8 +385,8 @@ class TestFrictionListCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "alpha",
+                "--theme-name", "Alpha Theme",
             ],
-            input="Alpha Theme\n"
         )
         runner.invoke(
             cli,
@@ -252,8 +397,8 @@ class TestFrictionListCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "beta",
+                "--theme-name", "Beta Theme",
             ],
-            input="Beta Theme\n"
         )
 
         result = runner.invoke(
@@ -295,8 +440,8 @@ class TestFrictionAnalyzeCommand:
                 "--description", "Desc",
                 "--impact", "high",
                 "--theme", "code-refs",
+                "--theme-name", "Code Reference Friction",
             ],
-            input="Code Reference Friction\n"
         )
         runner.invoke(
             cli,
@@ -307,8 +452,8 @@ class TestFrictionAnalyzeCommand:
                 "--description", "Desc",
                 "--impact", "medium",
                 "--theme", "templates",
+                "--theme-name", "Template Friction",
             ],
-            input="Template Friction\n"
         )
         runner.invoke(
             cli,
@@ -334,18 +479,17 @@ class TestFrictionAnalyzeCommand:
         """3+ entries in theme get warning indicator."""
         # Create 3 entries in same theme
         for i in range(3):
-            runner.invoke(
-                cli,
-                [
-                    "friction", "log",
-                    "--project-dir", str(initialized_project),
-                    "--title", f"Entry {i+1}",
-                    "--description", "Desc",
-                    "--impact", "low",
-                    "--theme", "clustered",
-                ],
-                input="Clustered Friction\n" if i == 0 else ""
-            )
+            args = [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", f"Entry {i+1}",
+                "--description", "Desc",
+                "--impact", "low",
+                "--theme", "clustered",
+            ]
+            if i == 0:
+                args.extend(["--theme-name", "Clustered Friction"])
+            runner.invoke(cli, args)
 
         result = runner.invoke(
             cli,
@@ -366,8 +510,8 @@ class TestFrictionAnalyzeCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "alpha",
+                "--theme-name", "Alpha Theme",
             ],
-            input="Alpha Theme\n"
         )
         runner.invoke(
             cli,
@@ -378,8 +522,8 @@ class TestFrictionAnalyzeCommand:
                 "--description", "Desc",
                 "--impact", "low",
                 "--theme", "beta",
+                "--theme-name", "Beta Theme",
             ],
-            input="Beta Theme\n"
         )
 
         result = runner.invoke(
@@ -398,3 +542,195 @@ class TestFrictionAnalyzeCommand:
         )
         assert result.exit_code == 0
         assert "No friction entries found" in result.output
+
+
+# Chunk: docs/chunks/friction_noninteractive - Non-interactive friction log tests
+class TestFrictionLogNonInteractive:
+    """Tests for non-interactive 've friction log' command usage."""
+
+    def test_all_options_provided_succeeds_without_prompts(self, runner, initialized_project):
+        """Invoke with all options - should succeed with exit code 0 without any input."""
+        # First, create an existing theme using --theme-name for non-interactive creation
+        setup_result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Setup entry",
+                "--description", "Setup description",
+                "--impact", "low",
+                "--theme", "cli",
+                "--theme-name", "CLI Friction",  # Required for new theme in non-interactive mode
+            ],
+        )
+        assert setup_result.exit_code == 0, f"Setup failed: {setup_result.output}"
+
+        # Now invoke fully non-interactively with existing theme (no --theme-name needed)
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Non-interactive entry",
+                "--description", "This should work without prompts",
+                "--impact", "medium",
+                "--theme", "cli",
+            ],
+        )
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        assert "Created friction entry: F002" in result.output
+
+    def test_new_theme_with_theme_name_succeeds_without_prompts(self, runner, initialized_project):
+        """New theme with --theme-name succeeds non-interactively."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "New theme entry",
+                "--description", "Testing new theme non-interactively",
+                "--impact", "high",
+                "--theme", "new-theme",
+                "--theme-name", "New Theme Friction",
+            ],
+        )
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        assert "Created friction entry: F001" in result.output
+
+        # Verify theme was added
+        friction_path = initialized_project / "docs" / "trunk" / "FRICTION.md"
+        content = friction_path.read_text()
+        assert "new-theme" in content
+        assert "New Theme Friction" in content
+
+    def test_missing_title_fails_noninteractively(self, runner, initialized_project):
+        """Missing --title fails with clear error in non-interactive mode."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                # --title missing
+                "--description", "Some description",
+                "--impact", "low",
+                "--theme", "cli",
+                "--theme-name", "CLI",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--title" in result.output or "title" in result.output.lower()
+
+    def test_missing_description_fails_noninteractively(self, runner, initialized_project):
+        """Missing --description fails with clear error in non-interactive mode."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Some title",
+                # --description missing
+                "--impact", "low",
+                "--theme", "cli",
+                "--theme-name", "CLI",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--description" in result.output or "description" in result.output.lower()
+
+    def test_missing_impact_fails_noninteractively(self, runner, initialized_project):
+        """Missing --impact fails with clear error in non-interactive mode."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Some title",
+                "--description", "Some description",
+                # --impact missing
+                "--theme", "cli",
+                "--theme-name", "CLI",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--impact" in result.output or "impact" in result.output.lower()
+
+    def test_missing_theme_fails_noninteractively(self, runner, initialized_project):
+        """Missing --theme fails with clear error in non-interactive mode."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Some title",
+                "--description", "Some description",
+                "--impact", "low",
+                # --theme missing
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--theme" in result.output or "theme" in result.output.lower()
+
+    def test_new_theme_without_theme_name_fails_noninteractively(self, runner, initialized_project):
+        """New theme without --theme-name fails in non-interactive mode."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "New theme entry",
+                "--description", "Testing new theme",
+                "--impact", "high",
+                "--theme", "brand-new-theme",
+                # --theme-name missing for new theme
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--theme-name" in result.output or "new" in result.output.lower()
+
+    def test_theme_new_without_options_fails_noninteractively(self, runner, initialized_project):
+        """Using --theme 'new' fails in non-interactive mode (requires interactive prompts)."""
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "New theme entry",
+                "--description", "Testing theme=new",
+                "--impact", "high",
+                "--theme", "new",  # 'new' requires interactive prompts for theme ID
+            ],
+        )
+        assert result.exit_code != 0
+        # Should fail because 'new' is a placeholder requiring interactive theme ID prompt
+
+    def test_existing_theme_doesnt_require_theme_name(self, runner, initialized_project):
+        """When --theme matches existing theme, --theme-name is not required."""
+        # First create a theme with --theme-name
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "First",
+                "--description", "First",
+                "--impact", "low",
+                "--theme", "existing-theme",
+                "--theme-name", "Existing Theme",
+            ],
+        )
+
+        # Now add another entry to the existing theme without --theme-name
+        result = runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Second",
+                "--description", "Second",
+                "--impact", "medium",
+                "--theme", "existing-theme",
+                # --theme-name NOT provided, but should work for existing theme
+            ],
+        )
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        assert "Created friction entry: F002" in result.output
