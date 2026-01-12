@@ -1,5 +1,6 @@
 # Chunk: docs/chunks/orch_scheduling - Scheduler tests
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification tests
+# Chunk: docs/chunks/orch_question_forward - Question forwarding tests
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -1745,3 +1746,195 @@ ticket: null
         # 5. Verify pending_answer was cleared
         final = state_store.get_work_unit("test_chunk")
         assert final.pending_answer is None
+
+
+# Chunk: docs/chunks/orch_question_forward - Question forwarding integration tests
+class TestQuestionForwardingFlow:
+    """Tests for the complete question forwarding flow.
+
+    When an agent calls AskUserQuestion, the orchestrator:
+    1. Intercepts the call via PreToolUse hook
+    2. Captures the question data
+    3. Suspends the agent session
+    4. Transitions work unit to NEEDS_ATTENTION
+    5. Stores question in attention_reason
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_passes_question_callback(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit passes question_callback to run_phase."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify run_phase was called with question_callback
+        mock_agent_runner.run_phase.assert_called_once()
+        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
+        assert "question_callback" in call_kwargs
+        assert call_kwargs["question_callback"] is not None
+
+    @pytest.mark.asyncio
+    async def test_question_forwarding_transitions_to_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Agent asking question transitions work unit to NEEDS_ATTENTION with question data."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        # Configure agent runner to return suspended result with question
+        mock_agent_runner.run_phase = AsyncMock(
+            return_value=AgentResult(
+                completed=False,
+                suspended=True,
+                session_id="suspended-session-123",
+                question={
+                    "question": "Which framework should I use?",
+                    "options": [
+                        {"label": "React", "description": "Frontend library"},
+                        {"label": "Vue", "description": "Progressive framework"},
+                    ],
+                    "header": "Framework",
+                    "multiSelect": False,
+                },
+            )
+        )
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify work unit transitioned to NEEDS_ATTENTION
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.session_id == "suspended-session-123"
+        assert "Which framework should I use?" in updated.attention_reason
+
+    @pytest.mark.asyncio
+    async def test_question_answer_resume_flow(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Complete flow: question → NEEDS_ATTENTION → answer → resume → complete."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        # Phase 1: Agent asks a question
+        mock_agent_runner.run_phase = AsyncMock(
+            return_value=AgentResult(
+                completed=False,
+                suspended=True,
+                session_id="question-session",
+                question={"question": "Which database?", "options": []},
+            )
+        )
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify NEEDS_ATTENTION state
+        needing_attention = state_store.get_work_unit("test_chunk")
+        assert needing_attention.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert needing_attention.session_id == "question-session"
+        assert "Which database?" in needing_attention.attention_reason
+
+        # Phase 2: Operator provides answer (simulating POST /work-units/{chunk}/answer)
+        needing_attention.pending_answer = "Use PostgreSQL"
+        needing_attention.attention_reason = None
+        needing_attention.status = WorkUnitStatus.READY
+        needing_attention.updated_at = datetime.now(timezone.utc)
+        state_store.update_work_unit(needing_attention)
+
+        # Phase 3: Agent resumes and completes
+        mock_agent_runner.run_phase = AsyncMock(
+            return_value=AgentResult(
+                completed=True,
+                suspended=False,
+                session_id="question-session",
+            )
+        )
+
+        ready_unit = state_store.get_work_unit("test_chunk")
+        await scheduler._run_work_unit(ready_unit)
+
+        # Verify run_phase was called with the answer
+        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
+        assert call_kwargs["answer"] == "Use PostgreSQL"
+        assert call_kwargs["resume_session_id"] == "question-session"
+
+        # Verify pending_answer was cleared
+        completed = state_store.get_work_unit("test_chunk")
+        assert completed.pending_answer is None

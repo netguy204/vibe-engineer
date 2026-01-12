@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_question_forward - AgentResult question field
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.

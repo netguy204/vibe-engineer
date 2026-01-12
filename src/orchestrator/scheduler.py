@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 # Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
 # Chunk: docs/chunks/orch_attention_queue - Answer injection on resume
+# Chunk: docs/chunks/orch_question_forward - AskUserQuestion forwarding
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -404,6 +405,12 @@ class Scheduler:
             if pending_answer:
                 logger.info(f"Injecting pending answer for {chunk}")
 
+            # Chunk: docs/chunks/orch_question_forward - Question callback for attention queue
+            # Create callback to log when question is captured (actual handling in AgentResult)
+            def question_callback(question_data: dict) -> None:
+                question_text = question_data.get("question", "Unknown question")
+                logger.info(f"Agent {chunk} asked question: {question_text[:100]}")
+
             # Run the agent
             logger.info(f"Running agent for {chunk} phase {phase.value}")
             result = await self.agent_runner.run_phase(
@@ -413,6 +420,7 @@ class Scheduler:
                 resume_session_id=work_unit.session_id,
                 answer=pending_answer,
                 log_callback=log_callback,
+                question_callback=question_callback,
             )
 
             # Clear pending_answer after successful dispatch

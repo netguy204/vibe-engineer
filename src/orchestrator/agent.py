@@ -1,6 +1,7 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 # Chunk: docs/chunks/orch_attention_queue - Answer injection on agent resume
+# Chunk: docs/chunks/orch_question_forward - AskUserQuestion interception
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.
@@ -11,13 +12,17 @@ import asyncio
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 from claude_agent_sdk import query
 from claude_agent_sdk.types import (
     ClaudeAgentOptions,
     AssistantMessage,
     ResultMessage,
+    PreToolUseHookInput,
+    SyncHookJSONOutput,
+    HookMatcher,
+    HookContext,
 )
 
 from orchestrator.models import AgentResult, WorkUnitPhase
@@ -36,6 +41,82 @@ PHASE_SKILL_FILES = {
     WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
     WorkUnitPhase.COMPLETE: "chunk-complete.md",
 }
+
+
+# Chunk: docs/chunks/orch_question_forward - AskUserQuestion interception hook
+def create_question_intercept_hook(
+    on_question: Callable[[dict], None],
+) -> dict[str, list[HookMatcher]]:
+    """Create a PreToolUse hook that intercepts AskUserQuestion calls.
+
+    When AskUserQuestion is called, extracts the question data and calls
+    on_question callback, then returns a result that blocks the tool and
+    stops the agent loop.
+
+    Args:
+        on_question: Callback receiving the extracted question data dict.
+            The dict contains: question, options, header, multiSelect.
+
+    Returns:
+        Hook configuration dict suitable for ClaudeAgentOptions.hooks
+    """
+
+    async def hook_handler(
+        hook_input: PreToolUseHookInput,
+        transcript: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        """Handle PreToolUse events for AskUserQuestion."""
+        tool_input = hook_input.get("tool_input", {})
+
+        # Extract question data from tool_input
+        # AskUserQuestion has a 'questions' array with 1-4 questions
+        questions = tool_input.get("questions", [])
+
+        # Build question data - take the first question for primary display,
+        # but include all questions in the data
+        if questions:
+            first_q = questions[0]
+            question_data = {
+                "question": first_q.get("question", ""),
+                "options": first_q.get("options", []),
+                "header": first_q.get("header", ""),
+                "multiSelect": first_q.get("multiSelect", False),
+                "all_questions": questions,  # Include all questions
+            }
+        else:
+            # Fallback if questions array is empty or malformed
+            question_data = {
+                "question": "Agent asked a question (no details available)",
+                "options": [],
+                "header": "",
+                "multiSelect": False,
+                "all_questions": [],
+            }
+
+        # Call the callback with extracted data
+        on_question(question_data)
+
+        # Return hook output that blocks the tool and stops the agent
+        return SyncHookJSONOutput(
+            decision="block",
+            stopReason="question_queued",
+            reason="Question forwarded to attention queue for operator response",
+            hookSpecificOutput={
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "Question queued for operator",
+            },
+        )
+
+    # Build the hook matcher for AskUserQuestion
+    hook_matcher: HookMatcher = {
+        "matcher": "AskUserQuestion",  # Match tool name
+        "hooks": [hook_handler],
+        "timeout": None,
+    }
+
+    return {"PreToolUse": [hook_matcher]}
 
 
 def _load_skill_content(skill_path: Path) -> str:
@@ -121,6 +202,7 @@ class AgentRunner:
         resume_session_id: Optional[str] = None,
         answer: Optional[str] = None,
         log_callback: Optional[callable] = None,
+        question_callback: Optional[Callable[[dict], None]] = None,
     ) -> AgentResult:
         """Run a single phase for a chunk.
 
@@ -131,6 +213,9 @@ class AgentRunner:
             resume_session_id: Optional session ID to resume
             answer: Optional answer to inject when resuming
             log_callback: Optional callback for logging messages
+            question_callback: Optional callback for capturing AskUserQuestion calls.
+                When provided, configures a hook to intercept questions and suspend
+                the agent. The callback receives the question data dict.
 
         Returns:
             AgentResult with outcome of the phase execution
@@ -154,6 +239,20 @@ class AgentRunner:
             max_turns=100,  # Reasonable limit per phase
             setting_sources=["project"],  # Enable project-level skills/commands
         )
+
+        # Chunk: docs/chunks/orch_question_forward - Configure question intercept hook
+        # Track captured question data for building result
+        captured_question: dict | None = None
+
+        if question_callback:
+            # Create hook that intercepts AskUserQuestion and captures data
+            def on_question(question_data: dict) -> None:
+                nonlocal captured_question
+                captured_question = question_data
+                question_callback(question_data)
+
+            hooks = create_question_intercept_hook(on_question)
+            options.hooks = hooks
 
         # Handle resume with answer
         if resume_session_id:
@@ -200,6 +299,16 @@ class AgentRunner:
 
         except Exception as e:
             error = str(e)
+
+        # Chunk: docs/chunks/orch_question_forward - Check if agent was suspended by question hook
+        # If a question was captured, the agent was suspended waiting for an answer
+        if captured_question:
+            return AgentResult(
+                completed=False,
+                suspended=True,
+                session_id=session_id,
+                question=captured_question,
+            )
 
         # Build result
         if error:
