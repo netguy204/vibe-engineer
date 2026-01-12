@@ -3,13 +3,13 @@ status: ONGOING
 trigger: "Friction points accumulate during project use but have no artifact type to capture them"
 proposed_chunks:
   - prompt: "Create friction log template and `ve friction` CLI"
-    chunk_directory: null
+    chunk_directory: friction_template_and_cli
   - prompt: "Add friction_entries to chunk GOAL.md template"
-    chunk_directory: null
+    chunk_directory: friction_chunk_linking
   - prompt: "Integrate friction into /chunk-create and /chunk-complete"
     chunk_directory: null
   - prompt: "Document friction log artifact in CLAUDE.md"
-    chunk_directory: null
+    chunk_directory: friction_claude_docs
 created_after: ["template_drift"]
 ---
 
@@ -349,6 +349,24 @@ Where should the friction log live?
 - Consistent with other artifact locations
 
 **Recommendation: Option A** for now. Friction is project-level context, like decisions. If we later need multiple logs, we can migrate.
+
+### 2026-01-12: Refined prototype with prose entries and frontmatter index
+
+Evolved the design based on discussion:
+
+1. **Prose entries in body**: Each friction entry is markdown prose, not YAML. Scales naturally, rich descriptions.
+
+2. **Themes in frontmatter**: Categories emerge organically. Agent sees existing themes when appending, clusters new entries accordingly. Frontmatter is a lightweight index.
+
+3. **proposed_chunks for mechanical parseability**: Following the pattern from other artifacts. Each proposed chunk has an `addresses` array linking to friction entry IDs.
+
+4. **Derived status**: Entry status (OPEN/ADDRESSED/RESOLVED) is computed from whether the entry ID appears in `proposed_chunks.addresses` and the linked chunk's status. No status field in prose.
+
+5. **Entry IDs in headings**: Format `### F001: 2026-01-12 [theme-id] Title` provides stable references.
+
+See `prototypes/FRICTION.md` for the full prototype.
+
+**Scaling strategy**: If the log grows too large, RESOLVED entries can be archived to `FRICTION_ARCHIVE.md`. This defers multi-file complexity until needed.
 
 ## Findings
 
