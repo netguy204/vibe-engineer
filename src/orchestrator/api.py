@@ -778,6 +778,15 @@ async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
     if resolved_verdict == ConflictVerdict.SERIALIZE:
         if other_chunk not in unit.blocked_by:
             unit.blocked_by.append(other_chunk)
+    # If verdict is INDEPENDENT, remove from blocked_by and potentially unblock
+    elif resolved_verdict == ConflictVerdict.INDEPENDENT:
+        if other_chunk in unit.blocked_by:
+            unit.blocked_by.remove(other_chunk)
+        # If no more blockers and status is NEEDS_ATTENTION due to conflict, unblock
+        if not unit.blocked_by and unit.status == WorkUnitStatus.NEEDS_ATTENTION:
+            if unit.attention_reason and "conflict" in unit.attention_reason.lower():
+                unit.status = WorkUnitStatus.READY
+                unit.attention_reason = None
 
     try:
         updated = store.update_work_unit(unit)
