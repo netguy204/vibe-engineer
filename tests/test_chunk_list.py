@@ -40,10 +40,14 @@ class TestListCommand:
 
     def test_multiple_chunks_reverse_order(self, runner, temp_project):
         """Multiple chunks: outputs in reverse numeric order, exit code 0."""
-        # Create chunks
+        # Create chunks - complete first before creating second (guard prevents multiple IMPLEMENTING)
         runner.invoke(
             cli,
             ["chunk", "start", "first", "VE-001", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "status", "first-ve-001", "ACTIVE", "--project-dir", str(temp_project)]
         )
         runner.invoke(
             cli,
@@ -60,11 +64,15 @@ class TestListCommand:
         assert "first-ve-001" in lines[1]
 
     def test_latest_flag_outputs_only_highest(self, runner, temp_project):
-        """--latest with multiple chunks: outputs only highest-numbered chunk."""
-        # Create chunks
+        """--latest with multiple chunks: outputs only IMPLEMENTING chunk."""
+        # Create chunks - complete first before creating second (guard prevents multiple IMPLEMENTING)
         runner.invoke(
             cli,
             ["chunk", "start", "first", "VE-001", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "status", "first-ve-001", "ACTIVE", "--project-dir", str(temp_project)]
         )
         runner.invoke(
             cli,

@@ -13,12 +13,15 @@ class TestSuggestPrefixBusinessLogic:
     def test_no_suggestion_when_fewer_than_two_chunks(self, temp_project):
         """Need a minimum corpus for meaningful similarity."""
         from chunks import Chunks, suggest_prefix
+        from models import ChunkStatus
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create target chunk with only one other chunk
+        # Complete first before creating second (guard prevents multiple IMPLEMENTING)
         chunks.create_chunk(None, "target_feature")
+        chunks.update_status("target_feature", ChunkStatus.ACTIVE)
         chunks.create_chunk(None, "only_other")
 
         # Add GOAL.md content
@@ -59,13 +62,16 @@ Unrelated content about databases.
     def test_suggests_prefix_when_similar_chunks_share_prefix(self, temp_project):
         """Core success case: top-k similar chunks share a common prefix."""
         from chunks import Chunks, suggest_prefix
+        from models import ChunkStatus
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create chunks with taskdir_ prefix about task directories
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["taskdir_init", "taskdir_config", "taskdir_validate"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
 
         # Create target chunk (no prefix) about task directory stuff
         chunks.create_chunk(None, "setup_workspace")
@@ -121,13 +127,16 @@ Initialize task directory with workspace configuration files.
     ):
         """Falls back gracefully when similar chunks don't share a prefix."""
         from chunks import Chunks, suggest_prefix
+        from models import ChunkStatus
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create chunks with different prefixes but similar content
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["alpha_feature", "beta_module", "gamma_handler", "delta_manager"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
 
         chunks.create_chunk(None, "new_component")
 
@@ -177,13 +186,16 @@ code_references: []
     def test_no_suggestion_when_no_chunks_exceed_threshold(self, temp_project):
         """Handles the 'cluster seed' case - new topic area."""
         from chunks import Chunks, suggest_prefix
+        from models import ChunkStatus
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create unrelated chunks
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["database_init", "database_migrate", "database_seed"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
 
         chunks.create_chunk(None, "new_topic")
 
@@ -229,13 +241,16 @@ Handle WebGL shaders and canvas manipulation for visualization.
     def test_handles_empty_chunk_directories(self, temp_project):
         """Edge case: chunk directory exists but GOAL.md is empty or missing."""
         from chunks import Chunks, suggest_prefix
+        from models import ChunkStatus
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
-        # Create chunks
+        # Create chunks - complete each before creating the next (guard prevents multiple IMPLEMENTING)
         chunks.create_chunk(None, "good_chunk")
+        chunks.update_status("good_chunk", ChunkStatus.ACTIVE)
         chunks.create_chunk(None, "empty_chunk")
+        chunks.update_status("empty_chunk", ChunkStatus.ACTIVE)
         chunks.create_chunk(None, "target")
 
         # Good chunk has content
@@ -435,14 +450,17 @@ class TestSuggestPrefixCLI:
     def test_outputs_suggested_prefix(self, temp_project, runner):
         """Verifies output format and exit code 0 when suggestion found."""
         from chunks import Chunks
+        from models import ChunkStatus
         from ve import cli
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create chunks with common prefix
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["api_auth", "api_routes", "api_handlers"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
 
         chunks.create_chunk(None, "new_endpoint")
 
@@ -488,14 +506,17 @@ Implement route handler and response formatting.
     def test_outputs_no_suggestion_message(self, temp_project, runner):
         """Exit code 0 with no suggestion message when no match."""
         from chunks import Chunks
+        from models import ChunkStatus
         from ve import cli
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create unrelated chunks
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["alpha_one", "beta_two", "gamma_three"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
 
         chunks.create_chunk(None, "unique_feature")
 
@@ -552,14 +573,17 @@ Completely unrelated content about new area.
     def test_works_with_project_dir_option(self, temp_project, runner):
         """Standard --project-dir option works."""
         from chunks import Chunks
+        from models import ChunkStatus
         from ve import cli
 
         make_ve_initialized_git_repo(temp_project)
         chunks = Chunks(temp_project)
 
         # Create minimal setup
+        # Complete each before creating the next (guard prevents multiple IMPLEMENTING)
         for name in ["test_one", "test_two", "test_three"]:
             chunks.create_chunk(None, name)
+            chunks.update_status(name, ChunkStatus.ACTIVE)
             goal = temp_project / "docs" / "chunks" / name / "GOAL.md"
             goal.write_text(f"""---
 status: ACTIVE

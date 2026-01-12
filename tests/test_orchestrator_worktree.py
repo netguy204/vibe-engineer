@@ -346,3 +346,114 @@ class TestMergeToBase:
 
         # Branch should still exist
         assert manager._branch_exists("orch/test_chunk")
+
+
+# Chunk: docs/chunks/orch_mechanical_commit - Tests for mechanical commit
+class TestCommitChanges:
+    """Tests for WorktreeManager.commit_changes()."""
+
+    def test_commit_changes_success(self, git_repo):
+        """Commits staged changes with correct message format."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change in the worktree
+        (worktree_path / "new_file.txt").write_text("new content")
+
+        # Commit using commit_changes
+        result = manager.commit_changes("test_chunk")
+
+        assert result is True
+
+        # Verify the commit message format
+        log_result = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+        )
+        assert log_result.stdout.strip() == "feat: chunk test_chunk"
+
+        # Verify the file was committed
+        assert not manager.has_uncommitted_changes("test_chunk")
+
+    def test_commit_changes_nothing_to_commit(self, git_repo):
+        """Returns False when nothing to commit."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        # No changes made - should return False
+        result = manager.commit_changes("test_chunk")
+
+        assert result is False
+
+    def test_commit_changes_stages_all_files(self, git_repo):
+        """Stages all changes including untracked files."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Create multiple files - one new, one modified
+        (worktree_path / "new_file.txt").write_text("new content")
+        (worktree_path / "README.md").write_text("modified content")
+
+        # Commit using commit_changes
+        result = manager.commit_changes("test_chunk")
+
+        assert result is True
+
+        # Verify both files were committed
+        assert not manager.has_uncommitted_changes("test_chunk")
+
+        # Check commit includes both files
+        show_result = subprocess.run(
+            ["git", "show", "--name-only", "--format="],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+        )
+        assert "new_file.txt" in show_result.stdout
+        assert "README.md" in show_result.stdout
+
+    def test_commit_changes_nonexistent_worktree_raises(self, git_repo):
+        """Raises WorktreeError for non-existent worktree."""
+        manager = WorktreeManager(git_repo)
+
+        with pytest.raises(WorktreeError) as exc_info:
+            manager.commit_changes("nonexistent_chunk")
+
+        assert "does not exist" in str(exc_info.value)
+
+    def test_commit_changes_commit_in_worktree_not_main(self, git_repo):
+        """Commit happens in worktree, not main repo."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change in the worktree
+        (worktree_path / "worktree_file.txt").write_text("worktree content")
+
+        # Commit
+        manager.commit_changes("test_chunk")
+
+        # File should NOT exist in main repo (until merge)
+        assert not (git_repo / "worktree_file.txt").exists()
+
+        # File should exist in worktree
+        assert (worktree_path / "worktree_file.txt").exists()
+
+    def test_commit_changes_message_format(self, git_repo):
+        """Commit message follows expected format: feat: chunk {chunk_name}."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("my_feature_chunk")
+
+        # Make a change
+        (worktree_path / "feature.txt").write_text("feature")
+        manager.commit_changes("my_feature_chunk")
+
+        # Verify commit message
+        log_result = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+        )
+        assert log_result.stdout.strip() == "feat: chunk my_feature_chunk"

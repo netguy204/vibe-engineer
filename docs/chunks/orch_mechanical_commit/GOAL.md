@@ -1,154 +1,76 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/orchestrator/worktree.py
+- src/orchestrator/scheduler.py
+- tests/test_orchestrator_worktree.py
+- tests/test_orchestrator_scheduler.py
+code_references:
+  - ref: src/orchestrator/worktree.py#WorktreeManager::commit_changes
+    implements: "Mechanical commit: stages all changes and commits with standard message"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+    implements: "Calls commit_changes instead of agent-driven commit after COMPLETE phase"
+  - ref: tests/test_orchestrator_worktree.py#TestCommitChanges
+    implements: "Unit tests for commit_changes method"
+  - ref: tests/test_orchestrator_scheduler.py#TestMechanicalCommit
+    implements: "Unit tests for mechanical commit in scheduler"
 narrative: null
 investigation: null
 subsystems: []
 created_after: ["orch_attention_queue", "orch_conflict_oracle", "orch_agent_skills", "orch_question_forward"]
 ---
 
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
-
-CREATED_AFTER:
-- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
-- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
-- Tips must be ACTIVE chunks (shipped work that has been merged)
-- Example: created_after: ["auth_refactor", "api_cleanup"]
-
-IMPORTANT - created_after is NOT implementation dependencies:
-- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- It does NOT mean "chunks that must be implemented before this one can work"
-- FUTURE chunks can NEVER be tips (they haven't shipped yet)
-
-COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
-represent design dependencies. This is WRONG. If chunk B conceptually depends on
-chunk A's implementation, but A is still FUTURE, B's created_after should still
-reference the current ACTIVE tips, not A.
-
-WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
-- Investigation proposed_chunks ordering (earlier = implement first)
-- Narrative chunk sequencing in OVERVIEW.md
-- Design documents describing the intended build order
-- The `created_after` field will naturally reflect this once chunks ship
--->
-
 # Chunk Goal
 
 ## Minor Goal
 
-<!--
-What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
-Why is this the right next step? What does completing this enable?
+Replace the agent-driven commit phase with a mechanical commit. Currently, when
+the orchestrator detects uncommitted changes after the COMPLETE phase, it runs
+`agent_runner.run_commit()` which launches an agent with the `/chunk-commit`
+skill. This agent can escape the worktree sandbox (as demonstrated when the
+`orch_sandbox_enforcement` chunk's agent ran `cd /host/repo && git commit`,
+committing to main instead of the worktree branch).
 
-Keep this focused. If you're describing multiple independent outcomes,
-you may need multiple chunks.
--->
+The fix is to eliminate the agent entirely for commits. After COMPLETE phase
+succeeds and uncommitted changes are detected, mechanically run git commands
+directly in the worktree:
+
+```bash
+git add -A
+git commit -m "feat: chunk <chunk_name>"
+```
+
+This is simpler, faster, and cannot escape the sandbox because there's no agent
+making decisions about where to run commands.
 
 ## Success Criteria
 
-<!--
-How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of docs/trunk/SPEC.md where applicable.
+- **Mechanical commit in scheduler**: Replace the `agent_runner.run_commit()`
+  call in `src/orchestrator/scheduler.py` with direct subprocess calls to git
+  - Run `git add -A` in the worktree directory
+  - Run `git commit -m "feat: chunk {chunk}"` in the worktree directory
+  - Handle commit failure gracefully (mark NEEDS_ATTENTION)
 
-Example:
-- SegmentWriter correctly encodes messages per SPEC.md Section 3.2
-- fsync is called after each write, satisfying durability guarantee
-- Write throughput meets SPEC.md performance requirements (>50K msg/sec)
-- All tests in TESTS.md pass
--->
+- **No agent involvement**: The commit operation must not use `ClaudeAgent` or
+  any agent-based execution. Pure subprocess/git operations only.
 
-## Relationship to Parent
+- **Worktree isolation**: Git commands must run with `cwd=worktree_path` to
+  ensure they operate on the worktree, not the host repo
 
-<!--
-DELETE THIS SECTION if parent_chunk is null.
+- **Error handling**: If `git commit` fails (e.g., nothing to commit after
+  `git add -A`), log appropriately and proceed to merge phase
 
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
+- **Logging**: Log the commit operation to the orchestrator log (not to an
+  agent log file since there's no agent)
 
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->
+- **Test coverage**:
+  - Unit test verifying mechanical commit runs git commands in worktree
+  - Unit test verifying commit message format matches `feat: chunk <name>`
+  - Unit test verifying failure handling marks NEEDS_ATTENTION
+
+- **Cleanup**: Remove or deprecate `AgentRunner.run_commit()` method if no
+  longer needed, or keep it for potential manual use cases
+
+- **No regressions**: All existing orchestrator tests pass

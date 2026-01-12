@@ -8,168 +8,153 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Replace the agent-driven commit in `scheduler.py` with a direct subprocess call
+to git. The current flow:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. `scheduler.py:601` detects uncommitted changes via `worktree_manager.has_uncommitted_changes()`
+2. `scheduler.py:612` calls `agent_runner.run_commit()` which launches an agent
+3. Agent runs `/chunk-commit` skill, which can escape sandbox
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+New flow:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_mechanical_commit/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. Same detection of uncommitted changes
+2. Run `git add -A` directly in worktree via subprocess
+3. Run `git commit -m "feat: chunk <name>"` directly in worktree via subprocess
+4. Handle failure gracefully (log and proceed to merge)
+
+The mechanical commit will be a new method on `WorktreeManager` since it already
+has `has_uncommitted_changes()` and manages worktree paths. This keeps git
+operations grouped together.
+
+Files to modify:
+- `src/orchestrator/worktree.py` - Add `commit_changes()` method
+- `src/orchestrator/scheduler.py` - Replace `agent_runner.run_commit()` with `worktree_manager.commit_changes()`
+- `tests/test_orchestrator_worktree.py` - Add tests for `commit_changes()`
+- `tests/test_orchestrator_scheduler.py` - Update mocks for new commit approach
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this chunk.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `commit_changes()` method to WorktreeManager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `src/orchestrator/worktree.py`
 
-Example:
+Add a new method that performs the mechanical commit:
 
-### Step 1: Define the SegmentHeader struct
+```python
+def commit_changes(self, chunk: str) -> bool:
+    """Commit all changes in a worktree with a standard message.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Args:
+        chunk: Chunk name
 
-Location: src/segment/format.rs
+    Returns:
+        True if commit succeeded, False if nothing to commit or error
+    """
+    worktree_path = self.get_worktree_path(chunk)
 
-### Step 2: Implement header serialization
+    # Stage all changes
+    subprocess.run(["git", "add", "-A"], cwd=worktree_path, check=True)
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+    # Commit with standard message
+    result = subprocess.run(
+        ["git", "commit", "-m", f"feat: chunk {chunk}"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    )
 
-### Step 3: ...
+    # Return False if nothing to commit (exit code 1 with "nothing to commit")
+    if result.returncode != 0:
+        if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+            return False
+        raise RuntimeError(f"git commit failed: {result.stderr}")
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+    return True
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+### Step 2: Update scheduler to use mechanical commit
+
+Location: `src/orchestrator/scheduler.py`
+
+Replace the `agent_runner.run_commit()` call (lines 605-626) with:
+
+```python
+if self.worktree_manager.has_uncommitted_changes(chunk):
+    logger.info(f"Uncommitted changes detected for {chunk}, committing")
+    try:
+        committed = self.worktree_manager.commit_changes(chunk)
+        if committed:
+            logger.info(f"Committed changes for {chunk}")
+        else:
+            logger.info(f"No changes to commit for {chunk}")
+    except Exception as e:
+        logger.error(f"Error committing changes for {chunk}: {e}")
+        await self._mark_needs_attention(work_unit, f"Commit error: {e}")
+        return
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+Remove the imports/usage of `create_log_callback` for the commit phase since
+there's no agent log to write to.
+
+### Step 3: Add tests for `commit_changes()`
+
+Location: `tests/test_orchestrator_worktree.py`
+
+Add a new test class:
+
+```python
+class TestCommitChanges:
+    """Tests for WorktreeManager.commit_changes()"""
+
+    def test_commit_changes_success(self, ...):
+        """Commits staged changes with correct message format."""
+
+    def test_commit_changes_nothing_to_commit(self, ...):
+        """Returns False when nothing to commit."""
+
+    def test_commit_changes_error(self, ...):
+        """Raises on git error."""
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
+
+### Step 4: Update scheduler tests
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+Update the mock setup to use `worktree_manager.commit_changes` instead of
+`agent_runner.run_commit`. The test at line 60 currently mocks `run_commit`.
+
+### Step 5: Run tests and verify
+
+Run the full test suite to ensure no regressions:
+
+```bash
+uv run pytest tests/test_orchestrator_worktree.py tests/test_orchestrator_scheduler.py -v
 ```
--->
+
+### Step 6: Consider cleanup of `run_commit`
+
+Decide whether to remove `AgentRunner.run_commit()`. Check if it's used anywhere
+else. If not, it can be removed. If there's a use case for manual agent-driven
+commits, keep it but add a deprecation note.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk modifies existing orchestrator code with no new dependencies.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Commit message format**: Using `feat: chunk <name>` is simple but may not
+  capture the nature of the work. This is intentional - the chunk name provides
+  context, and detailed commit messages are less important in worktree branches
+  that get merged to main anyway.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`run_commit` removal**: If `AgentRunner.run_commit()` is used elsewhere or
+  has value for manual debugging, we should keep it. Check usage before removing.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populated during implementation -->

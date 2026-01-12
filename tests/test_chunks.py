@@ -1,6 +1,7 @@
 """Tests for the Chunks class."""
 
 from chunks import Chunks
+from models import ChunkStatus
 
 
 class TestChunksClass:
@@ -58,6 +59,8 @@ class TestChunksClass:
         chunk_mgr.create_chunk("VE-001", "first")
         assert chunk_mgr.num_chunks == 1
 
+        # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
         assert chunk_mgr.num_chunks == 2
 
@@ -86,7 +89,10 @@ class TestListChunks:
         """Multiple chunks returned in causal order (newest first)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
+        # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
+        chunk_mgr.update_status("second-VE-002", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-003", "third")
         result = chunk_mgr.list_chunks()
         assert len(result) == 3
@@ -99,6 +105,8 @@ class TestListChunks:
         """Chunks with different name formats all parsed correctly."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "with_ticket")
+        # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("with_ticket-VE-001", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk(None, "without_ticket")
         result = chunk_mgr.list_chunks()
         assert len(result) == 2
@@ -127,7 +135,10 @@ class TestGetLatestChunk:
         """Multiple chunks returns latest chunk (newest in causal order)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
+        # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
+        chunk_mgr.update_status("second-VE-002", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-003", "third")
         assert chunk_mgr.get_latest_chunk() == "third-VE-003"
 
@@ -149,12 +160,19 @@ class TestGetCurrentChunk:
         chunk_mgr.create_chunk(None, "feature", status="IMPLEMENTING")
         assert chunk_mgr.get_current_chunk() == "feature"
 
-    def test_returns_highest_implementing_chunk(self, temp_project):
-        """Multiple IMPLEMENTING chunks returns latest in causal order."""
+    def test_returns_sole_implementing_chunk(self, temp_project):
+        """Single IMPLEMENTING chunk is returned as current chunk.
+
+        Note: The guard prevents creating multiple IMPLEMENTING chunks,
+        so this test verifies the single-chunk case.
+        """
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
-        chunk_mgr.create_chunk(None, "second", status="IMPLEMENTING")
-        assert chunk_mgr.get_current_chunk() == "second"
+        assert chunk_mgr.get_current_chunk() == "first"
+
+        # Creating FUTURE chunks doesn't affect current
+        chunk_mgr.create_chunk(None, "second", status="FUTURE")
+        assert chunk_mgr.get_current_chunk() == "first"
 
     def test_ignores_future_chunks(self, temp_project):
         """FUTURE chunks are ignored, returns IMPLEMENTING chunk."""
@@ -188,18 +206,20 @@ class TestGetCurrentChunk:
     def test_ignores_superseded_and_historical(self, temp_project):
         """SUPERSEDED and HISTORICAL chunks are ignored."""
         chunk_mgr = Chunks(temp_project)
-        chunk_mgr.create_chunk(None, "superseded", status="IMPLEMENTING")
-        chunk_mgr.create_chunk(None, "historical", status="IMPLEMENTING")
 
-        # Manually change statuses
+        # Create first chunk and mark it SUPERSEDED
+        chunk_mgr.create_chunk(None, "superseded", status="IMPLEMENTING")
         goal_path1 = chunk_mgr.get_chunk_goal_path("superseded")
         content1 = goal_path1.read_text()
         goal_path1.write_text(content1.replace("status: IMPLEMENTING", "status: SUPERSEDED"))
 
+        # Create second chunk (no longer blocked) and mark it HISTORICAL
+        chunk_mgr.create_chunk(None, "historical", status="IMPLEMENTING")
         goal_path2 = chunk_mgr.get_chunk_goal_path("historical")
         content2 = goal_path2.read_text()
         goal_path2.write_text(content2.replace("status: IMPLEMENTING", "status: HISTORICAL"))
 
+        # Neither SUPERSEDED nor HISTORICAL should be considered current
         assert chunk_mgr.get_current_chunk() is None
 
 
@@ -223,6 +243,8 @@ class TestCreatedAfterPopulation:
         """When creating second chunk, created_after contains first chunk's short name."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk(None, "first_chunk")
+        # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("first_chunk", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk(None, "second_chunk")
 
         frontmatter = chunk_mgr.parse_chunk_frontmatter("second_chunk")
@@ -243,9 +265,13 @@ class TestCreatedAfterPopulation:
 
         # Create first chunk (becomes a tip)
         chunk_mgr.create_chunk(None, "first_chunk")
+        # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
+        chunk_mgr.update_status("first_chunk", ChunkStatus.ACTIVE)
 
         # Create second chunk (references first, making first no longer a tip)
         chunk_mgr.create_chunk(None, "second_chunk")
+        # Complete second chunk before creating third
+        chunk_mgr.update_status("second_chunk", ChunkStatus.ACTIVE)
 
         # Create third chunk - only second should be a tip now
         chunk_mgr.create_chunk(None, "third_chunk")

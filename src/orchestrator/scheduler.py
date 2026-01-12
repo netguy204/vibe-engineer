@@ -597,31 +597,18 @@ class Scheduler:
             # Status is ACTIVE - proceed with commit/merge
             logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
 
+            # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit
             # Check for uncommitted changes that need to be committed
             if self.worktree_manager.has_uncommitted_changes(chunk):
-                logger.info(
-                    f"Uncommitted changes detected for {chunk}, running commit phase"
-                )
-                # Run the /commit skill to properly commit changes
-                log_dir = self.worktree_manager.get_log_path(chunk)
-                log_callback = create_log_callback(
-                    chunk, WorkUnitPhase.COMPLETE, log_dir
-                )
-
+                logger.info(f"Uncommitted changes detected for {chunk}, committing")
                 try:
-                    result = await self.agent_runner.run_commit(
-                        chunk=chunk,
-                        worktree_path=worktree_path,
-                        log_callback=log_callback,
-                    )
-                    if not result.completed:
-                        logger.warning(f"Commit failed for {chunk}: {result.error}")
-                        await self._mark_needs_attention(
-                            work_unit, f"Commit failed: {result.error}"
-                        )
-                        return
-                except Exception as e:
-                    logger.error(f"Error running commit for {chunk}: {e}")
+                    committed = self.worktree_manager.commit_changes(chunk)
+                    if committed:
+                        logger.info(f"Committed changes for {chunk}")
+                    else:
+                        logger.info(f"No changes to commit for {chunk}")
+                except WorktreeError as e:
+                    logger.error(f"Error committing changes for {chunk}: {e}")
                     await self._mark_needs_attention(work_unit, f"Commit error: {e}")
                     return
 

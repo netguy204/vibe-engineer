@@ -333,6 +333,12 @@ class AgentRunner:
     ) -> AgentResult:
         """Run the /chunk-commit skill to commit changes with proper conventional commit message.
 
+        .. deprecated::
+            The orchestrator scheduler now uses WorktreeManager.commit_changes() for
+            mechanical commits instead of this agent-based approach. This method is
+            kept for potential manual use cases or debugging, but may be removed in
+            a future version.
+
         Args:
             chunk: Chunk name (for logging)
             worktree_path: Path to the worktree

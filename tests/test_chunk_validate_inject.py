@@ -468,12 +468,11 @@ class TestChunkActivationOnInject:
         result = chunks.validate_chunk_injectable("my_feature")
         assert result.success is True
 
-    def test_multiple_implementing_chunks_allowed_in_cli(self, runner, temp_project):
-        """CLI allows creating multiple IMPLEMENTING chunks.
+    def test_cli_enforces_single_implementing_chunk_guard(self, runner, temp_project):
+        """CLI enforces that only one IMPLEMENTING chunk exists at a time.
 
-        Note: The activate_chunk_in_worktree function in the orchestrator ensures
-        only one chunk is IMPLEMENTING per worktree during agent execution, but
-        the CLI itself does not enforce this constraint.
+        The chunk_create_guard prevents creating a second IMPLEMENTING chunk
+        when one already exists, ensuring workflow consistency.
         """
         from chunks import Chunks
 
@@ -488,17 +487,15 @@ class TestChunkActivationOnInject:
         first_frontmatter = chunks.parse_chunk_frontmatter("first_chunk")
         assert first_frontmatter.status.value == "IMPLEMENTING"
 
-        # Creating a second IMPLEMENTING chunk is allowed by the CLI
+        # Creating a second IMPLEMENTING chunk is now blocked by the guard
         result2 = runner.invoke(
             cli,
             ["chunk", "start", "second_chunk", "--project-dir", str(temp_project)]
         )
-        assert result2.exit_code == 0
+        assert result2.exit_code == 1
+        assert "already IMPLEMENTING" in result2.output
 
-        second_frontmatter = chunks.parse_chunk_frontmatter("second_chunk")
-        assert second_frontmatter.status.value == "IMPLEMENTING"
-
-        # Creating a FUTURE chunk is also allowed
+        # Creating a FUTURE chunk is still allowed
         result3 = runner.invoke(
             cli,
             ["chunk", "start", "third_chunk", "--future", "--project-dir", str(temp_project)]

@@ -47,6 +47,7 @@ def mock_worktree_manager():
     manager.worktree_exists.return_value = False
     manager.has_uncommitted_changes.return_value = False
     manager.has_changes.return_value = False
+    manager.commit_changes.return_value = True
     return manager
 
 
@@ -55,9 +56,6 @@ def mock_agent_runner():
     """Create a mock agent runner."""
     runner = MagicMock()
     runner.run_phase = AsyncMock(
-        return_value=AgentResult(completed=True, suspended=False)
-    )
-    runner.run_commit = AsyncMock(
         return_value=AgentResult(completed=True, suspended=False)
     )
     return runner
@@ -263,6 +261,161 @@ status: ACTIVE
         mock_worktree_manager.remove_worktree.assert_called_once_with(
             "test", remove_branch=False
         )
+
+
+# Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit tests
+class TestMechanicalCommit:
+    """Tests for mechanical commit in scheduler."""
+
+    @pytest.mark.asyncio
+    async def test_mechanical_commit_called_when_uncommitted_changes(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Mechanical commit is called when uncommitted changes are detected."""
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = True
+        mock_worktree_manager.commit_changes.return_value = True
+        mock_worktree_manager.has_changes.return_value = True
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Should have called commit_changes
+        mock_worktree_manager.commit_changes.assert_called_once_with("test_chunk")
+
+    @pytest.mark.asyncio
+    async def test_mechanical_commit_not_called_when_no_changes(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Mechanical commit is not called when no uncommitted changes."""
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Should NOT have called commit_changes
+        mock_worktree_manager.commit_changes.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mechanical_commit_error_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Commit error marks work unit as NEEDS_ATTENTION."""
+        from orchestrator.worktree import WorktreeError
+
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = True
+        mock_worktree_manager.commit_changes.side_effect = WorktreeError("git commit failed")
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Should be marked NEEDS_ATTENTION
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "Commit error" in updated.attention_reason
+
+    @pytest.mark.asyncio
+    async def test_mechanical_commit_proceeds_after_nothing_to_commit(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Proceeds to merge even when commit returns False (nothing to commit)."""
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = True
+        mock_worktree_manager.commit_changes.return_value = False  # Nothing to commit
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Should have proceeded to DONE (merge phase completes)
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.DONE
 
 
 class TestAgentResultHandling:

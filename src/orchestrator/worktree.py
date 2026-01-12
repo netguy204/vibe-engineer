@@ -426,3 +426,52 @@ class WorktreeManager:
 
         count = int(result.stdout.strip())
         return count > 0
+
+    # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit for worktree
+    def commit_changes(self, chunk: str) -> bool:
+        """Commit all changes in a worktree with a standard message.
+
+        This is a mechanical commit that stages all changes and commits them
+        with a standard message format. Used by the orchestrator to commit
+        changes after the COMPLETE phase without involving an agent.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            True if commit succeeded, False if nothing to commit
+
+        Raises:
+            WorktreeError: If git command fails for reasons other than
+                           "nothing to commit"
+        """
+        worktree_path = self.get_worktree_path(chunk)
+
+        if not worktree_path.exists():
+            raise WorktreeError(f"Worktree for {chunk} does not exist")
+
+        # Stage all changes
+        result = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"git add failed: {result.stderr}")
+
+        # Commit with standard message
+        result = subprocess.run(
+            ["git", "commit", "-m", f"feat: chunk {chunk}"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+        )
+
+        # Return False if nothing to commit (exit code 1 with "nothing to commit")
+        if result.returncode != 0:
+            if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                return False
+            raise WorktreeError(f"git commit failed: {result.stderr}")
+
+        return True
