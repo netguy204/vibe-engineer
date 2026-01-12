@@ -485,3 +485,88 @@ class TestFrictionFrontmatter:
         """proposed_chunks defaults to empty list when not provided."""
         frontmatter = FrictionFrontmatter(themes=[])
         assert frontmatter.proposed_chunks == []
+
+
+# Chunk: docs/chunks/friction_chunk_linking - FrictionEntryReference model tests
+class TestFrictionEntryReference:
+    """Tests for FrictionEntryReference model."""
+
+    def test_valid_entry_reference_parses_successfully(self):
+        """Valid FrictionEntryReference parses correctly."""
+        from models import FrictionEntryReference
+
+        ref = FrictionEntryReference(entry_id="F001", scope="full")
+        assert ref.entry_id == "F001"
+        assert ref.scope == "full"
+
+    def test_valid_entry_reference_with_partial_scope(self):
+        """FrictionEntryReference with partial scope parses correctly."""
+        from models import FrictionEntryReference
+
+        ref = FrictionEntryReference(entry_id="F123", scope="partial")
+        assert ref.entry_id == "F123"
+        assert ref.scope == "partial"
+
+    def test_scope_defaults_to_full(self):
+        """scope defaults to 'full' when not provided."""
+        from models import FrictionEntryReference
+
+        ref = FrictionEntryReference(entry_id="F001")
+        assert ref.scope == "full"
+
+    def test_empty_entry_id_rejected(self):
+        """Empty entry_id is rejected."""
+        from models import FrictionEntryReference
+        import pytest
+
+        with pytest.raises(ValueError, match="entry_id cannot be empty"):
+            FrictionEntryReference(entry_id="", scope="full")
+
+    def test_invalid_entry_id_format_rejected(self):
+        """entry_id not matching F followed by digits is rejected."""
+        from models import FrictionEntryReference
+        import pytest
+
+        # Lowercase f
+        with pytest.raises(ValueError, match="entry_id must match pattern"):
+            FrictionEntryReference(entry_id="f001", scope="full")
+
+        # Missing F prefix
+        with pytest.raises(ValueError, match="entry_id must match pattern"):
+            FrictionEntryReference(entry_id="001", scope="full")
+
+        # Non-numeric suffix
+        with pytest.raises(ValueError, match="entry_id must match pattern"):
+            FrictionEntryReference(entry_id="FABC", scope="full")
+
+        # Extra characters
+        with pytest.raises(ValueError, match="entry_id must match pattern"):
+            FrictionEntryReference(entry_id="F001A", scope="full")
+
+    def test_valid_entry_id_formats_accepted(self):
+        """Various valid entry_id formats are accepted."""
+        from models import FrictionEntryReference
+
+        # Single digit
+        ref1 = FrictionEntryReference(entry_id="F1")
+        assert ref1.entry_id == "F1"
+
+        # Two digits
+        ref2 = FrictionEntryReference(entry_id="F01")
+        assert ref2.entry_id == "F01"
+
+        # Three digits (standard format)
+        ref3 = FrictionEntryReference(entry_id="F001")
+        assert ref3.entry_id == "F001"
+
+        # Four digits
+        ref4 = FrictionEntryReference(entry_id="F9999")
+        assert ref4.entry_id == "F9999"
+
+    def test_invalid_scope_rejected(self):
+        """Invalid scope value is rejected."""
+        from models import FrictionEntryReference
+        import pytest
+
+        with pytest.raises(ValueError):
+            FrictionEntryReference(entry_id="F001", scope="invalid")

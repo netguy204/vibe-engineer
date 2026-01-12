@@ -1294,3 +1294,239 @@ proposed_chunks: []
             ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
+
+
+# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference validation tests
+class TestFrictionEntryRefValidation:
+    """Tests for friction entry reference validation in 've chunk validate'."""
+
+    def _write_frontmatter_with_friction_entries(
+        self,
+        chunk_path,
+        status: str,
+        code_references: list[dict],
+        friction_entries: list[dict] | None = None,
+    ):
+        """Helper to write GOAL.md with friction_entries field."""
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: {ref['ref']}")
+                refs_lines.append(f"    implements: \"{ref['implements']}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        if friction_entries:
+            friction_yaml = "friction_entries:\n"
+            for entry in friction_entries:
+                friction_yaml += f"  - entry_id: {entry['entry_id']}\n"
+                if 'scope' in entry:
+                    friction_yaml += f"    scope: {entry['scope']}\n"
+        else:
+            friction_yaml = "friction_entries: []"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+narrative: null
+investigation: null
+subsystems: []
+{friction_yaml}
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def _create_friction_log(self, temp_project, entries: list[str] | None = None):
+        """Helper to create FRICTION.md with optional entries.
+
+        Args:
+            temp_project: Path to the temp project directory
+            entries: List of entry IDs to create (e.g., ["F001", "F002"])
+        """
+        friction_path = temp_project / "docs" / "trunk" / "FRICTION.md"
+        friction_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if entries is None:
+            entries = []
+
+        entries_content = ""
+        for entry_id in entries:
+            entries_content += f"""
+### {entry_id}: 2026-01-12 [test-theme] Test friction entry
+
+This is a test friction entry for validation.
+
+**Impact**: Medium
+"""
+
+        friction_content = f"""---
+themes:
+  - id: test-theme
+    name: Test Theme
+proposed_chunks: []
+---
+
+# Friction Log
+{entries_content}
+"""
+        friction_path.write_text(friction_content)
+
+    def test_chunk_with_valid_friction_entries_passes(self, runner, temp_project):
+        """Chunk with valid friction entry references passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create friction log with entries
+        self._create_friction_log(temp_project, ["F001", "F002"])
+
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"entry_id": "F001", "scope": "full"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_invalid_friction_entry_fails(self, runner, temp_project):
+        """Chunk with invalid friction entry reference fails validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create friction log with only F001
+        self._create_friction_log(temp_project, ["F001"])
+
+        # Reference F999 which doesn't exist
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"entry_id": "F999", "scope": "full"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "F999" in result.output
+
+    def test_chunk_with_no_friction_entries_passes(self, runner, temp_project):
+        """Chunk without friction_entries field passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            None,  # No friction entries
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_partial_scope_passes(self, runner, temp_project):
+        """Chunk with scope: partial passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create friction log with entries
+        self._create_friction_log(temp_project, ["F001"])
+
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"entry_id": "F001", "scope": "partial"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_multiple_friction_entries_validates_all(self, runner, temp_project):
+        """Chunk with multiple friction entries validates all of them."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create friction log with F001 and F002 but NOT F003
+        self._create_friction_log(temp_project, ["F001", "F002"])
+
+        # Reference F001, F002, and F003 (last one doesn't exist)
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [
+                {"entry_id": "F001", "scope": "full"},
+                {"entry_id": "F002", "scope": "partial"},
+                {"entry_id": "F003", "scope": "full"},  # This doesn't exist
+            ],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "F003" in result.output
+
+    def test_chunk_with_friction_entries_but_no_friction_log_fails(self, runner, temp_project):
+        """Chunk referencing friction entries when FRICTION.md doesn't exist fails."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Don't create friction log
+
+        self._write_frontmatter_with_friction_entries(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            [{"entry_id": "F001", "scope": "full"}],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Should mention friction log doesn't exist or entry not found
+        assert "friction" in result.output.lower() or "F001" in result.output

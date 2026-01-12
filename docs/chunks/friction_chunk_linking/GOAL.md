@@ -1,15 +1,36 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+  - src/models.py
+  - src/chunks.py
+  - src/templates/chunk/GOAL.md.jinja2
+  - tests/test_chunk_validate.py
+code_references:
+  - ref: src/models.py#FrictionEntryReference
+    implements: "Pydantic model for friction entry reference with entry_id and scope fields"
+  - ref: src/models.py#FRICTION_ENTRY_ID_PATTERN
+    implements: "Regex pattern for validating friction entry ID format (F followed by digits)"
+  - ref: src/models.py#ChunkFrontmatter
+    implements: "Added friction_entries field to chunk frontmatter schema"
+  - ref: src/chunks.py#Chunks::validate_friction_entries_ref
+    implements: "Validation method checking friction entry references exist in FRICTION.md"
+  - ref: src/chunks.py#Chunks::validate_chunk_complete
+    implements: "Integration of friction entry validation into chunk completion validation"
+  - ref: src/templates/chunk/GOAL.md.jinja2
+    implements: "Template with friction_entries field and documentation comment explaining format"
+  - ref: tests/test_chunk_validate.py#TestFrictionEntryRefValidation
+    implements: "Test class validating friction entry reference validation behavior"
 narrative: null
 investigation: friction_log_artifact
 subsystems: []
-created_after: ["orch_attention_queue", "orch_conflict_oracle", "orch_agent_skills", "orch_question_forward"]
+created_after:
+- orch_attention_queue
+- orch_conflict_oracle
+- orch_agent_skills
+- orch_question_forward
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

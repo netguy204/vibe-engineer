@@ -799,6 +799,10 @@ class Chunks:
         narrative_errors = validation_chunks.validate_narrative_ref(chunk_name_to_validate)
         errors.extend(narrative_errors)
 
+        # Chunk: docs/chunks/friction_chunk_linking - Validate friction entry references
+        friction_errors = validation_chunks.validate_friction_entries_ref(chunk_name_to_validate)
+        errors.extend(friction_errors)
+
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
@@ -1186,6 +1190,54 @@ class Chunks:
             errors.append(
                 f"Narrative '{frontmatter.narrative}' does not exist in docs/narratives/"
             )
+
+        return errors
+
+    # Chunk: docs/chunks/friction_chunk_linking - Friction entry reference validation
+    def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
+        """Validate friction entry references in a chunk's frontmatter.
+
+        Checks that each referenced friction entry ID exists in FRICTION.md.
+        If friction_entries is empty, validation passes (optional field).
+
+        Args:
+            chunk_id: The chunk ID to validate.
+
+        Returns:
+            List of error messages (empty if valid or no references).
+        """
+        from friction import Friction
+
+        errors: list[str] = []
+
+        # Get chunk frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            return []  # Chunk doesn't exist, nothing to validate
+
+        # Get friction_entries field (already validated by ChunkFrontmatter model)
+        if not frontmatter.friction_entries:
+            return []
+
+        # Parse friction log to get existing entry IDs
+        friction = Friction(self.project_dir)
+        if not friction.exists():
+            errors.append(
+                f"Friction log does not exist at docs/trunk/FRICTION.md but chunk "
+                f"references friction entries: {[e.entry_id for e in frontmatter.friction_entries]}"
+            )
+            return errors
+
+        # Get all existing friction entry IDs
+        existing_entries = friction.parse_entries()
+        existing_entry_ids = {entry.id for entry in existing_entries}
+
+        # Validate each referenced entry exists
+        for entry_ref in frontmatter.friction_entries:
+            if entry_ref.entry_id not in existing_entry_ids:
+                errors.append(
+                    f"Friction entry '{entry_ref.entry_id}' does not exist in docs/trunk/FRICTION.md"
+                )
 
         return errors
 
