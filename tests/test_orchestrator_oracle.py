@@ -223,6 +223,64 @@ Location: src/shared3.py
 class TestGoalStageAnalysis:
     """Tests for conflict analysis at GOAL stage (semantic comparison)."""
 
+    def test_template_boilerplate_not_flagged_as_conflict(self, oracle, project_dir, store):
+        """Template comment block in GOAL.md should not cause false positive conflicts.
+
+        Regression test: chunks with identical template boilerplate but distinct
+        actual goals were being flagged as conflicting due to example paths like
+        'src/segment/writer.rs' appearing in both templates.
+        """
+        # Standard GOAL.md template with example paths that caused false positives
+        template_comment = '''<!--
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+CODE_PATHS:
+- Populated at planning time
+- List files you expect to create or modify
+- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
+
+CODE_REFERENCES:
+- Example:
+  code_references:
+    - ref: src/segment/writer.rs#SegmentWriter
+      implements: "Core write loop and buffer management"
+-->'''
+
+        # Create chunk_a about authentication (with template)
+        chunk_a_dir = project_dir / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(f"""---
+status: FUTURE
+---
+{template_comment}
+
+## Minor Goal
+Implement user authentication with OAuth2 flow.
+""")
+
+        # Create chunk_b about UI (with same template)
+        chunk_b_dir = project_dir / "docs" / "chunks" / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(f"""---
+status: FUTURE
+---
+{template_comment}
+
+## Minor Goal
+Add dark mode toggle to the settings page.
+""")
+
+        analysis = oracle.analyze_conflict("chunk_a", "chunk_b")
+
+        # Should be INDEPENDENT - the template examples should NOT cause overlap
+        assert analysis.verdict == ConflictVerdict.INDEPENDENT, (
+            f"Expected INDEPENDENT but got {analysis.verdict}. "
+            f"Reason: {analysis.reason}. "
+            "Template boilerplate should be stripped before analysis."
+        )
+
     def test_independent_when_goals_distinct(self, oracle, project_dir, store):
         """Returns INDEPENDENT when goals describe distinct work."""
         # Create chunk_a about authentication
@@ -327,6 +385,78 @@ class TestConflictCaching:
         # Retrieve in opposite order
         stored = store.get_conflict_analysis("chunk_b", "chunk_a")
         assert stored is not None
+
+
+class TestHtmlCommentStripping:
+    """Tests for the _strip_html_comments helper."""
+
+    def test_single_line_comment_removed(self, oracle):
+        """Single-line HTML comments are removed."""
+        text = "text before <!-- comment --> text after"
+        result = oracle._strip_html_comments(text)
+        assert result == "text before  text after"
+
+    def test_multi_line_comment_removed(self, oracle):
+        """Multi-line HTML comments are removed."""
+        text = """text before
+<!-- this is
+a multi-line
+comment -->
+text after"""
+        result = oracle._strip_html_comments(text)
+        assert "this is" not in result
+        assert "multi-line" not in result
+        assert "text before" in result
+        assert "text after" in result
+
+    def test_multiple_comments_all_removed(self, oracle):
+        """Multiple comments in one string are all removed."""
+        text = "<!-- first --> middle <!-- second --> end"
+        result = oracle._strip_html_comments(text)
+        assert "first" not in result
+        assert "second" not in result
+        assert "middle" in result
+        assert "end" in result
+
+    def test_text_without_comments_unchanged(self, oracle):
+        """Text without comments is returned unchanged."""
+        text = "no comments here"
+        result = oracle._strip_html_comments(text)
+        assert result == text
+
+    def test_empty_string_returns_empty(self, oracle):
+        """Empty string input returns empty string."""
+        result = oracle._strip_html_comments("")
+        assert result == ""
+
+    def test_comment_at_start(self, oracle):
+        """Comment at start of string is removed."""
+        text = "<!-- start comment --> text follows"
+        result = oracle._strip_html_comments(text)
+        assert "start comment" not in result
+        assert "text follows" in result
+
+    def test_comment_at_end(self, oracle):
+        """Comment at end of string is removed."""
+        text = "text before <!-- end comment -->"
+        result = oracle._strip_html_comments(text)
+        assert "end comment" not in result
+        assert "text before" in result
+
+    def test_preserves_markdown_content(self, oracle):
+        """Regular markdown content is preserved."""
+        text = """## Minor Goal
+
+Implement authentication.
+
+## Success Criteria
+
+- Users can log in
+"""
+        result = oracle._strip_html_comments(text)
+        assert "## Minor Goal" in result
+        assert "Implement authentication" in result
+        assert "## Success Criteria" in result
 
 
 class TestCommonTermsFinding:
