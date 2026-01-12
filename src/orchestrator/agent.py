@@ -136,6 +136,16 @@ class AgentRunner:
         """
         prompt = self.get_phase_prompt(chunk, phase)
 
+        # Prepend CWD reminder to help agent avoid hallucinating absolute paths
+        # Background agents sometimes recall paths from training data instead of
+        # using the actual working directory. This explicit reminder helps ground them.
+        cwd_reminder = (
+            f"**Working Directory:** `{worktree_path}`\n"
+            f"Use relative paths (e.g., `docs/chunks/...`) or paths relative to this directory.\n"
+            f"Do NOT guess absolute paths from memory - they will be wrong.\n\n"
+        )
+        prompt = cwd_reminder + prompt
+
         # Build options - run in bypassPermissions mode for autonomous execution
         options = ClaudeAgentOptions(
             cwd=str(worktree_path),

@@ -26,3 +26,10 @@ search for it - run it directly via Bash.
    directory>
 
 2. Implement the chunk plan as described in <chunk directory>/PLAN.md
+
+3. When implementation is complete, STOP. Do NOT:
+   - Modify the chunk GOAL.md status field
+   - Run chunk-complete or any finalization steps
+   - Set status to ACTIVE or any other value
+
+   A separate COMPLETE phase handles status transitions and finalization.
