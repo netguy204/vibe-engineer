@@ -7,11 +7,11 @@ proposed_chunks:
   - prompt: "Orchestrator scheduling: worktree manager, agent spawning for single phase execution, ve orch inject and ready queue"
     chunk_directory: orch_scheduling
   - prompt: "Orchestrator attention queue: question/decision capture from agents, priority scoring by downstream impact, ve orch queue/answer commands"
-    chunk_directory: null
+    chunk_directory: orch_attention_queue
   - prompt: "Attention reason tracking: store and display why work units need attention, add ve orch work-unit show command"
     chunk_directory: orch_attention_reason
   - prompt: "Conflict oracle: goal-level semantic comparison, plan-level file/symbol analysis, ve orch resolve command"
-    chunk_directory: null
+    chunk_directory: orch_conflict_oracle
   - prompt: "Orchestrator dashboard: web UI with WebSocket updates, attention queue view, process grid"
     chunk_directory: null
 created_after: ["task_agent_experience", "xr_vibe_integration"]
