@@ -14,4 +14,45 @@ description: Create a git commit
 ## Your task
 
 Based on the above changes, create a single git commit. Use the conventional commit message format.
-Be careful not to add extraneous files to the commit. Examples of these would be binary builds or files describing an ephemeral task that was accomplished during the creation of the work.
+
+### What to ALWAYS include
+
+These files are primary work artifacts and MUST be committed:
+
+1. **Chunk documentation** (`docs/chunks/<chunk_name>/`):
+   - `GOAL.md` - Including status updates (FUTURE → IMPLEMENTING → ACTIVE)
+   - `PLAN.md` - The implementation plan with any deviations noted
+   - Any chunk artifacts (scripts, analysis tools) in the chunk directory
+
+2. **Source code changes** (`src/`, `tests/`, etc.):
+   - Implementation code
+   - Test files
+   - Configuration changes
+
+3. **Project documentation updates**:
+   - Changes to `docs/trunk/` files (DECISIONS.md, SPEC.md, etc.)
+   - Updates to subsystems, narratives, or investigations
+
+### What to EXCLUDE
+
+Do not commit these ephemeral files:
+
+- Build artifacts and compiled binaries
+- IDE/editor configuration files (`.idea/`, `.vscode/` unless project-wide)
+- Temporary files, logs, or cache directories
+- Files in `.ve/` (orchestrator runtime state)
+- Personal notes or scratch files not in the chunk directory
+
+### Commit message format
+
+Use conventional commits. The message should describe what was accomplished, not just list files changed. Include the chunk context when relevant.
+
+Example:
+```
+feat: add user authentication middleware
+
+Implement JWT-based auth for API endpoints with refresh token support.
+Update chunk status to ACTIVE with code references.
+
+Co-Authored-By: Claude <assistant>
+```
