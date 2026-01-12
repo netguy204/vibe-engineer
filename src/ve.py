@@ -2173,5 +2173,111 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/orch_attention_queue - Attention queue CLI commands
+@orch.command("attention")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_attention(json_output, project_dir):
+    """Show attention queue of work units needing operator input.
+
+    Lists NEEDS_ATTENTION work units in priority order:
+    - Higher blocked count = higher priority (unblocks more work)
+    - Older items surface first among equal priority
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client.get_attention_queue()
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            items = result["attention_items"]
+            if not items:
+                click.echo("No work units need attention")
+                return
+
+            click.echo(f"ATTENTION QUEUE ({len(items)} items)")
+            click.echo("─" * 60)
+
+            for i, item in enumerate(items, 1):
+                chunk = item["chunk"]
+                phase = item["phase"]
+                blocks = item["blocks_count"]
+
+                # Format time waiting
+                time_waiting = item["time_waiting"]
+                if time_waiting < 60:
+                    time_str = f"{time_waiting:.0f}s"
+                elif time_waiting < 3600:
+                    time_str = f"{time_waiting / 60:.0f}m"
+                else:
+                    time_str = f"{time_waiting / 3600:.1f}h"
+
+                click.echo(f"[{i}] {chunk}  {phase}  blocks:{blocks}  waiting:{time_str}")
+
+                # Show attention reason
+                reason = item.get("attention_reason")
+                if reason:
+                    # Truncate long reasons for display
+                    if len(reason) > 70:
+                        reason = reason[:67] + "..."
+                    click.echo(f"    {reason}")
+
+                # Show goal summary if available
+                goal_summary = item.get("goal_summary")
+                if goal_summary:
+                    # Truncate for display
+                    if len(goal_summary) > 70:
+                        goal_summary = goal_summary[:67] + "..."
+                    click.echo(f"    Goal: {goal_summary}")
+
+                click.echo("")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+@orch.command("answer")
+@click.argument("chunk")
+@click.argument("answer")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_answer(chunk, answer, json_output, project_dir):
+    """Answer a question from a NEEDS_ATTENTION work unit.
+
+    Submits the answer and transitions the work unit to READY,
+    allowing the scheduler to resume the agent with the answer injected.
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        result = client.answer_work_unit(chunk, answer)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Answered {chunk}, work unit queued for resume")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
 if __name__ == "__main__":
     cli()

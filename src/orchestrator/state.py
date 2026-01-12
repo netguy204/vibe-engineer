@@ -21,7 +21,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 5
+    CURRENT_VERSION = 6
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -88,6 +88,7 @@ class StateStore:
             3: self._migrate_v3,
             4: self._migrate_v4,
             5: self._migrate_v5,
+            6: self._migrate_v6,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -179,6 +180,16 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_attention_queue - Pending answer storage for resume
+    def _migrate_v6(self) -> None:
+        """Add pending_answer field for storing operator answers until resume."""
+        self.connection.executescript(
+            """
+            -- Add pending_answer column for storing operator's answer to be injected on resume
+            ALTER TABLE work_units ADD COLUMN pending_answer TEXT;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -208,8 +219,9 @@ class StateStore:
                 """
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
-                     completion_retries, attention_reason, displaced_chunk, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     completion_retries, attention_reason, displaced_chunk, pending_answer,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -222,6 +234,7 @@ class StateStore:
                     work_unit.completion_retries,
                     work_unit.attention_reason,
                     work_unit.displaced_chunk,
+                    work_unit.pending_answer,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -277,7 +290,8 @@ class StateStore:
             UPDATE work_units
             SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
                 priority = ?, session_id = ?, completion_retries = ?,
-                attention_reason = ?, displaced_chunk = ?, updated_at = ?
+                attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
+                updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -290,6 +304,7 @@ class StateStore:
                 work_unit.completion_retries,
                 work_unit.attention_reason,
                 work_unit.displaced_chunk,
+                work_unit.pending_answer,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -432,6 +447,53 @@ class StateStore:
 
     # Queue operations
 
+    # Chunk: docs/chunks/orch_attention_queue - Attention queue query
+    def get_attention_queue(self) -> list[tuple[WorkUnit, int]]:
+        """Get NEEDS_ATTENTION work units ordered by priority.
+
+        Returns work units that need operator attention, ordered by:
+        1. Number of work units blocked by this one (descending)
+        2. Time in NEEDS_ATTENTION state (older first)
+
+        Returns:
+            List of (WorkUnit, blocks_count) tuples, where blocks_count
+            is the number of other work units that have this chunk in
+            their blocked_by list.
+        """
+        # Query NEEDS_ATTENTION work units
+        cursor = self.connection.execute(
+            """
+            SELECT * FROM work_units
+            WHERE status = ?
+            ORDER BY updated_at ASC
+            """,
+            (WorkUnitStatus.NEEDS_ATTENTION.value,),
+        )
+        attention_units = [self._row_to_work_unit(row) for row in cursor.fetchall()]
+
+        if not attention_units:
+            return []
+
+        # Compute blocks_count for each attention unit
+        # This is the number of work units that have this chunk in their blocked_by
+        results: list[tuple[WorkUnit, int]] = []
+        for unit in attention_units:
+            # Count work units that are blocked by this chunk
+            cursor = self.connection.execute(
+                """
+                SELECT COUNT(*) FROM work_units
+                WHERE blocked_by LIKE ?
+                """,
+                (f'%"{unit.chunk}"%',),
+            )
+            blocks_count = cursor.fetchone()[0]
+            results.append((unit, blocks_count))
+
+        # Sort by blocks_count descending, then by updated_at ascending (already sorted)
+        results.sort(key=lambda x: (-x[1], x[0].updated_at))
+
+        return results
+
     def get_ready_queue(self, limit: Optional[int] = None) -> list[WorkUnit]:
         """Get READY work units ordered by priority (highest first), then creation time.
 
@@ -486,6 +548,11 @@ class StateStore:
         except (IndexError, KeyError):
             displaced_chunk = None
 
+        try:
+            pending_answer = row["pending_answer"]
+        except (IndexError, KeyError):
+            pending_answer = None
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -497,6 +564,7 @@ class StateStore:
             completion_retries=completion_retries,
             attention_reason=attention_reason,
             displaced_chunk=displaced_chunk,
+            pending_answer=pending_answer,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

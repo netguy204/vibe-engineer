@@ -1,5 +1,6 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
+# Chunk: docs/chunks/orch_attention_queue - Answer injection on agent resume
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.

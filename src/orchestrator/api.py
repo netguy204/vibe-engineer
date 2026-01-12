@@ -523,6 +523,124 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(config.model_dump_json_serializable())
 
 
+# Chunk: docs/chunks/orch_attention_queue - Attention queue endpoints
+
+
+def _get_goal_summary(chunk_dir: Path) -> Optional[str]:
+    """Extract a summary from the chunk's GOAL.md Minor Goal section.
+
+    Args:
+        chunk_dir: Path to the chunk directory
+
+    Returns:
+        First 200 chars of Minor Goal section, or None if not found
+    """
+    goal_path = chunk_dir / "GOAL.md"
+    if not goal_path.exists():
+        return None
+
+    try:
+        content = goal_path.read_text()
+        # Look for ## Minor Goal section
+        import re
+        match = re.search(r"## Minor Goal\s*\n\s*\n(.+?)(?=\n##|\Z)", content, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+            # Truncate to 200 chars
+            if len(text) > 200:
+                return text[:197] + "..."
+            return text
+        return None
+    except Exception:
+        return None
+
+
+async def attention_endpoint(request: Request) -> JSONResponse:
+    """GET /attention - Get prioritized attention queue.
+
+    Returns NEEDS_ATTENTION work units ordered by:
+    1. Number of work units blocked by this one (descending)
+    2. Time waiting (older first)
+    """
+    store = _get_store()
+
+    attention_items = store.get_attention_queue()
+
+    now = datetime.now(timezone.utc)
+    result = []
+
+    for unit, blocks_count in attention_items:
+        # Compute time waiting in seconds
+        time_waiting = (now - unit.updated_at).total_seconds()
+
+        # Get goal summary from chunk directory
+        goal_summary = None
+        if _project_dir:
+            chunk_dir = _project_dir / "docs" / "chunks" / unit.chunk
+            goal_summary = _get_goal_summary(chunk_dir)
+
+        item = {
+            **unit.model_dump_json_serializable(),
+            "blocks_count": blocks_count,
+            "time_waiting": time_waiting,
+            "goal_summary": goal_summary,
+        }
+        result.append(item)
+
+    return JSONResponse({
+        "attention_items": result,
+        "count": len(result),
+    })
+
+
+async def answer_endpoint(request: Request) -> JSONResponse:
+    """POST /work-units/{chunk}/answer - Submit answer to attention item.
+
+    Stores the answer on the work unit and transitions it to READY
+    for the scheduler to resume.
+    """
+    chunk = request.path_params["chunk"]
+    store = _get_store()
+
+    # Get existing work unit
+    unit = store.get_work_unit(chunk)
+    if unit is None:
+        return _not_found_response("Work unit", chunk)
+
+    # Validate work unit is in NEEDS_ATTENTION state
+    if unit.status != WorkUnitStatus.NEEDS_ATTENTION:
+        return _error_response(
+            f"Work unit '{chunk}' is not in NEEDS_ATTENTION state "
+            f"(current: {unit.status.value})",
+            status_code=400,
+        )
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return _error_response("Invalid JSON body")
+
+    answer = body.get("answer")
+    if not answer:
+        return _error_response("Missing required field: answer")
+
+    if not isinstance(answer, str):
+        return _error_response("answer must be a string")
+
+    # Store answer and transition to READY
+    unit.pending_answer = answer
+    unit.attention_reason = None  # Clear the reason - it's been addressed
+    unit.status = WorkUnitStatus.READY
+    unit.updated_at = datetime.now(timezone.utc)
+
+    try:
+        updated = store.update_work_unit(unit)
+    except ValueError as e:
+        return _error_response(str(e))
+
+    return JSONResponse(updated.model_dump_json_serializable())
+
+
 # Application factory
 
 
@@ -551,13 +669,20 @@ def create_app(project_dir: Path) -> Starlette:
         # Config endpoints
         Route("/config", endpoint=get_config_endpoint, methods=["GET"]),
         Route("/config", endpoint=update_config_endpoint, methods=["PATCH"]),
+        # Attention queue endpoint
+        Route("/attention", endpoint=attention_endpoint, methods=["GET"]),
         # Work unit endpoints
         Route("/work-units", endpoint=list_work_units_endpoint, methods=["GET"]),
         Route("/work-units", endpoint=create_work_unit_endpoint, methods=["POST"]),
         # Scheduling endpoints - must come before generic {chunk:path}
         Route("/work-units/inject", endpoint=inject_endpoint, methods=["POST"]),
         Route("/work-units/queue", endpoint=queue_endpoint, methods=["GET"]),
-        # History and priority endpoints must come before generic {chunk:path}
+        # Answer, history and priority endpoints must come before generic {chunk:path}
+        Route(
+            "/work-units/{chunk}/answer",
+            endpoint=answer_endpoint,
+            methods=["POST"],
+        ),
         Route(
             "/work-units/{chunk}/history",
             endpoint=get_status_history_endpoint,

@@ -1554,3 +1554,194 @@ class TestDeferredWorktreeCreationIntegration:
 
         # Clean up
         manager.remove_worktree("chunk_b", remove_branch=True)
+
+
+# Chunk: docs/chunks/orch_attention_queue - Answer injection tests
+class TestPendingAnswerInjection:
+    """Tests for pending_answer injection during work unit execution."""
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_passes_pending_answer(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit passes pending_answer to agent runner."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            session_id="session123",
+            pending_answer="Use Redis for caching",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Should have called run_phase with the answer
+        mock_agent_runner.run_phase.assert_called_once()
+        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
+        assert call_kwargs["answer"] == "Use Redis for caching"
+        assert call_kwargs["resume_session_id"] == "session123"
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_clears_pending_answer_after_dispatch(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit clears pending_answer after successful dispatch."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            pending_answer="Some answer",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # pending_answer should be cleared after dispatch
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.pending_answer is None
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_no_answer_when_none_pending(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit passes None for answer when no pending_answer."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            pending_answer=None,  # No pending answer
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Should have called run_phase with no answer
+        mock_agent_runner.run_phase.assert_called_once()
+        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
+        assert call_kwargs["answer"] is None
+
+    @pytest.mark.asyncio
+    async def test_full_flow_needs_attention_answer_resume(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Full flow: NEEDS_ATTENTION → answer → READY → dispatch with answer."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+
+        # 1. Work unit is in NEEDS_ATTENTION state (simulating agent asked question)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            session_id="session_abc",
+            attention_reason="Question: What database should I use?",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # 2. Operator provides answer (simulating POST /work-units/{chunk}/answer)
+        stored = state_store.get_work_unit("test_chunk")
+        stored.pending_answer = "Use PostgreSQL"
+        stored.attention_reason = None
+        stored.status = WorkUnitStatus.READY
+        stored.updated_at = datetime.now(timezone.utc)
+        state_store.update_work_unit(stored)
+
+        # 3. Scheduler dispatches the work unit
+        ready_unit = state_store.get_work_unit("test_chunk")
+        assert ready_unit.status == WorkUnitStatus.READY
+        assert ready_unit.pending_answer == "Use PostgreSQL"
+
+        await scheduler._run_work_unit(ready_unit)
+
+        # 4. Verify agent was resumed with the answer
+        mock_agent_runner.run_phase.assert_called_once()
+        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
+        assert call_kwargs["answer"] == "Use PostgreSQL"
+        assert call_kwargs["resume_session_id"] == "session_abc"
+
+        # 5. Verify pending_answer was cleared
+        final = state_store.get_work_unit("test_chunk")
+        assert final.pending_answer is None

@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths: []
@@ -7,9 +7,11 @@ code_references: []
 narrative: null
 investigation: null
 subsystems: []
-created_after: ["narrative_backreference_support", "orch_inject_path_compat", "orch_submit_future_cmd"]
+created_after:
+- narrative_backreference_support
+- orch_inject_path_compat
+- orch_submit_future_cmd
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

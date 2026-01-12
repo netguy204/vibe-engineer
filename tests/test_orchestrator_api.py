@@ -592,3 +592,139 @@ Steps here.
 
         assert response.status_code == 201
         assert response.json()["phase"] == "PLAN"
+
+
+# Chunk: docs/chunks/orch_attention_queue - Attention queue API tests
+class TestAttentionEndpoint:
+    """Tests for GET /attention endpoint."""
+
+    def test_returns_empty_initially(self, client):
+        """Returns empty list when no NEEDS_ATTENTION work units."""
+        response = client.get("/attention")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["attention_items"] == []
+        assert data["count"] == 0
+
+    def test_returns_needs_attention_items(self, client):
+        """Returns NEEDS_ATTENTION work units with enriched data."""
+        # Create a NEEDS_ATTENTION work unit
+        client.post("/work-units", json={
+            "chunk": "attention_chunk",
+            "phase": "PLAN",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        response = client.get("/attention")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        item = data["attention_items"][0]
+        assert item["chunk"] == "attention_chunk"
+        assert item["phase"] == "PLAN"
+        assert item["status"] == "NEEDS_ATTENTION"
+        assert "blocks_count" in item
+        assert "time_waiting" in item
+        # goal_summary may be None if chunk directory doesn't exist
+
+    def test_excludes_non_needs_attention(self, client):
+        """Only NEEDS_ATTENTION work units are returned."""
+        # Create work units with various statuses
+        client.post("/work-units", json={"chunk": "ready_chunk", "status": "READY"})
+        client.post("/work-units", json={"chunk": "running_chunk", "status": "RUNNING"})
+        client.post("/work-units", json={"chunk": "attention_chunk", "status": "NEEDS_ATTENTION"})
+
+        response = client.get("/attention")
+        data = response.json()
+
+        assert data["count"] == 1
+        assert data["attention_items"][0]["chunk"] == "attention_chunk"
+
+
+class TestAnswerEndpoint:
+    """Tests for POST /work-units/{chunk}/answer endpoint."""
+
+    def test_answers_and_transitions_to_ready(self, client):
+        """Answer stores pending_answer and transitions to READY."""
+        # Create a NEEDS_ATTENTION work unit
+        client.post("/work-units", json={
+            "chunk": "question_chunk",
+            "phase": "PLAN",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        # Submit answer
+        response = client.post("/work-units/question_chunk/answer", json={
+            "answer": "Use JWT for authentication",
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["chunk"] == "question_chunk"
+        assert data["status"] == "READY"
+        assert data["pending_answer"] == "Use JWT for authentication"
+        assert data["attention_reason"] is None  # Cleared
+
+    def test_rejects_wrong_status(self, client):
+        """Returns error if work unit is not NEEDS_ATTENTION."""
+        # Create a READY work unit
+        client.post("/work-units", json={"chunk": "ready_chunk", "status": "READY"})
+
+        response = client.post("/work-units/ready_chunk/answer", json={
+            "answer": "Some answer",
+        })
+
+        assert response.status_code == 400
+        assert "not in NEEDS_ATTENTION state" in response.json()["error"]
+
+    def test_not_found(self, client):
+        """Returns 404 for unknown chunk."""
+        response = client.post("/work-units/nonexistent/answer", json={
+            "answer": "Some answer",
+        })
+
+        assert response.status_code == 404
+
+    def test_missing_answer_field(self, client):
+        """Returns error when answer field is missing."""
+        client.post("/work-units", json={
+            "chunk": "question_chunk",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        response = client.post("/work-units/question_chunk/answer", json={})
+
+        assert response.status_code == 400
+        assert "Missing required field: answer" in response.json()["error"]
+
+    def test_answer_must_be_string(self, client):
+        """Returns error when answer is not a string."""
+        client.post("/work-units", json={
+            "chunk": "question_chunk",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        response = client.post("/work-units/question_chunk/answer", json={
+            "answer": 12345,
+        })
+
+        assert response.status_code == 400
+        assert "must be a string" in response.json()["error"]
+
+    def test_invalid_json(self, client):
+        """Returns error for invalid JSON."""
+        client.post("/work-units", json={
+            "chunk": "question_chunk",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        response = client.post(
+            "/work-units/question_chunk/answer",
+            content="not json",
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid JSON" in response.json()["error"]
