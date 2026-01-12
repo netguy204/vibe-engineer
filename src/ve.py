@@ -2279,5 +2279,172 @@ def orch_answer(chunk, answer, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict CLI commands
+
+
+@orch.command("conflicts")
+@click.argument("chunk", required=False)
+@click.option("--unresolved", is_flag=True, help="Show only ASK_OPERATOR verdicts")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_conflicts(chunk, unresolved, json_output, project_dir):
+    """Show conflict analyses for chunks.
+
+    If CHUNK is provided, shows conflicts for that specific chunk.
+    Otherwise, shows all conflicts.
+
+    Use --unresolved to filter to only ASK_OPERATOR verdicts that need resolution.
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    client = create_client(project_dir)
+    try:
+        if chunk:
+            result = client.get_conflicts(chunk)
+            conflicts = result.get("conflicts", [])
+        else:
+            verdict_filter = "ASK_OPERATOR" if unresolved else None
+            result = client.list_all_conflicts(verdict=verdict_filter)
+            conflicts = result.get("conflicts", [])
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            if not conflicts:
+                if unresolved:
+                    click.echo("No unresolved conflicts")
+                elif chunk:
+                    click.echo(f"No conflicts for {chunk}")
+                else:
+                    click.echo("No conflicts found")
+                return
+
+            # Display conflicts
+            click.echo(f"{'CHUNK A':<25} {'CHUNK B':<25} {'VERDICT':<15} {'CONFIDENCE':<12} {'STAGE'}")
+            click.echo("-" * 90)
+
+            for c in conflicts:
+                chunk_a = c["chunk_a"]
+                chunk_b = c["chunk_b"]
+                verdict = c["verdict"]
+                confidence = f"{c['confidence']:.2f}"
+                stage = c["analysis_stage"]
+
+                click.echo(f"{chunk_a:<25} {chunk_b:<25} {verdict:<15} {confidence:<12} {stage}")
+
+                # Show overlapping files/symbols if present
+                if c.get("overlapping_files"):
+                    files = ", ".join(c["overlapping_files"][:3])
+                    click.echo(f"  Files: {files}")
+                if c.get("overlapping_symbols"):
+                    symbols = ", ".join(c["overlapping_symbols"][:3])
+                    click.echo(f"  Symbols: {symbols}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+@orch.command("resolve")
+@click.argument("chunk")
+@click.option("--with", "other_chunk", required=True, help="The other chunk in the conflict")
+@click.argument("verdict", type=click.Choice(["parallelize", "serialize"]))
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
+    """Resolve an ASK_OPERATOR conflict between two chunks.
+
+    CHUNK is the work unit to update.
+    VERDICT is either 'parallelize' (chunks can run together) or 'serialize' (must run sequentially).
+
+    Example:
+        ve orch resolve my_chunk --with other_chunk serialize
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+    other_chunk = strip_artifact_path_prefix(other_chunk, ArtifactType.CHUNK)
+
+    client = create_client(project_dir)
+    try:
+        result = client.resolve_conflict(chunk, other_chunk, verdict)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            resolved_verdict = result.get("verdict", verdict)
+            click.echo(f"Resolved: {chunk} vs {other_chunk} -> {resolved_verdict}")
+            if result.get("blocked_by"):
+                click.echo(f"  Blocked by: {', '.join(result['blocked_by'])}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+@orch.command("analyze")
+@click.argument("chunk_a")
+@click.argument("chunk_b")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
+    """Analyze potential conflict between two chunks.
+
+    Triggers the conflict oracle to analyze whether CHUNK_A and CHUNK_B
+    can be safely parallelized or require serialization.
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json
+
+    # Normalize chunk paths
+    chunk_a = strip_artifact_path_prefix(chunk_a, ArtifactType.CHUNK)
+    chunk_b = strip_artifact_path_prefix(chunk_b, ArtifactType.CHUNK)
+
+    client = create_client(project_dir)
+    try:
+        result = client.analyze_conflicts(chunk_a, chunk_b)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            verdict = result.get("verdict", "UNKNOWN")
+            confidence = result.get("confidence", 0)
+            reason = result.get("reason", "")
+            stage = result.get("analysis_stage", "UNKNOWN")
+
+            click.echo(f"Conflict Analysis: {chunk_a} vs {chunk_b}")
+            click.echo(f"  Verdict:    {verdict}")
+            click.echo(f"  Confidence: {confidence:.2f}")
+            click.echo(f"  Stage:      {stage}")
+            click.echo(f"  Reason:     {reason}")
+
+            if result.get("overlapping_files"):
+                click.echo(f"  Files:      {', '.join(result['overlapping_files'])}")
+            if result.get("overlapping_symbols"):
+                click.echo(f"  Symbols:    {', '.join(result['overlapping_symbols'])}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
 if __name__ == "__main__":
     cli()

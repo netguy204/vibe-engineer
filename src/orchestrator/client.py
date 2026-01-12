@@ -269,6 +269,66 @@ class OrchestratorClient:
             json={"answer": answer},
         )
 
+    # Chunk: docs/chunks/orch_conflict_oracle - Conflict client methods
+
+    def get_conflicts(self, chunk: str) -> dict:
+        """Get all conflict analyses for a chunk.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            Dict with conflicts list and count
+        """
+        return self._request("GET", f"/conflicts/{chunk}")
+
+    def list_all_conflicts(self, verdict: Optional[str] = None) -> dict:
+        """List all conflict analyses.
+
+        Args:
+            verdict: Optional verdict filter (INDEPENDENT, SERIALIZE, ASK_OPERATOR)
+
+        Returns:
+            Dict with conflicts list and count
+        """
+        params = {"verdict": verdict} if verdict else None
+        return self._request("GET", "/conflicts", params=params)
+
+    def analyze_conflicts(self, chunk_a: str, chunk_b: str) -> dict:
+        """Request conflict analysis between two chunks.
+
+        Args:
+            chunk_a: First chunk name
+            chunk_b: Second chunk name
+
+        Returns:
+            Conflict analysis result
+        """
+        return self._request(
+            "POST",
+            "/conflicts/analyze",
+            json={"chunk_a": chunk_a, "chunk_b": chunk_b},
+        )
+
+    def resolve_conflict(
+        self, chunk: str, other_chunk: str, verdict: str
+    ) -> dict:
+        """Submit operator resolution for a conflict.
+
+        Args:
+            chunk: Chunk to update
+            other_chunk: The other chunk in the conflict
+            verdict: Resolution verdict ("parallelize" or "serialize")
+
+        Returns:
+            Updated conflict resolution
+        """
+        return self._request(
+            "POST",
+            f"/work-units/{chunk}/resolve",
+            json={"other_chunk": other_chunk, "verdict": verdict},
+        )
+
 
 def create_client(project_dir: Path, timeout: float = 10.0) -> OrchestratorClient:
     """Create an orchestrator client.

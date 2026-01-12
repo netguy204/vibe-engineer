@@ -2,12 +2,14 @@
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 # Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
 # Chunk: docs/chunks/orch_attention_queue - Answer injection on resume
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle integration
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
 1. Checks for READY work units
-2. Spawns agents up to max_agents slots
-3. Updates work unit status based on agent outcomes
+2. Checks for conflicts with running/ready work units
+3. Spawns agents up to max_agents slots
+4. Updates work unit status based on agent outcomes
 """
 
 import asyncio
@@ -27,6 +29,7 @@ from task_utils import update_frontmatter_field
 from orchestrator.agent import AgentRunner, create_log_callback
 from orchestrator.models import (
     AgentResult,
+    ConflictVerdict,
     OrchestratorConfig,
     WorkUnit,
     WorkUnitPhase,
@@ -327,6 +330,7 @@ class Scheduler:
         """Execute one dispatch cycle.
 
         Checks for available slots and spawns agents for READY work units.
+        Includes conflict checking to ensure safe parallelization.
         """
         async with self._lock:
             # Clean up completed tasks
@@ -349,6 +353,14 @@ class Scheduler:
             for unit in ready_units:
                 if unit.chunk in self._running_agents:
                     continue  # Already running
+
+                # Chunk: docs/chunks/orch_conflict_oracle - Check for conflicts before dispatch
+                blocking_chunks = await self._check_conflicts(unit)
+                if blocking_chunks:
+                    logger.info(
+                        f"Work unit {unit.chunk} blocked by conflicts: {blocking_chunks}"
+                    )
+                    continue  # Skip this unit, try next
 
                 # Spawn agent task
                 task = asyncio.create_task(
@@ -660,6 +672,146 @@ class Scheduler:
             work_unit.session_id = None
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
+
+            # Chunk: docs/chunks/orch_conflict_oracle - Re-analyze conflicts on phase advance
+            # Phase advancement may provide more precise information for conflict analysis
+            # (e.g., PLAN.md now exists with Location: lines)
+            await self._reanalyze_conflicts(chunk)
+
+    # Chunk: docs/chunks/orch_conflict_oracle - Conflict checking for dispatch
+    async def _check_conflicts(self, work_unit: WorkUnit) -> list[str]:
+        """Check for conflicts with active work units and return blocking chunks.
+
+        Analyzes the work unit against all RUNNING and READY work units to
+        detect potential conflicts. Returns immediately if any SERIALIZE
+        verdict is found with an active blocker.
+
+        For ASK_OPERATOR verdicts without an override, the work unit is marked
+        as needing attention.
+
+        Args:
+            work_unit: The work unit to check
+
+        Returns:
+            List of chunk names that are blocking this work unit
+        """
+        from orchestrator.oracle import create_oracle
+
+        chunk = work_unit.chunk
+        blocking_chunks = []
+
+        # Get all RUNNING and READY work units (except self)
+        running_units = self.store.list_work_units(status=WorkUnitStatus.RUNNING)
+        ready_units = self.store.list_work_units(status=WorkUnitStatus.READY)
+
+        active_chunks = [
+            u.chunk for u in running_units + ready_units
+            if u.chunk != chunk
+        ]
+
+        if not active_chunks:
+            return []
+
+        # Create oracle for conflict analysis
+        oracle = create_oracle(self.project_dir, self.store)
+
+        for other_chunk in active_chunks:
+            # Check cached verdict first
+            verdict = work_unit.conflict_verdicts.get(other_chunk)
+
+            if verdict is None:
+                # No cached verdict - analyze conflict
+                try:
+                    analysis = oracle.analyze_conflict(chunk, other_chunk)
+                    verdict = analysis.verdict.value
+
+                    # Cache the verdict on both work units
+                    work_unit.conflict_verdicts[other_chunk] = verdict
+                    work_unit.updated_at = datetime.now(timezone.utc)
+                    self.store.update_work_unit(work_unit)
+
+                    # Also update the other work unit if it exists
+                    other_unit = self.store.get_work_unit(other_chunk)
+                    if other_unit:
+                        other_unit.conflict_verdicts[chunk] = verdict
+                        other_unit.updated_at = datetime.now(timezone.utc)
+                        self.store.update_work_unit(other_unit)
+
+                except Exception as e:
+                    logger.error(f"Error analyzing conflict {chunk} vs {other_chunk}: {e}")
+                    continue
+
+            # Handle verdict - only block if the other chunk is RUNNING
+            # READY vs READY conflicts don't block; we just need to resolve
+            # before both try to run simultaneously
+            is_other_running = other_chunk in [u.chunk for u in running_units]
+
+            if verdict == ConflictVerdict.SERIALIZE.value:
+                # Must serialize - only block if other is currently running
+                if is_other_running:
+                    blocking_chunks.append(other_chunk)
+                    logger.info(f"Conflict: {chunk} blocked by running {other_chunk}")
+
+            elif verdict == ConflictVerdict.ASK_OPERATOR.value:
+                # Check if there's an override
+                if work_unit.conflict_override:
+                    # Override exists - use it
+                    if work_unit.conflict_override == ConflictVerdict.SERIALIZE.value:
+                        if is_other_running:
+                            blocking_chunks.append(other_chunk)
+                    # INDEPENDENT override means no blocking
+                elif is_other_running:
+                    # Other chunk is running and we don't know if it's safe
+                    # Mark as needing attention so operator can decide
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Unresolved conflict with running {other_chunk}. "
+                        f"Use 've orch resolve' to parallelize or serialize.",
+                    )
+                    blocking_chunks.append(other_chunk)
+                # If other is just READY, log a warning but allow dispatch
+                # The operator should resolve this but we don't block progress
+                else:
+                    logger.warning(
+                        f"Unresolved conflict between {chunk} and {other_chunk}. "
+                        f"Consider running 've orch resolve' before both start."
+                    )
+
+            # ConflictVerdict.INDEPENDENT - no blocking needed
+
+        # Update blocked_by field if there are blockers
+        if blocking_chunks and set(blocking_chunks) != set(work_unit.blocked_by):
+            work_unit.blocked_by = list(set(work_unit.blocked_by + blocking_chunks))
+            work_unit.updated_at = datetime.now(timezone.utc)
+            self.store.update_work_unit(work_unit)
+
+        return blocking_chunks
+
+    async def _reanalyze_conflicts(self, chunk: str) -> None:
+        """Re-analyze conflicts for a chunk with updated information.
+
+        Called when a chunk advances stages and more precise analysis is possible.
+        Clears existing conflict analyses and triggers fresh analysis.
+
+        Args:
+            chunk: The chunk that advanced
+        """
+        # Clear existing conflicts for this chunk
+        deleted = self.store.clear_conflicts_for_chunk(chunk)
+        if deleted:
+            logger.info(f"Cleared {deleted} stale conflict analyses for {chunk}")
+
+        # Get the work unit
+        work_unit = self.store.get_work_unit(chunk)
+        if work_unit is None:
+            return
+
+        # Clear cached verdicts
+        work_unit.conflict_verdicts = {}
+        work_unit.updated_at = datetime.now(timezone.utc)
+        self.store.update_work_unit(work_unit)
+
+        # The next dispatch tick will trigger fresh analysis
 
     # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
     async def _mark_needs_attention(

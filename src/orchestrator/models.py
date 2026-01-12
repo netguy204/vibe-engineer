@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle for scheduling
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.
@@ -9,6 +10,49 @@ from enum import StrEnum
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
+
+
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis models
+class ConflictVerdict(StrEnum):
+    """Verdict from conflict analysis between two chunks.
+
+    Determines whether chunks can be safely parallelized or require serialization.
+    """
+
+    INDEPENDENT = "INDEPENDENT"  # Safe to parallelize (high confidence no overlap)
+    SERIALIZE = "SERIALIZE"  # Must sequence (high confidence overlap)
+    ASK_OPERATOR = "ASK_OPERATOR"  # Uncertain, needs human judgment
+
+
+class ConflictAnalysis(BaseModel):
+    """Result of analyzing potential conflict between two chunks.
+
+    Stores the verdict, reasoning, and any detected overlaps.
+    """
+
+    chunk_a: str
+    chunk_b: str
+    verdict: ConflictVerdict
+    confidence: float  # 0.0 to 1.0
+    reason: str
+    analysis_stage: str  # PROPOSED, GOAL, PLAN, COMPLETED
+    overlapping_files: list[str] = []  # Files detected as overlapping
+    overlapping_symbols: list[str] = []  # Symbols detected as overlapping (when available)
+    created_at: datetime
+
+    def model_dump_json_serializable(self) -> dict:
+        """Return a JSON-serializable dict representation."""
+        return {
+            "chunk_a": self.chunk_a,
+            "chunk_b": self.chunk_b,
+            "verdict": self.verdict.value,
+            "confidence": self.confidence,
+            "reason": self.reason,
+            "analysis_stage": self.analysis_stage,
+            "overlapping_files": self.overlapping_files,
+            "overlapping_symbols": self.overlapping_symbols,
+            "created_at": self.created_at.isoformat(),
+        }
 
 
 class WorkUnitPhase(StrEnum):
@@ -39,6 +83,7 @@ class WorkUnitStatus(StrEnum):
 # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
 # Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk tracking
 # Chunk: docs/chunks/orch_attention_queue - Pending answer storage for resume
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict verdict storage
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 
@@ -57,6 +102,9 @@ class WorkUnit(BaseModel):
     attention_reason: Optional[str] = None  # Why work unit needs operator attention
     displaced_chunk: Optional[str] = None  # Chunk that was IMPLEMENTING when worktree created
     pending_answer: Optional[str] = None  # Operator answer to be injected on resume
+    # Chunk: docs/chunks/orch_conflict_oracle - Conflict tracking fields
+    conflict_verdicts: dict[str, str] = {}  # Maps other chunk names to ConflictVerdict values
+    conflict_override: Optional[str] = None  # Operator override for ASK_OPERATOR cases
     created_at: datetime
     updated_at: datetime
 
@@ -85,6 +133,8 @@ class WorkUnit(BaseModel):
             "attention_reason": self.attention_reason,
             "displaced_chunk": self.displaced_chunk,
             "pending_answer": self.pending_answer,
+            "conflict_verdicts": self.conflict_verdicts,
+            "conflict_override": self.conflict_override,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
