@@ -8,168 +8,73 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a documentation-only change to the CLAUDE.md Jinja2 template. The approach is straightforward:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Add a brief "Learning Philosophy" section to the CLAUDE.md template
+2. Place it after the "Getting Started" section where it flows naturally
+3. Keep it concise (~10-12 lines) per the success criteria
+4. Verify the template renders correctly with `ve init`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The content draws from the investigation's learning philosophy prototype (`docs/investigations/task_agent_experience/prototypes/LEARNING_PHILOSOPHY.md`), distilled to the essential message:
+- Chunks first (immediate gratification)
+- Larger artifacts discovered when needed (narratives, subsystems, investigations)
+- Tasks for multi-project work
+- Orchestration for parallel workflows
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/learning_philosophy_docs/GOAL.md)
-with references to the files that you expect to touch.
--->
+No code changes, no new tests required—this is purely documentation content. The existing template rendering tests in the codebase already cover that templates render without error (per TESTING_PHILOSOPHY.md: "We verify templates render without error and files are created, but don't assert on template prose").
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this chunk. This is a documentation-only change that doesn't touch any code patterns or architectural subsystems.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add "Learning Philosophy" section to CLAUDE.md template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Edit `src/templates/claude/CLAUDE.md.jinja2` to add a new "Learning Philosophy" section after the "Getting Started" section.
 
-Example:
+**Content to add** (approximately 10-12 lines):
 
-### Step 1: Define the SegmentHeader struct
+```markdown
+## Learning Philosophy
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
 
-Location: src/segment/format.rs
+1. **Start with chunks** - The create → plan → implement → complete cycle gives immediate, tangible progress. Most work lives here.
+2. **Discover larger artifacts when needed** - Narratives emerge when work is too big for one chunk. Subsystems emerge when you keep touching the same patterns. Investigations emerge when you need to understand before acting.
+3. **Graduate to tasks for multi-project work** - When work spans repositories, the same patterns apply at a larger scale.
+4. **Use orchestration for parallel workflows** - When managing multiple concurrent workstreams, the orchestrator (`ve orch`) automates scheduling, attention routing, and conflict detection.
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+The documentation teaches itself: follow backreferences in code to discover the chunks and subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+**Location**: `src/templates/claude/CLAUDE.md.jinja2`, after line 131 (the "Getting Started" section)
+
+**Backreference comment**: Add a Jinja comment before the section:
+```jinja2
+{# Chunk: docs/chunks/learning_philosophy_docs - Learning philosophy section #}
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+### Step 2: Regenerate CLAUDE.md and verify
+
+Run `uv run ve init` to regenerate CLAUDE.md from the template.
+
+Verify:
+- The command succeeds without errors
+- CLAUDE.md contains the new "Learning Philosophy" section
+- The section appears after "Getting Started"
+- The content is ~10-12 lines as specified
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No dependencies. The CLAUDE.md template already exists and is functional.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Placement**: The plan places the section after "Getting Started". An alternative would be a new subsection within "Getting Started". The current approach (separate section) is cleaner and matches the existing document structure.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Orchestration mention**: The GOAL.md mentions orchestration (`ve orch`) for parallel workflows. This feature may not be fully documented yet—the mention is forward-looking and sets expectations without requiring the feature to exist.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+_To be populated during implementation._

@@ -1,4 +1,5 @@
 
+
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -95,6 +96,7 @@ Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
 - **Chunk**: When you know what needs to be done and can proceed directly to implementation
 - **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
 
+
 ## Proposed Chunks
 
 The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, subsystems, and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
@@ -127,6 +129,18 @@ Use these slash commands for artifact management:
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
 
+
+## Learning Philosophy
+
+You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
+
+1. **Start with chunks** - The create → plan → implement → complete cycle gives immediate, tangible progress. Most work lives here.
+2. **Discover larger artifacts when needed** - Narratives emerge when work is too big for one chunk. Subsystems emerge when you keep touching the same patterns. Investigations emerge when you need to understand before acting.
+3. **Graduate to tasks for multi-project work** - When work spans repositories, the same patterns apply at a larger scale.
+4. **Use orchestration for parallel workflows** - When managing multiple concurrent workstreams, the orchestrator (`ve orch`) automates scheduling, attention routing, and conflict detection.
+
+The documentation teaches itself: follow backreferences in code to discover the chunks and subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
+
 ## Code Backreferences
 
 Source code may contain backreference comments that link code back to the documentation that created or governs it:
@@ -143,6 +157,7 @@ Source code may contain backreference comments that link code back to the docume
 **When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations.
 
 **When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
+
 
 ## Development
 
@@ -162,6 +177,7 @@ ve chunk list
 ```
 
 This ensures you're testing your changes with the local development code, not a previously installed version.
+
 
 
 
