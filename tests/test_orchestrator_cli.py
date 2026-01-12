@@ -616,3 +616,216 @@ class TestOrchConfig:
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert data["max_agents"] == 2
+
+
+# Chunk: docs/chunks/orch_attention_reason - Tests for work-unit show command
+
+
+class TestWorkUnitShow:
+    """Tests for ve orch work-unit show command."""
+
+    def test_show_work_unit_basic(self, runner, tmp_path):
+        """Shows basic work unit information."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.get_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "phase": "PLAN",
+                "status": "READY",
+                "priority": 5,
+                "blocked_by": [],
+                "worktree": None,
+                "session_id": None,
+                "attention_reason": None,
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "work-unit", "show", "test_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "test_chunk" in result.output
+            assert "PLAN" in result.output
+            assert "READY" in result.output
+            assert "Priority:" in result.output
+            assert "5" in result.output
+
+    def test_show_with_attention_reason(self, runner, tmp_path):
+        """Shows attention_reason when present."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.get_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "phase": "PLAN",
+                "status": "NEEDS_ATTENTION",
+                "priority": 0,
+                "blocked_by": [],
+                "worktree": None,
+                "session_id": "session123",
+                "attention_reason": "Question: Which database should I use?",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "work-unit", "show", "test_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "Attention Reason:" in result.output
+            assert "Question: Which database should I use?" in result.output
+            assert "session123" in result.output
+
+    def test_show_json_output(self, runner, tmp_path):
+        """Shows work unit in JSON format."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.get_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "phase": "PLAN",
+                "status": "NEEDS_ATTENTION",
+                "priority": 0,
+                "blocked_by": [],
+                "worktree": None,
+                "session_id": None,
+                "attention_reason": "Connection timeout",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "work-unit", "show", "test_chunk", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data["chunk"] == "test_chunk"
+            assert data["attention_reason"] == "Connection timeout"
+
+    def test_show_not_found(self, runner, tmp_path):
+        """Shows error when work unit not found."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.get_work_unit.side_effect = OrchestratorClientError("Work unit not found")
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "work-unit", "show", "missing_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not found" in result.output.lower()
+
+
+# Chunk: docs/chunks/orch_attention_reason - Tests for ps with attention_reason
+
+
+class TestOrchPsAttentionReason:
+    """Tests for ve orch ps command with attention_reason display."""
+
+    def test_ps_shows_attention_reason_column(self, runner, tmp_path):
+        """Shows REASON column when NEEDS_ATTENTION units have reasons."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.list_work_units.return_value = {
+                "work_units": [
+                    {
+                        "chunk": "chunk_with_reason",
+                        "phase": "PLAN",
+                        "status": "NEEDS_ATTENTION",
+                        "blocked_by": [],
+                        "attention_reason": "Question: Which framework?",
+                    },
+                    {
+                        "chunk": "ready_chunk",
+                        "phase": "GOAL",
+                        "status": "READY",
+                        "blocked_by": [],
+                        "attention_reason": None,
+                    },
+                ],
+                "count": 2,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "ps", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "REASON" in result.output
+            assert "Question: Which framework?" in result.output
+
+    def test_ps_truncates_long_reason(self, runner, tmp_path):
+        """Truncates long attention_reason to 30 characters."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            long_reason = "This is a very long attention reason that should be truncated"
+            mock_client.list_work_units.return_value = {
+                "work_units": [
+                    {
+                        "chunk": "test_chunk",
+                        "phase": "PLAN",
+                        "status": "NEEDS_ATTENTION",
+                        "blocked_by": [],
+                        "attention_reason": long_reason,
+                    },
+                ],
+                "count": 1,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "ps", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # Reason should be truncated to 27 chars + "..."
+            assert "This is a very long attenti..." in result.output
+            # Full reason should not appear
+            assert long_reason not in result.output
+
+    def test_ps_no_reason_column_when_no_attention_reasons(self, runner, tmp_path):
+        """Omits REASON column when no NEEDS_ATTENTION units have reasons."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.list_work_units.return_value = {
+                "work_units": [
+                    {
+                        "chunk": "ready_chunk",
+                        "phase": "GOAL",
+                        "status": "READY",
+                        "blocked_by": [],
+                        "attention_reason": None,
+                    },
+                    {
+                        "chunk": "running_chunk",
+                        "phase": "PLAN",
+                        "status": "RUNNING",
+                        "blocked_by": [],
+                        "attention_reason": None,
+                    },
+                ],
+                "count": 2,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "ps", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # REASON column should not appear when no attention reasons
+            assert "REASON" not in result.output
