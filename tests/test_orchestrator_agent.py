@@ -1,5 +1,6 @@
 # Chunk: docs/chunks/orch_scheduling - Agent runner tests
 # Chunk: docs/chunks/orch_question_forward - Question intercept hook tests
+# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement tests
 """Tests for the orchestrator agent runner."""
 
 import pytest
@@ -12,8 +13,11 @@ from orchestrator.agent import (
     PHASE_SKILL_FILES,
     create_log_callback,
     create_question_intercept_hook,
+    create_sandbox_enforcement_hook,
     _load_skill_content,
     _is_error_result,
+    _is_sandbox_violation,
+    _merge_hooks,
 )
 from orchestrator.models import AgentResult, WorkUnitPhase
 
@@ -549,8 +553,8 @@ class TestRunPhaseWithQuestionCallback:
             assert "PreToolUse" in options.hooks
 
     @pytest.mark.asyncio
-    async def test_run_phase_without_callback_no_hook(self, project_dir, tmp_path):
-        """When no callback, options don't include hook."""
+    async def test_run_phase_without_callback_has_sandbox_hook_only(self, project_dir, tmp_path):
+        """When no question callback, options include only sandbox hook."""
         runner = AgentRunner(project_dir)
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
@@ -574,11 +578,17 @@ class TestRunPhaseWithQuestionCallback:
                 worktree_path=worktree_path,
             )
 
-            # Verify query was called with options without hooks
+            # Verify query was called with options containing only sandbox hook
             mock_query.assert_called_once()
             call_kwargs = mock_query.call_args.kwargs
             options = call_kwargs["options"]
-            assert options.hooks is None
+            # Sandbox hook should always be present
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
+            # Only Bash (sandbox) hook, no AskUserQuestion hook
+            assert "Bash" in matchers
+            assert "AskUserQuestion" not in matchers
 
     @pytest.mark.asyncio
     async def test_run_phase_captures_question_on_intercept(self, project_dir, tmp_path):
@@ -660,3 +670,458 @@ class TestRunPhaseWithQuestionCallback:
             # Verify callback was called
             assert len(captured_questions) == 1
             assert captured_questions[0]["question"] == "Which approach?"
+
+
+# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement tests
+class TestSandboxViolationDetection:
+    """Tests for _is_sandbox_violation helper function."""
+
+    def test_blocks_cd_to_host_repo(self):
+        """Detects cd to host repository path as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /home/user/project", host, worktree
+        )
+        assert is_violation is True
+        assert "host repository" in reason
+
+    def test_blocks_cd_to_host_repo_with_single_quotes(self):
+        """Detects cd with single-quoted path as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd '/home/user/project'", host, worktree
+        )
+        assert is_violation is True
+
+    def test_blocks_cd_to_host_repo_with_double_quotes(self):
+        """Detects cd with double-quoted path as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            'cd "/home/user/project"', host, worktree
+        )
+        assert is_violation is True
+
+    def test_blocks_cd_to_host_repo_with_trailing_slash(self):
+        """Detects cd to host repo with trailing slash as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /home/user/project/", host, worktree
+        )
+        assert is_violation is True
+
+    def test_blocks_git_c_flag_to_host_repo(self):
+        """Detects git -C targeting host repository as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "git -C /home/user/project commit -m 'test'", host, worktree
+        )
+        assert is_violation is True
+        assert "git -C" in reason
+
+    def test_blocks_git_command_with_host_path(self):
+        """Detects git commands referencing host repo path."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "git --git-dir=/home/user/project/.git status", host, worktree
+        )
+        assert is_violation is True
+        assert "git command" in reason
+
+    def test_blocks_cd_to_absolute_path_outside_worktree(self):
+        """Detects cd to absolute path outside worktree as violation."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /home/user/other", host, worktree
+        )
+        assert is_violation is True
+        assert "outside worktree" in reason
+
+    def test_allows_commands_within_worktree(self):
+        """Normal commands in worktree are allowed."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "ls -la && cat README.md", host, worktree
+        )
+        assert is_violation is False
+        assert reason is None
+
+    def test_allows_relative_cd(self):
+        """cd with relative paths is allowed."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd docs/chunks && ls", host, worktree
+        )
+        assert is_violation is False
+        assert reason is None
+
+    def test_allows_cd_within_worktree(self):
+        """cd to absolute path within worktree is allowed."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /home/user/project/.ve/chunks/test/worktree/src", host, worktree
+        )
+        assert is_violation is False
+        assert reason is None
+
+    def test_allows_cd_to_tmp(self):
+        """cd to /tmp is allowed (safe system path)."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /tmp && ls", host, worktree
+        )
+        assert is_violation is False
+        assert reason is None
+
+    def test_dynamic_path_detection(self):
+        """Paths are dynamically checked, not hardcoded."""
+        # Test with different host/worktree paths
+        host1 = Path("/foo/bar")
+        worktree1 = Path("/foo/bar/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /foo/bar", host1, worktree1
+        )
+        assert is_violation is True
+
+        # Same command with different paths should not match
+        host2 = Path("/different/path")
+        worktree2 = Path("/different/path/.ve/chunks/test/worktree")
+
+        is_violation, reason = _is_sandbox_violation(
+            "cd /foo/bar", host2, worktree2
+        )
+        # This should still be blocked as it's outside worktree2
+        assert is_violation is True
+        assert "outside worktree" in reason
+
+
+class TestMergeHooks:
+    """Tests for _merge_hooks helper function."""
+
+    def test_merges_single_hook_config(self):
+        """Single hook config is returned unchanged."""
+        config = {"PreToolUse": [{"matcher": "Bash", "hooks": [], "timeout": None}]}
+        merged = _merge_hooks(config)
+        assert merged == config
+
+    def test_merges_multiple_hook_configs(self):
+        """Multiple configs are merged into one."""
+        config1 = {"PreToolUse": [{"matcher": "Bash", "hooks": [], "timeout": None}]}
+        config2 = {"PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [], "timeout": None}]}
+
+        merged = _merge_hooks(config1, config2)
+
+        assert "PreToolUse" in merged
+        assert len(merged["PreToolUse"]) == 2
+        matchers = [h["matcher"] for h in merged["PreToolUse"]]
+        assert "Bash" in matchers
+        assert "AskUserQuestion" in matchers
+
+    def test_merges_different_event_types(self):
+        """Different event types are kept separate."""
+        config1 = {"PreToolUse": [{"matcher": "Bash", "hooks": [], "timeout": None}]}
+        config2 = {"PostToolUse": [{"matcher": "Bash", "hooks": [], "timeout": None}]}
+
+        merged = _merge_hooks(config1, config2)
+
+        assert "PreToolUse" in merged
+        assert "PostToolUse" in merged
+
+
+class TestSandboxEnforcementHook:
+    """Tests for sandbox enforcement hook creation."""
+
+    def test_creates_valid_hook_config(self):
+        """Hook config has correct structure for PreToolUse."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        hooks = create_sandbox_enforcement_hook(host, worktree)
+
+        assert "PreToolUse" in hooks
+        assert len(hooks["PreToolUse"]) == 1
+        hook_matcher = hooks["PreToolUse"][0]
+        assert hook_matcher["matcher"] == "Bash"
+        assert hook_matcher["hooks"] is not None
+        assert len(hook_matcher["hooks"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_hook_blocks_violation(self):
+        """Hook returns block decision for violations."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        hooks = create_sandbox_enforcement_hook(host, worktree)
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": str(worktree),
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "cd /home/user/project && git commit -m 'test'"},
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        assert result["decision"] == "block"
+        assert "reason" in result
+
+    @pytest.mark.asyncio
+    async def test_hook_allows_safe_commands(self):
+        """Hook returns allow decision for safe commands."""
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        hooks = create_sandbox_enforcement_hook(host, worktree)
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": str(worktree),
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status && ls docs/"},
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        assert result["decision"] == "allow"
+
+
+class TestAgentRunnerSandboxIntegration:
+    """Tests for sandbox integration in AgentRunner."""
+
+    def test_agent_runner_stores_host_repo_path(self, project_dir):
+        """AgentRunner stores host_repo_path from project_dir."""
+        runner = AgentRunner(project_dir)
+        assert runner.host_repo_path == project_dir.resolve()
+
+    @pytest.mark.asyncio
+    async def test_run_phase_always_configures_sandbox_hook(self, project_dir, tmp_path):
+        """run_phase includes sandbox hook even without question_callback."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+            # Verify query was called with options containing hooks
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+            # Should have Bash matcher for sandbox enforcement
+            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
+            assert "Bash" in matchers
+
+    @pytest.mark.asyncio
+    async def test_run_phase_merges_sandbox_and_question_hooks(self, project_dir, tmp_path):
+        """run_phase merges sandbox hook with question hook when callback provided."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+                question_callback=lambda q: None,
+            )
+
+            # Verify query was called with options containing both hooks
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
+            # Should have both Bash (sandbox) and AskUserQuestion (question)
+            assert "Bash" in matchers
+            assert "AskUserQuestion" in matchers
+
+    @pytest.mark.asyncio
+    async def test_run_phase_sets_git_environment(self, project_dir, tmp_path):
+        """run_phase sets GIT_DIR and GIT_WORK_TREE environment variables."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.env is not None
+            assert options.env["GIT_DIR"] == str(worktree_path / ".git")
+            assert options.env["GIT_WORK_TREE"] == str(worktree_path)
+
+    @pytest.mark.asyncio
+    async def test_run_phase_includes_sandbox_rules_in_prompt(self, project_dir, tmp_path):
+        """run_phase prepends sandbox rules to the prompt."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            prompt = call_kwargs["prompt"]
+            assert "SANDBOX RULES" in prompt
+            assert "isolated git worktree" in prompt
+            assert "NEVER use `cd` with absolute paths" in prompt
+
+    @pytest.mark.asyncio
+    async def test_run_commit_configures_sandbox_hook(self, project_dir, tmp_path):
+        """run_commit includes sandbox hook."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        # Create chunk-commit skill file
+        commit_skill = project_dir / ".claude" / "commands" / "chunk-commit.md"
+        commit_skill.write_text("---\ndescription: Commit\n---\n\nCommit changes.")
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_commit(
+                chunk="test_chunk",
+                worktree_path=worktree_path,
+            )
+
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
+            assert "Bash" in matchers
+
+    @pytest.mark.asyncio
+    async def test_resume_for_active_status_configures_sandbox_hook(self, project_dir, tmp_path):
+        """resume_for_active_status includes sandbox hook."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.resume_for_active_status(
+                chunk="test_chunk",
+                worktree_path=worktree_path,
+                session_id="test-session-id",
+            )
+
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
+            assert "Bash" in matchers

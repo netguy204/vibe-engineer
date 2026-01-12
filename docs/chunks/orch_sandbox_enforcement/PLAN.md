@@ -8,168 +8,317 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Implement defense-in-depth sandbox enforcement using three complementary layers:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Hook-based Command Filtering (Primary)**: Register a Claude Code PreToolUse
+   hook when launching agents that intercepts Bash tool calls and blocks commands
+   that would escape the worktree. This is similar to the existing
+   `create_question_intercept_hook()` pattern.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Git Environment Restriction**: Set `GIT_DIR` and `GIT_WORK_TREE` environment
+   variables when launching agents to restrict git operations to the worktree.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_sandbox_enforcement/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Prompt Hardening**: Add explicit sandbox rules to the CWD reminder already
+   prepended to phase prompts.
+
+The key constraint is **dynamic path detection**: all paths must be derived at
+runtime from the orchestrator's known state (host repo path from startup, worktree
+path per-agent), not hard-coded.
+
+This follows the existing hook pattern in `agent.py` (see
+`create_question_intercept_hook`) and leverages the Claude Agent SDK's
+`PreToolUseHookInput`, `SyncHookJSONOutput`, and `HookMatcher` types.
+
+Test strategy per TESTING_PHILOSOPHY.md:
+- Unit tests for the hook blocking logic with semantic assertions about which
+  commands are blocked/allowed
+- Test dynamic path detection (no hard-coded paths)
+- Test git environment setup
+- All existing orchestrator tests must continue to pass
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No relevant subsystems identified. This work is specific to orchestrator agent
+sandbox enforcement and doesn't touch template_system or workflow_artifacts.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create sandbox hook utility function
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new function `create_sandbox_enforcement_hook()` to `src/orchestrator/agent.py`
+that creates a PreToolUse hook for Bash commands.
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+The function signature:
+```python
+def create_sandbox_enforcement_hook(
+    host_repo_path: Path,
+    worktree_path: Path,
+) -> dict[str, list[HookMatcher]]:
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+The hook logic should:
+- Match on tool_name "Bash"
+- Extract the command from `tool_input.get("command", "")`
+- Check for violations:
+  - `cd {host_repo_path}` (with optional quotes)
+  - Any command containing `{host_repo_path}` as a path in git operations
+  - `cd /absolute/path` where path is outside `{worktree_path}`
+- Return `SyncHookJSONOutput(decision="block", reason="...")` for violations
+- Return `SyncHookJSONOutput(decision="allow")` for safe commands
+
+Location: `src/orchestrator/agent.py`
+
+### Step 2: Add path violation detection helper
+
+Create helper function `_is_sandbox_violation()` to centralize the path checking logic:
+
+```python
+def _is_sandbox_violation(
+    command: str,
+    host_repo_path: Path,
+    worktree_path: Path,
+) -> tuple[bool, str | None]:
+    """Check if a command violates sandbox rules.
+
+    Returns:
+        Tuple of (is_violation, reason) where reason explains the violation.
+    """
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+This function should detect:
+- Direct `cd` to host repo (with/without quotes)
+- Git commands with `-C` flag pointing to host repo
+- Git commands with explicit path arguments to host repo
+- Any `cd` to absolute paths outside the worktree
+
+Location: `src/orchestrator/agent.py`
+
+### Step 3: Store host_repo_path in AgentRunner
+
+Modify `AgentRunner.__init__()` to store the host repo path as an instance
+attribute. This is the path where the orchestrator was started (passed to
+AgentRunner at construction time, derived from `project_dir`).
+
+```python
+def __init__(self, project_dir: Path):
+    self.project_dir = project_dir.resolve()
+    self.host_repo_path = project_dir.resolve()  # Same as project_dir
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
+
+Location: `src/orchestrator/agent.py`
+
+### Step 4: Integrate sandbox hook into run_phase
+
+Modify `run_phase()` to always configure the sandbox enforcement hook:
+
+```python
+# Build sandbox enforcement hook
+sandbox_hooks = create_sandbox_enforcement_hook(
+    host_repo_path=self.host_repo_path,
+    worktree_path=worktree_path,
+)
+
+# Merge with question hook if present
+if question_callback:
+    question_hooks = create_question_intercept_hook(on_question)
+    hooks = _merge_hooks(sandbox_hooks, question_hooks)
+else:
+    hooks = sandbox_hooks
+
+options.hooks = hooks
 ```
--->
+
+Also need a helper to merge multiple hook configurations:
+```python
+def _merge_hooks(
+    *hook_configs: dict[str, list[HookMatcher]],
+) -> dict[str, list[HookMatcher]]:
+    """Merge multiple hook configurations."""
+```
+
+Location: `src/orchestrator/agent.py`
+
+### Step 5: Add git environment variables
+
+Modify `run_phase()` to pass environment variables that restrict git operations.
+The Claude Agent SDK's `ClaudeAgentOptions` should support environment configuration.
+
+If `ClaudeAgentOptions` supports an `env` parameter:
+```python
+env = os.environ.copy()
+env["GIT_DIR"] = str(worktree_path / ".git")
+env["GIT_WORK_TREE"] = str(worktree_path)
+
+options = ClaudeAgentOptions(
+    cwd=str(worktree_path),
+    env=env,  # If supported
+    ...
+)
+```
+
+If not supported, document this limitation and rely on hook enforcement as the
+primary defense.
+
+Location: `src/orchestrator/agent.py`
+
+### Step 6: Enhance prompt with sandbox rules
+
+Modify the CWD reminder in `run_phase()` to include explicit sandbox rules:
+
+```python
+cwd_reminder = (
+    f"**Working Directory:** `{worktree_path}`\n"
+    f"Use relative paths (e.g., `docs/chunks/...`) or paths relative to this directory.\n"
+    f"Do NOT guess absolute paths from memory - they will be wrong.\n\n"
+    f"## SANDBOX RULES (CRITICAL)\n\n"
+    f"You are operating in an isolated git worktree. You MUST:\n"
+    f"- NEVER use `cd` with absolute paths outside this directory\n"
+    f"- NEVER run git commands targeting the host repository\n"
+    f"- ALWAYS use relative paths from the current worktree\n"
+    f"- ONLY commit to the current branch in this worktree\n\n"
+    f"Violations will be blocked and logged.\n\n"
+)
+```
+
+Location: `src/orchestrator/agent.py`
+
+### Step 7: Apply sandbox hook to other agent methods
+
+Ensure sandbox enforcement is also applied to:
+- `run_commit()` - though deprecated, should still be protected
+- `resume_for_active_status()` - uses agent to edit files
+
+Each of these methods should get the sandbox hook configured.
+
+Location: `src/orchestrator/agent.py`
+
+### Step 8: Write unit tests for sandbox hook
+
+Create tests in `tests/test_orchestrator_agent.py`:
+
+```python
+class TestSandboxEnforcementHook:
+    """Tests for sandbox enforcement hook."""
+
+    def test_blocks_cd_to_host_repo(self):
+        """Hook blocks cd to host repository path."""
+
+    def test_blocks_cd_to_host_repo_with_quotes(self):
+        """Hook blocks cd with quoted paths."""
+
+    def test_blocks_git_command_with_host_path(self):
+        """Hook blocks git -C /host/path commit."""
+
+    def test_allows_commands_within_worktree(self):
+        """Hook allows normal commands in worktree."""
+
+    def test_allows_relative_cd(self):
+        """Hook allows cd with relative paths."""
+
+    def test_blocks_absolute_cd_outside_worktree(self):
+        """Hook blocks cd to absolute path outside worktree."""
+
+    def test_allows_cd_within_worktree(self):
+        """Hook allows cd to paths within worktree."""
+
+    def test_dynamic_path_detection(self):
+        """Hook uses provided paths, not hardcoded values."""
+```
+
+Location: `tests/test_orchestrator_agent.py`
+
+### Step 9: Test hook integration with run_phase
+
+Add integration tests verifying the hook is properly configured:
+
+```python
+class TestSandboxHookIntegration:
+    """Tests for sandbox hook integration in run_phase."""
+
+    @pytest.mark.asyncio
+    async def test_run_phase_configures_sandbox_hook(self):
+        """run_phase includes sandbox enforcement hook."""
+
+    @pytest.mark.asyncio
+    async def test_sandbox_hook_combined_with_question_hook(self):
+        """Both sandbox and question hooks work together."""
+```
+
+Location: `tests/test_orchestrator_agent.py`
+
+### Step 10: Test environment variable configuration
+
+Add tests for git environment restriction (if supported by SDK):
+
+```python
+class TestGitEnvironmentRestriction:
+    """Tests for git environment variable configuration."""
+
+    @pytest.mark.asyncio
+    async def test_git_dir_environment_set(self):
+        """GIT_DIR environment points to worktree."""
+
+    @pytest.mark.asyncio
+    async def test_git_work_tree_environment_set(self):
+        """GIT_WORK_TREE environment points to worktree."""
+```
+
+Location: `tests/test_orchestrator_agent.py`
+
+### Step 11: Run full test suite
+
+Ensure all existing tests pass:
+
+```bash
+uv run pytest tests/ -v
+```
+
+Specifically verify:
+- All `test_orchestrator_*.py` tests pass
+- No regressions in question forwarding behavior
+- Hook configuration doesn't interfere with normal operations
+
+Location: Command line
+
+### Step 12: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md with the files touched:
+
+```yaml
+code_paths:
+  - src/orchestrator/agent.py
+  - tests/test_orchestrator_agent.py
+```
+
+Location: `docs/chunks/orch_sandbox_enforcement/GOAL.md`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Existing `create_question_intercept_hook()` pattern in `src/orchestrator/agent.py`
+- Claude Agent SDK types: `PreToolUseHookInput`, `SyncHookJSONOutput`, `HookMatcher`
+- No external dependencies to add
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **SDK environment support**: The Claude Agent SDK's `ClaudeAgentOptions` may
+   not support an `env` parameter for setting environment variables. If not, the
+   git environment restriction layer won't be implementable, and we'll need to
+   rely more heavily on the hook-based enforcement.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Path matching edge cases**: Complex command strings with pipes, subshells,
+   or variable expansion may evade simple string matching. The hook provides a
+   primary defense, but determined agents could potentially construct evasion
+   commands. The prompt hardening layer provides additional guidance.
+
+3. **Hook execution order**: When multiple hooks are configured (sandbox +
+   question), the order of execution and how they interact needs verification.
+   Both should be able to independently block.
+
+4. **Performance**: Adding a hook that inspects every Bash command adds overhead.
+   This should be negligible but worth monitoring if agents execute many commands.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

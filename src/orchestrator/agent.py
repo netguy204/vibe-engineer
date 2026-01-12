@@ -9,6 +9,7 @@ Each phase is a fresh session - no context carryover between phases.
 """
 
 import asyncio
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,171 @@ PHASE_SKILL_FILES = {
     WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
     WorkUnitPhase.COMPLETE: "chunk-complete.md",
 }
+
+
+# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement helpers
+def _is_sandbox_violation(
+    command: str,
+    host_repo_path: Path,
+    worktree_path: Path,
+) -> tuple[bool, str | None]:
+    """Check if a command violates sandbox rules.
+
+    Detects commands that would escape the worktree sandbox and access
+    the host repository or other forbidden locations.
+
+    Args:
+        command: The bash command string to check
+        host_repo_path: Absolute path to the host repository (where orchestrator runs)
+        worktree_path: Absolute path to the worktree (agent's sandbox)
+
+    Returns:
+        Tuple of (is_violation, reason) where reason explains the violation.
+    """
+    host_str = str(host_repo_path)
+    worktree_str = str(worktree_path)
+
+    # Normalize paths for consistent comparison
+    host_str = host_str.rstrip("/")
+    worktree_str = worktree_str.rstrip("/")
+
+    # Pattern 1: Direct cd to host repo (with or without quotes)
+    # Matches: cd /path/to/host, cd '/path/to/host', cd "/path/to/host"
+    # Must be exact match (with optional trailing slash), not a prefix of worktree path
+    cd_patterns = [
+        f"cd {host_str}",
+        f"cd '{host_str}'",
+        f'cd "{host_str}"',
+        f"cd {host_str}/",
+        f"cd '{host_str}/'",
+        f'cd "{host_str}/"',
+    ]
+    for pattern in cd_patterns:
+        if pattern in command:
+            # Make sure this isn't actually a path within the worktree
+            # (e.g., cd /host/path/.ve/chunks/test/worktree should be allowed)
+            cd_target_match = re.search(r"cd\s+['\"]?([^'\"\s]+)['\"]?", command)
+            if cd_target_match:
+                cd_target = cd_target_match.group(1).rstrip("/")
+                # If the target is within the worktree, it's safe
+                if cd_target.startswith(worktree_str):
+                    continue
+            return (True, f"Blocked: cd to host repository path ({host_str})")
+
+    # Pattern 2: Git commands with -C flag pointing to host repo
+    # Matches: git -C /path/to/host ..., git -C '/path/to/host' ...
+    git_c_patterns = [
+        f"git -C {host_str}",
+        f"git -C '{host_str}'",
+        f'git -C "{host_str}"',
+    ]
+    for pattern in git_c_patterns:
+        if pattern in command:
+            return (True, f"Blocked: git -C targeting host repository ({host_str})")
+
+    # Pattern 3: Any git command containing host repo path as argument
+    # This catches things like: git --git-dir=/host/path/.git
+    # But allow paths within the worktree (which may contain the host path as prefix)
+    if "git " in command and host_str in command:
+        # Check if the reference is to a path within the worktree
+        # If the command references the worktree path, it's allowed
+        if worktree_str not in command:
+            return (True, f"Blocked: git command references host repository path ({host_str})")
+
+    # Pattern 4: cd to absolute path outside worktree
+    # Match cd followed by absolute path
+    cd_abs_pattern = re.compile(r"cd\s+['\"]?(/[^'\"\s]+)['\"]?")
+    for match in cd_abs_pattern.finditer(command):
+        target_path = match.group(1).rstrip("/")
+        # Allow paths within worktree
+        if target_path.startswith(worktree_str):
+            continue
+        # Allow common system paths that agents might need
+        safe_prefixes = ["/tmp", "/var/tmp", "/dev"]
+        if any(target_path.startswith(p) for p in safe_prefixes):
+            continue
+        # Block cd to other absolute paths
+        return (True, f"Blocked: cd to absolute path outside worktree ({target_path})")
+
+    return (False, None)
+
+
+def _merge_hooks(
+    *hook_configs: dict[str, list[HookMatcher]],
+) -> dict[str, list[HookMatcher]]:
+    """Merge multiple hook configurations.
+
+    Combines multiple hook configs into a single config, merging
+    matchers for the same event type.
+
+    Args:
+        *hook_configs: Variable number of hook configuration dicts
+
+    Returns:
+        Merged hook configuration dict
+    """
+    merged: dict[str, list[HookMatcher]] = {}
+    for config in hook_configs:
+        for event_type, matchers in config.items():
+            if event_type not in merged:
+                merged[event_type] = []
+            merged[event_type].extend(matchers)
+    return merged
+
+
+# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement hook
+def create_sandbox_enforcement_hook(
+    host_repo_path: Path,
+    worktree_path: Path,
+) -> dict[str, list[HookMatcher]]:
+    """Create a PreToolUse hook that enforces sandbox isolation.
+
+    Intercepts Bash commands and blocks those that would escape the
+    worktree sandbox (e.g., cd to host repo, git commands on host repo).
+
+    Args:
+        host_repo_path: Absolute path to the host repository
+        worktree_path: Absolute path to the worktree (agent's sandbox)
+
+    Returns:
+        Hook configuration dict suitable for ClaudeAgentOptions.hooks
+    """
+
+    async def hook_handler(
+        hook_input: PreToolUseHookInput,
+        transcript: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        """Handle PreToolUse events for Bash commands."""
+        tool_input = hook_input.get("tool_input", {})
+        command = tool_input.get("command", "")
+
+        is_violation, reason = _is_sandbox_violation(
+            command, host_repo_path, worktree_path
+        )
+
+        if is_violation:
+            return SyncHookJSONOutput(
+                decision="block",
+                reason=reason,
+                hookSpecificOutput={
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                },
+            )
+
+        # Allow the command to proceed
+        return SyncHookJSONOutput(decision="allow")
+
+    # Build the hook matcher for Bash
+    hook_matcher: HookMatcher = {
+        "matcher": "Bash",
+        "hooks": [hook_handler],
+        "timeout": None,
+    }
+
+    return {"PreToolUse": [hook_matcher]}
 
 
 # Chunk: docs/chunks/orch_question_forward - AskUserQuestion interception hook
@@ -151,9 +317,11 @@ class AgentRunner:
         """Initialize the agent runner.
 
         Args:
-            project_dir: The root project directory
+            project_dir: The root project directory (host repo path)
         """
         self.project_dir = project_dir.resolve()
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Store host repo path for sandbox enforcement
+        self.host_repo_path = self.project_dir
 
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
         """Get the path to the skill file for a phase.
@@ -222,15 +390,27 @@ class AgentRunner:
         """
         prompt = self.get_phase_prompt(chunk, phase)
 
-        # Prepend CWD reminder to help agent avoid hallucinating absolute paths
-        # Background agents sometimes recall paths from training data instead of
-        # using the actual working directory. This explicit reminder helps ground them.
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Enhanced CWD reminder with sandbox rules
+        # Prepend CWD reminder with sandbox rules to help agent stay isolated
         cwd_reminder = (
             f"**Working Directory:** `{worktree_path}`\n"
             f"Use relative paths (e.g., `docs/chunks/...`) or paths relative to this directory.\n"
             f"Do NOT guess absolute paths from memory - they will be wrong.\n\n"
+            f"## SANDBOX RULES (CRITICAL)\n\n"
+            f"You are operating in an isolated git worktree. You MUST:\n"
+            f"- NEVER use `cd` with absolute paths outside this directory\n"
+            f"- NEVER run git commands targeting the host repository\n"
+            f"- ALWAYS use relative paths from the current worktree\n"
+            f"- ONLY commit to the current branch in this worktree\n\n"
+            f"Violations will be blocked and logged.\n\n"
         )
         prompt = cwd_reminder + prompt
+
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
+        # Set GIT_DIR and GIT_WORK_TREE to restrict git operations to the worktree
+        env = os.environ.copy()
+        env["GIT_DIR"] = str(worktree_path / ".git")
+        env["GIT_WORK_TREE"] = str(worktree_path)
 
         # Build options - run in bypassPermissions mode for autonomous execution
         options = ClaudeAgentOptions(
@@ -238,6 +418,14 @@ class AgentRunner:
             permission_mode="bypassPermissions",  # Trust agent in orchestrator context
             max_turns=100,  # Reasonable limit per phase
             setting_sources=["project"],  # Enable project-level skills/commands
+            env=env,  # Restrict git operations to worktree
+        )
+
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
+        # Always add sandbox hook to prevent agents from escaping worktree
+        sandbox_hooks = create_sandbox_enforcement_hook(
+            host_repo_path=self.host_repo_path,
+            worktree_path=worktree_path,
         )
 
         # Chunk: docs/chunks/orch_question_forward - Configure question intercept hook
@@ -251,8 +439,11 @@ class AgentRunner:
                 captured_question = question_data
                 question_callback(question_data)
 
-            hooks = create_question_intercept_hook(on_question)
-            options.hooks = hooks
+            question_hooks = create_question_intercept_hook(on_question)
+            # Merge sandbox and question hooks
+            options.hooks = _merge_hooks(sandbox_hooks, question_hooks)
+        else:
+            options.hooks = sandbox_hooks
 
         # Handle resume with answer
         if resume_session_id:
@@ -355,12 +546,25 @@ class AgentRunner:
         else:
             prompt = _load_skill_content(commit_skill_path)
 
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
+        env = os.environ.copy()
+        env["GIT_DIR"] = str(worktree_path / ".git")
+        env["GIT_WORK_TREE"] = str(worktree_path)
+
         options = ClaudeAgentOptions(
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",
             max_turns=20,  # Commits should be quick
             setting_sources=["project"],  # Enable project-level skills/commands
+            env=env,  # Restrict git operations to worktree
         )
+
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
+        sandbox_hooks = create_sandbox_enforcement_hook(
+            host_repo_path=self.host_repo_path,
+            worktree_path=worktree_path,
+        )
+        options.hooks = sandbox_hooks
 
         session_id: Optional[str] = None
         error: Optional[str] = None
@@ -438,13 +642,26 @@ class AgentRunner:
             "This is the final step to complete the chunk."
         )
 
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
+        env = os.environ.copy()
+        env["GIT_DIR"] = str(worktree_path / ".git")
+        env["GIT_WORK_TREE"] = str(worktree_path)
+
         options = ClaudeAgentOptions(
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",
             max_turns=20,  # Should be quick - just editing one file
             setting_sources=["project"],  # Enable project-level skills/commands
             resume=session_id,
+            env=env,  # Restrict git operations to worktree
         )
+
+        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
+        sandbox_hooks = create_sandbox_enforcement_hook(
+            host_repo_path=self.host_repo_path,
+            worktree_path=worktree_path,
+        )
+        options.hooks = sandbox_hooks
 
         new_session_id: Optional[str] = None
         error: Optional[str] = None
