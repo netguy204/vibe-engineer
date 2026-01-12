@@ -9,7 +9,7 @@ code_paths:
   - tests/test_artifact_ordering.py
   - tests/test_task_utils.py
 code_references:
-  - ref: src/models.py#ExternalChunkRef
+  - ref: src/models.py#ExternalArtifactRef
     implements: "Added created_after field for local causal ordering"
   - ref: src/artifact_ordering.py#_enumerate_artifacts
     implements: "Include external chunk directories (external.yaml without GOAL.md)"

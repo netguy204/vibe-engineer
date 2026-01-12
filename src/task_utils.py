@@ -24,6 +24,37 @@ from git_utils import get_current_sha
 from models import TaskConfig, ExternalArtifactRef, ArtifactType
 
 
+# Chunk: docs/chunks/selective_project_linking - Parse --projects option into resolved project refs
+def parse_projects_option(
+    projects_input: str | None,
+    available_projects: list[str],
+) -> list[str] | None:
+    """Parse --projects option into resolved project refs.
+
+    Args:
+        projects_input: Comma-separated project refs from CLI (e.g., "proj1,acme/proj2").
+        available_projects: List of valid project refs from task config.
+
+    Returns:
+        List of resolved canonical org/repo project refs, or None if projects_input
+        is None or empty (indicating all projects should be used).
+
+    Raises:
+        ValueError: If any project ref cannot be resolved.
+    """
+    if projects_input is None:
+        return None
+
+    # Split on comma, strip whitespace
+    project_names = [p.strip() for p in projects_input.split(",") if p.strip()]
+
+    if not project_names:
+        return None
+
+    # Resolve each to canonical format
+    return [resolve_project_ref(p, available_projects) for p in project_names]
+
+
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible project reference resolution
 def resolve_project_ref(
     project_input: str,
@@ -290,11 +321,13 @@ class TaskChunkError(Exception):
 # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Pass current tips to external.yaml
 # Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef format
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
     ticket_id: str | None = None,
     status: str = "IMPLEMENTING",
+    projects: list[str] | None = None,
 ) -> dict:
     """Create chunk in task directory context.
 
@@ -308,6 +341,7 @@ def create_task_chunk(
         short_name: Short name for the chunk
         ticket_id: Optional ticket ID
         status: Initial status for the chunk (default: "IMPLEMENTING")
+        projects: Optional list of project refs to link (default: all projects)
 
     Returns:
         Dict with keys:
@@ -347,10 +381,12 @@ def create_task_chunk(
     external_artifact_id = external_chunk_path.name  # Now short_name format
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
+    effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
 
-    for project_ref in config.projects:
+    for project_ref in effective_projects:
         # Resolve project path
         try:
             project_path = resolve_repo_directory(task_dir, project_ref)
@@ -579,9 +615,11 @@ def add_dependents_to_subsystem(
 
 
 # Chunk: docs/chunks/task_aware_narrative_cmds - Orchestrate multi-repo narrative
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering
 def create_task_narrative(
     task_dir: Path,
     short_name: str,
+    projects: list[str] | None = None,
 ) -> dict:
     """Create narrative in task directory context.
 
@@ -593,6 +631,7 @@ def create_task_narrative(
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         short_name: Short name for the narrative
+        projects: Optional list of project refs to link (default: all projects)
 
     Returns:
         Dict with keys:
@@ -634,10 +673,12 @@ def create_task_narrative(
     external_artifact_id = external_narrative_path.name
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
+    effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
 
-    for project_ref in config.projects:
+    for project_ref in effective_projects:
         # Resolve project path
         try:
             project_path = resolve_repo_directory(task_dir, project_ref)
@@ -743,9 +784,11 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
 
 
 # Chunk: docs/chunks/task_aware_investigations - Orchestrate multi-repo investigation
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering
 def create_task_investigation(
     task_dir: Path,
     short_name: str,
+    projects: list[str] | None = None,
 ) -> dict:
     """Create investigation in task directory context.
 
@@ -757,6 +800,7 @@ def create_task_investigation(
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         short_name: Short name for the investigation
+        projects: Optional list of project refs to link (default: all projects)
 
     Returns:
         Dict with keys:
@@ -798,10 +842,12 @@ def create_task_investigation(
     external_artifact_id = external_investigation_path.name
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
+    effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
 
-    for project_ref in config.projects:
+    for project_ref in effective_projects:
         # Resolve project path
         try:
             project_path = resolve_repo_directory(task_dir, project_ref)
@@ -907,9 +953,11 @@ def list_task_investigations(task_dir: Path) -> list[dict]:
 
 
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Orchestrate multi-repo subsystem
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering
 def create_task_subsystem(
     task_dir: Path,
     short_name: str,
+    projects: list[str] | None = None,
 ) -> dict:
     """Create subsystem in task directory context.
 
@@ -921,6 +969,7 @@ def create_task_subsystem(
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         short_name: Short name for the subsystem
+        projects: Optional list of project refs to link (default: all projects)
 
     Returns:
         Dict with keys:
@@ -962,10 +1011,12 @@ def create_task_subsystem(
     external_artifact_id = external_subsystem_path.name
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
+    effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
 
-    for project_ref in config.projects:
+    for project_ref in effective_projects:
         # Resolve project path
         try:
             project_path = resolve_repo_directory(task_dir, project_ref)

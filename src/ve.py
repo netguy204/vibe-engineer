@@ -50,6 +50,8 @@ from task_utils import (
     list_task_proposed_chunks,
     copy_artifact_as_external,
     TaskCopyExternalError,
+    parse_projects_option,
+    load_task_config,
 )
 from sync import (
     sync_task_directory,
@@ -112,13 +114,15 @@ def chunk():
 # Chunk: docs/chunks/implement_chunk_start - Create new chunk command
 # Chunk: docs/chunks/future_chunk_creation - Future chunks support
 # Chunk: docs/chunks/rename_chunk_start_to_create - Rename start to create
+# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @chunk.command("create")
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
-def create(short_name, ticket_id, project_dir, yes, future):
+@click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
+def create(short_name, ticket_id, project_dir, yes, future, projects):
     """Create a new chunk."""
     errors = validate_short_name(short_name)
     if ticket_id:
@@ -139,7 +143,7 @@ def create(short_name, ticket_id, project_dir, yes, future):
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _start_task_chunk(project_dir, short_name, ticket_id, status)
+        _start_task_chunk(project_dir, short_name, ticket_id, status, projects)
         return
 
     # Single-repo mode
@@ -170,12 +174,28 @@ chunk.add_command(create, name="start")
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Task directory chunk creation
+# Chunk: docs/chunks/selective_project_linking - Selective project linking
 def _start_task_chunk(
-    task_dir: pathlib.Path, short_name: str, ticket_id: str | None, status: str = "IMPLEMENTING"
+    task_dir: pathlib.Path,
+    short_name: str,
+    ticket_id: str | None,
+    status: str = "IMPLEMENTING",
+    projects_input: str | None = None,
 ):
     """Handle chunk creation in task directory (cross-repo mode)."""
+    # Parse and validate projects option
     try:
-        result = create_task_chunk(task_dir, short_name, ticket_id, status=status)
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = create_task_chunk(task_dir, short_name, ticket_id, status=status, projects=projects)
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -702,10 +722,12 @@ def narrative():
 
 # Chunk: docs/chunks/narrative_cli_commands - Create narrative command
 # Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative creation
+# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def create_narrative(short_name, project_dir):
+@click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
+def create_narrative(short_name, project_dir, projects):
     """Create a new narrative."""
     errors = validate_short_name(short_name)
 
@@ -719,7 +741,7 @@ def create_narrative(short_name, project_dir):
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _create_task_narrative(project_dir, short_name)
+        _create_task_narrative(project_dir, short_name, projects)
         return
 
     # Single-repo mode
@@ -732,10 +754,22 @@ def create_narrative(short_name, project_dir):
 
 
 # Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative creation
-def _create_task_narrative(task_dir: pathlib.Path, short_name: str):
+# Chunk: docs/chunks/selective_project_linking - Selective project linking
+def _create_task_narrative(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle narrative creation in task directory (cross-repo mode)."""
+    # Parse and validate projects option
     try:
-        result = create_task_narrative(task_dir, short_name)
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = create_task_narrative(task_dir, short_name, projects=projects)
     except TaskNarrativeError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -943,10 +977,12 @@ def _list_task_subsystems(task_dir: pathlib.Path):
 
 # Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem command
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem discovery
+# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def discover(shortname, project_dir):
+@click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
+def discover(shortname, project_dir, projects):
     """Create a new subsystem."""
     errors = validate_short_name(shortname)
 
@@ -960,7 +996,7 @@ def discover(shortname, project_dir):
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _create_task_subsystem(project_dir, shortname)
+        _create_task_subsystem(project_dir, shortname, projects)
         return
 
     # Single-repo mode
@@ -981,10 +1017,22 @@ def discover(shortname, project_dir):
 
 
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem creation handler
-def _create_task_subsystem(task_dir: pathlib.Path, short_name: str):
+# Chunk: docs/chunks/selective_project_linking - Selective project linking
+def _create_task_subsystem(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle subsystem creation in task directory (cross-repo mode)."""
+    # Parse and validate projects option
     try:
-        result = create_task_subsystem(task_dir, short_name)
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = create_task_subsystem(task_dir, short_name, projects=projects)
     except TaskSubsystemError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -1119,10 +1167,12 @@ def investigation():
 
 # Chunk: docs/chunks/investigation_commands - Create investigation command
 # Chunk: docs/chunks/task_aware_investigations - Task-aware investigation creation
+# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def create_investigation(short_name, project_dir):
+@click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
+def create_investigation(short_name, project_dir, projects):
     """Create a new investigation."""
     errors = validate_short_name(short_name)
 
@@ -1136,7 +1186,7 @@ def create_investigation(short_name, project_dir):
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _create_task_investigation(project_dir, short_name)
+        _create_task_investigation(project_dir, short_name, projects)
         return
 
     # Single-repo mode
@@ -1149,10 +1199,22 @@ def create_investigation(short_name, project_dir):
 
 
 # Chunk: docs/chunks/task_aware_investigations - Task directory investigation creation
-def _create_task_investigation(task_dir: pathlib.Path, short_name: str):
+# Chunk: docs/chunks/selective_project_linking - Selective project linking
+def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle investigation creation in task directory (cross-repo mode)."""
+    # Parse and validate projects option
     try:
-        result = create_task_investigation(task_dir, short_name)
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = create_task_investigation(task_dir, short_name, projects=projects)
     except TaskInvestigationError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

@@ -225,3 +225,78 @@ projects:
 
         assert result.exit_code == 1
         assert "Failed to resolve HEAD SHA" in result.output
+
+
+# Chunk: docs/chunks/selective_project_linking - Selective project linking tests
+class TestSubsystemDiscoverSelectiveProjects:
+    """Tests for ve subsystem discover with --projects flag."""
+
+    def test_creates_external_yaml_only_in_specified_projects(self, tmp_path):
+        """--projects flag creates external.yaml only in specified projects."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["proj1", "proj2", "proj3"]
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "subsystem", "discover", "validation",
+                "--projects", "proj1,proj3",
+                "--project-dir", str(task_dir)
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        # proj1 and proj3 should have external.yaml
+        assert (project_paths[0] / "docs" / "subsystems" / "validation" / "external.yaml").exists()
+        assert (project_paths[2] / "docs" / "subsystems" / "validation" / "external.yaml").exists()
+
+        # proj2 should NOT have external.yaml
+        assert not (project_paths[1] / "docs" / "subsystems" / "validation").exists()
+
+        # Verify dependents only include linked projects
+        overview_path = external_path / "docs" / "subsystems" / "validation" / "OVERVIEW.md"
+        content = overview_path.read_text()
+        assert "acme/proj1" in content
+        assert "acme/proj3" in content
+        assert "acme/proj2" not in content
+
+    def test_creates_external_yaml_in_all_projects_when_flag_omitted(self, tmp_path):
+        """Omitting --projects flag links to all projects (backward compatible)."""
+        task_dir, external_path, project_paths = setup_task_directory(
+            tmp_path, project_names=["proj1", "proj2", "proj3"]
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["subsystem", "discover", "validation", "--project-dir", str(task_dir)],
+        )
+
+        assert result.exit_code == 0
+
+        # All projects should have external.yaml
+        for project_path in project_paths:
+            assert (project_path / "docs" / "subsystems" / "validation" / "external.yaml").exists()
+
+    def test_error_on_invalid_project_ref(self, tmp_path):
+        """Reports clear error when invalid project is specified."""
+        task_dir, _, _ = setup_task_directory(
+            tmp_path, project_names=["proj1", "proj2"]
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "subsystem", "discover", "validation",
+                "--projects", "proj1,nonexistent",
+                "--project-dir", str(task_dir)
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "nonexistent" in result.output
+        assert "not found" in result.output
