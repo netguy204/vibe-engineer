@@ -44,7 +44,7 @@ ve orch start
 List all chunks and filter for FUTURE status:
 
 ```bash
-ve chunk list
+ve chunk list | grep "\[FUTURE\]"
 ```
 
 From the output, identify chunks marked with `[FUTURE]`. If there are no FUTURE

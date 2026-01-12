@@ -7,6 +7,7 @@ Built with Starlette for minimal dependencies.
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,7 @@ from orchestrator.models import (
 from orchestrator.state import StateStore, get_default_db_path
 from orchestrator.worktree import WorktreeManager
 
+logger = logging.getLogger(__name__)
 
 # Global state store - initialized when app is created
 _store: Optional[StateStore] = None
@@ -226,9 +228,9 @@ async def delete_work_unit_endpoint(request: Request) -> JSONResponse:
         try:
             worktree_manager = WorktreeManager(_project_dir)
             worktree_manager.remove_worktree(chunk, remove_branch=True)
-        except Exception:
+        except Exception as e:
             # Worktree cleanup is best-effort; don't fail the delete
-            pass
+            logger.warning(f"Failed to cleanup worktree for '{chunk}': {e}")
 
     return JSONResponse({"deleted": True, "chunk": chunk})
 
