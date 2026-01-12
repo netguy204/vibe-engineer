@@ -8,168 +8,151 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The current orchestrator creates worktrees at inject time (when `ve orch inject` is called). This is problematic because:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Blocked work gets a worktree reflecting stale state (before dependencies complete)
+2. Work waiting in the READY queue consumes resources unnecessarily
+3. The worktree doesn't reflect the current HEAD when work actually starts
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The fix: Move worktree creation from inject time to dispatch time (when `Scheduler._run_work_unit()` is called). This is a focused refactor that:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/deferred_worktree_creation/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. **Removes worktree creation from inject** - Currently `inject_endpoint` in `api.py` only creates the work unit (no worktree), so this is already correct. The worktree is created in `Scheduler._run_work_unit()`.
+
+2. **Verifies blocked work behavior** - Work units with `blocked_by` dependencies transition through BLOCKED → READY → RUNNING. Worktree creation happens at the RUNNING transition, which means blocked work gets a worktree from current HEAD only when dependencies complete.
+
+3. **Adds tests to verify deferred creation** - Integration tests that verify:
+   - Inject creates work unit but NOT a worktree
+   - Worktree is created only when transitioning to RUNNING
+   - Blocked work gets worktree after dependency completion
+
+After examining the codebase, **the current implementation already defers worktree creation to dispatch time** (in `_run_work_unit`). The work for this chunk is primarily:
+- Adding tests that explicitly verify this behavior (currently not tested)
+- Ensuring blocked work correctly defers worktree creation
+- Documenting this as an architectural invariant
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this chunk. The `template_system` and `workflow_artifacts` subsystems don't touch orchestrator scheduling logic.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing test - inject does not create worktree
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a test that verifies `ve orch inject` creates a work unit but does NOT create a worktree. This test documents the expected behavior.
 
-Example:
+Location: tests/test_orchestrator_scheduler.py
 
-### Step 1: Define the SegmentHeader struct
+Test should:
+1. Set up a git repo with a FUTURE chunk
+2. Call inject (via API or directly through StateStore)
+3. Verify work unit exists with status READY
+4. Verify worktree does NOT exist (via WorktreeManager.worktree_exists())
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write failing test - worktree created at dispatch time
 
-Location: src/segment/format.rs
+Create a test that verifies the worktree is created when `_run_work_unit` is called (i.e., when transitioning READY → RUNNING).
 
-### Step 2: Implement header serialization
+Location: tests/test_orchestrator_scheduler.py
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Test should:
+1. Set up git repo with FUTURE chunk
+2. Create READY work unit
+3. Call `_run_work_unit` (or trigger dispatch)
+4. Verify worktree now exists
+5. Verify worktree is on the correct branch (`orch/<chunk>`)
+6. Verify worktree reflects current HEAD state
 
-### Step 3: ...
+### Step 3: Write failing test - blocked work waits for current state
 
----
+Create an integration test that verifies blocked work gets worktree from current HEAD only when dependencies complete and it starts running.
 
-**BACKREFERENCE COMMENTS**
+Location: tests/test_orchestrator_scheduler.py
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+Test should:
+1. Create two FUTURE chunks: chunk_a and chunk_b where chunk_b depends on chunk_a (`created_after: [chunk_a]`)
+2. Inject both chunks
+3. Verify chunk_b has status BLOCKED
+4. Verify NO worktree exists for chunk_b
+5. Complete chunk_a (mock the agent, update status to DONE)
+6. Trigger dependency check / scheduler tick
+7. Verify chunk_b transitions to READY
+8. Trigger dispatch for chunk_b
+9. Verify worktree is created for chunk_b at this point
+10. Verify the worktree reflects any changes that chunk_a would have merged
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+### Step 4: Verify existing implementation and fix if needed
 
-Format (place immediately before the symbol):
+Review the current scheduler implementation to ensure:
+1. `inject_endpoint` does NOT call `worktree_manager.create_worktree()`
+2. `_run_work_unit()` calls `create_worktree()` at the beginning
+3. Blocked work units don't have worktrees until they transition to RUNNING
+
+The current implementation in `scheduler.py` lines 374-376 shows:
+```python
+# Create worktree
+logger.info(f"Creating worktree for {chunk}")
+worktree_path = self.worktree_manager.create_worktree(chunk)
 ```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+This is already in `_run_work_unit`, which is correct. The key verification is that no other code path creates worktrees prematurely.
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+Location: src/orchestrator/scheduler.py, src/orchestrator/api.py
+
+### Step 5: Add dependency-aware worktree creation test
+
+Enhance the blocked work test to verify the worktree picks up the latest state:
+
+Location: tests/test_orchestrator_scheduler.py
+
+Test should:
+1. Create git repo with initial commit
+2. Create chunk_a with FUTURE status
+3. Create chunk_b with FUTURE status and `created_after: [chunk_a]`
+4. Inject both
+5. Simulate chunk_a completion: create worktree, make file changes, commit, merge
+6. Trigger chunk_b dispatch
+7. Verify chunk_b's worktree contains the file changes from chunk_a
+
+### Step 6: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the files touched by this implementation.
+
+Location: docs/chunks/deferred_worktree_creation/GOAL.md
+
+Expected code_paths:
+- src/orchestrator/scheduler.py (verified, not modified)
+- src/orchestrator/api.py (verified, not modified)
+- tests/test_orchestrator_scheduler.py (new tests added)
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- `orch_scheduling` chunk (ACTIVE) - Provides the scheduler foundation and worktree manager
+- `orch_activate_on_inject` chunk (ACTIVE) - Provides chunk activation logic that runs in `_run_work_unit`
 
-If there are no dependencies, delete this section.
--->
+Both dependencies are already complete, so this chunk can proceed.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Blocked dependency resolution timing** - The scheduler must check blocked work units and transition them to READY when dependencies complete. Need to verify this logic exists and is correct.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Race condition on base branch** - If chunk_a completes and merges while chunk_b is still READY, chunk_b's worktree should see chunk_a's changes. This depends on the worktree being created from the current base branch HEAD at dispatch time, not from a stale commit.
+
+3. **Test isolation** - Tests that create git worktrees need proper cleanup. The existing `git_repo` fixture in `test_orchestrator_worktree.py` provides a pattern to follow.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+- Steps 1-3 were combined since the tests are closely related and it was more
+  efficient to write them together. All tests are in `TestDeferredWorktreeCreation`
+  and `TestBlockedWorkDeferredWorktree` classes.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+- Step 4 confirmed the existing implementation is already correct. No code
+  changes were needed - the worktree creation was already deferred to
+  `_run_work_unit()` in the scheduler. The tests serve to document and verify
+  this architectural invariant.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+- Step 5 was implemented as part of `TestDeferredWorktreeCreationIntegration`
+  with two integration tests using real git repos:
+  - `test_worktree_reflects_current_head_at_dispatch_time`
+  - `test_blocked_work_sees_dependency_changes_when_dispatched`
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- Step 6 was not needed as the GOAL.md already had correct code_paths listed.
