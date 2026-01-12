@@ -8,151 +8,81 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The codebase already has a well-established pattern for normalizing artifact paths: the `strip_artifact_path_prefix()` function in `src/external_refs.py`. This function handles the exact variations specified in the success criteria:
+- Trailing slashes: `docs/chunks/foo/` → `foo`
+- Full paths: `docs/chunks/foo` → `foo`
+- Short prefix: `chunks/foo` → `foo`
+- Short names: `foo` → `foo`
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+This same pattern is used by 10+ other commands including `chunk activate`, `chunk status`, `chunk validate`, `narrative status`, `subsystem status`, etc. Following this pattern ensures consistency with the rest of the codebase.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Strategy**: Add a single line of path normalization in the `orch_inject` CLI command, using the existing `strip_artifact_path_prefix()` function before passing the chunk identifier to the orchestrator client. The normalization happens at the CLI layer (not the API layer) because the CLI is the user-facing interface where path flexibility matters.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_inject_path_compat/GOAL.md)
-with references to the files that you expect to touch.
--->
+Following TDD per docs/trunk/TESTING_PHILOSOPHY.md, we'll write failing tests first that verify the path normalization behavior, then add the single line of implementation to make them pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are directly relevant to this work. This is a narrow CLI usability improvement that uses an existing utility function.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for path normalization
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new test class `TestOrchInjectPathNormalization` to `tests/test_chunk_validate_inject.py` that verifies the path normalization behavior. Tests should cover:
 
-Example:
+1. Full path with trailing slash: `docs/chunks/my_feature/` → works
+2. Full path without trailing slash: `docs/chunks/my_feature` → works
+3. Short prefix path: `chunks/my_feature` → works
+4. Short name (existing behavior): `my_feature` → works
 
-### Step 1: Define the SegmentHeader struct
+Since the orchestrator daemon is complex to test (requires starting a server), use mocking to verify that the correct normalized chunk name is passed to the client. The existing `test_chunk_validate_inject.py` tests the validation function directly, which is the appropriate level for our tests.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Actually, since validation happens in `Chunks.validate_chunk_injectable()` which already receives the chunk ID and uses `resolve_chunk_id()`, the cleanest approach is to test the `strip_artifact_path_prefix()` function directly for chunk paths to verify the normalization behavior, then verify the integration at the CLI level.
 
-Location: src/segment/format.rs
+**Test approach**: Write unit tests that call `strip_artifact_path_prefix()` with CHUNK type for various path formats, verifying the output is the short name. Then write a minimal CLI integration test that verifies `ve orch inject` with a full path doesn't error with "chunk not found" (it will error with "daemon not running" which proves the normalization worked).
 
-### Step 2: Implement header serialization
+Location: `tests/test_chunk_validate_inject.py` (add new test class)
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 2: Add path normalization to orch_inject CLI command
 
-### Step 3: ...
+Add a single line to the `orch_inject` function in `src/ve.py` that normalizes the chunk argument before passing it to the client:
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+```python
+chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+This follows the exact same pattern used by 10+ other commands in the file.
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+Location: `src/ve.py` around line 2031 (after the imports, before building the request body)
+
+### Step 3: Run tests and verify
+
+Run the test suite to verify:
+1. New path normalization tests pass
+2. Existing `test_chunk_validate_inject.py` tests still pass
+3. No regressions in other orchestrator tests
+
+### Step 4: Manual verification
+
+Test the behavior manually:
+- `ve orch inject docs/chunks/some_chunk/` should work
+- `ve orch inject chunks/some_chunk` should work
+- `ve orch inject some_chunk` should work (existing behavior preserved)
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. The `strip_artifact_path_prefix()` function already exists in `src/external_refs.py` and is already imported in `src/ve.py`.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+**Low risk**: This is a well-established pattern in the codebase. The main consideration is ensuring tests adequately cover the behavior without requiring the orchestrator daemon to be running.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+**Testing without daemon**: The orchestrator inject command requires a running daemon. Tests will need to either:
+1. Test the path normalization function directly (unit test level)
+2. Mock the client to verify the normalized value is passed
+3. Accept that the CLI will fail with "daemon not running" rather than "chunk not found" as proof normalization worked
+
+Option 1 is cleanest and aligns with TESTING_PHILOSOPHY.md's preference for testing behavior at the appropriate boundary.
 
 ## Deviations
 

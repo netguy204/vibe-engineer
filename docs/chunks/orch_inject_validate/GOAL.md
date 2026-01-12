@@ -3,10 +3,18 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
+- src/chunks.py
+- src/ve.py
 - src/orchestrator/api.py
 - tests/test_orchestrator_api.py
 - tests/test_chunk_validate_inject.py
 code_references:
+  - ref: src/chunks.py#Chunks::validate_chunk_injectable
+    implements: "Core validation function checking status-content consistency"
+  - ref: src/chunks.py#plan_has_content
+    implements: "Helper function detecting populated vs template-only PLAN.md"
+  - ref: src/ve.py#validate
+    implements: "CLI command with --injectable flag for injection validation"
   - ref: tests/test_orchestrator_api.py#TestInjectEndpointValidation
     implements: "Comprehensive test coverage for inject endpoint validation"
   - ref: tests/test_chunk_validate_inject.py
