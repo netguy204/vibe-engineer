@@ -7,9 +7,9 @@ code_paths:
 - src/symbols.py
 - src/chunks.py
 - src/ve.py
-- src/templates/chunk/GOAL.md
-- src/templates/commands/chunk-complete.md
-- src/templates/commands/chunk-update-references.md
+- src/templates/chunk/GOAL.md.jinja2
+- src/templates/commands/chunk-complete.md.jinja2
+- src/templates/commands/chunk-update-references.md.jinja2
 - tests/test_models.py
 - tests/test_symbols.py
 - tests/test_chunks.py

@@ -795,6 +795,10 @@ class Chunks:
         investigation_errors = validation_chunks.validate_investigation_ref(chunk_name_to_validate)
         errors.extend(investigation_errors)
 
+        # Chunk: docs/chunks/narrative_backreference_support - Validate narrative reference
+        narrative_errors = validation_chunks.validate_narrative_ref(chunk_name_to_validate)
+        errors.extend(narrative_errors)
+
         return ValidationResult(
             success=len(errors) == 0,
             errors=errors,
@@ -1144,6 +1148,43 @@ class Chunks:
         if not investigation_path.exists():
             errors.append(
                 f"Investigation '{frontmatter.investigation}' does not exist in docs/investigations/"
+            )
+
+        return errors
+
+    # Chunk: docs/chunks/narrative_backreference_support - Narrative reference validation
+    def validate_narrative_ref(self, chunk_id: str) -> list[str]:
+        """Validate narrative reference in a chunk's frontmatter.
+
+        Checks:
+        1. If narrative field is populated, the referenced narrative
+           directory exists in docs/narratives/
+
+        Args:
+            chunk_id: The chunk ID to validate.
+
+        Returns:
+            List of error messages (empty if valid or no reference).
+        """
+        errors: list[str] = []
+
+        # Get chunk frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_id)
+        if frontmatter is None:
+            return []  # Chunk doesn't exist, nothing to validate
+
+        # Get narrative field (already validated by ChunkFrontmatter model)
+        if not frontmatter.narrative:
+            return []
+
+        # Narratives directory path
+        narratives_dir = self.project_dir / "docs" / "narratives"
+
+        # Check if narrative directory exists
+        narrative_path = narratives_dir / frontmatter.narrative
+        if not narrative_path.exists():
+            errors.append(
+                f"Narrative '{frontmatter.narrative}' does not exist in docs/narratives/"
             )
 
         return errors

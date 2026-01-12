@@ -1171,3 +1171,126 @@ Test chunk content.
         assert result.exit_code == 0
         # Cross-project ref should be skipped
         assert "skip" in result.output.lower() or "cross-project" in result.output.lower()
+
+
+# Chunk: docs/chunks/narrative_backreference_support - Narrative reference validation tests
+class TestNarrativeRefValidation:
+    """Tests for narrative reference validation in 've chunk validate'."""
+
+    def _write_frontmatter_with_narrative(
+        self,
+        chunk_path,
+        status: str,
+        code_references: list[dict],
+        narrative: str | None = None,
+    ):
+        """Helper to write GOAL.md with narrative field."""
+        goal_path = chunk_path / "GOAL.md"
+
+        if code_references:
+            refs_lines = ["code_references:"]
+            for ref in code_references:
+                refs_lines.append(f"  - ref: {ref['ref']}")
+                refs_lines.append(f"    implements: \"{ref['implements']}\"")
+            refs_yaml = "\n".join(refs_lines)
+        else:
+            refs_yaml = "code_references: []"
+
+        narrative_yaml = f"narrative: {narrative}" if narrative else "narrative: null"
+
+        frontmatter = f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+{refs_yaml}
+{narrative_yaml}
+investigation: null
+subsystems: []
+---
+
+# Chunk Goal
+
+Test chunk content.
+"""
+        goal_path.write_text(frontmatter)
+
+    def _create_narrative(self, temp_project, narrative_name):
+        """Helper to create a narrative directory with OVERVIEW.md."""
+        narrative_path = temp_project / "docs" / "narratives" / narrative_name
+        narrative_path.mkdir(parents=True, exist_ok=True)
+        overview_path = narrative_path / "OVERVIEW.md"
+        overview_path.write_text("""---
+status: IN_PROGRESS
+proposed_chunks: []
+---
+
+# Narrative
+""")
+
+    def test_chunk_with_valid_narrative_ref_passes(self, runner, temp_project):
+        """Chunk with valid narrative reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        # Create the narrative
+        self._create_narrative(temp_project, "chunk_lifecycle_management")
+
+        self._write_frontmatter_with_narrative(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            "chunk_lifecycle_management",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_chunk_with_invalid_narrative_ref_fails(self, runner, temp_project):
+        """Chunk with invalid narrative reference fails validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        self._write_frontmatter_with_narrative(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            "nonexistent_narrative",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "nonexistent_narrative" in result.output
+
+    def test_chunk_with_no_narrative_ref_passes(self, runner, temp_project):
+        """Chunk without narrative reference passes validation."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        chunk_path = temp_project / "docs" / "chunks" / "feature"
+
+        self._write_frontmatter_with_narrative(
+            chunk_path,
+            "IMPLEMENTING",
+            [{"ref": "src/main.py", "implements": "Main module"}],
+            None,
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
