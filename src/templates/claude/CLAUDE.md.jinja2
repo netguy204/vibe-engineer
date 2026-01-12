@@ -46,6 +46,7 @@ Chunk GOAL.md files may reference other artifact types in their frontmatter:
 - **narrative**: References a narrative directory (e.g., `investigations`) that this chunk helps implement
 - **investigation**: References an investigation directory (e.g., `memory_leak`) from which this chunk originated, providing traceability from implementation work back to exploratory findings
 - **subsystems**: List of subsystem relationships indicating which subsystems this chunk implements or uses
+- **friction_entries**: Links to friction log entries this chunk addresses, providing "why did we do this work?" traceability
 
 When you see these references, read the referenced artifact to understand the broader context.
 
@@ -95,6 +96,55 @@ Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
 - **Investigation**: When you need to understand something before committing to action—exploring unfamiliar code, diagnosing unclear issues, or validating hypotheses
 - **Chunk**: When you know what needs to be done and can proceed directly to implementation
 - **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
+- **Friction Log**: When you encounter a pain point that doesn't need immediate action but should be remembered—captures friction over time; patterns emerge organically
+
+{# Chunk: docs/chunks/friction_claude_docs - Friction log documentation #}
+## Friction Log (`docs/trunk/FRICTION.md`)
+
+The friction log is an accumulative ledger for capturing pain points encountered during project use. Unlike other artifacts, friction logs:
+
+- **Have indefinite lifespan**: A friction log is like a journal—you don't "complete" it
+- **Contain many entries**: Each entry is a distinct friction point; the log is a ledger, not a document
+- **Have no artifact-level status**: The log is always implicitly active; only entries have lifecycle
+
+### Entry Structure
+
+Each friction entry uses the format:
+
+```markdown
+### FXXX: YYYY-MM-DD [theme-id] Title
+
+Description of the friction point and context.
+```
+
+Where:
+- `FXXX` is a sequential ID (F001, F002, etc.) for stable references
+- `YYYY-MM-DD` is the date observed
+- `[theme-id]` categorizes the entry (themes emerge organically as entries accumulate)
+- Title is a brief summary
+
+### Entry Lifecycle
+
+Entry status is **derived**, not stored:
+
+- **OPEN**: Entry ID not in any `proposed_chunks.addresses`
+- **ADDRESSED**: Entry ID appears in a proposed chunk that has been created
+- **RESOLVED**: Entry is addressed by a chunk that has reached ACTIVE status
+
+### When Patterns Emerge
+
+When friction accumulates (3+ entries in a theme, or recurring pain), add a proposed chunk to the friction log frontmatter:
+
+```yaml
+proposed_chunks:
+  - prompt: "Standardize CLI naming conventions"
+    addresses: [F003, F007, F012]
+    chunk_directory: null  # Set when chunk is created
+```
+
+Chunks created from friction should reference the entries they address via the `friction_entries` frontmatter field, enabling "why did we do this work?" traceability.
+
+Use `/friction-log` to quickly capture a friction point without ceremony.
 
 {# Chunk: docs/chunks/restore_template_content - Proposed chunks documentation #}
 ## Proposed Chunks
@@ -122,6 +172,7 @@ Use these slash commands for artifact management:
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
+- `/friction-log` - Capture a friction point for later pattern analysis
 
 ## Getting Started
 
