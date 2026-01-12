@@ -477,3 +477,88 @@ class TestDisplacedChunkPersistence:
 
         assert len(units) == 1
         assert units[0].displaced_chunk == "existing_chunk"
+
+
+# Chunk: docs/chunks/orch_blocked_lifecycle - list_blocked_by_chunk tests
+class TestListBlockedByChunk:
+    """Tests for list_blocked_by_chunk method."""
+
+    def test_returns_blocked_units(self, store):
+        """Returns work units that have the chunk in blocked_by."""
+        now = datetime.now(timezone.utc)
+
+        # Create blocker chunk
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(blocker)
+
+        # Create blocked chunks
+        blocked_a = WorkUnit(
+            chunk="blocked_a",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(blocked_a)
+
+        blocked_b = WorkUnit(
+            chunk="blocked_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_chunk", "other_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(blocked_b)
+
+        # Create non-blocked chunk
+        not_blocked = WorkUnit(
+            chunk="not_blocked",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            blocked_by=[],
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(not_blocked)
+
+        # Query blocked units
+        results = store.list_blocked_by_chunk("blocker_chunk")
+
+        assert len(results) == 2
+        chunk_names = [u.chunk for u in results]
+        assert "blocked_a" in chunk_names
+        assert "blocked_b" in chunk_names
+        assert "not_blocked" not in chunk_names
+        assert "blocker_chunk" not in chunk_names
+
+    def test_returns_empty_when_no_blocked(self, store):
+        """Returns empty list when no units are blocked by the chunk."""
+        now = datetime.now(timezone.utc)
+
+        unit = WorkUnit(
+            chunk="some_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            blocked_by=[],
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        results = store.list_blocked_by_chunk("nonexistent_blocker")
+
+        assert results == []
+
+    def test_returns_empty_for_empty_db(self, store):
+        """Returns empty list when database is empty."""
+        results = store.list_blocked_by_chunk("any_chunk")
+
+        assert results == []

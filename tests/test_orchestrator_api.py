@@ -728,3 +728,215 @@ class TestAnswerEndpoint:
 
         assert response.status_code == 400
         assert "Invalid JSON" in response.json()["error"]
+
+
+# Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE status transition tests
+class TestResolveConflictEndpoint:
+    """Tests for POST /work-units/{chunk}/resolve endpoint."""
+
+    def test_serialize_verdict_transitions_to_blocked(self, client):
+        """SERIALIZE verdict transitions status from NEEDS_ATTENTION to BLOCKED."""
+        # Create a work unit in NEEDS_ATTENTION state (simulating conflict detection)
+        client.post("/work-units", json={
+            "chunk": "chunk_a",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        # Create the other chunk that we'll serialize after
+        client.post("/work-units", json={
+            "chunk": "chunk_b",
+            "status": "RUNNING",
+        })
+
+        # Resolve with SERIALIZE verdict
+        response = client.post("/work-units/chunk_a/resolve", json={
+            "other_chunk": "chunk_b",
+            "verdict": "serialize",
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["verdict"] == "SERIALIZE"
+        assert "chunk_b" in data["blocked_by"]
+
+        # Verify the work unit status is now BLOCKED
+        get_response = client.get("/work-units/chunk_a")
+        assert get_response.status_code == 200
+        unit = get_response.json()
+        assert unit["status"] == "BLOCKED"
+
+    def test_serialize_verdict_clears_attention_reason(self, client):
+        """SERIALIZE verdict clears the attention_reason field."""
+        # Create a work unit in NEEDS_ATTENTION state with attention_reason
+        create_response = client.post("/work-units", json={
+            "chunk": "chunk_a",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        # Set attention_reason via PATCH
+        client.patch("/work-units/chunk_a", json={
+            "attention_reason": "Conflict with chunk_b: overlapping files",
+        })
+
+        # Create the other chunk
+        client.post("/work-units", json={
+            "chunk": "chunk_b",
+            "status": "RUNNING",
+        })
+
+        # Resolve with SERIALIZE verdict
+        response = client.post("/work-units/chunk_a/resolve", json={
+            "other_chunk": "chunk_b",
+            "verdict": "serialize",
+        })
+
+        assert response.status_code == 200
+
+        # Verify attention_reason is cleared
+        get_response = client.get("/work-units/chunk_a")
+        unit = get_response.json()
+        assert unit["attention_reason"] is None
+
+    def test_resolve_endpoint_returns_error_for_invalid_verdict(self, client):
+        """Returns error for invalid verdict."""
+        # Create work units
+        client.post("/work-units", json={"chunk": "chunk_a", "status": "NEEDS_ATTENTION"})
+        client.post("/work-units", json={"chunk": "chunk_b", "status": "RUNNING"})
+
+        response = client.post("/work-units/chunk_a/resolve", json={
+            "other_chunk": "chunk_b",
+            "verdict": "invalid",
+        })
+
+        assert response.status_code == 400
+        assert "verdict" in response.json()["error"].lower()
+
+    def test_resolve_endpoint_returns_error_for_unknown_chunk(self, client):
+        """Returns 404 for unknown chunk."""
+        response = client.post("/work-units/nonexistent/resolve", json={
+            "other_chunk": "chunk_b",
+            "verdict": "serialize",
+        })
+
+        assert response.status_code == 404
+
+
+# Chunk: docs/chunks/orch_blocked_lifecycle - Full lifecycle integration test
+class TestBlockedLifecycleIntegration:
+    """Integration tests for the full blocked work unit lifecycle.
+
+    These tests verify the complete flow:
+    1. Work unit detects conflict
+    2. Operator resolves with SERIALIZE verdict
+    3. Work unit transitions to BLOCKED
+    4. Blocker completes
+    5. Work unit automatically transitions to READY
+    """
+
+    @pytest.fixture
+    def scheduler_app(self, tmp_path):
+        """Create a test application with a real scheduler for integration tests."""
+        from orchestrator.api import create_app
+        from orchestrator.state import StateStore, get_default_db_path
+        from orchestrator.scheduler import Scheduler
+        from orchestrator.models import OrchestratorConfig
+        from unittest.mock import MagicMock, AsyncMock
+
+        app = create_app(tmp_path)
+
+        # Get the state store from the app
+        db_path = get_default_db_path(tmp_path)
+        store = StateStore(db_path)
+        store.initialize()
+
+        # Create mock worktree manager and agent runner
+        mock_worktree_manager = MagicMock()
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        mock_agent_runner = MagicMock()
+        mock_agent_runner.run_phase = AsyncMock()
+
+        config = OrchestratorConfig(max_agents=2, dispatch_interval_seconds=0.1)
+
+        scheduler = Scheduler(
+            store=store,
+            worktree_manager=mock_worktree_manager,
+            agent_runner=mock_agent_runner,
+            config=config,
+            project_dir=tmp_path,
+        )
+
+        return app, store, scheduler, tmp_path
+
+    def test_full_blocked_lifecycle_flow(self, scheduler_app):
+        """Test complete flow: conflict → SERIALIZE → BLOCKED → completion → READY."""
+        import asyncio
+        from datetime import datetime, timezone
+        from orchestrator.models import WorkUnit, WorkUnitPhase, WorkUnitStatus
+        from starlette.testclient import TestClient
+
+        app, store, scheduler, tmp_path = scheduler_app
+        client = TestClient(app)
+
+        # Set up chunk directories for the scheduler
+        for chunk_name in ["chunk_a", "chunk_b"]:
+            chunk_dir = tmp_path / "docs" / "chunks" / chunk_name
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            (chunk_dir / "GOAL.md").write_text(
+                f"""---
+status: ACTIVE
+---
+
+# {chunk_name}
+"""
+            )
+
+        # Step 1: Create two work units - chunk_a is RUNNING, chunk_b is NEEDS_ATTENTION
+        # (simulating conflict detection put chunk_b in NEEDS_ATTENTION)
+        response_a = client.post("/work-units", json={
+            "chunk": "chunk_a",
+            "phase": "COMPLETE",
+            "status": "RUNNING",
+        })
+        assert response_a.status_code == 201
+
+        response_b = client.post("/work-units", json={
+            "chunk": "chunk_b",
+            "phase": "PLAN",
+            "status": "NEEDS_ATTENTION",
+        })
+        assert response_b.status_code == 201
+
+        # Step 2: Operator resolves conflict - serialize chunk_b after chunk_a
+        resolve_response = client.post("/work-units/chunk_b/resolve", json={
+            "other_chunk": "chunk_a",
+            "verdict": "serialize",
+        })
+        assert resolve_response.status_code == 200
+        assert resolve_response.json()["verdict"] == "SERIALIZE"
+
+        # Step 3: Verify chunk_b is now BLOCKED
+        get_b = client.get("/work-units/chunk_b")
+        assert get_b.json()["status"] == "BLOCKED"
+        assert "chunk_a" in get_b.json()["blocked_by"]
+
+        # Step 4: Simulate chunk_a completing via scheduler's _advance_phase
+        # Get the work unit from store
+        work_unit_a = store.get_work_unit("chunk_a")
+
+        # Run _advance_phase to transition chunk_a to DONE
+        asyncio.run(scheduler._advance_phase(work_unit_a))
+
+        # Step 5: Verify chunk_a is DONE
+        get_a_done = client.get("/work-units/chunk_a")
+        assert get_a_done.json()["status"] == "DONE"
+
+        # Step 6: Verify chunk_b is now READY (automatically unblocked)
+        get_b_ready = client.get("/work-units/chunk_b")
+        assert get_b_ready.json()["status"] == "READY"
+        assert "chunk_a" not in get_b_ready.json()["blocked_by"]

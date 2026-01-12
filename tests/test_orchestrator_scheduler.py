@@ -2313,3 +2313,208 @@ ticket: null
         # Verify pending_answer was cleared
         completed = state_store.get_work_unit("test_chunk")
         assert completed.pending_answer is None
+
+
+# Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock tests
+class TestAutomaticUnblock:
+    """Tests for automatic unblocking when blockers complete."""
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_done_unblocks_dependents(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Completing a work unit unblocks work units that were blocked by it."""
+        # Set up chunk_a with ACTIVE status (will complete)
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        # Set up chunk_b with FUTURE status (just for existence in worktree)
+        chunk_b_dir = tmp_path / "docs" / "chunks" / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+---
+
+# Chunk B
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase (about to transition to DONE)
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create chunk_b in BLOCKED status, blocked by chunk_a
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_b)
+
+        # Verify chunk_b is BLOCKED
+        assert state_store.get_work_unit("chunk_b").status == WorkUnitStatus.BLOCKED
+        assert "chunk_a" in state_store.get_work_unit("chunk_b").blocked_by
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify chunk_a is DONE
+        updated_a = state_store.get_work_unit("chunk_a")
+        assert updated_a.status == WorkUnitStatus.DONE
+
+        # Verify chunk_b is now READY and chunk_a removed from blocked_by
+        updated_b = state_store.get_work_unit("chunk_b")
+        assert updated_b.status == WorkUnitStatus.READY
+        assert "chunk_a" not in updated_b.blocked_by
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_done_unblocks_multiple_dependents(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Completing a work unit unblocks multiple work units blocked by it."""
+        # Set up chunk_a with ACTIVE status
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create chunk_b and chunk_c both blocked by chunk_a
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_b)
+
+        chunk_c = WorkUnit(
+            chunk="chunk_c",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_c)
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify both chunk_b and chunk_c are now READY
+        updated_b = state_store.get_work_unit("chunk_b")
+        updated_c = state_store.get_work_unit("chunk_c")
+        assert updated_b.status == WorkUnitStatus.READY
+        assert updated_c.status == WorkUnitStatus.READY
+        assert "chunk_a" not in updated_b.blocked_by
+        assert "chunk_a" not in updated_c.blocked_by
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_done_partial_unblock_with_multiple_blockers(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Work unit with multiple blockers stays BLOCKED until all complete."""
+        # Set up chunk_a with ACTIVE status
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create chunk_d which is also blocking chunk_b
+        chunk_d = WorkUnit(
+            chunk="chunk_d",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_d)
+
+        # Create chunk_b blocked by BOTH chunk_a and chunk_d
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a", "chunk_d"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_b)
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify chunk_b is STILL BLOCKED (still blocked by chunk_d)
+        updated_b = state_store.get_work_unit("chunk_b")
+        assert updated_b.status == WorkUnitStatus.BLOCKED
+        assert "chunk_a" not in updated_b.blocked_by
+        assert "chunk_d" in updated_b.blocked_by

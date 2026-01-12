@@ -659,6 +659,9 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
+            # Chunk: docs/chunks/orch_blocked_lifecycle - Unblock dependents after completion
+            self._unblock_dependents(chunk)
+
         else:
             # Advance to next phase
             logger.info(f"Work unit {chunk} advancing to phase {next_phase.value}")
@@ -807,6 +810,41 @@ class Scheduler:
         self.store.update_work_unit(work_unit)
 
         # The next dispatch tick will trigger fresh analysis
+
+    # Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock when blockers complete
+    def _unblock_dependents(self, completed_chunk: str) -> None:
+        """Unblock work units that were blocked by a now-completed chunk.
+
+        Called when a work unit transitions to DONE. For each work unit that
+        has the completed chunk in its blocked_by list:
+        1. Remove the completed chunk from blocked_by
+        2. If blocked_by becomes empty and status is BLOCKED, transition to READY
+
+        Args:
+            completed_chunk: The chunk name that just completed
+        """
+        # Find all work units that have completed_chunk in their blocked_by
+        blocked_units = self.store.list_blocked_by_chunk(completed_chunk)
+
+        for unit in blocked_units:
+            # Remove the completed chunk from blocked_by
+            if completed_chunk in unit.blocked_by:
+                unit.blocked_by.remove(completed_chunk)
+                unit.updated_at = datetime.now(timezone.utc)
+
+                # If no more blockers and status is BLOCKED, transition to READY
+                if not unit.blocked_by and unit.status == WorkUnitStatus.BLOCKED:
+                    logger.info(
+                        f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
+                    )
+                    unit.status = WorkUnitStatus.READY
+                else:
+                    logger.info(
+                        f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "
+                        f"(remaining: {unit.blocked_by})"
+                    )
+
+                self.store.update_work_unit(unit)
 
     # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
     async def _mark_needs_attention(

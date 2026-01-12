@@ -775,9 +775,14 @@ async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
     unit.updated_at = datetime.now(timezone.utc)
 
     # If verdict is SERIALIZE, add to blocked_by if not already there
+    # Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE status transition
     if resolved_verdict == ConflictVerdict.SERIALIZE:
         if other_chunk not in unit.blocked_by:
             unit.blocked_by.append(other_chunk)
+        # Transition from NEEDS_ATTENTION to BLOCKED and clear attention_reason
+        if unit.status == WorkUnitStatus.NEEDS_ATTENTION:
+            unit.status = WorkUnitStatus.BLOCKED
+            unit.attention_reason = None
     # If verdict is INDEPENDENT, remove from blocked_by and potentially unblock
     elif resolved_verdict == ConflictVerdict.INDEPENDENT:
         if other_chunk in unit.blocked_by:

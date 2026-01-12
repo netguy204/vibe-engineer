@@ -99,6 +99,7 @@ class WorkUnit(BaseModel):
     worktree: Optional[str] = None  # Git worktree path, if assigned
     priority: int = 0  # Scheduling priority (higher = more urgent)
     session_id: Optional[str] = None  # Agent session ID for suspended sessions
+    # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification retry tracking
     completion_retries: int = 0  # Retry count for ACTIVE status verification
     attention_reason: Optional[str] = None  # Why work unit needs operator attention
     displaced_chunk: Optional[str] = None  # Chunk that was IMPLEMENTING when worktree created
@@ -177,6 +178,7 @@ class OrchestratorConfig(BaseModel):
 
     max_agents: int = 2  # Maximum concurrent agents
     dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
+    # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification max retries
     max_completion_retries: int = 2  # Max retries for ACTIVE status verification
 
     def model_dump_json_serializable(self) -> dict:

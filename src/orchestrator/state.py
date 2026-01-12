@@ -157,6 +157,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_verify_active - Database migration for completion retry tracking
     def _migrate_v3(self) -> None:
         """Add completion_retries field for ACTIVE status verification."""
         self.connection.executescript(
@@ -561,6 +562,31 @@ class StateStore:
             query += f" LIMIT {limit}"
 
         cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
+        return [self._row_to_work_unit(row) for row in cursor.fetchall()]
+
+    # Chunk: docs/chunks/orch_blocked_lifecycle - Find blocked units by chunk
+    def list_blocked_by_chunk(self, chunk: str) -> list[WorkUnit]:
+        """Get work units that have the given chunk in their blocked_by list.
+
+        Uses SQLite JSON functions to search the blocked_by JSON array.
+
+        Args:
+            chunk: The chunk name to search for in blocked_by lists
+
+        Returns:
+            List of work units that are blocked by this chunk
+        """
+        # Use json_each to search the JSON array for the chunk name
+        cursor = self.connection.execute(
+            """
+            SELECT * FROM work_units
+            WHERE EXISTS (
+                SELECT 1 FROM json_each(blocked_by)
+                WHERE value = ?
+            )
+            """,
+            (chunk,),
+        )
         return [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
     # Helper methods
