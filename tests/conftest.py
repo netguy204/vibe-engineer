@@ -40,7 +40,7 @@ def make_ve_initialized_git_repo(path, remote_url=None):
         remote_url: Optional remote URL to configure as 'origin'
     """
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "init", "-b", "main"], cwd=path, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
         cwd=path,
