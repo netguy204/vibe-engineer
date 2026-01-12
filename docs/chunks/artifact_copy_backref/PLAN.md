@@ -168,20 +168,9 @@ None. All required infrastructure exists:
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Test environment fix**: During implementation, discovered that tests were failing
+  due to `GIT_DIR` and `GIT_WORK_TREE` environment variables leaking from the worktree
+  context into test processes. Fixed by adding an autouse pytest fixture
+  `clean_git_environment` in `conftest.py` that clears all `GIT_*` environment
+  variables before each test. This was necessary to allow git commands in production
+  code (like `is_git_clean()`) to work correctly during tests.
