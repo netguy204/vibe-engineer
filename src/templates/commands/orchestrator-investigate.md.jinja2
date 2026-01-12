@@ -1,0 +1,262 @@
+---
+description: Investigate and resolve a stuck orchestrator work unit.
+---
+{% set source_template = "orchestrator-investigate.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+## Tips
+
+{% include "partials/common-tips.md.jinja2" %}
+
+## Instructions
+
+This command investigates why an orchestrator work unit is stuck (typically in
+NEEDS_ATTENTION status) and guides you through resolution.
+
+**Chunk to investigate:** `$ARGUMENTS`
+
+If no chunk name is provided, first run `ve orch status` to identify
+chunks needing attention.
+
+Follow these phases systematically. Do not skip phases or propose fixes without
+completing the investigation.
+
+---
+
+## Phase 1: Gather Evidence
+
+### 1.1 Check orchestrator status
+
+```bash
+ve orch status
+```
+
+Confirm the chunk is in NEEDS_ATTENTION (or unexpected state). Note the work
+unit counts.
+
+### 1.2 Check work unit details
+
+```bash
+ve orch work-unit show $ARGUMENTS
+```
+
+Note the `status`, `phase`, `attention_reason`, and `displaced_chunk` fields.
+
+### 1.3 Check log directory structure
+
+```bash
+ls -la .ve/chunks/$ARGUMENTS/log/
+```
+
+Determine current phase by which logs exist:
+- `plan.txt` only → PLAN phase
+- `plan.txt` + `implement.txt` → IMPLEMENT phase
+- All three files → COMPLETE phase
+
+### 1.4 Check worktree state
+
+```bash
+# Does worktree exist?
+ls -la .ve/chunks/$ARGUMENTS/worktree 2>/dev/null && echo "worktree exists" || echo "no worktree"
+
+# Check git worktree list
+git worktree list | grep $ARGUMENTS
+
+# Check if branch exists
+git branch -a | grep $ARGUMENTS
+```
+
+### 1.5 Check orchestrator log for errors
+
+```bash
+grep -i "$ARGUMENTS\|error\|failed\|merge" .ve/orchestrator.log | tail -50
+```
+
+Look for error messages that explain why the chunk is stuck.
+
+### 1.6 Check end of agent log
+
+If logs exist, check the end of the most recent phase log:
+
+```bash
+tail -c 20000 .ve/chunks/$ARGUMENTS/log/complete.txt 2>/dev/null || \
+tail -c 20000 .ve/chunks/$ARGUMENTS/log/implement.txt 2>/dev/null || \
+tail -c 20000 .ve/chunks/$ARGUMENTS/log/plan.txt 2>/dev/null
+```
+
+Look for `ResultMessage` at the end - `subtype='success'` means the agent
+completed, `subtype='error'` means it failed.
+
+---
+
+## Phase 2: Diagnose Root Cause
+
+Based on evidence gathered, identify which scenario applies:
+
+### Scenario A: Merge failed due to uncommitted changes
+
+**Symptoms:**
+- Log shows: `error: Your local changes to the following files would be overwritten by merge`
+- Agent completed successfully (ResultMessage subtype='success')
+- Branch exists but wasn't merged
+
+**Diagnosis:** Main repo had uncommitted changes when orchestrator tried to merge.
+
+### Scenario B: Merge failed due to conflicts
+
+**Symptoms:**
+- Log shows: `CONFLICT` or `Automatic merge failed`
+- Branch exists, worktree may be cleaned up
+
+**Diagnosis:** Branch and main diverged with conflicting changes.
+
+### Scenario C: Agent failed during execution
+
+**Symptoms:**
+- ResultMessage shows `subtype='error'` or no ResultMessage at end
+- Phase log ends with error output
+
+**Diagnosis:** Agent encountered an error during the phase.
+
+### Scenario D: Chunk activation failed
+
+**Symptoms:**
+- Log shows: `Chunk '<name>' not found in worktree`
+- Happens early in phase execution
+
+**Diagnosis:** Worktree was created but chunk docs weren't present (race condition
+or branch issue).
+
+### Scenario E: Worktree corruption
+
+**Symptoms:**
+- Worktree directory exists but git operations fail
+- `git worktree list` shows prunable entries
+
+**Diagnosis:** Git worktree is in inconsistent state.
+
+---
+
+## Phase 3: Resolution
+
+Execute the resolution for the diagnosed scenario:
+
+### Resolution A: Complete the merge manually
+
+```bash
+# Check main is clean
+git status
+
+# If main has uncommitted changes, commit or stash them first
+# git stash  OR  git add . && git commit -m "..."
+
+# Attempt merge
+git merge orch/$ARGUMENTS --no-edit
+
+# If conflicts occur, resolve them:
+# 1. Edit conflicted files to resolve
+# 2. git add <resolved-files>
+# 3. git commit --no-edit
+
+# Delete merged branch
+git branch -d orch/$ARGUMENTS
+
+# Update work unit to DONE
+ve orch work-unit status $ARGUMENTS DONE
+```
+
+### Resolution B: Resolve conflicts and merge
+
+```bash
+# Start merge (expect conflicts)
+git merge orch/$ARGUMENTS --no-edit || echo "Conflicts expected"
+
+# List conflicted files
+git diff --name-only --diff-filter=U
+
+# For each conflicted file:
+# 1. Open and resolve conflicts (look for <<<<<<< markers)
+# 2. Choose appropriate resolution based on context
+# 3. git add <file>
+
+# Complete merge
+git commit --no-edit
+
+# Cleanup
+git branch -d orch/$ARGUMENTS
+ve orch work-unit status $ARGUMENTS DONE
+```
+
+### Resolution C: Reset and retry
+
+If the agent failed and you want to retry:
+
+```bash
+# Reset work unit to allow retry
+ve orch work-unit status $ARGUMENTS READY
+```
+
+Or if the failure is unrecoverable, mark as needing manual intervention:
+
+```bash
+# Delete work unit and handle manually
+ve orch work-unit delete $ARGUMENTS
+```
+
+### Resolution D: Recreate worktree
+
+```bash
+# Remove corrupted worktree
+rm -rf .ve/chunks/$ARGUMENTS/worktree
+git worktree prune
+
+# Reset to READY to trigger worktree recreation
+ve orch work-unit status $ARGUMENTS READY
+```
+
+### Resolution E: Clean up corrupted worktree
+
+```bash
+# Prune worktrees
+git worktree prune
+
+# Remove directory if it exists
+rm -rf .ve/chunks/$ARGUMENTS/worktree
+
+# Check branch state
+git branch -a | grep $ARGUMENTS
+
+# If branch has useful commits, merge manually (see Resolution A)
+# Otherwise, reset work unit to retry
+```
+
+---
+
+## Phase 4: Verify Resolution
+
+After applying resolution:
+
+```bash
+# Check orchestrator status
+ve orch status
+
+# Verify work unit state
+ve orch work-unit show $ARGUMENTS
+
+# If merged, verify changes are on main
+git log --oneline -5
+```
+
+---
+
+## Report Summary
+
+Present findings to the user:
+
+| Field | Value |
+|-------|-------|
+| **Chunk** | `$ARGUMENTS` |
+| **Root Cause** | (describe what caused the stuck state) |
+| **Resolution** | (describe what was done to fix it) |
+| **Current Status** | (DONE / READY for retry / Deleted) |
+
+If the chunk was merged, confirm the implementation is now on main.
