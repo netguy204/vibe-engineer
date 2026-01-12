@@ -361,3 +361,234 @@ class TestStatusHistoryEndpoint:
         response = client.get("/work-units/nonexistent/history")
 
         assert response.status_code == 404
+
+
+# Chunk: docs/chunks/orch_inject_validate - Tests for inject endpoint validation
+class TestInjectEndpointValidation:
+    """Tests for POST /work-units/inject endpoint with validation."""
+
+    @pytest.fixture
+    def app_with_chunks(self, tmp_path):
+        """Create a test application with a chunks directory."""
+        # Create docs/chunks directory
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+        return create_app(tmp_path)
+
+    @pytest.fixture
+    def client_with_chunks(self, app_with_chunks):
+        """Create a test client with chunk support."""
+        return TestClient(app_with_chunks)
+
+    def _create_chunk(self, tmp_path, chunk_name: str, status: str, has_plan_content: bool = True):
+        """Helper to create a chunk with GOAL.md and optionally PLAN.md."""
+        chunk_dir = tmp_path / "docs" / "chunks" / chunk_name
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write GOAL.md with frontmatter
+        goal_path = chunk_dir / "GOAL.md"
+        goal_path.write_text(f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+narrative: null
+investigation: null
+subsystems: []
+created_after: []
+---
+
+# Chunk Goal
+
+Test chunk content.
+""")
+
+        # Write PLAN.md
+        plan_path = chunk_dir / "PLAN.md"
+        if has_plan_content:
+            plan_path.write_text("""# Implementation Plan
+
+## Approach
+
+This is a real implementation approach with actual content.
+
+## Sequence
+
+### Step 1: Do the thing
+
+Details about doing the thing.
+""")
+        else:
+            # Template-only content
+            plan_path.write_text("""# Implementation Plan
+
+## Approach
+
+<!--
+Template comment only.
+-->
+
+## Sequence
+
+<!--
+Steps here.
+-->
+""")
+
+    def test_inject_nonexistent_chunk_returns_error(self, client_with_chunks, tmp_path):
+        """Inject endpoint returns error for non-existent chunk."""
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "nonexistent_chunk"}
+        )
+
+        assert response.status_code == 400
+        assert "not found" in response.json()["error"].lower()
+
+    def test_inject_implementing_chunk_without_plan_returns_error(self, client_with_chunks, tmp_path):
+        """IMPLEMENTING chunk without populated plan fails validation."""
+        self._create_chunk(tmp_path, "implementing_no_plan", "IMPLEMENTING", has_plan_content=False)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "implementing_no_plan"}
+        )
+
+        assert response.status_code == 400
+        assert "IMPLEMENTING" in response.json()["error"]
+
+    def test_inject_implementing_chunk_with_plan_succeeds(self, client_with_chunks, tmp_path):
+        """IMPLEMENTING chunk with populated plan passes validation."""
+        self._create_chunk(tmp_path, "implementing_with_plan", "IMPLEMENTING", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "implementing_with_plan"}
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["chunk"] == "implementing_with_plan"
+        assert data["status"] == "READY"
+
+    def test_inject_future_chunk_succeeds_with_warnings(self, client_with_chunks, tmp_path):
+        """FUTURE chunk with empty plan succeeds but includes warnings."""
+        self._create_chunk(tmp_path, "future_chunk", "FUTURE", has_plan_content=False)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "future_chunk"}
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["chunk"] == "future_chunk"
+        # Should have warnings about starting with PLAN phase
+        assert "warnings" in data
+        assert any("FUTURE" in w for w in data["warnings"])
+
+    def test_inject_active_chunk_without_plan_returns_error(self, client_with_chunks, tmp_path):
+        """ACTIVE chunk without populated plan fails validation."""
+        self._create_chunk(tmp_path, "active_no_plan", "ACTIVE", has_plan_content=False)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "active_no_plan"}
+        )
+
+        assert response.status_code == 400
+        assert "ACTIVE" in response.json()["error"]
+
+    def test_inject_superseded_chunk_returns_error(self, client_with_chunks, tmp_path):
+        """SUPERSEDED chunk cannot be injected."""
+        self._create_chunk(tmp_path, "superseded_chunk", "SUPERSEDED", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "superseded_chunk"}
+        )
+
+        assert response.status_code == 400
+        error = response.json()["error"].lower()
+        assert "terminal" in error or "superseded" in error
+
+    def test_inject_historical_chunk_returns_error(self, client_with_chunks, tmp_path):
+        """HISTORICAL chunk cannot be injected."""
+        self._create_chunk(tmp_path, "historical_chunk", "HISTORICAL", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "historical_chunk"}
+        )
+
+        assert response.status_code == 400
+        error = response.json()["error"].lower()
+        assert "terminal" in error or "historical" in error
+
+    def test_inject_duplicate_returns_conflict(self, client_with_chunks, tmp_path):
+        """Injecting same chunk twice returns conflict."""
+        self._create_chunk(tmp_path, "dup_chunk", "IMPLEMENTING", has_plan_content=True)
+
+        # First inject succeeds
+        response1 = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "dup_chunk"}
+        )
+        assert response1.status_code == 201
+
+        # Second inject fails with conflict
+        response2 = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "dup_chunk"}
+        )
+        assert response2.status_code == 409
+        assert "already exists" in response2.json()["error"]
+
+    def test_inject_with_priority(self, client_with_chunks, tmp_path):
+        """Inject with custom priority."""
+        self._create_chunk(tmp_path, "priority_chunk", "IMPLEMENTING", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "priority_chunk", "priority": 10}
+        )
+
+        assert response.status_code == 201
+        assert response.json()["priority"] == 10
+
+    def test_inject_detects_initial_phase_plan(self, client_with_chunks, tmp_path):
+        """Inject detects PLAN phase when GOAL.md exists but PLAN.md is empty."""
+        self._create_chunk(tmp_path, "plan_phase", "FUTURE", has_plan_content=False)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "plan_phase"}
+        )
+
+        assert response.status_code == 201
+        assert response.json()["phase"] == "PLAN"
+
+    def test_inject_detects_initial_phase_implement(self, client_with_chunks, tmp_path):
+        """Inject detects IMPLEMENT phase when both GOAL.md and PLAN.md have content."""
+        self._create_chunk(tmp_path, "impl_phase", "IMPLEMENTING", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "impl_phase"}
+        )
+
+        assert response.status_code == 201
+        assert response.json()["phase"] == "IMPLEMENT"
+
+    def test_inject_with_explicit_phase_override(self, client_with_chunks, tmp_path):
+        """Inject with explicit phase overrides detection."""
+        self._create_chunk(tmp_path, "override_phase", "IMPLEMENTING", has_plan_content=True)
+
+        response = client_with_chunks.post(
+            "/work-units/inject",
+            json={"chunk": "override_phase", "phase": "PLAN"}
+        )
+
+        assert response.status_code == 201
+        assert response.json()["phase"] == "PLAN"
