@@ -1,6 +1,7 @@
 ---
 themes:
   - orchestrator
+  - context-resolution
 proposed_chunks: []
 ---
 
@@ -82,3 +83,21 @@ to get stuck in NEEDS_ATTENTION when they could safely proceed. Issues encounter
 
 Root cause: State cleanup isn't happening on status transitions. Created future chunk
 `orch_unblock_transition` to address the cleanup bugs.
+
+### 2026-01-12 [context-resolution] Chunk validation uses wrong context in task projects
+
+When working in a task folder and creating a chunk for a specific project within that task,
+the chunk was created correctly in the project's `docs/chunks/` directory. The CLAUDE.md
+and command prompts resolved correctly for the project context.
+
+However, when running `chunk-complete`, the validation step tried to validate the chunk
+in the artifact repository (task level) instead of the project level. VE's validation
+logic appeared to be aware of the task context when it shouldn't have been—causing
+validation to fail because it was looking for the chunk in the wrong location.
+
+**Expected behavior**: When Claude is invoked from within a project directory, all VE
+commands (including validation during chunk-complete) should operate within that project's
+context, not the parent task context.
+
+**Impact**: High—blocked completion of work and required manual intervention to understand
+what was happening.
