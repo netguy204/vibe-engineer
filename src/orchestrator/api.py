@@ -1,5 +1,6 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
 # Chunk: docs/chunks/orch_scheduling - Scheduling API endpoints
+# Chunk: docs/chunks/orch_dashboard - Web dashboard with WebSocket support
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.
@@ -11,11 +12,14 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs
 
+from jinja2 import Environment, PackageLoader, select_autoescape
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from orchestrator.models import (
     OrchestratorConfig,
@@ -25,9 +29,28 @@ from orchestrator.models import (
     WorkUnitStatus,
 )
 from orchestrator.state import StateStore, get_default_db_path
+from orchestrator.websocket import (
+    broadcast_attention_update,
+    broadcast_work_unit_update,
+    get_manager,
+)
 from orchestrator.worktree import WorktreeManager
 
 logger = logging.getLogger(__name__)
+
+# Jinja2 environment for templates
+_jinja_env: Optional[Environment] = None
+
+
+def _get_jinja_env() -> Environment:
+    """Get or create the Jinja2 environment."""
+    global _jinja_env
+    if _jinja_env is None:
+        _jinja_env = Environment(
+            loader=PackageLoader("orchestrator", "templates"),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
+    return _jinja_env
 
 # Global state store - initialized when app is created
 _store: Optional[StateStore] = None
@@ -177,6 +200,8 @@ async def update_work_unit_endpoint(request: Request) -> JSONResponse:
     if unit is None:
         return _not_found_response("Work unit", chunk)
 
+    old_status = unit.status
+
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -210,6 +235,23 @@ async def update_work_unit_endpoint(request: Request) -> JSONResponse:
         updated = store.update_work_unit(unit)
     except ValueError as e:
         return _error_response(str(e))
+
+    # Chunk: docs/chunks/orch_dashboard - Broadcast status changes via WebSocket
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+        attention_reason=updated.attention_reason,
+    )
+
+    # Track attention queue changes
+    if old_status != updated.status:
+        if updated.status == WorkUnitStatus.NEEDS_ATTENTION:
+            await broadcast_attention_update(
+                "added", chunk, updated.attention_reason
+            )
+        elif old_status == WorkUnitStatus.NEEDS_ATTENTION:
+            await broadcast_attention_update("resolved", chunk)
 
     return JSONResponse(updated.model_dump_json_serializable())
 
@@ -595,11 +637,112 @@ async def attention_endpoint(request: Request) -> JSONResponse:
     })
 
 
-async def answer_endpoint(request: Request) -> JSONResponse:
+# Chunk: docs/chunks/orch_dashboard - Dashboard and WebSocket endpoints
+
+
+async def dashboard_endpoint(request: Request) -> HTMLResponse:
+    """GET / - Render the orchestrator dashboard.
+
+    Shows the attention queue and work unit status grid with real-time updates.
+    """
+    store = _get_store()
+
+    # Get attention queue items
+    attention_items = store.get_attention_queue()
+    now = datetime.now(timezone.utc)
+
+    attention_list = []
+    for unit, blocks_count in attention_items:
+        time_waiting = (now - unit.updated_at).total_seconds()
+        goal_summary = None
+        if _project_dir:
+            chunk_dir = _project_dir / "docs" / "chunks" / unit.chunk
+            goal_summary = _get_goal_summary(chunk_dir)
+
+        attention_list.append({
+            "chunk": unit.chunk,
+            "phase": unit.phase.value,
+            "status": unit.status.value,
+            "blocked_by": unit.blocked_by,
+            "attention_reason": unit.attention_reason,
+            "blocks_count": blocks_count,
+            "time_waiting": time_waiting,
+            "goal_summary": goal_summary,
+        })
+
+    # Get all work units for the process grid
+    all_units = store.list_work_units()
+    work_units = [
+        {
+            "chunk": u.chunk,
+            "phase": u.phase.value,
+            "status": u.status.value,
+            "blocked_by": u.blocked_by,
+            "attention_reason": u.attention_reason,
+        }
+        for u in all_units
+    ]
+
+    # Render the template
+    env = _get_jinja_env()
+    template = env.get_template("dashboard.html")
+    html = template.render(
+        attention_items=attention_list,
+        work_units=work_units,
+    )
+
+    return HTMLResponse(html)
+
+
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """WebSocket endpoint for real-time dashboard updates.
+
+    Sends initial state on connection and broadcasts updates when state changes.
+    """
+    manager = get_manager()
+    await manager.connect(websocket)
+
+    try:
+        # Send initial state snapshot
+        store = _get_store()
+        work_units = store.list_work_units()
+        attention_items = store.get_attention_queue()
+        now = datetime.now(timezone.utc)
+
+        initial_state = {
+            "type": "initial_state",
+            "data": {
+                "work_units": [u.model_dump_json_serializable() for u in work_units],
+                "attention_items": [
+                    {
+                        **unit.model_dump_json_serializable(),
+                        "blocks_count": blocks_count,
+                        "time_waiting": (now - unit.updated_at).total_seconds(),
+                    }
+                    for unit, blocks_count in attention_items
+                ],
+            },
+        }
+        await websocket.send_json(initial_state)
+
+        # Keep the connection open and wait for messages or disconnect
+        while True:
+            try:
+                # Wait for any message from the client (heartbeat, etc.)
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    finally:
+        await manager.disconnect(websocket)
+
+
+async def answer_endpoint(request: Request):
     """POST /work-units/{chunk}/answer - Submit answer to attention item.
 
     Stores the answer on the work unit and transitions it to READY
     for the scheduler to resume.
+
+    Supports both JSON and form submissions for dashboard compatibility.
     """
     chunk = request.path_params["chunk"]
     store = _get_store()
@@ -617,12 +760,23 @@ async def answer_endpoint(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    try:
-        body = await request.json()
-    except json.JSONDecodeError:
-        return _error_response("Invalid JSON body")
+    # Chunk: docs/chunks/orch_dashboard - Support form submissions
+    # Check content type to determine how to parse the body
+    content_type = request.headers.get("content-type", "")
+    is_form_submission = "application/x-www-form-urlencoded" in content_type
 
-    answer = body.get("answer")
+    if is_form_submission:
+        # Parse form data
+        body_bytes = await request.body()
+        form_data = parse_qs(body_bytes.decode("utf-8"))
+        answer = form_data.get("answer", [None])[0]
+    else:
+        try:
+            body = await request.json()
+            answer = body.get("answer")
+        except json.JSONDecodeError:
+            return _error_response("Invalid JSON body")
+
     if not answer:
         return _error_response("Missing required field: answer")
 
@@ -639,6 +793,18 @@ async def answer_endpoint(request: Request) -> JSONResponse:
         updated = store.update_work_unit(unit)
     except ValueError as e:
         return _error_response(str(e))
+
+    # Broadcast the update via WebSocket
+    await broadcast_attention_update("resolved", chunk)
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+    )
+
+    # For form submissions, redirect back to dashboard
+    if is_form_submission:
+        return RedirectResponse(url="/", status_code=303)
 
     return JSONResponse(updated.model_dump_json_serializable())
 
@@ -728,7 +894,7 @@ async def analyze_conflicts_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(analysis.model_dump_json_serializable())
 
 
-async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
+async def resolve_conflict_endpoint(request: Request):
     """POST /work-units/{chunk}/resolve - Resolve an ASK_OPERATOR conflict.
 
     Request body:
@@ -738,6 +904,7 @@ async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
     }
 
     Stores the operator's decision and updates the work unit accordingly.
+    Supports both JSON and form submissions for dashboard compatibility.
     """
     chunk = request.path_params["chunk"]
     store = _get_store()
@@ -747,13 +914,22 @@ async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
     if unit is None:
         return _not_found_response("Work unit", chunk)
 
-    try:
-        body = await request.json()
-    except json.JSONDecodeError:
-        return _error_response("Invalid JSON body")
+    # Chunk: docs/chunks/orch_dashboard - Support form submissions
+    content_type = request.headers.get("content-type", "")
+    is_form_submission = "application/x-www-form-urlencoded" in content_type
 
-    other_chunk = body.get("other_chunk")
-    verdict = body.get("verdict")
+    if is_form_submission:
+        body_bytes = await request.body()
+        form_data = parse_qs(body_bytes.decode("utf-8"))
+        other_chunk = form_data.get("other_chunk", [None])[0]
+        verdict = form_data.get("verdict", [None])[0]
+    else:
+        try:
+            body = await request.json()
+            other_chunk = body.get("other_chunk")
+            verdict = body.get("verdict")
+        except json.JSONDecodeError:
+            return _error_response("Invalid JSON body")
 
     if not other_chunk or not verdict:
         return _error_response("Missing required fields: other_chunk and verdict")
@@ -798,6 +974,18 @@ async def resolve_conflict_endpoint(request: Request) -> JSONResponse:
     except ValueError as e:
         return _error_response(str(e))
 
+    # Broadcast the update via WebSocket
+    await broadcast_attention_update("resolved", chunk)
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+    )
+
+    # For form submissions, redirect back to dashboard
+    if is_form_submission:
+        return RedirectResponse(url="/", status_code=303)
+
     return JSONResponse({
         "chunk": chunk,
         "other_chunk": other_chunk,
@@ -830,6 +1018,9 @@ def create_app(project_dir: Path) -> Starlette:
 
     # Note: More specific routes must come before generic {chunk:path} routes
     routes = [
+        # Chunk: docs/chunks/orch_dashboard - Dashboard and WebSocket routes
+        Route("/", endpoint=dashboard_endpoint, methods=["GET"]),
+        WebSocketRoute("/ws", endpoint=websocket_endpoint),
         Route("/status", endpoint=status_endpoint, methods=["GET"]),
         # Config endpoints
         Route("/config", endpoint=get_config_endpoint, methods=["GET"]),

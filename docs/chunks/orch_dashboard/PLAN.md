@@ -1,175 +1,129 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a web dashboard to the orchestrator daemon using **Starlette + Jinja2 templates** for server-rendered HTML with **WebSocket** for real-time updates. This builds on the existing `src/orchestrator/api.py` which already uses Starlette.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design decisions:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Server-Rendered HTML** (not SPA): Use Jinja2 templates for the dashboard. This keeps dependencies minimal and consistent with the Python codebase. The dashboard is lightweight and doesn't need a full JavaScript framework.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_dashboard/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **WebSocket for Live Updates**: A single WebSocket endpoint streams attention queue changes and work unit status transitions. The frontend JavaScript reconnects automatically on disconnect.
+
+3. **Extend Existing API**: Add new routes to the existing Starlette app rather than creating a separate server. The dashboard is served from the same socket as the REST API.
+
+4. **Action Buttons for Common Operations**: Provide UI affordances to answer questions and resolve conflicts, which map directly to the existing `/work-units/{chunk}/answer` and `/work-units/{chunk}/resolve` REST endpoints.
+
+**Testing Strategy (per docs/trunk/TESTING_PHILOSOPHY.md):**
+- Integration tests using Starlette's TestClient for HTTP endpoints
+- WebSocket tests using `TestClient` with `websocket_connect()` context manager
+- Tests verify semantic behavior (dashboard renders, WebSocket receives updates) not implementation details
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems directly apply to this chunk. The dashboard is a new component that integrates with the existing orchestrator API.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add WebSocket endpoint for state streaming
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a WebSocket endpoint at `/ws` that streams orchestrator state updates in real-time. The endpoint will:
+- Send initial state snapshot on connection
+- Broadcast status transitions when work units change
+- Broadcast attention queue updates when items are added/resolved
 
-Example:
+**Implementation:**
+- Add `WebSocketRoute` to the existing Starlette routes
+- Create a `ConnectionManager` class to track active WebSocket connections
+- Add hooks to state transitions to broadcast changes
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/orchestrator/api.py`, `src/orchestrator/websocket.py` (new file)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Create dashboard HTML template
 
-Location: src/segment/format.rs
+Create a Jinja2 template for the dashboard that displays:
+- Attention queue with expandable items
+- Process grid showing RUNNING/READY/BLOCKED work units
+- Action buttons for answering questions and resolving conflicts
 
-### Step 2: Implement header serialization
+The template uses minimal JavaScript for:
+- WebSocket connection management with auto-reconnect
+- DOM updates when state changes
+- Form submission for answers/resolutions
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/orchestrator/templates/dashboard.html` (new file)
 
-### Step 3: ...
+### Step 3: Add dashboard endpoint to serve HTML
 
----
+Add a GET `/` endpoint that renders the dashboard template with current state. The endpoint will:
+- Query current attention queue and work unit status from the state store
+- Render the template with this data
+- Include WebSocket URL for real-time updates
 
-**BACKREFERENCE COMMENTS**
+Location: `src/orchestrator/api.py`
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+### Step 4: Add form submission endpoints for UI actions
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+The existing `/work-units/{chunk}/answer` and `/work-units/{chunk}/resolve` endpoints accept JSON. Add HTML form handling for browser submissions:
+- Parse `application/x-www-form-urlencoded` content type
+- Redirect back to dashboard after successful action
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+This allows the UI to work without JavaScript for basic operations.
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+Location: `src/orchestrator/api.py`
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+### Step 5: Wire WebSocket broadcasts into state store operations
+
+Modify the API endpoints to broadcast changes via WebSocket when:
+- Work unit status changes (READY → RUNNING, etc.)
+- Attention items are added or resolved
+- Answers/resolutions are submitted
+
+The broadcast system needs to be integrated with the existing async API handlers.
+
+Location: `src/orchestrator/api.py`, `src/orchestrator/websocket.py`
+
+### Step 6: Write integration tests for dashboard
+
+Create tests that verify:
+- Dashboard HTML renders at GET `/`
+- WebSocket connects and receives initial state
+- Status changes broadcast via WebSocket
+- Answer/resolve actions work from the UI
+
+Location: `tests/test_orchestrator_dashboard.py` (new file)
+
+### Step 7: Update pyproject.toml if needed
+
+Verify all dependencies are present. Starlette, Uvicorn, and Jinja2 are already in `pyproject.toml`, so this may be a no-op. Add `websockets` if needed for client-side testing.
+
+Location: `pyproject.toml`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**Required chunks (already complete):**
+- `orch_foundation` - Daemon skeleton and state store
+- `orch_attention_queue` - Attention queue model and endpoints
 
-If there are no dependencies, delete this section.
--->
+**External libraries (already in pyproject.toml):**
+- `starlette>=0.36.0` - Web framework with WebSocket support
+- `uvicorn>=0.27.0` - ASGI server
+- `jinja2` - Template engine
+
+No new dependencies required - Starlette includes WebSocket support natively.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **WebSocket Connection Stability**: Long-running WebSocket connections may drop due to network issues. The frontend must handle reconnection gracefully. Plan: Include auto-reconnect logic with exponential backoff in the dashboard JavaScript.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Concurrent Updates**: Multiple browser tabs may be connected simultaneously. Need to ensure broadcasts don't cause race conditions. Plan: The ConnectionManager will use asyncio-safe sets for connection tracking.
+
+3. **Template Hot Reload in Development**: During development, template changes require daemon restart. This is acceptable since the daemon is typically restarted during development anyway.
+
+4. **Port Configuration**: The daemon uses a Unix socket by default. For dashboard access via browser, operators will need to configure HTTP on a TCP port, or use a reverse proxy. This is documented in the investigation design but may need CLI support in a future chunk.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

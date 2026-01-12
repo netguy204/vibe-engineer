@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orchestrator Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent-blue: #0ea5e9;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+        }
+
+        .status-dot.disconnected {
+            background-color: var(--accent-red);
+        }
+
+        .status-dot.connecting {
+            background-color: var(--accent-yellow);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-count {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        /* Attention Queue Styles */
+        .attention-list {
+            list-style: none;
+        }
+
+        .attention-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .attention-item:last-child {
+            border-bottom: none;
+        }
+
+        .attention-item:hover {
+            background-color: var(--bg-card);
+        }
+
+        .attention-item.expanded {
+            background-color: var(--bg-card);
+        }
+
+        .attention-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .attention-chunk {
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .attention-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .attention-reason {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .attention-details {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .attention-item.expanded .attention-details {
+            display: block;
+        }
+
+        .attention-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .empty-state {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        /* Process Grid Styles */
+        .process-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+        }
+
+        .process-card {
+            background-color: var(--bg-card);
+            border-radius: 6px;
+            padding: 12px;
+            border-left: 4px solid var(--border-color);
+        }
+
+        .process-card.status-RUNNING {
+            border-left-color: var(--accent-green);
+        }
+
+        .process-card.status-READY {
+            border-left-color: var(--accent-blue);
+        }
+
+        .process-card.status-BLOCKED {
+            border-left-color: var(--accent-red);
+        }
+
+        .process-card.status-NEEDS_ATTENTION {
+            border-left-color: var(--accent-yellow);
+        }
+
+        .process-card.status-DONE {
+            border-left-color: var(--accent-purple);
+        }
+
+        .process-chunk {
+            font-weight: 600;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+
+        .process-meta {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .process-status {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .process-status.RUNNING { color: var(--accent-green); }
+        .process-status.READY { color: var(--accent-blue); }
+        .process-status.BLOCKED { color: var(--accent-red); }
+        .process-status.NEEDS_ATTENTION { color: var(--accent-yellow); }
+        .process-status.DONE { color: var(--accent-purple); }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        textarea.form-control {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-success {
+            background-color: var(--accent-green);
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: var(--accent-red);
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        /* Option buttons for multiple choice */
+        .option-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .option-btn {
+            padding: 6px 12px;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .option-btn:hover {
+            border-color: var(--accent-blue);
+            background-color: var(--bg-card);
+        }
+
+        /* Conflict resolution styles */
+        .conflict-info {
+            background-color: var(--bg-primary);
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.875rem;
+        }
+
+        .conflict-chunks {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .conflict-vs {
+            color: var(--text-secondary);
+        }
+
+        .conflict-confidence {
+            color: var(--text-secondary);
+        }
+
+        /* Section headings in process grid */
+        .section-heading {
+            grid-column: 1 / -1;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-heading:first-child {
+            margin-top: 0;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-top: 8px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--accent-red);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Orchestrator Dashboard</h1>
+            <div class="status-indicator">
+                <div class="status-dot" id="ws-status"></div>
+                <span id="ws-status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Attention Queue -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Attention Queue</h2>
+                    <span class="badge badge-count" id="attention-count">{{ attention_items|length }}</span>
+                </div>
+                <div class="card-body">
+                    <ul class="attention-list" id="attention-list">
+                        {% if attention_items %}
+                            {% for item in attention_items %}
+                            <li class="attention-item" data-chunk="{{ item.chunk }}">
+                                <div class="attention-header">
+                                    <span class="attention-chunk">{{ item.chunk }}</span>
+                                    <span class="badge" style="background-color: var(--accent-yellow); color: black;">
+                                        {{ item.phase }}
+                                    </span>
+                                </div>
+                                <div class="attention-meta">
+                                    <span>Blocks: {{ item.blocks_count }}</span>
+                                    <span>Waiting: {{ item.time_waiting|round }}s</span>
+                                </div>
+                                {% if item.attention_reason %}
+                                <div class="attention-reason">{{ item.attention_reason }}</div>
+                                {% endif %}
+                                <div class="attention-details">
+                                    {% if item.goal_summary %}
+                                    <div class="form-group">
+                                        <label>Goal Summary</label>
+                                        <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                                            {{ item.goal_summary }}
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    {% if item.attention_reason and 'conflict' in item.attention_reason.lower() %}
+                                    <!-- Conflict resolution UI -->
+                                    <form class="resolve-form" action="/work-units/{{ item.chunk }}/resolve" method="post">
+                                        <div class="conflict-info">
+                                            <div class="conflict-chunks">
+                                                <strong>{{ item.chunk }}</strong>
+                                                <span class="conflict-vs">vs</span>
+                                                <strong>{% if item.blocked_by %}{{ item.blocked_by[0] }}{% else %}(unknown){% endif %}</strong>
+                                            </div>
+                                        </div>
+                                        <input type="hidden" name="other_chunk" value="{% if item.blocked_by %}{{ item.blocked_by[0] }}{% endif %}">
+                                        <div class="attention-actions">
+                                            <button type="submit" name="verdict" value="parallelize" class="btn btn-success">
+                                                Parallelize Anyway
+                                            </button>
+                                            <button type="submit" name="verdict" value="serialize" class="btn btn-danger">
+                                                Serialize
+                                            </button>
+                                        </div>
+                                    </form>
+                                    {% else %}
+                                    <!-- Question answer UI -->
+                                    <form class="answer-form" action="/work-units/{{ item.chunk }}/answer" method="post">
+                                        <div class="form-group">
+                                            <label for="answer-{{ item.chunk }}">Your Answer</label>
+                                            <textarea
+                                                class="form-control"
+                                                name="answer"
+                                                id="answer-{{ item.chunk }}"
+                                                placeholder="Enter your response..."
+                                                required
+                                            ></textarea>
+                                        </div>
+                                        <div class="attention-actions">
+                                            <button type="submit" class="btn btn-primary">Submit Answer</button>
+                                        </div>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </li>
+                            {% endfor %}
+                        {% else %}
+                            <li class="empty-state">
+                                No items need attention
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Process Grid -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Work Units</h2>
+                    <span class="badge badge-count" id="work-unit-count">{{ work_units|length }}</span>
+                </div>
+                <div class="card-body">
+                    <div class="process-grid" id="process-grid">
+                        {% set running_units = work_units|selectattr('status', 'equalto', 'RUNNING')|list %}
+                        {% set ready_units = work_units|selectattr('status', 'equalto', 'READY')|list %}
+                        {% set blocked_units = work_units|selectattr('status', 'equalto', 'BLOCKED')|list %}
+                        {% set attention_units = work_units|selectattr('status', 'equalto', 'NEEDS_ATTENTION')|list %}
+                        {% set done_units = work_units|selectattr('status', 'equalto', 'DONE')|list %}
+
+                        {% if running_units %}
+                        <div class="section-heading">Running ({{ running_units|length }})</div>
+                        {% for unit in running_units %}
+                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if ready_units %}
+                        <div class="section-heading">Ready ({{ ready_units|length }})</div>
+                        {% for unit in ready_units %}
+                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if attention_units %}
+                        <div class="section-heading">Needs Attention ({{ attention_units|length }})</div>
+                        {% for unit in attention_units %}
+                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status {{ unit.status }}">{{ unit.status.replace('_', ' ') }}</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                            {% if unit.attention_reason %}
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                                {{ unit.attention_reason[:50] }}{% if unit.attention_reason|length > 50 %}...{% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if blocked_units %}
+                        <div class="section-heading">Blocked ({{ blocked_units|length }})</div>
+                        {% for unit in blocked_units %}
+                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                            {% if unit.blocked_by %}
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                                Blocked by: {{ unit.blocked_by|join(', ') }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if done_units %}
+                        <div class="section-heading">Done ({{ done_units|length }})</div>
+                        {% for unit in done_units %}
+                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if not work_units %}
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            No work units in the system
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // WebSocket connection with auto-reconnect
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        const baseReconnectDelay = 1000;
+
+        function updateConnectionStatus(status) {
+            const dot = document.getElementById('ws-status');
+            const text = document.getElementById('ws-status-text');
+
+            dot.className = 'status-dot ' + status;
+
+            switch(status) {
+                case 'connected':
+                    dot.className = 'status-dot';
+                    text.textContent = 'Connected';
+                    break;
+                case 'disconnected':
+                    text.textContent = 'Disconnected';
+                    break;
+                case 'connecting':
+                    text.textContent = 'Connecting...';
+                    break;
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        function connectWebSocket() {
+            updateConnectionStatus('connecting');
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws';
+
+            try {
+                ws = new WebSocket(wsUrl);
+            } catch (e) {
+                console.error('WebSocket connection failed:', e);
+                scheduleReconnect();
+                return;
+            }
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                updateConnectionStatus('connected');
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus('disconnected');
+                scheduleReconnect();
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                console.log('Max reconnect attempts reached');
+                return;
+            }
+
+            reconnectAttempts++;
+            const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts - 1);
+            console.log('Reconnecting in ' + delay + 'ms (attempt ' + reconnectAttempts + ')');
+
+            setTimeout(connectWebSocket, delay);
+        }
+
+        function handleMessage(message) {
+            console.log('Received message:', message);
+
+            switch(message.type) {
+                case 'initial_state':
+                    // Full state refresh
+                    if (message.data) {
+                        updateFullState(message.data);
+                    }
+                    break;
+
+                case 'work_unit_update':
+                    // Single work unit changed
+                    updateWorkUnit(message.data);
+                    break;
+
+                case 'attention_update':
+                    // Attention queue changed
+                    if (message.data.action === 'resolved') {
+                        showToast('Resolved: ' + message.data.chunk, 'success');
+                    }
+                    // Refresh the page to get updated state
+                    // In a more sophisticated implementation, we'd update the DOM directly
+                    setTimeout(() => window.location.reload(), 500);
+                    break;
+            }
+        }
+
+        function updateFullState(data) {
+            // For now, just reload the page to show the new state
+            // A more sophisticated implementation would update the DOM directly
+            window.location.reload();
+        }
+
+        function updateWorkUnit(data) {
+            // Find the process card for this chunk
+            const card = document.querySelector('.process-card[data-chunk="' + data.chunk + '"]');
+            if (card) {
+                // Update the status class
+                card.className = 'process-card status-' + data.status;
+
+                // Update the status text
+                const statusSpan = card.querySelector('.process-status');
+                if (statusSpan) {
+                    statusSpan.className = 'process-status ' + data.status;
+                    statusSpan.textContent = data.status.replace('_', ' ');
+                }
+
+                // Update the phase
+                const metaSpan = card.querySelector('.process-meta span:last-child');
+                if (metaSpan) {
+                    metaSpan.textContent = data.phase;
+                }
+            }
+
+            // Show a toast notification
+            showToast(data.chunk + ' is now ' + data.status, 'success');
+        }
+
+        // Attention item expand/collapse
+        document.querySelectorAll('.attention-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                // Don't toggle if clicking a form element
+                if (e.target.closest('form') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
+                    return;
+                }
+                this.classList.toggle('expanded');
+            });
+        });
+
+        // Form submission handling
+        document.querySelectorAll('.answer-form, .resolve-form').forEach(form => {
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const formData = new FormData(this);
+                const action = this.getAttribute('action');
+
+                // Disable submit buttons
+                const buttons = this.querySelectorAll('button[type="submit"]');
+                buttons.forEach(btn => btn.disabled = true);
+
+                try {
+                    const response = await fetch(action, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams(formData),
+                    });
+
+                    if (response.ok) {
+                        showToast('Submitted successfully!', 'success');
+                        // Reload to refresh the view
+                        setTimeout(() => window.location.reload(), 500);
+                    } else {
+                        const data = await response.json();
+                        showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+                        buttons.forEach(btn => btn.disabled = false);
+                    }
+                } catch (error) {
+                    showToast('Error: ' + error.message, 'error');
+                    buttons.forEach(btn => btn.disabled = false);
+                }
+            });
+        });
+
+        // Initialize WebSocket connection
+        connectWebSocket();
+    </script>
+</body>
+</html>
