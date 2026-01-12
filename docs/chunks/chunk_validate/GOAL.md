@@ -13,9 +13,11 @@ code_references:
 - ref: src/chunks.py#ValidationResult
   implements: Dataclass for structured error reporting
 - ref: src/chunks.py#Chunks::validate_chunk_complete
-  implements: Status, code_references, subsystem, and investigation validation
+  implements: Status, code_references, subsystem, investigation, and narrative validation
 - ref: src/chunks.py#Chunks::validate_investigation_ref
   implements: Validation that referenced investigations exist
+- ref: src/chunks.py#Chunks::validate_narrative_ref
+  implements: Validation that referenced narratives exist
 - ref: src/chunks.py#Chunks::_validate_symbol_exists
   implements: Symbol existence verification for code references
 - ref: src/ve.py#validate
@@ -24,6 +26,8 @@ code_references:
   implements: Test coverage for investigation reference validation
 - ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
   implements: Test coverage for symbolic reference validation
+- ref: tests/test_chunk_validate.py#TestNarrativeRefValidation
+  implements: Test coverage for narrative reference validation
 created_after:
 - chunk_overlap_command
 ---

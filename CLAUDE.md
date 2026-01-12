@@ -146,15 +146,22 @@ The documentation teaches itself: follow backreferences in code to discover the 
 Source code may contain backreference comments that link code back to the documentation that created or governs it:
 
 ```python
+# Narrative: docs/narratives/chunk_lifecycle_management - Core lifecycle infrastructure
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 ```
 
 **What backreferences mean:**
+- `# Narrative: ...` - This code is part of an architectural initiative. Read the narrative's OVERVIEW.md for the broader purpose and how this code fits into the larger vision.
 - `# Chunk: ...` - This code was created or modified by the referenced chunk. Read the chunk's GOAL.md for business context.
 - `# Subsystem: ...` - This code is part of a documented subsystem. Read the subsystem's OVERVIEW.md for patterns and invariants.
 
-**When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations.
+**Semantic hierarchy of context types:**
+- **Narratives**: PURPOSE context - why the code exists architecturally, the larger initiative it serves
+- **Chunks**: HISTORY context - what work created or modified the code, providing traceability
+- **Subsystems**: PATTERN context - what rules govern the code, including invariants and best practices
+
+**When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations. Narrative references point to high-level architectural context.
 
 **When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
 

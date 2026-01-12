@@ -7,7 +7,7 @@ code_paths:
 - src/chunks.py
 - src/subsystems.py
 - src/ve.py
-- src/templates/chunk/GOAL.md
+- src/templates/chunk/GOAL.md.jinja2
 - src/templates/commands/chunk-complete.md
 - tests/test_models.py
 - tests/test_chunks.py
@@ -26,9 +26,9 @@ code_references:
 - ref: src/subsystems.py#Subsystems::validate_chunk_refs
   implements: Validates chunk references in subsystem frontmatter exist in docs/chunks/
 - ref: src/ve.py#validate
-  implements: Renamed from 'complete' - CLI command for chunk validation
+  implements: Chunk validate CLI command (renamed from 'complete', includes subsystem ref validation)
 - ref: src/ve.py#validate
-  implements: New CLI command 've subsystem validate' for subsystem validation
+  implements: Subsystem validate CLI command ('ve subsystem validate' for chunk ref validation)
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: Template updated with subsystems field and documentation
 narrative: subsystem_documentation
