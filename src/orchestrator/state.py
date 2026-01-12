@@ -21,7 +21,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 3
+    CURRENT_VERSION = 5
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -86,6 +86,8 @@ class StateStore:
             1: self._migrate_v1,
             2: self._migrate_v2,
             3: self._migrate_v3,
+            4: self._migrate_v4,
+            5: self._migrate_v5,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -156,6 +158,27 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
+    def _migrate_v4(self) -> None:
+        """Add attention_reason field for NEEDS_ATTENTION diagnosis."""
+        self.connection.executescript(
+            """
+            -- Add attention_reason column for storing why work unit needs attention
+            ALTER TABLE work_units ADD COLUMN attention_reason TEXT;
+            """
+        )
+
+    # Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk tracking
+    def _migrate_v5(self) -> None:
+        """Add displaced_chunk field for tracking displaced IMPLEMENTING chunks."""
+        self.connection.executescript(
+            """
+            -- Add displaced_chunk column for tracking the chunk that was IMPLEMENTING
+            -- when the worktree was created (and had to be temporarily set to FUTURE)
+            ALTER TABLE work_units ADD COLUMN displaced_chunk TEXT;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -185,8 +208,8 @@ class StateStore:
                 """
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
-                     completion_retries, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     completion_retries, attention_reason, displaced_chunk, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -197,6 +220,8 @@ class StateStore:
                     work_unit.priority,
                     work_unit.session_id,
                     work_unit.completion_retries,
+                    work_unit.attention_reason,
+                    work_unit.displaced_chunk,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -251,7 +276,8 @@ class StateStore:
             """
             UPDATE work_units
             SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
-                priority = ?, session_id = ?, completion_retries = ?, updated_at = ?
+                priority = ?, session_id = ?, completion_retries = ?,
+                attention_reason = ?, displaced_chunk = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -262,6 +288,8 @@ class StateStore:
                 work_unit.priority,
                 work_unit.session_id,
                 work_unit.completion_retries,
+                work_unit.attention_reason,
+                work_unit.displaced_chunk,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -448,6 +476,16 @@ class StateStore:
         except (IndexError, KeyError):
             completion_retries = 0
 
+        try:
+            attention_reason = row["attention_reason"]
+        except (IndexError, KeyError):
+            attention_reason = None
+
+        try:
+            displaced_chunk = row["displaced_chunk"]
+        except (IndexError, KeyError):
+            displaced_chunk = None
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -457,6 +495,8 @@ class StateStore:
             priority=priority,
             session_id=session_id,
             completion_retries=completion_retries,
+            attention_reason=attention_reason,
+            displaced_chunk=displaced_chunk,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

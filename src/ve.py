@@ -154,7 +154,12 @@ def create(short_name, ticket_id, project_dir, yes, future):
         if not click.confirm("Create another chunk with the same name?"):
             raise SystemExit(1)
 
-    chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
+    # Chunk: docs/chunks/chunk_create_guard - Catch guard errors
+    try:
+        chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
@@ -560,14 +565,20 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
 # Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 # Chunk: docs/chunks/task_chunk_validation - Task context awareness
+# Chunk: docs/chunks/orch_inject_validate - Injectable validation mode
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def validate(chunk_id, project_dir):
-    """Validate chunk is ready for completion.
+@click.option("--injectable", is_flag=True, help="Validate for injection into orchestrator work pool")
+def validate(chunk_id, project_dir, injectable):
+    """Validate chunk is ready for completion (or injection).
 
     Supports validating chunks in task context, including external chunks
     and cross-project code references.
+
+    With --injectable: validates chunk can be injected into the orchestrator,
+    checking status-content consistency (e.g., IMPLEMENTING/ACTIVE status
+    requires a populated PLAN.md).
     """
     from task_utils import find_task_directory, is_task_directory
 
@@ -598,7 +609,14 @@ def validate(chunk_id, project_dir):
             pass
 
     chunks = Chunks(project_dir)
-    result = chunks.validate_chunk_complete(chunk_id, task_dir=task_dir)
+
+    # Choose validation mode
+    if injectable:
+        result = chunks.validate_chunk_injectable(chunk_id)
+        success_message = f"Chunk {result.chunk_name} is ready for injection"
+    else:
+        result = chunks.validate_chunk_complete(chunk_id, task_dir=task_dir)
+        success_message = f"Chunk {result.chunk_name} is ready for completion"
 
     if not result.success:
         for error in result.errors:
@@ -609,7 +627,7 @@ def validate(chunk_id, project_dir):
     for warning in result.warnings:
         click.echo(warning, err=True)
 
-    click.echo(f"Chunk {result.chunk_name} is ready for completion")
+    click.echo(success_message)
 
 
 # Chunk: docs/chunks/cluster_rename - Cluster rename command
@@ -1772,6 +1790,7 @@ def orch_status(json_output, project_dir):
 
 
 # Chunk: docs/chunks/orch_foundation - List work units command
+# Chunk: docs/chunks/orch_attention_reason - Display attention reason in ps output
 @orch.command("ps")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -1793,12 +1812,30 @@ def orch_ps(status_filter, json_output, project_dir):
                 click.echo("No work units")
                 return
 
-            # Display table
-            click.echo(f"{'CHUNK':<30} {'PHASE':<12} {'STATUS':<16} {'BLOCKED BY'}")
-            click.echo("-" * 80)
+            # Check if any unit needs attention with a reason
+            has_attention_reason = any(
+                unit.get("status") == "NEEDS_ATTENTION" and unit.get("attention_reason")
+                for unit in units
+            )
+
+            # Display table - include REASON column if any NEEDS_ATTENTION units have reasons
+            if has_attention_reason:
+                click.echo(f"{'CHUNK':<30} {'PHASE':<12} {'STATUS':<16} {'REASON':<32} {'BLOCKED BY'}")
+                click.echo("-" * 110)
+            else:
+                click.echo(f"{'CHUNK':<30} {'PHASE':<12} {'STATUS':<16} {'BLOCKED BY'}")
+                click.echo("-" * 80)
+
             for unit in units:
                 blocked = ", ".join(unit["blocked_by"]) if unit["blocked_by"] else "-"
-                click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['status']:<16} {blocked}")
+                if has_attention_reason:
+                    reason = unit.get("attention_reason") or "-"
+                    # Truncate reason to 30 chars
+                    if len(reason) > 30:
+                        reason = reason[:27] + "..."
+                    click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['status']:<16} {reason:<32} {blocked}")
+                else:
+                    click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['status']:<16} {blocked}")
 
     except DaemonNotRunningError as e:
         click.echo(f"Error: {e}", err=True)
@@ -1882,6 +1919,48 @@ def work_unit_status(chunk, new_status, json_output, project_dir):
                 click.echo(json.dumps(result, indent=2))
             else:
                 click.echo(f"{chunk}: {old['status']} -> {result['status']}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_attention_reason - Work unit show command
+@work_unit.command("show")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_show(chunk, json_output, project_dir):
+    """Show detailed work unit information including attention reason."""
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json as json_module
+
+    client = create_client(project_dir)
+    try:
+        result = client.get_work_unit(chunk)
+
+        if json_output:
+            click.echo(json_module.dumps(result, indent=2))
+        else:
+            click.echo(f"Chunk:            {result['chunk']}")
+            click.echo(f"Phase:            {result['phase']}")
+            click.echo(f"Status:           {result['status']}")
+            click.echo(f"Priority:         {result['priority']}")
+            if result.get('blocked_by'):
+                click.echo(f"Blocked By:       {', '.join(result['blocked_by'])}")
+            if result.get('worktree'):
+                click.echo(f"Worktree:         {result['worktree']}")
+            if result.get('session_id'):
+                click.echo(f"Session ID:       {result['session_id']}")
+            if result.get('attention_reason'):
+                click.echo(f"Attention Reason: {result['attention_reason']}")
+            click.echo(f"Created At:       {result['created_at']}")
+            click.echo(f"Updated At:       {result['updated_at']}")
 
     except DaemonNotRunningError as e:
         click.echo(f"Error: {e}", err=True)

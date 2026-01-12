@@ -244,75 +244,36 @@ async def get_status_history_endpoint(request: Request) -> JSONResponse:
 # Scheduling endpoints
 
 
-def _parse_chunk_status(goal_path: Path) -> Optional[str]:
+# Chunk: docs/chunks/orch_inject_validate - Import shared validation
+# Chunk: docs/chunks/orch_activate_on_inject - Use Chunks class for status parsing
+from chunks import plan_has_content, Chunks
+
+
+def _parse_chunk_status(chunk_dir: Path) -> Optional[str]:
     """Parse the status field from a chunk's GOAL.md frontmatter.
 
+    Uses the Chunks class for consistent frontmatter parsing.
+
     Args:
-        goal_path: Path to the GOAL.md file
+        chunk_dir: Path to the chunk directory
 
     Returns:
         The status string (e.g., "FUTURE", "IMPLEMENTING") or None if not found
     """
-    import re
+    # Extract chunk name from path
+    chunk_name = chunk_dir.name
+
+    # Navigate to project root (chunk_dir is /project/docs/chunks/chunk_name)
+    project_root = chunk_dir.parent.parent.parent
 
     try:
-        content = goal_path.read_text()
+        chunks = Chunks(project_root)
+        frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is not None:
+            return frontmatter.status.value
+        return None
     except Exception:
         return None
-
-    # Extract YAML frontmatter
-    frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-    if not frontmatter_match:
-        return None
-
-    frontmatter = frontmatter_match.group(1)
-
-    # Look for status field
-    status_match = re.search(r"^status:\s*(\w+)", frontmatter, re.MULTILINE)
-    if status_match:
-        return status_match.group(1)
-
-    return None
-
-
-def _plan_has_content(plan_path: Path) -> bool:
-    """Check if PLAN.md has actual content beyond the template.
-
-    Looks for content in the '## Approach' section that isn't just the
-    template's HTML comment block.
-
-    Args:
-        plan_path: Path to the PLAN.md file
-
-    Returns:
-        True if the plan has actual content, False if it's just a template
-    """
-    import re
-
-    try:
-        content = plan_path.read_text()
-    except Exception:
-        return False
-
-    # Look for the Approach section
-    approach_match = re.search(
-        r"## Approach\s*\n(.*?)(?=\n## |\Z)",
-        content,
-        re.DOTALL
-    )
-
-    if not approach_match:
-        return False
-
-    approach_content = approach_match.group(1).strip()
-
-    # If the approach section is empty or only contains HTML comments, it's a template
-    # Remove HTML comments and see what's left
-    content_without_comments = re.sub(r"<!--.*?-->", "", approach_content, flags=re.DOTALL)
-    content_without_comments = content_without_comments.strip()
-
-    # If there's meaningful content after removing comments, the plan is populated
-    return len(content_without_comments) > 0
 
 
 def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
@@ -336,10 +297,10 @@ def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
         return WorkUnitPhase.GOAL
 
     # Check chunk status from frontmatter
-    chunk_status = _parse_chunk_status(goal_path)
+    chunk_status = _parse_chunk_status(chunk_dir)
 
     # Check if PLAN.md exists AND has actual content (not just template)
-    plan_exists_with_content = plan_path.exists() and _plan_has_content(plan_path)
+    plan_exists_with_content = plan_path.exists() and plan_has_content(plan_path)
 
     # For FUTURE or IMPLEMENTING chunks, the goal is already defined
     # so we start from PLAN phase (if no populated PLAN.md exists)
@@ -357,10 +318,13 @@ def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
     return WorkUnitPhase.IMPLEMENT
 
 
+# Chunk: docs/chunks/orch_scheduling - Original inject endpoint
+# Chunk: docs/chunks/orch_inject_validate - Added injection validation
 async def inject_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/inject - Inject a chunk into the work pool.
 
-    Validates chunk exists and determines initial phase from chunk state.
+    Validates chunk exists, is in a valid state for injection, and determines
+    initial phase from chunk state.
     """
     store = _get_store()
 
@@ -373,15 +337,17 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     if not chunk:
         return _error_response("Missing required field: chunk")
 
-    # Validate chunk directory exists
+    # Validate chunk is injectable (exists and status-content consistent)
+    chunks_manager = Chunks(_project_dir)
+    validation_result = chunks_manager.validate_chunk_injectable(chunk)
+
+    if not validation_result.success:
+        # Return all validation errors
+        error_message = "; ".join(validation_result.errors)
+        return _error_response(error_message, status_code=400)
+
+    # Get the chunk directory for phase detection
     chunk_dir = _project_dir / "docs" / "chunks" / chunk
-    goal_path = chunk_dir / "GOAL.md"
-
-    if not chunk_dir.exists():
-        return _error_response(f"Chunk directory does not exist: docs/chunks/{chunk}", 404)
-
-    if not goal_path.exists():
-        return _error_response(f"Chunk GOAL.md does not exist: docs/chunks/{chunk}/GOAL.md", 404)
 
     # Check if work unit already exists
     existing = store.get_work_unit(chunk)
@@ -422,8 +388,13 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     except ValueError as e:
         return _error_response(str(e), status_code=409)
 
+    # Include any validation warnings in the response
+    response_data = created.model_dump_json_serializable()
+    if validation_result.warnings:
+        response_data["warnings"] = validation_result.warnings
+
     return JSONResponse(
-        created.model_dump_json_serializable(),
+        response_data,
         status_code=201,
     )
 

@@ -1,5 +1,6 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
+# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -19,6 +20,9 @@ from typing import Optional
 
 import yaml
 
+from chunks import Chunks
+from models import ChunkStatus
+from task_utils import update_frontmatter_field
 from orchestrator.agent import AgentRunner, create_log_callback
 from orchestrator.models import (
     AgentResult,
@@ -50,11 +54,11 @@ class VerificationResult:
     error: Optional[str] = None
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Refactored to use Chunks class
 def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
     """Verify that a chunk's GOAL.md has status: ACTIVE.
 
-    Reads the chunk's GOAL.md from the worktree and parses the frontmatter
-    to check the status field.
+    Uses the Chunks class to parse frontmatter and check the status field.
 
     Args:
         worktree_path: Path to the worktree containing the chunk
@@ -63,55 +67,28 @@ def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationR
     Returns:
         VerificationResult indicating ACTIVE, IMPLEMENTING, or ERROR
     """
-    goal_path = worktree_path / "docs" / "chunks" / chunk / "GOAL.md"
-
-    if not goal_path.exists():
-        return VerificationResult(
-            status=VerificationStatus.ERROR,
-            error=f"GOAL.md not found at {goal_path}",
-        )
+    chunks = Chunks(worktree_path)
 
     try:
-        content = goal_path.read_text()
+        frontmatter = chunks.parse_chunk_frontmatter(chunk)
 
-        # Extract YAML frontmatter (between --- markers)
-        frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-        if not frontmatter_match:
-            return VerificationResult(
-                status=VerificationStatus.ERROR,
-                error="No YAML frontmatter found in GOAL.md",
-            )
-
-        frontmatter = yaml.safe_load(frontmatter_match.group(1))
         if frontmatter is None:
             return VerificationResult(
                 status=VerificationStatus.ERROR,
-                error="Empty YAML frontmatter in GOAL.md",
+                error=f"Chunk '{chunk}' not found or GOAL.md missing",
             )
 
-        status = frontmatter.get("status")
-        if status is None:
-            return VerificationResult(
-                status=VerificationStatus.ERROR,
-                error="No 'status' field in GOAL.md frontmatter",
-            )
-
-        if status == "ACTIVE":
+        if frontmatter.status == ChunkStatus.ACTIVE:
             return VerificationResult(status=VerificationStatus.ACTIVE)
-        elif status == "IMPLEMENTING":
+        elif frontmatter.status == ChunkStatus.IMPLEMENTING:
             return VerificationResult(status=VerificationStatus.IMPLEMENTING)
         else:
             # Other statuses like FUTURE, SUPERSEDED, etc. are unexpected here
             return VerificationResult(
                 status=VerificationStatus.ERROR,
-                error=f"Unexpected status '{status}' in GOAL.md (expected ACTIVE)",
+                error=f"Unexpected status '{frontmatter.status.value}' in GOAL.md (expected ACTIVE)",
             )
 
-    except yaml.YAMLError as e:
-        return VerificationResult(
-            status=VerificationStatus.ERROR,
-            error=f"Failed to parse YAML frontmatter: {e}",
-        )
     except Exception as e:
         return VerificationResult(
             status=VerificationStatus.ERROR,
@@ -123,6 +100,98 @@ class SchedulerError(Exception):
     """Exception raised for scheduler-related errors."""
 
     pass
+
+
+# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation helper
+def activate_chunk_in_worktree(
+    worktree_path: Path,
+    target_chunk: str,
+) -> Optional[str]:
+    """Activate target chunk in worktree, displacing any existing IMPLEMENTING chunk.
+
+    This function ensures exactly one chunk is IMPLEMENTING in the worktree by:
+    1. Finding any existing IMPLEMENTING chunk
+    2. If found and different from target, demoting it to FUTURE
+    3. Activating the target chunk (FUTURE -> IMPLEMENTING)
+
+    Args:
+        worktree_path: Path to the worktree
+        target_chunk: The chunk to activate
+
+    Returns:
+        The name of the displaced chunk (if any), or None.
+
+    Raises:
+        ValueError: If target chunk doesn't exist or can't be activated
+    """
+    chunks = Chunks(worktree_path)
+
+    # Check if target is already IMPLEMENTING
+    frontmatter = chunks.parse_chunk_frontmatter(target_chunk)
+    if frontmatter is None:
+        raise ValueError(f"Chunk '{target_chunk}' not found in worktree")
+
+    if frontmatter.status == ChunkStatus.IMPLEMENTING:
+        logger.info(f"Chunk {target_chunk} is already IMPLEMENTING, no activation needed")
+        return None
+
+    if frontmatter.status != ChunkStatus.FUTURE:
+        raise ValueError(
+            f"Chunk '{target_chunk}' has status '{frontmatter.status.value}', "
+            f"expected 'FUTURE' for activation"
+        )
+
+    # Find any existing IMPLEMENTING chunk
+    current_implementing = chunks.get_current_chunk()
+    displaced_chunk = None
+
+    if current_implementing is not None and current_implementing != target_chunk:
+        # Demote the existing IMPLEMENTING chunk to FUTURE
+        logger.info(
+            f"Displacing existing IMPLEMENTING chunk '{current_implementing}' to FUTURE"
+        )
+        goal_path = chunks.get_chunk_goal_path(current_implementing)
+        update_frontmatter_field(goal_path, "status", ChunkStatus.FUTURE.value)
+        displaced_chunk = current_implementing
+
+    # Now activate the target chunk
+    logger.info(f"Activating chunk '{target_chunk}' (FUTURE -> IMPLEMENTING)")
+    goal_path = chunks.get_chunk_goal_path(target_chunk)
+    update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
+
+    return displaced_chunk
+
+
+# Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk helper
+def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
+    """Restore a displaced chunk back to IMPLEMENTING status.
+
+    This is called before merge to ensure the user's manually-active chunk
+    retains its IMPLEMENTING status after the merge.
+
+    Args:
+        worktree_path: Path to the worktree
+        displaced_chunk: The chunk to restore to IMPLEMENTING
+    """
+    chunks = Chunks(worktree_path)
+
+    # Verify the chunk exists and is currently FUTURE
+    frontmatter = chunks.parse_chunk_frontmatter(displaced_chunk)
+    if frontmatter is None:
+        logger.warning(f"Cannot restore displaced chunk '{displaced_chunk}': not found")
+        return
+
+    if frontmatter.status != ChunkStatus.FUTURE:
+        logger.warning(
+            f"Cannot restore displaced chunk '{displaced_chunk}': "
+            f"status is '{frontmatter.status.value}', expected 'FUTURE'"
+        )
+        return
+
+    # Restore to IMPLEMENTING
+    logger.info(f"Restoring displaced chunk '{displaced_chunk}' to IMPLEMENTING")
+    goal_path = chunks.get_chunk_goal_path(displaced_chunk)
+    update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
 
 
 class Scheduler:
@@ -306,6 +375,18 @@ class Scheduler:
             logger.info(f"Creating worktree for {chunk}")
             worktree_path = self.worktree_manager.create_worktree(chunk)
 
+            # Chunk: docs/chunks/orch_activate_on_inject - Activate chunk in worktree
+            # Activate the target chunk, displacing any existing IMPLEMENTING chunk
+            try:
+                displaced = activate_chunk_in_worktree(worktree_path, chunk)
+                if displaced:
+                    work_unit.displaced_chunk = displaced
+                    logger.info(f"Stored displaced chunk '{displaced}' for later restoration")
+            except ValueError as e:
+                logger.error(f"Failed to activate chunk {chunk}: {e}")
+                await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
+                return
+
             # Update work unit to RUNNING
             work_unit.status = WorkUnitStatus.RUNNING
             work_unit.worktree = str(worktree_path)
@@ -362,6 +443,13 @@ class Scheduler:
             logger.info(f"Agent for {chunk} suspended (question queued)")
             work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
             work_unit.session_id = result.session_id
+            # Chunk: docs/chunks/orch_attention_reason - Capture question as attention reason
+            # Extract question text for attention_reason
+            if result.question:
+                question_text = result.question.get("question", "Agent asked a question")
+            else:
+                question_text = "Agent asked a question"
+            work_unit.attention_reason = f"Question: {question_text}"
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
@@ -503,6 +591,15 @@ class Scheduler:
                     await self._mark_needs_attention(work_unit, f"Commit error: {e}")
                     return
 
+            # Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk before merge
+            # Restore any displaced chunk to IMPLEMENTING before the merge
+            if work_unit.displaced_chunk:
+                logger.info(
+                    f"Restoring displaced chunk '{work_unit.displaced_chunk}' "
+                    f"to IMPLEMENTING before merge"
+                )
+                restore_displaced_chunk(worktree_path, work_unit.displaced_chunk)
+
             # Remove the worktree (must be done before merge)
             try:
                 self.worktree_manager.remove_worktree(chunk, remove_branch=False)
@@ -550,6 +647,7 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
+    # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
     async def _mark_needs_attention(
         self,
         work_unit: WorkUnit,
@@ -559,10 +657,11 @@ class Scheduler:
 
         Args:
             work_unit: The work unit
-            reason: Reason for needing attention
+            reason: Reason for needing attention (stored in attention_reason field)
         """
         logger.warning(f"Work unit {work_unit.chunk} needs attention: {reason}")
         work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+        work_unit.attention_reason = reason
         work_unit.updated_at = datetime.now(timezone.utc)
         self.store.update_work_unit(work_unit)
 

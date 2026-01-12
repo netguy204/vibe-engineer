@@ -36,6 +36,8 @@ class WorkUnitStatus(StrEnum):
     DONE = "DONE"  # Work unit completed
 
 
+# Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
+# Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk tracking
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 
@@ -51,6 +53,8 @@ class WorkUnit(BaseModel):
     priority: int = 0  # Scheduling priority (higher = more urgent)
     session_id: Optional[str] = None  # Agent session ID for suspended sessions
     completion_retries: int = 0  # Retry count for ACTIVE status verification
+    attention_reason: Optional[str] = None  # Why work unit needs operator attention
+    displaced_chunk: Optional[str] = None  # Chunk that was IMPLEMENTING when worktree created
     created_at: datetime
     updated_at: datetime
 
@@ -76,6 +80,8 @@ class WorkUnit(BaseModel):
             "priority": self.priority,
             "session_id": self.session_id,
             "completion_retries": self.completion_retries,
+            "attention_reason": self.attention_reason,
+            "displaced_chunk": self.displaced_chunk,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

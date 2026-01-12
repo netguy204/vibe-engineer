@@ -1138,6 +1138,118 @@ class Chunks:
 
         return errors
 
+    # Chunk: docs/chunks/orch_inject_validate - Injection-time validation
+    def validate_chunk_injectable(self, chunk_id: str) -> ValidationResult:
+        """Validate that a chunk is ready for injection into the orchestrator work pool.
+
+        This validation is called before creating a work unit. It checks:
+        1. Chunk exists
+        2. Status-content consistency:
+           - IMPLEMENTING/ACTIVE status requires populated PLAN.md (not just template)
+           - FUTURE status is allowed to have empty PLAN.md (it hasn't been planned yet)
+
+        Args:
+            chunk_id: The chunk ID to validate.
+
+        Returns:
+            ValidationResult with success status, errors, and warnings.
+        """
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        # Resolve chunk_id
+        chunk_name = self.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            return ValidationResult(
+                success=False,
+                errors=[f"Chunk '{chunk_id}' not found"],
+            )
+
+        # Parse frontmatter
+        frontmatter = self.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is None:
+            return ValidationResult(
+                success=False,
+                errors=[f"Could not parse frontmatter for chunk '{chunk_id}'"],
+                chunk_name=chunk_name,
+            )
+
+        # Get PLAN.md path
+        plan_path = self.chunk_dir / chunk_name / "PLAN.md"
+
+        # Check status-content consistency
+        if frontmatter.status in (ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE):
+            # IMPLEMENTING/ACTIVE chunks must have populated PLAN.md
+            if not plan_path.exists():
+                errors.append(
+                    f"Chunk has status '{frontmatter.status.value}' but PLAN.md does not exist. "
+                    f"Run /chunk-plan first or change status to FUTURE."
+                )
+            elif not plan_has_content(plan_path):
+                errors.append(
+                    f"Chunk has status '{frontmatter.status.value}' but PLAN.md has no content "
+                    f"(only template). Run /chunk-plan to populate the plan or change status to FUTURE."
+                )
+        elif frontmatter.status == ChunkStatus.FUTURE:
+            # FUTURE chunks are allowed to have empty PLAN.md - that's expected
+            if not plan_path.exists() or not plan_has_content(plan_path):
+                warnings.append(
+                    f"Chunk has status 'FUTURE' with empty plan. "
+                    f"Will start with PLAN phase to populate the plan."
+                )
+        elif frontmatter.status in (ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL):
+            # Terminal states - shouldn't be injected
+            errors.append(
+                f"Chunk has terminal status '{frontmatter.status.value}' and cannot be injected. "
+                f"Only FUTURE, IMPLEMENTING, or ACTIVE chunks can be injected."
+            )
+
+        return ValidationResult(
+            success=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            chunk_name=chunk_name,
+        )
+
+
+# Chunk: docs/chunks/orch_inject_validate - Plan content detection for validation
+def plan_has_content(plan_path: pathlib.Path) -> bool:
+    """Check if PLAN.md has actual content beyond the template.
+
+    Looks for content in the '## Approach' section that isn't just the
+    template's HTML comment block.
+
+    Args:
+        plan_path: Path to the PLAN.md file
+
+    Returns:
+        True if the plan has actual content, False if it's just a template
+    """
+    try:
+        content = plan_path.read_text()
+    except Exception:
+        return False
+
+    # Look for the Approach section
+    approach_match = re.search(
+        r"## Approach\s*\n(.*?)(?=\n## |\Z)",
+        content,
+        re.DOTALL
+    )
+
+    if not approach_match:
+        return False
+
+    approach_content = approach_match.group(1).strip()
+
+    # If the approach section is empty or only contains HTML comments, it's a template
+    # Remove HTML comments and see what's left
+    content_without_comments = re.sub(r"<!--.*?-->", "", approach_content, flags=re.DOTALL)
+    content_without_comments = content_without_comments.strip()
+
+    # If there's meaningful content after removing comments, the plan is populated
+    return len(content_without_comments) > 0
+
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic reference overlap logic
 # Chunk: docs/chunks/project_qualified_refs - Qualify refs before comparison

@@ -336,3 +336,144 @@ class TestDefaultDbPath:
         result = get_default_db_path(tmp_path)
 
         assert result == tmp_path / ".ve" / "orchestrator.db"
+
+
+# Chunk: docs/chunks/orch_attention_reason - Attention reason persistence tests
+class TestAttentionReasonPersistence:
+    """Tests for attention_reason field persistence."""
+
+    def test_stores_attention_reason(self, store):
+        """attention_reason is stored on create."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="attention_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            attention_reason="Connection timeout while accessing API",
+            created_at=now,
+            updated_at=now,
+        )
+
+        store.create_work_unit(unit)
+        retrieved = store.get_work_unit("attention_test")
+
+        assert retrieved.attention_reason == "Connection timeout while accessing API"
+
+    def test_updates_attention_reason(self, store, sample_work_unit):
+        """attention_reason can be updated."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update with attention_reason
+        sample_work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+        sample_work_unit.attention_reason = "Question: Which framework should I use?"
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        assert retrieved.attention_reason == "Question: Which framework should I use?"
+
+    def test_attention_reason_null_by_default(self, store, sample_work_unit):
+        """attention_reason is None by default."""
+        store.create_work_unit(sample_work_unit)
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+
+        assert retrieved.attention_reason is None
+
+    def test_clears_attention_reason(self, store):
+        """attention_reason can be cleared (set to None)."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="attention_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            attention_reason="Some error",
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # Clear the attention_reason
+        unit.status = WorkUnitStatus.READY
+        unit.attention_reason = None
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)
+
+        retrieved = store.get_work_unit("attention_test")
+        assert retrieved.attention_reason is None
+
+    def test_attention_reason_preserved_in_list(self, store):
+        """attention_reason is included when listing work units."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="attention_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            attention_reason="Agent asked a question",
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        units = store.list_work_units()
+
+        assert len(units) == 1
+        assert units[0].attention_reason == "Agent asked a question"
+
+
+# Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk persistence tests
+class TestDisplacedChunkPersistence:
+    """Tests for displaced_chunk field persistence."""
+
+    def test_stores_displaced_chunk(self, store):
+        """displaced_chunk is stored on create."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="target_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            displaced_chunk="existing_chunk",
+            created_at=now,
+            updated_at=now,
+        )
+
+        store.create_work_unit(unit)
+        retrieved = store.get_work_unit("target_chunk")
+
+        assert retrieved.displaced_chunk == "existing_chunk"
+
+    def test_updates_displaced_chunk(self, store, sample_work_unit):
+        """displaced_chunk can be updated."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update with displaced_chunk
+        sample_work_unit.displaced_chunk = "some_chunk"
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        assert retrieved.displaced_chunk == "some_chunk"
+
+    def test_displaced_chunk_null_by_default(self, store, sample_work_unit):
+        """displaced_chunk is None by default."""
+        store.create_work_unit(sample_work_unit)
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+
+        assert retrieved.displaced_chunk is None
+
+    def test_displaced_chunk_preserved_in_list(self, store):
+        """displaced_chunk is included when listing work units."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="target_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            displaced_chunk="existing_chunk",
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        units = store.list_work_units()
+
+        assert len(units) == 1
+        assert units[0].displaced_chunk == "existing_chunk"

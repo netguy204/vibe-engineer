@@ -15,6 +15,8 @@ from orchestrator.scheduler import (
     verify_chunk_active_status,
     VerificationStatus,
     VerificationResult,
+    activate_chunk_in_worktree,
+    restore_displaced_chunk,
 )
 from orchestrator.models import (
     AgentResult,
@@ -463,7 +465,8 @@ ticket: null
         result = verify_chunk_active_status(tmp_path, "test_chunk")
 
         assert result.status == VerificationStatus.ERROR
-        assert "frontmatter" in result.error.lower()
+        # The Chunks class treats unparseable GOAL.md as "not found"
+        assert "not found" in result.error.lower() or "missing" in result.error.lower()
 
     def test_returns_error_when_status_missing(self, tmp_path):
         """Returns ERROR when frontmatter has no status field."""
@@ -483,7 +486,8 @@ ticket: null
         result = verify_chunk_active_status(tmp_path, "test_chunk")
 
         assert result.status == VerificationStatus.ERROR
-        assert "status" in result.error.lower()
+        # The Chunks class treats frontmatter without required status as invalid/not found
+        assert "not found" in result.error.lower() or "missing" in result.error.lower()
 
     def test_returns_error_for_unexpected_status(self, tmp_path):
         """Returns ERROR for unexpected status values like FUTURE."""
@@ -659,3 +663,491 @@ status: IMPLEMENTING
 
         updated = state_store.get_work_unit("test_chunk")
         assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+
+
+# Chunk: docs/chunks/orch_attention_reason - Attention reason tracking tests
+class TestAttentionReason:
+    """Tests for attention_reason tracking."""
+
+    @pytest.mark.asyncio
+    async def test_suspended_result_captures_question_as_reason(self, scheduler, state_store):
+        """Suspended result stores question text as attention_reason."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=True,
+            session_id="session123",
+            question={"question": "Which database should I use?", "options": ["PostgreSQL", "MySQL"]},
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.attention_reason == "Question: Which database should I use?"
+
+    @pytest.mark.asyncio
+    async def test_suspended_result_without_question_uses_default(self, scheduler, state_store):
+        """Suspended result without question data uses default reason."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=True,
+            session_id="session123",
+            question=None,
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.attention_reason == "Question: Agent asked a question"
+
+    @pytest.mark.asyncio
+    async def test_error_result_stores_error_as_reason(self, scheduler, state_store):
+        """Error result stores error message as attention_reason."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=False, error="Connection timeout while accessing API")
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.attention_reason == "Connection timeout while accessing API"
+
+    @pytest.mark.asyncio
+    async def test_max_retries_stores_reason(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Max retries exceeded stores appropriate attention_reason."""
+        # Set up chunk with IMPLEMENTING status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+---
+
+# Chunk Goal
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            completion_retries=2,  # Already at max
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "IMPLEMENTING" in updated.attention_reason
+        assert "retries" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_verification_error_stores_reason(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Verification error stores error message as attention_reason."""
+        # Set up chunk directory but with unparseable GOAL.md
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text("No frontmatter here")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.attention_reason is not None
+        # The Chunks class treats unparseable GOAL.md as "not found"
+        assert (
+            "frontmatter" in updated.attention_reason.lower()
+            or "not found" in updated.attention_reason.lower()
+            or "missing" in updated.attention_reason.lower()
+        )
+
+
+# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation and displacement tests
+class TestActivateChunkInWorktree:
+    """Tests for the activate_chunk_in_worktree helper function."""
+
+    def test_activates_future_chunk(self, tmp_path):
+        """Activates a FUTURE chunk to IMPLEMENTING."""
+        # Create chunk directory with FUTURE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = activate_chunk_in_worktree(tmp_path, "test_chunk")
+
+        # Should return None (no displaced chunk)
+        assert result is None
+
+        # Chunk should now be IMPLEMENTING
+        content = goal_md.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_returns_none_for_already_implementing_chunk(self, tmp_path):
+        """Returns None if chunk is already IMPLEMENTING."""
+        # Create chunk directory with IMPLEMENTING status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        result = activate_chunk_in_worktree(tmp_path, "test_chunk")
+
+        # Should return None (no displacement, already implementing)
+        assert result is None
+
+        # Status should remain unchanged
+        content = goal_md.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_displaces_existing_implementing_chunk(self, tmp_path):
+        """Displaces an existing IMPLEMENTING chunk when activating a FUTURE chunk."""
+        # Create existing IMPLEMENTING chunk
+        existing_dir = tmp_path / "docs" / "chunks" / "existing_chunk"
+        existing_dir.mkdir(parents=True)
+        existing_goal = existing_dir / "GOAL.md"
+        existing_goal.write_text(
+            """---
+status: IMPLEMENTING
+ticket: null
+---
+
+# Existing Chunk
+"""
+        )
+
+        # Create target FUTURE chunk
+        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
+        target_dir.mkdir(parents=True)
+        target_goal = target_dir / "GOAL.md"
+        target_goal.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Target Chunk
+"""
+        )
+
+        result = activate_chunk_in_worktree(tmp_path, "target_chunk")
+
+        # Should return the displaced chunk name
+        assert result == "existing_chunk"
+
+        # Existing chunk should now be FUTURE
+        content = existing_goal.read_text()
+        assert "status: FUTURE" in content
+
+        # Target chunk should now be IMPLEMENTING
+        content = target_goal.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_raises_for_nonexistent_chunk(self, tmp_path):
+        """Raises ValueError for non-existent chunk."""
+        # Create docs/chunks but no chunk directory
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        with pytest.raises(ValueError) as exc_info:
+            activate_chunk_in_worktree(tmp_path, "nonexistent_chunk")
+
+        assert "not found" in str(exc_info.value)
+
+    def test_raises_for_non_future_chunk(self, tmp_path):
+        """Raises ValueError for chunk that is not FUTURE or IMPLEMENTING."""
+        # Create chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "active_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+ticket: null
+---
+
+# Active Chunk
+"""
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            activate_chunk_in_worktree(tmp_path, "active_chunk")
+
+        assert "ACTIVE" in str(exc_info.value)
+        assert "FUTURE" in str(exc_info.value)
+
+
+class TestRestoreDisplacedChunk:
+    """Tests for the restore_displaced_chunk helper function."""
+
+    def test_restores_displaced_chunk_to_implementing(self, tmp_path):
+        """Restores a FUTURE chunk back to IMPLEMENTING."""
+        # Create chunk with FUTURE status (simulating displaced chunk)
+        chunk_dir = tmp_path / "docs" / "chunks" / "displaced_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Displaced Chunk
+"""
+        )
+
+        restore_displaced_chunk(tmp_path, "displaced_chunk")
+
+        # Chunk should now be IMPLEMENTING
+        content = goal_md.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_does_not_restore_non_future_chunk(self, tmp_path):
+        """Does not modify chunk if not in FUTURE status."""
+        # Create chunk with IMPLEMENTING status (shouldn't be changed)
+        chunk_dir = tmp_path / "docs" / "chunks" / "implementing_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: IMPLEMENTING
+ticket: null
+---
+
+# Implementing Chunk
+"""
+        )
+
+        restore_displaced_chunk(tmp_path, "implementing_chunk")
+
+        # Status should remain IMPLEMENTING
+        content = goal_md.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    def test_handles_nonexistent_chunk_gracefully(self, tmp_path):
+        """Does not raise for non-existent chunk."""
+        # Create docs/chunks but no chunk directory
+        (tmp_path / "docs" / "chunks").mkdir(parents=True)
+
+        # Should not raise
+        restore_displaced_chunk(tmp_path, "nonexistent_chunk")
+
+
+class TestChunkActivationInWorkUnit:
+    """Tests for chunk activation during work unit execution."""
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_activates_future_chunk(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit activates a FUTURE chunk in the worktree."""
+        # Set up FUTURE chunk
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Chunk should now be IMPLEMENTING
+        content = goal_md.read_text()
+        assert "status: IMPLEMENTING" in content
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_stores_displaced_chunk(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """_run_work_unit stores displaced chunk in work unit."""
+        # Create existing IMPLEMENTING chunk
+        existing_dir = tmp_path / "docs" / "chunks" / "existing_chunk"
+        existing_dir.mkdir(parents=True)
+        existing_goal = existing_dir / "GOAL.md"
+        existing_goal.write_text(
+            """---
+status: IMPLEMENTING
+ticket: null
+---
+
+# Existing Chunk
+"""
+        )
+
+        # Create target FUTURE chunk
+        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
+        target_dir.mkdir(parents=True)
+        target_goal = target_dir / "GOAL.md"
+        target_goal.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Target Chunk
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="target_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Work unit should have displaced_chunk recorded
+        updated = state_store.get_work_unit("target_chunk")
+        assert updated.displaced_chunk == "existing_chunk"
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_restores_displaced_chunk(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """_advance_phase restores displaced chunk before merge."""
+        # Set up target chunk with ACTIVE status (completed)
+        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
+        target_dir.mkdir(parents=True)
+        target_goal = target_dir / "GOAL.md"
+        target_goal.write_text(
+            """---
+status: ACTIVE
+ticket: null
+---
+
+# Target Chunk
+"""
+        )
+
+        # Set up displaced chunk with FUTURE status
+        displaced_dir = tmp_path / "docs" / "chunks" / "displaced_chunk"
+        displaced_dir.mkdir(parents=True)
+        displaced_goal = displaced_dir / "GOAL.md"
+        displaced_goal.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Displaced Chunk
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="target_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            displaced_chunk="displaced_chunk",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        # Displaced chunk should be restored to IMPLEMENTING
+        content = displaced_goal.read_text()
+        assert "status: IMPLEMENTING" in content
