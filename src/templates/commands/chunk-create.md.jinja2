@@ -30,6 +30,25 @@ completely in order:
    provide a terse handle for thinking about what the work represents.
    Substitute this shortname below for the <shortname> placeholder.
 
+   **Cluster Seed Naming Guidance:** When naming this chunk, consider whether it
+   will seed a new cluster of related work. Good prefix names enable alphabetical
+   grouping that aids navigation. Ask yourself: **"What initiative does this
+   chunk advance?"** Use that initiative noun as the prefix.
+
+   - **Good prefixes** (initiative nouns): `ordering_`, `taskdir_`, `template_`,
+     `validation_`, `crossref_` — these describe the multi-chunk effort being
+     advanced
+   - **Bad prefixes** (artifact types or generic terms): `chunk_`, `fix_`, `cli_`,
+     `api_`, `util_`, `misc_`, `update_` — these create meaningless superclusters
+
+   If this chunk is derived from a narrative or investigation, look there for
+   the initiative name. For example, work from `docs/narratives/causal_ordering/`
+   might use the `ordering_` prefix.
+
+   **Note:** During `/chunk-plan`, the system will suggest renaming if similar
+   chunks exist. But the first chunk in a cluster is the critical naming decision
+   — subsequent chunks can inherit via similarity, but poor seed names cascade.
+
 2. And if the operator has referenced a ticket number, extract it and supply it to
    the command below where the placeholder <ticket number> is referenced. If no
    ticket number is referenced, pass no argument to the command below in the
