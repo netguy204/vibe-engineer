@@ -14,6 +14,9 @@ from models import (
     NarrativeStatus,
     SubsystemFrontmatter,
     SubsystemStatus,
+    FrictionTheme,
+    FrictionProposedChunk,
+    FrictionFrontmatter,
 )
 
 
@@ -345,3 +348,140 @@ class TestSymbolicReferenceWithProjectQualification:
         """Project with dots and hyphens in names validates."""
         ref = SymbolicReference(ref="my-org/my.project::src/foo.py#Bar", implements="Something")
         assert ref.ref == "my-org/my.project::src/foo.py#Bar"
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Tests for friction models
+class TestFrictionTheme:
+    """Tests for FrictionTheme model."""
+
+    def test_valid_theme_parses_successfully(self):
+        """Valid FrictionTheme with id and name parses correctly."""
+        theme = FrictionTheme(id="code-refs", name="Code Reference Friction")
+        assert theme.id == "code-refs"
+        assert theme.name == "Code Reference Friction"
+
+    def test_empty_id_rejected(self):
+        """Empty id is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionTheme(id="", name="Valid Name")
+        assert "id cannot be empty" in str(exc_info.value)
+
+    def test_whitespace_id_rejected(self):
+        """Whitespace-only id is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionTheme(id="   ", name="Valid Name")
+        assert "id cannot be empty" in str(exc_info.value)
+
+    def test_empty_name_rejected(self):
+        """Empty name is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionTheme(id="valid-id", name="")
+        assert "name cannot be empty" in str(exc_info.value)
+
+    def test_whitespace_name_rejected(self):
+        """Whitespace-only name is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionTheme(id="valid-id", name="   ")
+        assert "name cannot be empty" in str(exc_info.value)
+
+    def test_missing_id_rejected(self):
+        """Missing id field is rejected."""
+        with pytest.raises(ValidationError):
+            FrictionTheme(name="Valid Name")
+
+    def test_missing_name_rejected(self):
+        """Missing name field is rejected."""
+        with pytest.raises(ValidationError):
+            FrictionTheme(id="valid-id")
+
+
+class TestFrictionProposedChunk:
+    """Tests for FrictionProposedChunk model."""
+
+    def test_valid_proposed_chunk_parses(self):
+        """Valid FrictionProposedChunk parses correctly."""
+        chunk = FrictionProposedChunk(
+            prompt="Fix the code reference ambiguity issue",
+            chunk_directory="symbolic_code_refs",
+            addresses=["F001", "F003"],
+        )
+        assert chunk.prompt == "Fix the code reference ambiguity issue"
+        assert chunk.chunk_directory == "symbolic_code_refs"
+        assert chunk.addresses == ["F001", "F003"]
+
+    def test_empty_prompt_rejected(self):
+        """Empty prompt is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionProposedChunk(prompt="")
+        assert "prompt cannot be empty" in str(exc_info.value)
+
+    def test_whitespace_prompt_rejected(self):
+        """Whitespace-only prompt is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FrictionProposedChunk(prompt="   ")
+        assert "prompt cannot be empty" in str(exc_info.value)
+
+    def test_addresses_defaults_to_empty_list(self):
+        """addresses defaults to empty list when not provided."""
+        chunk = FrictionProposedChunk(prompt="Do something")
+        assert chunk.addresses == []
+
+    def test_chunk_directory_defaults_to_none(self):
+        """chunk_directory defaults to None when not provided."""
+        chunk = FrictionProposedChunk(prompt="Do something")
+        assert chunk.chunk_directory is None
+
+    def test_addresses_is_list_of_strings(self):
+        """addresses accepts a list of string IDs."""
+        chunk = FrictionProposedChunk(
+            prompt="Do something", addresses=["F001", "F002", "F003"]
+        )
+        assert chunk.addresses == ["F001", "F002", "F003"]
+
+
+class TestFrictionFrontmatter:
+    """Tests for FrictionFrontmatter model."""
+
+    def test_empty_frontmatter_parses(self):
+        """FrictionFrontmatter with empty arrays parses correctly."""
+        frontmatter = FrictionFrontmatter()
+        assert frontmatter.themes == []
+        assert frontmatter.proposed_chunks == []
+
+    def test_frontmatter_with_themes(self):
+        """FrictionFrontmatter with themes parses correctly."""
+        frontmatter = FrictionFrontmatter(
+            themes=[
+                {"id": "code-refs", "name": "Code Reference Friction"},
+                {"id": "templates", "name": "Template System Friction"},
+            ]
+        )
+        assert len(frontmatter.themes) == 2
+        assert frontmatter.themes[0].id == "code-refs"
+        assert frontmatter.themes[1].name == "Template System Friction"
+
+    def test_frontmatter_with_proposed_chunks(self):
+        """FrictionFrontmatter with proposed_chunks parses correctly."""
+        frontmatter = FrictionFrontmatter(
+            proposed_chunks=[
+                {
+                    "prompt": "Fix ambiguous refs",
+                    "chunk_directory": "symbolic_code_refs",
+                    "addresses": ["F001", "F003"],
+                },
+                {"prompt": "Add pre-commit hook", "chunk_directory": None, "addresses": ["F002"]},
+            ]
+        )
+        assert len(frontmatter.proposed_chunks) == 2
+        assert frontmatter.proposed_chunks[0].chunk_directory == "symbolic_code_refs"
+        assert frontmatter.proposed_chunks[1].chunk_directory is None
+
+    def test_themes_defaults_to_empty_list(self):
+        """themes defaults to empty list when not provided."""
+        frontmatter = FrictionFrontmatter(proposed_chunks=[])
+        assert frontmatter.themes == []
+
+    def test_proposed_chunks_defaults_to_empty_list(self):
+        """proposed_chunks defaults to empty list when not provided."""
+        frontmatter = FrictionFrontmatter(themes=[])
+        assert frontmatter.proposed_chunks == []

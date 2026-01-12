@@ -8,168 +8,299 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk implements the friction log artifact type following the established patterns in the codebase:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Template System Integration** - Create a `FRICTION.md.jinja2` template in `src/templates/trunk/` following the prototype design from `docs/investigations/friction_log_artifact/prototypes/FRICTION.md`. This integrates with `ve init` via the existing `render_to_directory("trunk", ...)` call in `project.py`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **CLI Command Group** - Add a new `friction` command group to `src/ve.py` with three subcommands:
+   - `ve friction log` - Append a new friction entry
+   - `ve friction list` - Display friction entries with filtering
+   - `ve friction analyze` - Group entries by tag and highlight clusters
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/friction_template_and_cli/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Business Logic Module** - Create a new `src/friction.py` module containing the `Friction` class with methods for parsing, appending, and querying the friction log. This follows the pattern of `chunks.py`, `narratives.py`, `investigations.py`.
+
+4. **Pydantic Models** - Add friction-related models to `src/models.py`:
+   - `FrictionTheme` - Theme identifier and name
+   - `FrictionProposedChunk` - Proposed chunk with `addresses` array linking to entry IDs
+   - `FrictionFrontmatter` - Parses the frontmatter structure
+
+5. **Test-Driven Development** - Following `docs/trunk/TESTING_PHILOSOPHY.md`:
+   - Write failing tests first for Friction class behavior
+   - Write failing CLI integration tests
+   - Then implement to make tests pass
+
+Key design decisions from the investigation:
+- **Prose entries in body** - Entries are markdown prose under `### FXXX: ...` headings
+- **Themes in frontmatter** - Categories emerge organically; agent sees existing themes
+- **Derived status** - Entry status (OPEN/ADDRESSED/RESOLVED) computed from `proposed_chunks.addresses`
+- **Single log per project** - Located at `docs/trunk/FRICTION.md`
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system for rendering `FRICTION.md.jinja2`. Follow the established patterns for trunk templates (`render_to_directory("trunk", ...)` in `project.py`).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add friction models to models.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add Pydantic models for friction log parsing:
 
-Example:
+```python
+class FrictionTheme(BaseModel):
+    """A friction theme/category in the frontmatter."""
+    id: str  # Short identifier like "code-refs"
+    name: str  # Human-readable name like "Code Reference Friction"
 
-### Step 1: Define the SegmentHeader struct
+class FrictionProposedChunk(BaseModel):
+    """A proposed chunk that addresses friction entries."""
+    prompt: str
+    chunk_directory: str | None = None
+    addresses: list[str] = []  # List of F-number IDs like ["F001", "F003"]
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+class FrictionFrontmatter(BaseModel):
+    """Frontmatter schema for FRICTION.md files."""
+    themes: list[FrictionTheme] = []
+    proposed_chunks: list[FrictionProposedChunk] = []
+```
 
-Location: src/segment/format.rs
+Location: `src/models.py`
 
-### Step 2: Implement header serialization
+**Tests first** (in `tests/test_models.py`):
+- Test FrictionTheme validation (id and name required)
+- Test FrictionProposedChunk validation (addresses is list of strings)
+- Test FrictionFrontmatter parsing
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 2: Create FRICTION.md.jinja2 template
 
-### Step 3: ...
+Create the friction log template based on the prototype structure:
 
+```markdown
+---
+themes: []
+proposed_chunks: []
 ---
 
-**BACKREFERENCE COMMENTS**
+# Friction Log
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+<!--
+GUIDANCE FOR AGENTS:
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+When appending a new friction entry:
+1. Read existing themes - cluster the new entry into an existing theme if it fits
+2. If no theme fits, add a new theme to frontmatter
+3. Assign the next sequential F-number ID
+4. Use the format: ### FXXX: YYYY-MM-DD [theme-id] Title
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+Entry status is DERIVED, not stored:
+- OPEN: Entry ID not in any proposed_chunks.addresses
+- ADDRESSED: Entry ID in proposed_chunks.addresses where chunk_directory is set
+- RESOLVED: Entry ID addressed by a chunk that has reached COMPLETE status
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
-
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
+When patterns emerge (3+ entries in a theme, or recurring pain):
+- Add a proposed_chunk to frontmatter with the entry IDs it would address
+- The prompt should describe the work, not just "fix friction"
 -->
+
+## Entries
+
+<!-- Friction entries will be appended below -->
+```
+
+Location: `src/templates/trunk/FRICTION.md.jinja2`
+
+**Test** (in `tests/test_init.py`):
+- Verify `ve init` creates `docs/trunk/FRICTION.md`
+- Verify FRICTION.md contains expected structure (frontmatter, guidance comment, Entries heading)
+
+### Step 3: Create friction.py business logic module
+
+Create the Friction class with methods for:
+- `parse_frontmatter()` - Parse YAML frontmatter into FrictionFrontmatter model
+- `parse_entries()` - Extract entries from body (ID, date, theme, title, content)
+- `get_next_entry_id()` - Return next sequential F-number (e.g., "F005")
+- `append_entry()` - Add new entry with correct formatting
+- `list_entries(status_filter, tags_filter)` - Query entries with filters
+- `get_entry_status(entry_id)` - Compute OPEN/ADDRESSED/RESOLVED from proposed_chunks
+
+```python
+@dataclass
+class FrictionEntry:
+    """Parsed friction entry from the log body."""
+    id: str  # e.g., "F001"
+    date: str  # e.g., "2026-01-12"
+    theme_id: str  # e.g., "code-refs"
+    title: str
+    content: str  # Full markdown content after the heading
+
+class Friction:
+    def __init__(self, project_dir: pathlib.Path):
+        self.project_dir = project_dir
+        self.friction_path = project_dir / "docs" / "trunk" / "FRICTION.md"
+```
+
+Location: `src/friction.py`
+
+**Tests first** (in `tests/test_friction.py`):
+- `test_parse_frontmatter_empty` - New friction log with empty arrays
+- `test_parse_frontmatter_with_themes` - Log with themes
+- `test_parse_entries_extracts_fields` - Verify entry parsing
+- `test_get_next_entry_id_empty` - Returns "F001" for empty log
+- `test_get_next_entry_id_sequential` - Returns "F004" when F001-F003 exist
+- `test_append_entry_creates_entry` - Entry appended with correct format
+- `test_get_entry_status_open` - Entry not in proposed_chunks
+- `test_get_entry_status_addressed` - Entry in proposed_chunks with chunk_directory
+- `test_list_entries_all` - Returns all entries
+- `test_list_entries_filter_status` - Filter by OPEN/ADDRESSED
+- `test_list_entries_filter_tags` - Filter by theme tag
+
+### Step 4: Implement `ve friction log` CLI command
+
+Add the friction command group and log subcommand:
+
+```python
+@cli.group()
+def friction():
+    """Friction log commands"""
+    pass
+
+@friction.command("log")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--title", prompt="Title", help="Brief title for the friction entry")
+@click.option("--description", prompt="Description", help="Detailed description of the friction")
+@click.option("--impact", prompt="Impact", type=click.Choice(["low", "medium", "high", "blocking"]), help="Severity of the friction")
+@click.option("--theme", prompt="Theme", help="Theme ID (or 'new' to create)")
+def log_entry(project_dir, title, description, impact, theme):
+    """Log a new friction entry."""
+```
+
+The command should:
+1. Load existing friction log and parse frontmatter
+2. Display existing themes for user reference
+3. Handle "new" theme by prompting for theme id and name
+4. Generate next F-number ID
+5. Append entry in correct format
+6. Update frontmatter if new theme added
+
+Location: `src/ve.py`
+
+**Tests first** (in `tests/test_friction_cli.py`):
+- `test_friction_log_command_exists` - Help text available
+- `test_friction_log_creates_entry` - Entry appears in file
+- `test_friction_log_increments_id` - Sequential ID assignment
+- `test_friction_log_new_theme` - New theme added to frontmatter
+- `test_friction_log_existing_theme` - No frontmatter change for existing theme
+
+### Step 5: Implement `ve friction list` CLI command
+
+```python
+@friction.command("list")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--open", "status_open", is_flag=True, help="Show only OPEN entries")
+@click.option("--tags", multiple=True, help="Filter by theme tags")
+def list_entries(project_dir, status_open, tags):
+    """List friction entries."""
+```
+
+Output format:
+```
+F001 [OPEN] [code-refs] Symbolic references become ambiguous
+F002 [ADDRESSED] [templates] Rendered files easy to edit by mistake
+```
+
+Location: `src/ve.py`
+
+**Tests first** (in `tests/test_friction_cli.py`):
+- `test_friction_list_command_exists` - Help text available
+- `test_friction_list_shows_all_entries` - Default lists all
+- `test_friction_list_open_filter` - --open shows only OPEN
+- `test_friction_list_tags_filter` - --tags filters by theme
+- `test_friction_list_empty` - "No friction entries found" for empty log
+
+### Step 6: Implement `ve friction analyze` CLI command
+
+```python
+@friction.command("analyze")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--tags", multiple=True, help="Filter analysis to specific themes")
+def analyze(project_dir, tags):
+    """Analyze friction patterns and suggest actions."""
+```
+
+Output format:
+```
+## Friction Analysis
+
+### code-refs (3 entries) ⚠️ Pattern Detected
+- F001: Symbolic references become ambiguous
+- F003: No validation that code references resolve
+- F005: Ambiguous function names in CLI
+
+Consider creating a chunk or investigation to address this pattern.
+
+### templates (2 entries)
+- F002: Rendered files easy to edit by mistake
+- F004: Template changes not detected by init
+```
+
+The ⚠️ indicator appears for themes with 3+ entries.
+
+Location: `src/ve.py`
+
+**Tests first** (in `tests/test_friction_cli.py`):
+- `test_friction_analyze_command_exists` - Help text available
+- `test_friction_analyze_groups_by_theme` - Entries grouped correctly
+- `test_friction_analyze_highlights_clusters` - 3+ entries get indicator
+- `test_friction_analyze_tags_filter` - --tags filters analysis
+- `test_friction_analyze_empty` - "No friction entries found" for empty log
+
+### Step 7: Add backreference comments and update GOAL.md code_paths
+
+Add backreference comments to new code:
+```python
+# Chunk: docs/chunks/friction_template_and_cli - Friction log artifact type
+```
+
+Update `docs/chunks/friction_template_and_cli/GOAL.md` frontmatter with:
+```yaml
+code_paths:
+  - src/friction.py
+  - src/models.py
+  - src/ve.py
+  - src/templates/trunk/FRICTION.md.jinja2
+  - tests/test_friction.py
+  - tests/test_friction_cli.py
+```
+
+### Step 8: Run full test suite and fix any issues
+
+```bash
+uv run pytest tests/
+```
+
+Verify:
+- All new tests pass
+- No regressions in existing tests
+- `ve init` creates FRICTION.md
+- `ve friction log/list/analyze` work end-to-end
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. Uses existing libraries:
+- `click` for CLI
+- `pydantic` for validation
+- `jinja2` for templates
+- `pyyaml` for frontmatter parsing
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Entry heading format parsing**: The regex for parsing `### FXXX: YYYY-MM-DD [theme-id] Title` needs to be robust to handle edge cases (missing brackets, extra whitespace, etc.). Mitigation: comprehensive test cases for malformed entries.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Multi-line entry content**: Entries span from one heading to the next. Need to correctly capture all content including **Impact** and **Frequency** lines. Mitigation: test with realistic multi-line entries.
+
+3. **Concurrent edits**: If the friction log is edited manually while `ve friction log` runs, changes could be lost. Mitigation: Out of scope for this chunk; document as a known limitation.
+
+4. **Large friction logs**: With many entries, performance of parsing could degrade. Mitigation: Keep it simple for now; optimize later if needed. The investigation suggested archiving RESOLVED entries to a separate file if the log grows large.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- To be populated during implementation -->

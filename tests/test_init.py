@@ -167,3 +167,23 @@ class TestInitCommand:
         content = gitignore.read_text()
         # Entry should appear exactly once
         assert content.count(".artifact-order.json") == 1
+
+    # Chunk: docs/chunks/friction_template_and_cli - Friction log initialization test
+    def test_init_creates_friction_log(self, runner, temp_project):
+        """ve init creates docs/trunk/FRICTION.md from template."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        friction_path = temp_project / "docs" / "trunk" / "FRICTION.md"
+        assert friction_path.exists()
+
+        content = friction_path.read_text()
+        # Verify expected structure
+        assert "themes: []" in content
+        assert "proposed_chunks: []" in content
+        assert "# Friction Log" in content
+        assert "GUIDANCE FOR AGENTS" in content
+        assert "## Entries" in content

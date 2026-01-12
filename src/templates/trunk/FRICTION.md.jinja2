@@ -1,0 +1,29 @@
+---
+themes: []
+proposed_chunks: []
+---
+
+# Friction Log
+
+<!--
+GUIDANCE FOR AGENTS:
+
+When appending a new friction entry:
+1. Read existing themes - cluster the new entry into an existing theme if it fits
+2. If no theme fits, add a new theme to frontmatter
+3. Assign the next sequential F-number ID
+4. Use the format: ### FXXX: YYYY-MM-DD [theme-id] Title
+
+Entry status is DERIVED, not stored:
+- OPEN: Entry ID not in any proposed_chunks.addresses
+- ADDRESSED: Entry ID in proposed_chunks.addresses where chunk_directory is set
+- RESOLVED: Entry ID addressed by a chunk that has reached COMPLETE status
+
+When patterns emerge (3+ entries in a theme, or recurring pain):
+- Add a proposed_chunk to frontmatter with the entry IDs it would address
+- The prompt should describe the work, not just "fix friction"
+-->
+
+## Entries
+
+<!-- Friction entries will be appended below -->

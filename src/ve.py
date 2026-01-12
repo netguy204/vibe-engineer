@@ -2446,5 +2446,145 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/friction_template_and_cli - Friction log commands
+@cli.group()
+def friction():
+    """Friction log commands."""
+    pass
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Log a new friction entry
+@friction.command("log")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--title", prompt="Title", help="Brief title for the friction entry")
+@click.option(
+    "--description",
+    prompt="Description",
+    help="Detailed description of the friction",
+)
+@click.option(
+    "--impact",
+    prompt="Impact",
+    type=click.Choice(["low", "medium", "high", "blocking"]),
+    help="Severity of the friction",
+)
+@click.option("--theme", prompt="Theme ID (or 'new' to create)", help="Theme ID to cluster the entry under")
+def log_entry(project_dir, title, description, impact, theme):
+    """Log a new friction entry."""
+    from friction import Friction
+
+    friction_log = Friction(project_dir)
+
+    if not friction_log.exists():
+        click.echo("Error: Friction log does not exist. Run 've init' first.", err=True)
+        raise SystemExit(1)
+
+    # Display existing themes for reference
+    themes = friction_log.get_themes()
+    if themes:
+        click.echo("\nExisting themes:")
+        for t in themes:
+            click.echo(f"  - {t.id}: {t.name}")
+
+    # Handle new theme creation
+    theme_name = None
+    if theme == "new" or theme not in {t.id for t in themes}:
+        if theme == "new":
+            theme = click.prompt("New theme ID (e.g., 'code-refs')")
+        # It's a new theme - prompt for name
+        theme_name = click.prompt(f"Name for theme '{theme}' (e.g., 'Code Reference Friction')")
+
+    try:
+        entry_id = friction_log.append_entry(
+            title=title,
+            description=description,
+            impact=impact,
+            theme_id=theme,
+            theme_name=theme_name,
+        )
+        click.echo(f"\nCreated friction entry: {entry_id}")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+# Chunk: docs/chunks/friction_template_and_cli - List friction entries
+@friction.command("list")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--open", "status_open", is_flag=True, help="Show only OPEN entries")
+@click.option("--tags", multiple=True, help="Filter by theme tags")
+def list_entries(project_dir, status_open, tags):
+    """List friction entries."""
+    from friction import Friction, FrictionStatus
+
+    friction_log = Friction(project_dir)
+
+    if not friction_log.exists():
+        click.echo("Error: Friction log does not exist. Run 've init' first.", err=True)
+        raise SystemExit(1)
+
+    # Apply status filter
+    status_filter = FrictionStatus.OPEN if status_open else None
+
+    # Apply theme filter (first tag only for simplicity)
+    theme_filter = tags[0] if tags else None
+
+    entries = friction_log.list_entries(status_filter=status_filter, theme_filter=theme_filter)
+
+    if not entries:
+        click.echo("No friction entries found", err=True)
+        raise SystemExit(0)
+
+    for entry, status in entries:
+        click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
+
+
+# Chunk: docs/chunks/friction_template_and_cli - Analyze friction patterns
+@friction.command("analyze")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--tags", multiple=True, help="Filter analysis to specific themes")
+def analyze(project_dir, tags):
+    """Analyze friction patterns and suggest actions."""
+    from friction import Friction
+
+    friction_log = Friction(project_dir)
+
+    if not friction_log.exists():
+        click.echo("Error: Friction log does not exist. Run 've init' first.", err=True)
+        raise SystemExit(1)
+
+    # Apply theme filter (first tag only for simplicity)
+    theme_filter = tags[0] if tags else None
+
+    analysis = friction_log.analyze_by_theme(theme_filter=theme_filter)
+
+    if not analysis:
+        click.echo("No friction entries found", err=True)
+        raise SystemExit(0)
+
+    click.echo("## Friction Analysis\n")
+
+    # Get theme metadata for names
+    themes = {t.id: t.name for t in friction_log.get_themes()}
+
+    for theme_id, entries in sorted(analysis.items()):
+        count = len(entries)
+        theme_name = themes.get(theme_id, theme_id)
+
+        # Show warning indicator for patterns (3+ entries)
+        if count >= 3:
+            click.echo(f"### {theme_id} ({count} entries) ⚠️ Pattern Detected")
+        else:
+            click.echo(f"### {theme_id} ({count} entries)")
+
+        for entry, status in entries:
+            click.echo(f"- {entry.id}: {entry.title}")
+
+        if count >= 3:
+            click.echo("\nConsider creating a chunk or investigation to address this pattern.\n")
+        else:
+            click.echo()
+
+
 if __name__ == "__main__":
     cli()
