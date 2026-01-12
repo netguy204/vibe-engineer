@@ -1,6 +1,7 @@
 # Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
 # Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
+# Chunk: docs/chunks/orch_attention_queue - Answer injection on resume
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -397,6 +398,12 @@ class Scheduler:
             log_dir = self.worktree_manager.get_log_path(chunk)
             log_callback = create_log_callback(chunk, phase, log_dir)
 
+            # Chunk: docs/chunks/orch_attention_queue - Pass pending answer on resume
+            # Check if there's a pending answer to inject
+            pending_answer = work_unit.pending_answer
+            if pending_answer:
+                logger.info(f"Injecting pending answer for {chunk}")
+
             # Run the agent
             logger.info(f"Running agent for {chunk} phase {phase.value}")
             result = await self.agent_runner.run_phase(
@@ -404,8 +411,15 @@ class Scheduler:
                 phase=phase,
                 worktree_path=worktree_path,
                 resume_session_id=work_unit.session_id,
+                answer=pending_answer,
                 log_callback=log_callback,
             )
+
+            # Clear pending_answer after successful dispatch
+            if pending_answer:
+                work_unit.pending_answer = None
+                work_unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(work_unit)
 
             # Handle result
             await self._handle_agent_result(work_unit, result)

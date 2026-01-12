@@ -9,7 +9,10 @@ code_references:
 narrative: null
 investigation: null
 subsystems: []
-created_after: ["narrative_backreference_support", "orch_inject_path_compat", "orch_submit_future_cmd"]
+created_after:
+- narrative_backreference_support
+- orch_inject_path_compat
+- orch_submit_future_cmd
 ---
 
 # Chunk Goal

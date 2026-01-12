@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_attention_queue - Attention queue client methods
 """HTTP client for communicating with the orchestrator daemon.
 
 Provides a Python interface for CLI commands to interact with the daemon.
@@ -241,6 +242,32 @@ class OrchestratorClient:
             Status history
         """
         return self._request("GET", f"/work-units/{chunk}/history")
+
+    # Attention queue methods
+
+    def get_attention_queue(self) -> dict:
+        """Get the prioritized attention queue.
+
+        Returns:
+            Dict with attention_items list and count
+        """
+        return self._request("GET", "/attention")
+
+    def answer_work_unit(self, chunk: str, answer: str) -> dict:
+        """Submit an answer to a NEEDS_ATTENTION work unit.
+
+        Args:
+            chunk: Chunk name
+            answer: Operator's answer text
+
+        Returns:
+            Updated work unit details
+        """
+        return self._request(
+            "POST",
+            f"/work-units/{chunk}/answer",
+            json={"answer": answer},
+        )
 
 
 def create_client(project_dir: Path, timeout: float = 10.0) -> OrchestratorClient:

@@ -1,96 +1,54 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/orchestrator/api.py
+- src/orchestrator/state.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/agent.py
+- src/orchestrator/client.py
+- src/ve.py
+- tests/test_orchestrator_attention.py
+- tests/test_orchestrator_cli.py
+- tests/test_orchestrator_api.py
+code_references:
+  - ref: src/orchestrator/api.py#_get_goal_summary
+    implements: "Extract goal summary from chunk's GOAL.md Minor Goal section"
+  - ref: src/orchestrator/api.py#attention_endpoint
+    implements: "GET /attention endpoint returning prioritized queue with enriched items"
+  - ref: src/orchestrator/api.py#answer_endpoint
+    implements: "POST /work-units/{chunk}/answer endpoint for submitting answers"
+  - ref: src/orchestrator/state.py#StateStore::_migrate_v6
+    implements: "Database migration adding pending_answer column"
+  - ref: src/orchestrator/state.py#StateStore::get_attention_queue
+    implements: "Query NEEDS_ATTENTION work units ordered by blocks count and time"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
+    implements: "Pass pending_answer to agent runner on resume"
+  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
+    implements: "Accept and inject answer parameter when resuming sessions"
+  - ref: src/orchestrator/models.py#WorkUnit
+    implements: "pending_answer field for storing operator answers until resume"
+  - ref: src/orchestrator/client.py#OrchestratorClient::get_attention_queue
+    implements: "Client method to call GET /attention endpoint"
+  - ref: src/orchestrator/client.py#OrchestratorClient::answer_work_unit
+    implements: "Client method to call POST /work-units/{chunk}/answer endpoint"
+  - ref: src/ve.py#orch_attention
+    implements: "ve orch attention CLI command showing attention queue"
+  - ref: src/ve.py#orch_answer
+    implements: "ve orch answer CLI command to answer questions and resume"
+  - ref: tests/test_orchestrator_attention.py
+    implements: "Tests for attention queue and pending_answer persistence"
+  - ref: tests/test_orchestrator_api.py#TestAttentionEndpoint
+    implements: "Tests for GET /attention API endpoint"
+  - ref: tests/test_orchestrator_api.py#TestAnswerEndpoint
+    implements: "Tests for POST /work-units/{chunk}/answer API endpoint"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
-created_after: ["orch_attention_reason"]
+created_after:
+- orch_attention_reason
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to completed
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "0001-validation"
-      relationship: implements
-    - subsystem_id: "0002-frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
--->
 
 # Chunk Goal
 
