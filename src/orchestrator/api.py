@@ -24,6 +24,7 @@ from orchestrator.models import (
     WorkUnitStatus,
 )
 from orchestrator.state import StateStore, get_default_db_path
+from orchestrator.worktree import WorktreeManager
 
 
 # Global state store - initialized when app is created
@@ -219,6 +220,15 @@ async def delete_work_unit_endpoint(request: Request) -> JSONResponse:
     deleted = store.delete_work_unit(chunk)
     if not deleted:
         return _not_found_response("Work unit", chunk)
+
+    # Remove worktree and branch to prevent stale branch reuse on re-inject
+    if _project_dir:
+        try:
+            worktree_manager = WorktreeManager(_project_dir)
+            worktree_manager.remove_worktree(chunk, remove_branch=True)
+        except Exception:
+            # Worktree cleanup is best-effort; don't fail the delete
+            pass
 
     return JSONResponse({"deleted": True, "chunk": chunk})
 
