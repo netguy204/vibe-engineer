@@ -177,17 +177,17 @@ class TestDuplicateDetection:
 
     def test_allows_duplicate_when_confirmed(self, runner, temp_project):
         """Duplicate detection allows proceeding with different short_name."""
-        # Create first chunk
+        # Create first chunk as FUTURE (to avoid IMPLEMENTING guard)
         result1 = runner.invoke(
             cli,
-            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "VE-001", "--future", "--project-dir", str(temp_project)]
         )
         assert result1.exit_code == 0
 
-        # Create with different short_name - no prompt needed
+        # Create with different short_name - no prompt needed (also FUTURE)
         result2 = runner.invoke(
             cli,
-            ["chunk", "start", "feature2", "VE-001", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature2", "VE-001", "--future", "--project-dir", str(temp_project)]
         )
         assert result2.exit_code == 0
 
@@ -197,17 +197,17 @@ class TestDuplicateDetection:
 
     def test_yes_flag_skips_prompt(self, runner, temp_project):
         """--yes flag bypasses duplicate confirmation prompt when creating with different names."""
-        # Create first chunk
+        # Create first chunk as FUTURE (to avoid IMPLEMENTING guard)
         result1 = runner.invoke(
             cli,
-            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "VE-001", "--future", "--project-dir", str(temp_project)]
         )
         assert result1.exit_code == 0
 
-        # Create chunk with different name - --yes flag still works
+        # Create chunk with different name - --yes flag still works (also FUTURE)
         result2 = runner.invoke(
             cli,
-            ["chunk", "start", "feature2", "VE-001", "--yes", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature2", "VE-001", "--yes", "--future", "--project-dir", str(temp_project)]
         )
         assert result2.exit_code == 0
 
@@ -335,3 +335,67 @@ class TestFutureFlag:
         result = runner.invoke(cli, ["chunk", "start", "--help"])
         assert result.exit_code == 0
         assert "--future" in result.output
+
+
+class TestImplementingGuard:
+    """Tests for guard preventing multiple IMPLEMENTING chunks.
+
+    # Chunk: docs/chunks/chunk_create_guard - Tests for IMPLEMENTING guard
+    """
+
+    def test_start_fails_when_implementing_exists(self, runner, temp_project):
+        """Cannot start new chunk when another is IMPLEMENTING."""
+        # Create an IMPLEMENTING chunk first
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "first_chunk", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Try to create a second IMPLEMENTING chunk
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "second_chunk", "--project-dir", str(temp_project)]
+        )
+        assert result2.exit_code != 0
+        assert "first_chunk" in result2.output
+        assert "IMPLEMENTING" in result2.output
+
+    def test_start_error_suggests_complete(self, runner, temp_project):
+        """Error message suggests running 've chunk complete'."""
+        # Create an IMPLEMENTING chunk first
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "first_chunk", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Try to create a second IMPLEMENTING chunk
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "second_chunk", "--project-dir", str(temp_project)]
+        )
+        assert result2.exit_code != 0
+        assert "ve chunk complete" in result2.output
+
+    def test_future_flag_bypasses_guard(self, runner, temp_project):
+        """--future flag allows creating chunk while another is IMPLEMENTING."""
+        # Create an IMPLEMENTING chunk first
+        result1 = runner.invoke(
+            cli,
+            ["chunk", "start", "implementing_chunk", "--project-dir", str(temp_project)]
+        )
+        assert result1.exit_code == 0
+
+        # Create a FUTURE chunk - should succeed
+        result2 = runner.invoke(
+            cli,
+            ["chunk", "start", "future_chunk", "--future", "--project-dir", str(temp_project)]
+        )
+        assert result2.exit_code == 0, f"Failed with: {result2.output}"
+
+        # Verify both chunks exist
+        chunk_dir = temp_project / "docs" / "chunks"
+        chunk_names = [d.name for d in chunk_dir.iterdir()]
+        assert "implementing_chunk" in chunk_names
+        assert "future_chunk" in chunk_names

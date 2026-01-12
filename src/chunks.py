@@ -252,6 +252,16 @@ class Chunks:
                 f"Chunk with short_name '{short_name}' already exists: {duplicates[0]}"
             )
 
+        # Chunk: docs/chunks/chunk_create_guard - Prevent multiple IMPLEMENTING chunks
+        # Only guard non-FUTURE chunk creation
+        if status != "FUTURE":
+            current = self.get_current_chunk()
+            if current is not None:
+                raise ValueError(
+                    f"Cannot create: chunk '{current}' is already IMPLEMENTING. "
+                    f"Run 've chunk complete' first."
+                )
+
         # Get current chunk tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.CHUNK)
