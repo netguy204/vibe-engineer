@@ -1,5 +1,6 @@
 """Shared pytest fixtures for vibe-engineer tests."""
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -14,6 +15,19 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 from ve import cli
 from chunks import Chunks
 from project import Project, InitResult
+
+
+@pytest.fixture(autouse=True)
+def clean_git_environment(monkeypatch):
+    """Remove GIT_DIR and GIT_WORK_TREE env vars during tests.
+
+    These environment variables can leak from worktree context and cause
+    git commands to target the wrong repository during tests. This fixture
+    runs automatically for all tests.
+    """
+    for var in list(os.environ.keys()):
+        if var.startswith("GIT_"):
+            monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture
@@ -35,12 +49,16 @@ def make_ve_initialized_git_repo(path, remote_url=None):
     Creates a git repo with docs/{chunks,narratives,investigations,subsystems}
     directories and an initial commit so HEAD exists.
 
+    Note: Relies on clean_git_environment fixture to remove GIT_DIR/GIT_WORK_TREE
+    environment variables that could interfere with git commands.
+
     Args:
         path: Path where the repository will be created
         remote_url: Optional remote URL to configure as 'origin'
     """
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
+
+    subprocess.run(["git", "init", "-b", "main"], cwd=path, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
         cwd=path,
