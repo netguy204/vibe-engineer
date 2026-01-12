@@ -99,6 +99,28 @@ CHUNK ARTIFACTS:
 - These artifacts help future archaeologists understand what the chunk did
 - Unlike code in src/, chunk artifacts are not expected to be maintained long-term
 - Examples: data migration scripts, one-time fixups, analysis tools used during implementation
+
+CREATED_AFTER:
+- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
+- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
+- Tips must be ACTIVE chunks (shipped work that has been merged)
+- Example: created_after: ["auth_refactor", "api_cleanup"]
+
+IMPORTANT - created_after is NOT implementation dependencies:
+- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
+- It does NOT mean "chunks that must be implemented before this one can work"
+- FUTURE chunks can NEVER be tips (they haven't shipped yet)
+
+COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
+represent design dependencies. This is WRONG. If chunk B conceptually depends on
+chunk A's implementation, but A is still FUTURE, B's created_after should still
+reference the current ACTIVE tips, not A.
+
+WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
+- Investigation proposed_chunks ordering (earlier = implement first)
+- Narrative chunk sequencing in OVERVIEW.md
+- Design documents describing the intended build order
+- The `created_after` field will naturally reflect this once chunks ship
 -->
 
 # Chunk Goal
