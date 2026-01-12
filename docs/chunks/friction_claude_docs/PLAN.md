@@ -8,168 +8,86 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add documentation for the Friction Log artifact type to the CLAUDE.md.jinja2 template. The content will be placed in the artifact documentation hierarchy alongside Chunks, Narratives, Subsystems, and Investigations.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Key aspects:
+1. **Mirror existing documentation patterns**: Follow the structure used for other artifact types (location, file format, status values, when to use)
+2. **Emphasize unique characteristics**: Friction logs differ from other artifacts in being accumulative ledgers with entry-level (not artifact-level) lifecycle
+3. **Reference the canonical location**: `docs/trunk/FRICTION.md`
+4. **Document the slash command**: `/friction-log` for quick capture
+5. **Explain the bidirectional linking**: How chunks reference friction via `friction_entries`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/friction_claude_docs/GOAL.md)
-with references to the files that you expect to touch.
--->
+This is documentation-only work - no tests needed since CLAUDE.md content is verified by `ve init` regeneration.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are directly relevant. This chunk adds documentation to the template system but doesn't modify template rendering behavior.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add Friction Log section to CLAUDE.md.jinja2
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new section `## Friction Log (\`docs/trunk/FRICTION.md\`)` to the template. Position it after the "Investigations" section to maintain the artifact hierarchy flow (from work units to exploratory artifacts to accumulative artifacts).
 
-Example:
+Content to document:
+- **What friction logs are**: Accumulative ledgers for capturing pain points over time
+- **How they differ from other artifacts**:
+  - Indefinite lifespan (not bounded like investigations or chunks)
+  - Many entries per artifact (ledger, not document)
+  - No artifact-level status (always "active")
+- **Entry structure**: `### FXXX: YYYY-MM-DD [theme-id] Title`
+- **Themes**: Categories that emerge organically as entries accumulate
+- **Entry lifecycle**: OPEN → ADDRESSED → RESOLVED (derived from proposed_chunks links)
+- **How friction spawns work**: When patterns emerge, add proposed_chunks with addresses linking to entry IDs
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/templates/claude/CLAUDE.md.jinja2`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a Jinja chunk backreference comment: `{# Chunk: docs/chunks/friction_claude_docs - Friction log documentation #}`
 
-Location: src/segment/format.rs
+### Step 2: Update "When to use each artifact type" guidance
 
-### Step 2: Implement header serialization
+Extend the existing guidance block that explains when to use investigations vs chunks vs narratives. Add friction logs to this list:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+- **Friction Log**: When you encounter a pain point that doesn't need immediate action but should be remembered. Captures friction over time; patterns emerge organically.
 
-### Step 3: ...
+This helps agents choose the right artifact type for their situation.
 
----
+Location: Within the Investigations section of `src/templates/claude/CLAUDE.md.jinja2`
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Add /friction-log to Available Commands
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+Add the friction log command to the "Available Commands" section:
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+- `/friction-log` - Capture a friction point for later pattern analysis
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+Location: `src/templates/claude/CLAUDE.md.jinja2` in the Available Commands list
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+### Step 4: Document friction_entries in Chunk Frontmatter References
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+Extend the "Chunk Frontmatter References" section to mention the `friction_entries` field:
+
+- **friction_entries**: Links to friction log entries this chunk addresses (provides "why did we do this work?" traceability)
+
+This documents the bidirectional link from chunks back to friction.
+
+Location: `src/templates/claude/CLAUDE.md.jinja2` in the Chunk Frontmatter References subsection
+
+### Step 5: Regenerate CLAUDE.md and verify
+
+Run `uv run ve init` to regenerate CLAUDE.md from the updated template. Verify:
+1. The Friction Log section appears in the rendered output
+2. Section ordering is correct (after Investigations)
+3. `/friction-log` appears in Available Commands
+4. `friction_entries` appears in Chunk Frontmatter References
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **friction_template_and_cli** (ACTIVE): The friction log artifact must exist before we document it. This chunk is complete.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **friction_entries not yet implemented**: The `friction_chunk_linking` chunk that adds `friction_entries` to the chunk template is still FUTURE. We'll document the field in CLAUDE.md regardless, since the investigation has already designed it and documentation can precede implementation. If the field design changes during implementation, CLAUDE.md would need updating.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populate during implementation -->
