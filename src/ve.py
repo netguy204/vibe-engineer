@@ -1830,15 +1830,19 @@ def orch():
 
 
 # Chunk: docs/chunks/orch_foundation - Start daemon command
+# Chunk: docs/chunks/orch_tcp_port - TCP port and host options
 @orch.command()
+@click.option("--port", type=int, default=0, help="TCP port for dashboard (0 = auto-select)")
+@click.option("--host", type=str, default="127.0.0.1", help="Host to bind TCP server to")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def start(project_dir):
+def start(port, host, project_dir):
     """Start the orchestrator daemon."""
     from orchestrator.daemon import start_daemon, DaemonError
 
     try:
-        pid = start_daemon(project_dir)
+        pid, actual_port = start_daemon(project_dir, port=port, host=host)
         click.echo(f"Orchestrator daemon started (PID {pid})")
+        click.echo(f"Dashboard available at http://{host}:{actual_port}/")
     except DaemonError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

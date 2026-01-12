@@ -12,11 +12,12 @@ import fcntl
 import logging
 import os
 import signal
+import socket
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import uvicorn
 
@@ -72,6 +73,44 @@ def get_log_path(project_dir: Path) -> Path:
         Path to the log file
     """
     return project_dir / ".ve" / "orchestrator.log"
+
+
+# Chunk: docs/chunks/orch_tcp_port - Port file path helper
+def get_port_path(project_dir: Path) -> Path:
+    """Get the port file path for a project.
+
+    The port file is used to communicate the TCP port from the daemon child
+    process to the parent process at startup.
+
+    Args:
+        project_dir: The project directory
+
+    Returns:
+        Path to the port file
+    """
+    return project_dir / ".ve" / "orchestrator.port"
+
+
+# Chunk: docs/chunks/orch_tcp_port - Port discovery helper
+def find_available_port(host: str = "127.0.0.1") -> int:
+    """Find an available TCP port by binding to port 0.
+
+    This uses the standard pattern of binding to port 0, which lets the OS
+    assign an available port. There is a small race condition window between
+    closing this socket and binding the actual server, but this is the standard
+    approach for ephemeral ports.
+
+    Args:
+        host: The host to bind to for port discovery
+
+    Returns:
+        An available port number
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
 
 
 def read_pid_file(pid_path: Path) -> Optional[int]:
@@ -270,14 +309,17 @@ def _daemonize() -> None:
     # Note: stdout/stderr will be redirected to log file by start_daemon
 
 
-def start_daemon(project_dir: Path) -> int:
+# Chunk: docs/chunks/orch_tcp_port - TCP port support in start_daemon
+def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> Tuple[int, int]:
     """Start the orchestrator daemon.
 
     Args:
         project_dir: The project directory
+        port: TCP port for dashboard (0 = auto-select)
+        host: Host to bind TCP server to
 
     Returns:
-        The PID of the started daemon
+        Tuple of (PID of the started daemon, TCP port)
 
     Raises:
         DaemonError: If daemon is already running or startup fails
@@ -294,13 +336,16 @@ def start_daemon(project_dir: Path) -> int:
     pid_path = get_pid_path(project_dir)
     socket_path = get_socket_path(project_dir)
     log_path = get_log_path(project_dir)
+    port_path = get_port_path(project_dir)
 
     # Ensure .ve directory exists
     pid_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Clean up stale socket if exists
+    # Clean up stale socket and port file if exists
     if socket_path.exists():
         socket_path.unlink()
+    if port_path.exists():
+        port_path.unlink()
 
     # Fork to create daemon
     try:
@@ -309,14 +354,30 @@ def start_daemon(project_dir: Path) -> int:
         raise DaemonError(f"Fork failed: {e}")
 
     if pid > 0:
-        # Parent process - wait a bit for daemon to start
-        time.sleep(0.5)
+        # Parent process - wait for daemon to start and write port file
+        timeout = 5.0
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if port_path.exists():
+                break
+            time.sleep(0.1)
 
         # Verify daemon started
         if not is_daemon_running(project_dir):
             raise DaemonError("Daemon failed to start - check logs")
 
-        return read_pid_file(pid_path)
+        # Read the actual port from the port file
+        actual_port = None
+        if port_path.exists():
+            try:
+                actual_port = int(port_path.read_text().strip())
+            except (ValueError, IOError):
+                pass
+
+        if actual_port is None:
+            raise DaemonError("Daemon started but failed to report TCP port")
+
+        return read_pid_file(pid_path), actual_port
 
     # Child process - become daemon
     try:
@@ -335,6 +396,7 @@ def start_daemon(project_dir: Path) -> int:
         # Register cleanup
         atexit.register(lambda: _remove_pid_file(pid_path))
         atexit.register(lambda: socket_path.unlink() if socket_path.exists() else None)
+        atexit.register(lambda: port_path.unlink() if port_path.exists() else None)
 
         # Set up signal handlers
         def handle_term(signum, frame):
@@ -369,6 +431,9 @@ def start_daemon(project_dir: Path) -> int:
             project_dir=project_dir,
             config=orch_config,
             base_branch=base_branch,
+            port=port,
+            host=host,
+            port_path=port_path,
         ))
 
     except Exception as e:
@@ -447,6 +512,7 @@ def _load_config(store: StateStore) -> OrchestratorConfig:
     return config
 
 
+# Chunk: docs/chunks/orch_tcp_port - Dual listener support
 async def _run_daemon_async(
     app,
     socket_path: Path,
@@ -454,8 +520,14 @@ async def _run_daemon_async(
     project_dir: Path,
     config: OrchestratorConfig,
     base_branch: str,
+    port: int = 0,
+    host: str = "127.0.0.1",
+    port_path: Optional[Path] = None,
 ) -> None:
     """Run the daemon with scheduler as async tasks.
+
+    Runs dual servers: one on Unix socket for CLI communication, and one on
+    TCP for browser dashboard access.
 
     Args:
         app: Starlette application
@@ -464,20 +536,41 @@ async def _run_daemon_async(
         project_dir: Project directory
         config: Orchestrator config
         base_branch: Git branch to use as base for worktrees
+        port: TCP port for dashboard (0 = auto-select)
+        host: Host to bind TCP server to
+        port_path: Path to write the actual port for parent process communication
     """
     from orchestrator.scheduler import create_scheduler
 
     # Create scheduler with base branch
     scheduler = create_scheduler(store, project_dir, config, base_branch)
 
-    # Create uvicorn server
-    uvicorn_config = uvicorn.Config(
+    # Resolve port if auto-selecting
+    actual_port = port if port != 0 else find_available_port(host)
+
+    # Write port to file for parent process to read
+    if port_path:
+        port_path.write_text(f"{actual_port}\n")
+        logger.info(f"Dashboard available at http://{host}:{actual_port}/")
+
+    # Create Unix socket server (for CLI communication)
+    socket_config = uvicorn.Config(
         app,
         uds=str(socket_path),
         log_level="info",
         access_log=True,
     )
-    server = uvicorn.Server(uvicorn_config)
+    socket_server = uvicorn.Server(socket_config)
+
+    # Create TCP server (for browser dashboard)
+    tcp_config = uvicorn.Config(
+        app,
+        host=host,
+        port=actual_port,
+        log_level="info",
+        access_log=True,
+    )
+    tcp_server = uvicorn.Server(tcp_config)
 
     # Create shutdown event
     shutdown_event = asyncio.Event()
@@ -492,9 +585,10 @@ async def _run_daemon_async(
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
 
-    # Run scheduler and server concurrently
+    # Run scheduler and both servers concurrently
     scheduler_task = asyncio.create_task(scheduler.start())
-    server_task = asyncio.create_task(server.serve())
+    socket_server_task = asyncio.create_task(socket_server.serve())
+    tcp_server_task = asyncio.create_task(tcp_server.serve())
 
     # Wait for shutdown signal
     await shutdown_event.wait()
@@ -506,12 +600,17 @@ async def _run_daemon_async(
     await scheduler.stop()
     scheduler_task.cancel()
 
-    # Then stop server
-    server.should_exit = True
+    # Then stop both servers
+    socket_server.should_exit = True
+    tcp_server.should_exit = True
     try:
-        await asyncio.wait_for(server_task, timeout=5.0)
+        await asyncio.wait_for(
+            asyncio.gather(socket_server_task, tcp_server_task, return_exceptions=True),
+            timeout=5.0
+        )
     except asyncio.TimeoutError:
-        server_task.cancel()
+        socket_server_task.cancel()
+        tcp_server_task.cancel()
 
     logger.info("Daemon shutdown complete")
 

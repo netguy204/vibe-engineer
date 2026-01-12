@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_tcp_port - TCP port CLI tests
 """Tests for the orchestrator CLI commands.
 
 Tests the CLI layer using Click's test runner. These tests mock the daemon
@@ -28,13 +29,39 @@ class TestOrchStart:
     def test_start_success(self, runner, tmp_path):
         """Successfully starts daemon."""
         with patch("orchestrator.daemon.start_daemon") as mock_start:
-            mock_start.return_value = 12345
+            mock_start.return_value = (12345, 8080)
 
             result = runner.invoke(cli, ["orch", "start", "--project-dir", str(tmp_path)])
 
             assert result.exit_code == 0
             assert "started" in result.output.lower()
             assert "12345" in result.output
+            assert "http://127.0.0.1:8080/" in result.output
+
+    def test_start_with_custom_port(self, runner, tmp_path):
+        """Starts daemon with custom port."""
+        with patch("orchestrator.daemon.start_daemon") as mock_start:
+            mock_start.return_value = (12345, 9090)
+
+            result = runner.invoke(cli, ["orch", "start", "--port", "9090", "--project-dir", str(tmp_path)])
+
+            assert result.exit_code == 0
+            mock_start.assert_called_once()
+            call_kwargs = mock_start.call_args[1]
+            assert call_kwargs["port"] == 9090
+
+    def test_start_with_custom_host(self, runner, tmp_path):
+        """Starts daemon with custom host."""
+        with patch("orchestrator.daemon.start_daemon") as mock_start:
+            mock_start.return_value = (12345, 8080)
+
+            result = runner.invoke(cli, ["orch", "start", "--host", "0.0.0.0", "--project-dir", str(tmp_path)])
+
+            assert result.exit_code == 0
+            mock_start.assert_called_once()
+            call_kwargs = mock_start.call_args[1]
+            assert call_kwargs["host"] == "0.0.0.0"
+            assert "http://0.0.0.0:8080/" in result.output
 
     def test_start_already_running(self, runner, tmp_path):
         """Shows error when daemon already running."""

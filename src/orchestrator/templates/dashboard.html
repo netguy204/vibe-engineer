@@ -752,9 +752,12 @@
         }
 
         function updateFullState(data) {
-            // For now, just reload the page to show the new state
-            // A more sophisticated implementation would update the DOM directly
-            window.location.reload();
+            // The page is already server-rendered with current state on load.
+            // Initial state from WebSocket is for reconnection sync - we don't
+            // need to reload since we just loaded. Future: update DOM directly.
+            console.log('Received initial state with',
+                data.work_units?.length || 0, 'work units,',
+                data.attention_items?.length || 0, 'attention items');
         }
 
         function updateWorkUnit(data) {

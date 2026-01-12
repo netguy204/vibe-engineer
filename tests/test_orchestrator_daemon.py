@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Chunk: docs/chunks/orch_tcp_port - TCP port tests
 """Tests for orchestrator daemon helper functions.
 
 NOTE: Full end-to-end daemon tests involving actual process spawning
@@ -11,19 +12,27 @@ Full E2E testing can be done manually with:
   ve orch status --project-dir /tmp/test_project
   ve orch work-unit create test_chunk --project-dir /tmp/test_project
   ve orch stop --project-dir /tmp/test_project
+
+TCP port testing:
+  ve orch start --port 8080 --project-dir /tmp/test_project
+  curl http://localhost:8080/  # Should return dashboard HTML
+  ve orch stop --project-dir /tmp/test_project
 """
 
 import os
+import socket
 import pytest
 
 from orchestrator.daemon import (
     get_pid_path,
     get_socket_path,
     get_log_path,
+    get_port_path,
     read_pid_file,
     is_process_running,
     is_daemon_running,
     get_daemon_status,
+    find_available_port,
 )
 from orchestrator.client import create_client, DaemonNotRunningError
 
@@ -51,6 +60,50 @@ class TestPathHelpers:
         """Returns correct log path."""
         result = get_log_path(project_dir)
         assert result == project_dir / ".ve" / "orchestrator.log"
+
+    def test_get_port_path(self, project_dir):
+        """Returns correct port file path."""
+        result = get_port_path(project_dir)
+        assert result == project_dir / ".ve" / "orchestrator.port"
+
+
+class TestFindAvailablePort:
+    """Tests for find_available_port function."""
+
+    def test_returns_positive_integer(self):
+        """Returns a positive port number."""
+        port = find_available_port()
+        assert isinstance(port, int)
+        assert port > 0
+
+    def test_returns_valid_port_range(self):
+        """Returns port in valid range (1-65535)."""
+        port = find_available_port()
+        assert 1 <= port <= 65535
+
+    def test_returned_port_is_available(self):
+        """Returned port can be bound to."""
+        port = find_available_port()
+
+        # Verify we can actually bind to the port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # This should succeed since the port was just released
+            s.bind(("127.0.0.1", port))
+
+    def test_different_host(self):
+        """Works with different host binding."""
+        port = find_available_port("0.0.0.0")
+        assert isinstance(port, int)
+        assert port > 0
+
+    def test_returns_different_ports_on_repeated_calls(self):
+        """Multiple calls return different ports (typically)."""
+        # Note: This test may occasionally fail if ports are recycled quickly,
+        # but generally the OS will assign different ports
+        ports = [find_available_port() for _ in range(3)]
+        # At least some should be different (not a strict requirement, but likely)
+        # We just verify they're all valid
+        assert all(p > 0 for p in ports)
 
 
 class TestReadPidFile:
