@@ -12,7 +12,7 @@ code_references:
 narrative: null
 subsystems: []
 created_after:
-- canonical_template_module
+- template_unified_module
 ---
 
 # Chunk Goal

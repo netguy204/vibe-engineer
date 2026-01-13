@@ -12,7 +12,7 @@ chunks:
   relationship: implements
 - chunk_id: subsystem_template
   relationship: uses
-- chunk_id: canonical_template_module
+- chunk_id: template_unified_module
   relationship: implements
 - chunk_id: migrate_chunks_template
   relationship: implements
@@ -199,7 +199,7 @@ template fragments.
 
 ## Implementation Locations
 
-**Canonical location**: `src/template_system.py` - Created by chunk 0023-canonical_template_module
+**Canonical location**: `src/template_system.py` - Created by chunk template_unified_module
 
 The canonical implementation provides:
 - `ActiveChunk`, `ActiveNarrative`, `ActiveSubsystem` - Context dataclasses with path properties
@@ -240,7 +240,7 @@ The canonical implementation provides:
 - **0016-subsystem_cli_scaffolding** - Created `src/subsystems.py` with `render_template`
   function and `Subsystems::create_subsystem` for subsystem directory creation
 
-- **0023-canonical_template_module** - Created canonical `src/template_system.py` module
+- **template_unified_module** - Created canonical `src/template_system.py` module
   with unified Jinja2 Environment, TemplateContext for project-level context, and
   render_template/render_to_directory functions with include support
 
@@ -255,7 +255,7 @@ The canonical implementation provides:
 
 All consolidation work is complete. The subsystem is now STABLE.
 
-1. **Create canonical template_system module** - Chunk 0023-canonical_template_module
+1. **Create canonical template_system module** - Chunk template_unified_module
    - Created `src/template_system.py` with Jinja2 Environment, render_template,
      render_to_directory, and template enumeration. Supports includes via partials/
      subdirectories.

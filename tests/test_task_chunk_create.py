@@ -10,7 +10,7 @@ from task_utils import load_external_ref, load_task_config
 from conftest import make_ve_initialized_git_repo, setup_task_directory
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
 class TestChunkCreateInTaskDirectory:
     """Tests for ve chunk start in task directory context."""
 

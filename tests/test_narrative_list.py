@@ -1,7 +1,7 @@
 """Tests for the 've narrative list' CLI command.
 
 # Chunk: docs/chunks/artifact_list_ordering - Narrative list command tests
-# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
 """
 
 from ve import cli

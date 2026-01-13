@@ -191,7 +191,7 @@ Location: `tests/test_artifact_ordering.py`
 
 ## Dependencies
 
-- `0037-created_after_field` (ACTIVE): The `created_after` field must exist in frontmatter models. ✓ Complete.
+- `ordering_field` (ACTIVE): The `created_after` field must exist in frontmatter models. ✓ Complete.
 - `pyyaml`: Already a project dependency
 - `pydantic`: Already a project dependency
 

@@ -101,7 +101,7 @@ class ComplianceLevel(StrEnum):
     NON_COMPLIANT = "NON_COMPLIANT"  # Does not follow the patterns
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Short name extraction utility
+# Chunk: docs/chunks/ordering_remove_seqno - Short name extraction utility
 def extract_short_name(dir_name: str) -> str:
     """Extract short name from directory name, handling both patterns.
 
@@ -118,7 +118,7 @@ def extract_short_name(dir_name: str) -> str:
     return dir_name
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Artifact ID pattern (both formats)
+# Chunk: docs/chunks/ordering_remove_seqno - Artifact ID pattern (both formats)
 # Regex for validating artifact ID format: {NNNN}-{short_name} (legacy) or {short_name} (new)
 # Legacy pattern: 4 digits, hyphen, then name
 # New pattern: lowercase letters, digits, underscores, hyphens (no leading digits)
@@ -129,7 +129,7 @@ CHUNK_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
 # Chunk: docs/chunks/subsystem_schemas_and_model - Chunk-to-subsystem relationship
-# Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new ID formats
+# Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new ID formats
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -164,7 +164,7 @@ class ChunkRelationship(BaseModel):
 
 
 # Chunk: docs/chunks/bidirectional_refs - Subsystem-to-chunk relationship
-# Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new ID formats
+# Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new ID formats
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
@@ -341,7 +341,7 @@ class CodeReference(BaseModel):
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference
-# Chunk: docs/chunks/project_qualified_refs - Project-qualified path support
+# Chunk: docs/chunks/task_qualified_refs - Project-qualified path support
 # Chunk: docs/chunks/subsystem_template - Optional compliance field for subsystem docs
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
@@ -459,7 +459,7 @@ class ProposedChunk(BaseModel):
 
 # Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem frontmatter schema
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Added proposed_chunks field
-# Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/task_aware_subsystem_cmds - Added dependents field
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
@@ -493,7 +493,7 @@ VALID_NARRATIVE_TRANSITIONS: dict[NarrativeStatus, set[NarrativeStatus]] = {
 
 
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter schema
-# Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/task_aware_narrative_cmds - Added dependents field
 class NarrativeFrontmatter(BaseModel):
     """Frontmatter schema for narrative OVERVIEW.md files.
@@ -510,7 +510,7 @@ class NarrativeFrontmatter(BaseModel):
 
 # Chunk: docs/chunks/investigation_commands - Investigation frontmatter schema
 # Chunk: docs/chunks/proposed_chunks_frontmatter - Updated to use ProposedChunk
-# Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/task_aware_investigations - Added dependents field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
@@ -526,7 +526,7 @@ class InvestigationFrontmatter(BaseModel):
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk frontmatter schema
-# Chunk: docs/chunks/created_after_field - Causal ordering field
+# Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field
 class ChunkFrontmatter(BaseModel):

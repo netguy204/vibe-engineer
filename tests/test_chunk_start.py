@@ -148,7 +148,7 @@ class TestLowercaseNormalization:
 class TestDuplicateDetection:
     """Tests for duplicate chunk detection.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     Note: With short_name only format, duplicate detection is now stricter.
     Creating a chunk with the same short_name will error by default.
     """
@@ -219,7 +219,7 @@ class TestDuplicateDetection:
 class TestPathFormat:
     """Tests for chunk path format.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_path_format_with_ticket_id(self, runner, temp_project):
@@ -254,7 +254,7 @@ class TestPathFormat:
 class TestSuccessOutput:
     """Tests for success output.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_prints_created_path(self, runner, temp_project):
@@ -281,7 +281,7 @@ class TestSuccessOutput:
 class TestFutureFlag:
     """Tests for --future flag on 've chunk start'.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_future_flag_creates_future_chunk(self, runner, temp_project):

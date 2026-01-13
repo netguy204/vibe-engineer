@@ -6,7 +6,7 @@ proposed_chunks:
     InvestigationFrontmatter, and SubsystemFrontmatter Pydantic models in models.py.
     Field is optional (defaults to empty list) for backward compatibility. This is
     an array of short names referencing parent artifacts for causal ordering.'
-  chunk_directory: created_after_field
+  chunk_directory: ordering_field
 - prompt: Create src/artifact_ordering.py with ArtifactIndex class for caching ordered
     artifact lists. Include git-hash-based staleness detection, topological sort for
     multi-parent DAGs (Kahn's algorithm), find_tips() to identify artifacts with no
@@ -39,7 +39,7 @@ proposed_chunks:
     Add collision detection within each artifact type (short names only need to be
     unique within their type). Update all code that parses directory names. Support
     both patterns during transition.
-  chunk_directory: remove_sequence_prefix
+  chunk_directory: ordering_remove_seqno
 - prompt: 'Update all cross-references across ALL artifact types from NNNN-short_name
     to short_name format: code backreferences (# Chunk:, # Subsystem:), frontmatter
     references (narrative, subsystems.chunk_id, parent_chunk, chunks in subsystem

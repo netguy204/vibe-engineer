@@ -33,7 +33,7 @@ class TestNarrativesClass:
     def test_create_narrative_creates_directory(self, temp_project):
         """Verify narrative creation creates the expected directory structure.
 
-        # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+        # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
         """
         narratives = Narratives(temp_project)
         result_path = narratives.create_narrative("my_narrative")
@@ -55,7 +55,7 @@ class TestNarrativesClass:
     def test_narratives_use_short_name_only(self, temp_project):
         """Verify narratives use short_name only format (no sequence prefix).
 
-        # Chunk: docs/chunks/remove_sequence_prefix - Test new naming format
+        # Chunk: docs/chunks/ordering_remove_seqno - Test new naming format
         """
         narratives = Narratives(temp_project)
 
@@ -87,7 +87,7 @@ class TestNarrativesClass:
 class TestNarrativeCreatedAfterPopulation:
     """Tests for created_after population during narrative creation.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_first_narrative_has_empty_created_after(self, temp_project):

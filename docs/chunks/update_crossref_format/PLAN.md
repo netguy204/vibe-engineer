@@ -133,7 +133,7 @@ Since this is a migration affecting many files, list the key categories:
 
 ## Dependencies
 
-- Chunk `remove_sequence_prefix` must be complete (directories already renamed)
+- Chunk `ordering_remove_seqno` must be complete (directories already renamed)
   - Status: ACTIVE ✓
 
 ## Risks and Open Questions

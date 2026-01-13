@@ -202,7 +202,7 @@ def load_task_config(path: Path) -> TaskConfig:
 
 # Chunk: docs/chunks/chunk_create_task_aware - Get next chunk ID
 # Chunk: docs/chunks/artifact_list_ordering - Use enumerate_chunks for directory-based ID
-# Chunk: docs/chunks/remove_sequence_prefix - DEPRECATED: No longer needed for new naming
+# Chunk: docs/chunks/ordering_remove_seqno - DEPRECATED: No longer needed for new naming
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
 
@@ -237,7 +237,7 @@ def get_next_chunk_id(project_path: Path) -> str:
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml
-# Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/ordering_remove_seqno - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Support created_after for causal ordering
 # Chunk: docs/chunks/consolidate_ext_refs - Use artifact_type and artifact_id fields
 # Chunk: docs/chunks/consolidate_ext_ref_utils - Now imported from external_refs module
@@ -318,7 +318,7 @@ class TaskChunkError(Exception):
 
 # Chunk: docs/chunks/chunk_create_task_aware - Orchestrate multi-repo chunk
 # Chunk: docs/chunks/future_chunk_creation - Status parameter support
-# Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/ordering_remove_seqno - Use short_name only directory format
 # Chunk: docs/chunks/external_chunk_causal - Pass current tips to external.yaml
 # Chunk: docs/chunks/consolidate_ext_refs - Use ExternalArtifactRef format
 # Chunk: docs/chunks/selective_project_linking - Optional project filtering

@@ -74,7 +74,7 @@ From subsystem 0001-template_system:
 - `list_templates`, `get_environment`, `render_template`, `render_to_directory` - Function-level references
 
 From chunks:
-- 0023-canonical_template_module created the core classes and functions
+- template_unified_module created the core classes and functions
 - 0026-template_system_consolidation added RenderResult and enhanced render_to_directory
 - 0029-investigation_commands added ActiveInvestigation
 

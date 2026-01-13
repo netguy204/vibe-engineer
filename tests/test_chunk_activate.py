@@ -5,7 +5,7 @@ from models import ChunkStatus
 from ve import cli
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
 class TestActivateCommand:
     """Tests for 've chunk activate' CLI command."""
 

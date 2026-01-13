@@ -165,7 +165,7 @@ Fix any failing tests discovered during the run.
 
 - **0038-artifact_ordering_index**: Provides `ArtifactIndex` class
 - **0039-populate_created_after**: Ensures new artifacts have `created_after` populated
-- **0037-created_after_field**: Provides the `created_after` field in frontmatter models
+- **ordering_field**: Provides the `created_after` field in frontmatter models
 
 ## Risks and Open Questions
 

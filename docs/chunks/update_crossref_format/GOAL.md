@@ -18,7 +18,7 @@ narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
   relationship: implements
-created_after: ["remove_sequence_prefix"]
+created_after: ["ordering_remove_seqno"]
 ---
 
 # Chunk Goal
@@ -27,11 +27,11 @@ created_after: ["remove_sequence_prefix"]
 
 Update all cross-references throughout the codebase from the legacy `NNNN-short_name`
 format to the new `short_name` format. This completes the directory naming transition
-started in chunk `remove_sequence_prefix`.
+started in chunk `ordering_remove_seqno`.
 
 This is the right next step because:
 
-1. **Directory naming is already updated** - Chunk `remove_sequence_prefix` renamed all
+1. **Directory naming is already updated** - Chunk `ordering_remove_seqno` renamed all
    artifact directories from `{NNNN}-{short_name}/` to `{short_name}/`. However,
    cross-references in code and frontmatter still use the old format in many places.
 
@@ -40,7 +40,7 @@ This is the right next step because:
 
 3. **Investigation 0001 identified this as Phase 4 work** - This is the second half of
    Phase 4 from investigation `artifact_sequence_numbering`. The first half
-   (`remove_sequence_prefix`) renamed directories; this chunk updates references.
+   (`ordering_remove_seqno`) renamed directories; this chunk updates references.
 
 4. **Cross-type collisions are not an issue** - References remain type-qualified (e.g.,
    `docs/chunks/foo`, `docs/narratives/bar`) so different artifact types can share

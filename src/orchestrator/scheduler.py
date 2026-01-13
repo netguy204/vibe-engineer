@@ -37,6 +37,7 @@ from orchestrator.models import (
     WorkUnitStatus,
 )
 from orchestrator.state import StateStore
+from orchestrator.websocket import broadcast_attention_update, broadcast_work_unit_update
 from orchestrator.worktree import WorktreeManager, WorktreeError
 
 
@@ -487,6 +488,16 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
+            # Broadcast via WebSocket so dashboard updates
+            await broadcast_attention_update(
+                "added", work_unit.chunk, work_unit.attention_reason
+            )
+            await broadcast_work_unit_update(
+                chunk=work_unit.chunk,
+                status=work_unit.status.value,
+                phase=work_unit.phase.value,
+            )
+
         elif result.error:
             # Agent failed
             logger.error(f"Agent for {chunk} failed: {result.error}")
@@ -649,9 +660,19 @@ class Scheduler:
             except WorktreeError as e:
                 logger.error(f"Failed to merge {chunk} to base: {e}")
                 # Mark as needs attention instead of done
+                reason = f"Merge to base failed: {e}"
                 work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+                work_unit.attention_reason = reason
                 work_unit.updated_at = datetime.now(timezone.utc)
                 self.store.update_work_unit(work_unit)
+
+                # Broadcast via WebSocket so dashboard updates
+                await broadcast_attention_update("added", work_unit.chunk, reason)
+                await broadcast_work_unit_update(
+                    chunk=work_unit.chunk,
+                    status=work_unit.status.value,
+                    phase=work_unit.phase.value,
+                )
                 return
 
             work_unit.status = WorkUnitStatus.DONE
@@ -863,6 +884,14 @@ class Scheduler:
         work_unit.attention_reason = reason
         work_unit.updated_at = datetime.now(timezone.utc)
         self.store.update_work_unit(work_unit)
+
+        # Broadcast via WebSocket so dashboard updates
+        await broadcast_attention_update("added", work_unit.chunk, reason)
+        await broadcast_work_unit_update(
+            chunk=work_unit.chunk,
+            status=work_unit.status.value,
+            phase=work_unit.phase.value,
+        )
 
     def get_running_chunks(self) -> list[str]:
         """Get list of currently running chunk names."""

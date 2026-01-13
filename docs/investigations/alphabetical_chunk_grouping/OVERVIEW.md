@@ -3,7 +3,7 @@ status: SOLVED
 trigger: "Alphabetical filesystem ordering creates semantic grouping opportunity after sequence prefix removal"
 proposed_chunks:
   - prompt: "Implement similarity-based prefix suggestion at chunk planning time using TF-IDF pairwise comparison"
-    chunk_directory: similarity_prefix_suggest
+    chunk_directory: cluster_prefix_suggest
   - prompt: "Add characteristic naming prompt for cluster seeds when no similar chunks exist"
     chunk_directory: cluster_seed_naming
   - prompt: "Implement ve cluster list command to show prefix clusters and identify singletons/superclusters"
@@ -11,7 +11,7 @@ proposed_chunks:
   - prompt: "Implement ve cluster rename command for batch prefix renaming with reference updates"
     chunk_directory: cluster_rename
   - prompt: "Update CLAUDE.md with chunk naming guidance preferring initiative nouns over artifact types"
-    chunk_directory: naming_guidance_claudemd
+    chunk_directory: cluster_naming_guidance
 created_after: ["chunk_reference_decay"]
 ---
 
@@ -114,7 +114,7 @@ Analyzed 47 chunks in `docs/chunks/`. Extracted first-word prefixes and counted 
 | `subsystem_*` | 6 | Mixed - grouped by artifact type, not domain |
 | `artifact_*` | 3 | Yes - all about artifact ordering |
 | `investigation_*` | 2 | Mixed - artifact type grouping |
-| `remove_*` | 2 | No - coincidental (remove_sequence_prefix vs remove_trivial_tests are unrelated) |
+| `remove_*` | 2 | No - coincidental (ordering_remove_seqno vs remove_trivial_tests are unrelated) |
 
 **Key observations:**
 1. Current naming creates clusters based on **artifact type** (chunk, subsystem, investigation) rather than **domain concepts**
@@ -146,8 +146,8 @@ Chunks that are semantically similar but have different prefixes (potential miss
 | `external_resolve` | `ve_sync_command` | 0.65 | Cross-repo sync |
 | `spec_docs_update` | `subsystem_cli_scaffolding` | 0.62 | Docs & scaffolding |
 | `cross_repo_schemas` | `task_init` | 0.62 | Task directory |
-| `causal_ordering_migration` | `remove_sequence_prefix` | 0.58 | Causal ordering migration |
-| `remove_sequence_prefix` | `update_crossref_format` | 0.57 | Reference format changes |
+| `causal_ordering_migration` | `ordering_remove_seqno` | 0.58 | Causal ordering migration |
+| `ordering_remove_seqno` | `update_crossref_format` | 0.57 | Reference format changes |
 | `agent_discovery_command` | `subsystem_template` | 0.55 | Subsystem discovery |
 
 **Key insight:** The problem isn't that embeddings can't find semantic similarity—they clearly can. The problem is:
@@ -181,9 +181,9 @@ Ran `prototypes/h2_naming_comparison.py` to compare three naming approaches on t
 | Prescribed categories | 7        | 0 (0%)     | 5               | 2                   |
 
 **Domain concept groupings identified:**
-- `ordering_*` (9): All causal ordering work - artifact_index_no_git, causal_ordering_migration, created_after_field, etc.
+- `ordering_*` (9): All causal ordering work - artifact_index_no_git, causal_ordering_migration, ordering_field, etc.
 - `chunkcli_*` (7): Chunk CLI/workflow - chunk_validate, chunk_list_command, etc.
-- `template_*` (6): Template system work - canonical_template_module, migrate_chunks_template, etc.
+- `template_*` (6): Template system work - template_unified_module, migrate_chunks_template, etc.
 - `taskdir_*` (6): Cross-repo task work - chunk_create_task_aware, external_resolve, task_init, etc.
 - `subsystem_*` (6): Subsystem feature - agent_discovery_command, subsystem_cli_scaffolding, etc.
 - `crossref_*` (3): Cross-references - bidirectional_refs, symbolic_code_refs, etc.

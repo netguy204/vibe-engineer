@@ -202,7 +202,7 @@ Run the full test suite and manually test the feature with the current codebase:
 
 ```bash
 uv run pytest tests/
-uv run ve chunk suggest-prefix similarity_prefix_suggest
+uv run ve chunk suggest-prefix cluster_prefix_suggest
 ```
 
 Verify the output is sensible for the current chunk.

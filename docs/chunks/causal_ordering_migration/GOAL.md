@@ -62,4 +62,4 @@ This chunk is proposed chunk 5 from `docs/investigations/0001-artifact_sequence_
 - First artifact of each type has `created_after: []`
 - Result: single tip per artifact type (most recent artifact)
 
-**Short name extraction**: The short name is the portion after the sequence prefix (e.g., `0037-created_after_field` → `created_after_field`).
+**Short name extraction**: The short name is the directory name (e.g., `ordering_field`).

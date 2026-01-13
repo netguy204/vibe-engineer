@@ -25,7 +25,7 @@ narrative: null
 subsystems: []
 created_after:
 - artifact_promote
-- project_qualified_refs
+- task_qualified_refs
 - task_init_scaffolding
 - task_status_command
 - task_config_local_paths

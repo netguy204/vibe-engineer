@@ -269,7 +269,7 @@ def strip_artifact_path_prefix(
 # Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml in project directory
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format
 # Chunk: docs/chunks/external_chunk_causal - Added created_after parameter
-# Chunk: docs/chunks/remove_sequence_prefix - Use short_name only directory format
+# Chunk: docs/chunks/ordering_remove_seqno - Use short_name only directory format
 def create_external_yaml(
     project_path: Path,
     short_name: str,

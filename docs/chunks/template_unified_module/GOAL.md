@@ -57,8 +57,8 @@ depend on this module existing.
 2. **Project context object**: A `TemplateContext` class (or similar) that provides
    the base context for all templates:
    - `project.active_chunk` - Non-null when rendering in chunk context, with:
-     - `short_name` - The chunk's short name (e.g., "canonical_template_module")
-     - `id` - The full chunk ID (e.g., "0023-canonical_template_module")
+     - `short_name` - The chunk's short name (e.g., "template_unified_module")
+     - `id` - The full chunk ID (e.g., "template_unified_module")
      - `goal_path` - Convenience property for path to GOAL.md
      - `plan_path` - Convenience property for path to PLAN.md
    - `project.active_narrative` - Non-null when rendering in narrative context, with:

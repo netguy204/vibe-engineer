@@ -269,7 +269,7 @@ class TestGetNextChunkId:
 class TestCreateExternalYaml:
     """Tests for create_external_yaml.
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
     """
 

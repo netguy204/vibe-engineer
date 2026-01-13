@@ -20,7 +20,7 @@ The section should be concise (3-5 sentences per success criteria) and placed in
 
 ## Subsystem Considerations
 
-No subsystems are directly relevant. This is a documentation-only change to the CLAUDE.md template. However, the content relates to work in the `alphabetical_chunk_grouping` investigation and sibling chunks (`similarity_prefix_suggest`, `cluster_seed_naming`, `cluster_rename`).
+No subsystems are directly relevant. This is a documentation-only change to the CLAUDE.md template. However, the content relates to work in the `alphabetical_chunk_grouping` investigation and sibling chunks (`cluster_prefix_suggest`, `cluster_seed_naming`, `cluster_rename`).
 
 ## Sequence
 
@@ -44,7 +44,7 @@ Name chunks by the **initiative** they advance, not the artifact type or action 
 
 **Backreference comment**: Add a Jinja comment before the section:
 ```jinja2
-{# Chunk: docs/chunks/naming_guidance_claudemd - Chunk naming convention guidance #}
+{# Chunk: docs/chunks/cluster_naming_guidance - Chunk naming convention guidance #}
 ```
 
 ### Step 3: Regenerate CLAUDE.md and verify

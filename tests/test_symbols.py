@@ -208,7 +208,7 @@ class TestIsParentOf:
         assert "current_project was not provided" in str(exc_info.value)
 
 
-# Chunk: docs/chunks/project_qualified_refs - Project-qualified reference tests
+# Chunk: docs/chunks/task_qualified_refs - Project-qualified reference tests
 class TestParseReferenceWithProjectQualification:
     """Tests for parse_reference with project-qualified paths."""
 
@@ -267,7 +267,7 @@ class TestParseReferenceWithProjectQualification:
         assert symbol_path is None
 
 
-# Chunk: docs/chunks/project_qualified_refs - Project-qualified is_parent_of tests
+# Chunk: docs/chunks/task_qualified_refs - Project-qualified is_parent_of tests
 class TestIsParentOfWithProjectContext:
     """Tests for is_parent_of with project-qualified references."""
 
@@ -327,7 +327,7 @@ class TestIsParentOfWithProjectContext:
         assert is_parent_of("acme/proj::src/foo.py#Bar", "acme/proj::src/foo.py#Bar") is True
 
 
-# Chunk: docs/chunks/project_qualified_refs - Integration tests for overlap detection
+# Chunk: docs/chunks/task_qualified_refs - Integration tests for overlap detection
 class TestOverlapDetectionAcrossProjects:
     """Integration tests for overlap detection with project-qualified references."""
 

@@ -56,7 +56,7 @@ proposed chunk entry to `cluster_seed_naming`.
 
 ## Dependencies
 
-None. This chunk adds guidance that complements the existing `similarity_prefix_suggest`
+None. This chunk adds guidance that complements the existing `cluster_prefix_suggest`
 chunk (which is already ACTIVE), but does not depend on it for implementation.
 
 ## Risks and Open Questions

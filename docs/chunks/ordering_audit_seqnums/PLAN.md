@@ -50,8 +50,8 @@ no extraction needed.
 
 **After:**
 ```
-3. The chunk directory short name (e.g., `audit_seqnum_refs` from
-   `docs/chunks/audit_seqnum_refs`) is the `<chunk_id>` used by CLI commands below.
+3. The chunk directory short name (e.g., `ordering_audit_seqnums` from
+   `docs/chunks/ordering_audit_seqnums`) is the `<chunk_id>` used by CLI commands below.
 ```
 
 ### Step 2: Fix chunk-update-references.md
@@ -112,7 +112,7 @@ numbering). This usage is correct and should NOT be changed.
 
 ### Step 5: Final verification with ve CLI
 
-Run `ve chunk validate audit_seqnum_refs` to ensure the chunk's frontmatter and
+Run `ve chunk validate ordering_audit_seqnums` to ensure the chunk's frontmatter and
 structure remain valid after documentation changes.
 
 ## Dependencies

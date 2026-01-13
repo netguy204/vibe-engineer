@@ -4,6 +4,12 @@ themes:
   name: Orchestrator
 - id: context-resolution
   name: Context Resolution
+- id: agent-behavior
+  name: Agent Behavior
+- id: skill-ux
+  name: Skill UX
+- id: workflow
+  name: Workflow
 proposed_chunks: []
 ---
 # Friction Log
@@ -108,3 +114,52 @@ what was happening.
 When running 've orch attention list', the output includes example CLI commands for addressing issues like conflicts, but these commands are truncated and unreadable. This makes it harder to quickly resolve attention items without having to guess or look up the correct command syntax.
 
 **Impact**: Medium
+
+### F004: 2026-01-12 [agent-behavior] Premature completion claims
+
+Claude declares work complete when implementation is actually incomplete or has errors. User believes work is done and starts next task, then discovers previous work wasn't actually complete. Forces context switching and backtracking.
+
+Observed ~18 instances across 50 conversations analyzed (roughly 1 per 2-3 substantive conversations).
+
+**Impact**: High
+
+### F005: 2026-01-12 [skill-ux] Long completion reports lack clear action items
+
+Large text responses (1000+ chars) require scrolling to find actionable next steps. No clear indication of what requires user attention vs. what is purely informational. Most substantive operations produce 1KB+ output.
+
+Observed 52 instances of verbose completion reports across 50 conversations.
+
+**Impact**: Moderate
+
+### F006: 2026-01-12 [workflow] Passive guidance gap for artifact selection
+
+Workflow conventions (which artifact type to use, when to graduate from chunks to narratives, naming patterns) are documented in skills but not visible in CLAUDE.md. Agents must invoke a skill to learn conventions they should have internalized upfront.
+
+Observed queries in 69 conversations:
+- "should this be an investigation or chunk?"
+- "which artifact type should I use?"
+- "what's the naming convention for this?"
+
+**Root cause**: Skills contain the authoritative guidance but require invocation to read. Static documentation (CLAUDE.md) lacked the summary that would prevent these questions.
+
+**In-progress mitigation**: `learning_philosophy_docs` and `cluster_naming_guidance` chunks are adding this guidance to the template.
+
+**Impact**: Moderate
+
+### F007: 2026-01-12 [orchestrator] Merge failure requires undocumented manual recovery
+
+When the orchestrator's auto-merge step fails due to conflicts, recovery requires manual
+intervention with no guided workflow:
+
+1. Work unit stuck in NEEDS_ATTENTION with only log message "Failed to merge X to base"
+2. Worktree already cleaned up by the time operator sees the status
+3. Operator must manually: merge branch, resolve conflicts, commit, update status
+4. No `ve orch` subcommand for conflict resolution workflow
+
+**Observed**: `orch_conflict_oracle` chunk stuck after `orch_question_forward` merge
+created conflicts in 3 files.
+
+**Resolution required**: Manual git merge, conflict resolution in models.py,
+scheduler.py, and test file, then `ve orch work-unit status X DONE`.
+
+**Impact**: High—blocks work unit completion, requires git expertise to resolve.

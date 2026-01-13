@@ -57,7 +57,7 @@ Test chunk content.
     goal_path.write_text(frontmatter)
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Updated for short_name only format
+# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
 class TestOverlapCommand:
     """Tests for 've chunk overlap' CLI command."""
 

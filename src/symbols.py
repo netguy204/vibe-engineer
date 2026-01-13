@@ -82,7 +82,7 @@ def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> N
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Parse reference into components
-# Chunk: docs/chunks/project_qualified_refs - Extended for project qualification
+# Chunk: docs/chunks/task_qualified_refs - Extended for project qualification
 def parse_reference(
     ref: str, *, current_project: str | None = None
 ) -> tuple[str, str, str | None]:
@@ -150,7 +150,7 @@ def parse_reference(
     return project, file_and_symbol, None
 
 
-# Chunk: docs/chunks/project_qualified_refs - Qualify a reference string
+# Chunk: docs/chunks/task_qualified_refs - Qualify a reference string
 def qualify_ref(ref: str, project: str) -> str:
     """Ensure a reference string is project-qualified.
 
@@ -177,7 +177,7 @@ def qualify_ref(ref: str, project: str) -> str:
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
-# Chunk: docs/chunks/project_qualified_refs - Requires qualified references
+# Chunk: docs/chunks/task_qualified_refs - Requires qualified references
 def is_parent_of(parent: str, child: str) -> bool:
     """Check if parent reference hierarchically contains child reference.
 

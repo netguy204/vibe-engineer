@@ -363,7 +363,7 @@ Location: `tests/test_task_utils.py`
 ## Dependencies
 
 - Requires `artifact_ordering_index` chunk (implements ArtifactIndex) - already complete
-- Requires `created_after_field` chunk (adds field to frontmatter models) - already complete
+- Requires `ordering_field` chunk (adds field to frontmatter models) - already complete
 - Requires `populate_created_after` chunk (sets created_after on artifact creation) - already complete
 
 ## Risks and Open Questions

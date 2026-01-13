@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 # Import from the chunk's migration script
-# Chunk: docs/chunks/remove_sequence_prefix - Updated path after migration
+# Chunk: docs/chunks/ordering_remove_seqno - Updated path after migration
 import sys
 
 sys.path.insert(

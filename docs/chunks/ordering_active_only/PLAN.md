@@ -155,7 +155,7 @@ Run `uv run pytest tests/test_artifact_ordering.py -v` to verify:
 Add backreference comment to the modified `_build_index_for_type` method:
 
 ```python
-# Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
+# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
 ```
 
 Location: `src/artifact_ordering.py`

@@ -17,7 +17,7 @@ code_references:
     implements: "Test suite for copy_artifact_as_external functionality"
 narrative: null
 subsystems: []
-created_after: ["audit_seqnum_refs", "cluster_rename", "similarity_prefix_suggest", "task_list_proposed"]
+created_after: ["ordering_audit_seqnums", "cluster_rename", "cluster_prefix_suggest", "task_list_proposed"]
 ---
 
 # Chunk Goal

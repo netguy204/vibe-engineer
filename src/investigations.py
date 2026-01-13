@@ -50,7 +50,7 @@ class Investigations:
 
     # Chunk: docs/chunks/investigation_commands - Create investigation directory
     # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
@@ -100,7 +100,7 @@ class Investigations:
 
         return investigation_path
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing investigations with the same short_name.
 

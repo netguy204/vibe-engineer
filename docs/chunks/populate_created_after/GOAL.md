@@ -56,7 +56,7 @@ created_after:
 Populate the `created_after` field automatically when new workflow artifacts are created. This is the third chunk in the causal ordering initiative from `docs/investigations/0001-artifact_sequence_numbering`.
 
 This chunk connects the foundation work:
-- `0037-created_after_field` added the `created_after` field to all frontmatter models
+- `ordering_field` added the `created_after` field to all frontmatter models
 - `0038-artifact_ordering_index` implemented `ArtifactIndex` with `find_tips()` functionality
 
 Now we need to use these to set `created_after` when creating new artifacts. Each artifact creation function must:
@@ -82,5 +82,5 @@ After this chunk, new artifacts will automatically capture their causal relation
 ## Dependencies
 
 This chunk depends on:
-- `0037-created_after_field` - The `created_after` field exists in all frontmatter models
+- `ordering_field` - The `created_after` field exists in all frontmatter models
 - `0038-artifact_ordering_index` - The `ArtifactIndex.find_tips()` method is available

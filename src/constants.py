@@ -1,5 +1,5 @@
 """Constants module - shared values across the codebase."""
-# Chunk: docs/chunks/canonical_template_module - Template directory path
+# Chunk: docs/chunks/template_unified_module - Template directory path
 
 import pathlib
 

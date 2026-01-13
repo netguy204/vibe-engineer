@@ -63,8 +63,8 @@ search for it - run it directly via Bash.
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet. 
 
-3. The chunk directory short name (e.g., `audit_seqnum_refs` from
-   `docs/chunks/audit_seqnum_refs`) is the `<chunk_id>` used by CLI commands below.
+3. The chunk directory short name (e.g., `ordering_audit_seqnums` from
+   `docs/chunks/ordering_audit_seqnums`) is the `<chunk_id>` used by CLI commands below.
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct

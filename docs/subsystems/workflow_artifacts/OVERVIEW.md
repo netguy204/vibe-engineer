@@ -21,7 +21,7 @@ chunks:
   relationship: implements
 - chunk_id: chunk_frontmatter_model
   relationship: implements
-- chunk_id: created_after_field
+- chunk_id: ordering_field
   relationship: implements
 - chunk_id: artifact_ordering_index
   relationship: implements
@@ -35,11 +35,11 @@ chunks:
   relationship: implements
 - chunk_id: subsystem_docs_update
   relationship: implements
-- chunk_id: remove_sequence_prefix
+- chunk_id: ordering_remove_seqno
   relationship: implements
 - chunk_id: update_crossref_format
   relationship: implements
-- chunk_id: tip_detection_active_only
+- chunk_id: ordering_active_only
   relationship: implements
 - chunk_id: external_chunk_causal
   relationship: implements
@@ -63,7 +63,7 @@ chunks:
   relationship: implements
 - chunk_id: task_status_command
   relationship: implements
-- chunk_id: similarity_prefix_suggest
+- chunk_id: cluster_prefix_suggest
   relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
@@ -381,7 +381,7 @@ duplicated code, and barriers to cross-repo work.
 
 Directory naming has transitioned from sequence-prefixed to short-name-only format.
 
-**Current state (completed by chunk remove_sequence_prefix):**
+**Current state (completed by chunk ordering_remove_seqno):**
 - New artifacts are created with `{short_name}/` directory naming only
 - Both legacy `{NNNN}-{short_name}/` and new `{short_name}/` patterns are supported for reading
 - Collision detection prevents duplicate short names within each artifact type
@@ -556,7 +556,7 @@ External artifact references now participate in local causal ordering:
 
 ### suggest_prefix Does Not Dereference External Artifacts (ACTIVE)
 
-**Introduced by**: chunk similarity_prefix_suggest
+**Introduced by**: chunk cluster_prefix_suggest
 
 The `suggest_prefix()` function in `src/chunks.py` computes TF-IDF similarity between
 chunks to suggest naming prefixes. When operating in **task directory context**, it
@@ -615,7 +615,7 @@ from within a project directory to get complete corpus coverage.
 - **0036-chunk_frontmatter_model** - Added `ChunkStatus` StrEnum and `ChunkFrontmatter`
   Pydantic model to `models.py`
 
-- **0037-created_after_field** - Added `created_after` field to all workflow artifact
+- **ordering_field** - Added `created_after` field to all workflow artifact
   frontmatter models for causal ordering
 
 - **0038-artifact_ordering_index** - Created `src/artifact_ordering.py` with `ArtifactIndex`
@@ -643,7 +643,7 @@ from within a project directory to get complete corpus coverage.
   directory naming transition, expanded Artifact Ordering section with causal semantics,
   added Known Deviation for external chunk references not in causal ordering
 
-- **remove_sequence_prefix** - Implemented short-name-only directory naming for all artifact
+- **ordering_remove_seqno** - Implemented short-name-only directory naming for all artifact
   types. New artifacts created as `{short_name}/` instead of `{NNNN}-{short_name}/`. Added
   `extract_short_name()` utility supporting both patterns, collision detection by short name,
   and migration script (`scripts/migrate_artifact_names.py`) for existing artifacts
@@ -654,7 +654,7 @@ from within a project directory to get complete corpus coverage.
   `parent_chunk`, `subsystem_id`), and template examples. Migration script created at
   `docs/chunks/update_crossref_format/migrate_crossrefs.py`
 
-- **tip_detection_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
+- **ordering_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
   excluding "future/queued" artifacts from tip detection. Chunks only include ACTIVE or
   IMPLEMENTING status; narratives only include ACTIVE status; investigations and subsystems
   have no filtering. Added `_parse_status()` helper and `_TIP_ELIGIBLE_STATUSES` constant.

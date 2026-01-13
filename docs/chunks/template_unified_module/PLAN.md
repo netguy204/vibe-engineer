@@ -45,7 +45,7 @@ Create the three dataclasses that represent active artifacts:
 @dataclass
 class ActiveChunk:
     short_name: str
-    id: str  # Full ID like "0023-canonical_template_module"
+    id: str  # Full ID like "template_unified_module"
     _project_dir: pathlib.Path
 
     @property

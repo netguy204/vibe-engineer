@@ -20,7 +20,7 @@ narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts
     relationship: uses
-created_after: ["artifact_promote", "project_qualified_refs", "task_init_scaffolding", "task_status_command", "task_config_local_paths"]
+created_after: ["artifact_promote", "task_qualified_refs", "task_init_scaffolding", "task_status_command", "task_config_local_paths"]
 ---
 
 # Chunk Goal

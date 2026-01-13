@@ -28,7 +28,7 @@ subsystems:
 - subsystem_id: workflow_artifacts
   relationship: implements
 created_after:
-- created_after_field
+- ordering_field
 ---
 
 # Chunk Goal
@@ -37,7 +37,7 @@ created_after:
 
 Implement `ArtifactIndex` - a cached ordering system for workflow artifacts that uses git-hash-based staleness detection and topological sorting. This is the second chunk in the causal ordering initiative from `docs/investigations/0001-artifact_sequence_numbering`.
 
-This chunk builds on `0037-created_after_field` which added the `created_after` field to all frontmatter models. The `ArtifactIndex` class will:
+This chunk builds on `ordering_field` which added the `created_after` field to all frontmatter models. The `ArtifactIndex` class will:
 
 1. **Cache ordered artifact lists** - Avoid re-parsing all frontmatter on every list operation
 2. **Detect staleness via git hashes** - Reliable across merges, checkouts, and parallel work

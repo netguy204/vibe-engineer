@@ -1026,6 +1026,97 @@ async def resolve_conflict_endpoint(request: Request):
     })
 
 
+async def retry_merge_endpoint(request: Request):
+    """POST /work-units/{chunk}/retry-merge - Retry a failed merge to base.
+
+    After a merge failure, the user can resolve conflicts manually and then
+    use this endpoint to retry the merge.
+    """
+    chunk = request.path_params["chunk"]
+    store = _get_store()
+
+    # Get existing work unit
+    unit = store.get_work_unit(chunk)
+    if unit is None:
+        return _not_found_response("Work unit", chunk)
+
+    # Validate work unit is in NEEDS_ATTENTION state with merge failure
+    if unit.status != WorkUnitStatus.NEEDS_ATTENTION:
+        return _error_response(
+            f"Work unit '{chunk}' is not in NEEDS_ATTENTION state "
+            f"(current: {unit.status.value})",
+            status_code=400,
+        )
+
+    if not unit.attention_reason or "merge to base failed" not in unit.attention_reason.lower():
+        return _error_response(
+            f"Work unit '{chunk}' is not in a merge failure state",
+            status_code=400,
+        )
+
+    # Get worktree manager
+    from orchestrator.worktree import WorktreeManager, WorktreeError
+
+    worktree_manager = WorktreeManager(_project_dir)
+
+    # Retry the merge
+    try:
+        if worktree_manager.has_changes(chunk):
+            worktree_manager.merge_to_base(chunk, delete_branch=True)
+        else:
+            # No changes - just clean up the branch
+            branch = worktree_manager.get_branch_name(chunk)
+            if worktree_manager._branch_exists(branch):
+                import subprocess
+                subprocess.run(
+                    ["git", "branch", "-d", branch],
+                    cwd=_project_dir,
+                    capture_output=True,
+                )
+    except WorktreeError as e:
+        # Still failing - update the error message
+        unit.attention_reason = f"Merge to base failed: {e}"
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)
+
+        # Check if form submission for redirect
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            return RedirectResponse(url="/", status_code=303)
+
+        return _error_response(f"Merge still failing: {e}", status_code=400)
+
+    # Success - mark as DONE
+    unit.status = WorkUnitStatus.DONE
+    unit.attention_reason = None
+    unit.session_id = None
+    unit.updated_at = datetime.now(timezone.utc)
+
+    try:
+        updated = store.update_work_unit(unit)
+    except ValueError as e:
+        return _error_response(str(e))
+
+    # Broadcast the update via WebSocket
+    await broadcast_attention_update("resolved", chunk)
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+    )
+
+    # Check if form submission for redirect
+    content_type = request.headers.get("content-type", "")
+    if "application/x-www-form-urlencoded" in content_type:
+        return RedirectResponse(url="/", status_code=303)
+
+    return JSONResponse({
+        "chunk": chunk,
+        "status": "done",
+        "message": "Merge completed successfully",
+    })
+
+
 # Application factory
 
 
@@ -1089,6 +1180,12 @@ def create_app(project_dir: Path) -> Starlette:
         Route(
             "/work-units/{chunk}/resolve",
             endpoint=resolve_conflict_endpoint,
+            methods=["POST"],
+        ),
+        # Retry merge endpoint for merge failures
+        Route(
+            "/work-units/{chunk}/retry-merge",
+            endpoint=retry_merge_endpoint,
             methods=["POST"],
         ),
         # Generic work unit endpoints

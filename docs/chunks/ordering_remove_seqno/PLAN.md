@@ -228,7 +228,7 @@ Create a migration script in the chunk directory that:
 3. Updates cross-references in frontmatter (parent_chunk, narrative, subsystem refs)
 4. Validates no short_name collisions exist before migrating
 
-Location: `docs/chunks/0044-remove_sequence_prefix/migrate.py`
+Location: `docs/chunks/ordering_remove_seqno/migrate.py`
 
 The script should:
 - Be idempotent (safe to run multiple times)

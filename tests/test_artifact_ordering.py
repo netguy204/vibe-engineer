@@ -880,7 +880,7 @@ created_after: []
         assert index_file.read_text() == initial_content
 
 
-# Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering tests
+# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering tests
 class TestStatusFilteredTips:
     """Tests for status-aware tip filtering.
 

@@ -135,13 +135,13 @@ Update `docs/chunks/0039-populate_created_after/GOAL.md` frontmatter with the fi
 
 ## Dependencies
 
-- **0037-created_after_field** (ACTIVE): The `created_after` field must exist in all frontmatter models. Verified: `ChunkFrontmatter`, `NarrativeFrontmatter`, `InvestigationFrontmatter`, and `SubsystemFrontmatter` all have `created_after: list[str] = []`.
+- **ordering_field** (ACTIVE): The `created_after` field must exist in all frontmatter models. Verified: `ChunkFrontmatter`, `NarrativeFrontmatter`, `InvestigationFrontmatter`, and `SubsystemFrontmatter` all have `created_after: list[str] = []`.
 
 - **0038-artifact_ordering_index** (ACTIVE): The `ArtifactIndex.find_tips()` method must be available. Verified: `src/artifact_ordering.py` exports `ArtifactIndex` with `find_tips(artifact_type: ArtifactType) -> list[str]`.
 
 ## Risks and Open Questions
 
-1. **Short name extraction**: Tips are returned as directory names (e.g., `0037-created_after_field`). We need to extract just the short name portion (`created_after_field`). The pattern is `^\d{4}-(.+)$`. Need to handle edge cases like directories that don't match the pattern.
+1. **Short name extraction**: Tips are returned as directory names (e.g., `ordering_field`). We need to extract just the short name portion. Need to handle edge cases like directories that don't match the pattern.
 
 2. **Index rebuild on creation**: Creating a new artifact changes the tips. The next creation in the same session should see the new artifact as a tip. Verify that `ArtifactIndex` correctly detects the stale cache when a new artifact is created.
 

@@ -479,17 +479,17 @@
                                     </div>
                                     {% endif %}
 
-                                    {% if item.attention_reason and 'conflict' in item.attention_reason.lower() %}
-                                    <!-- Conflict resolution UI -->
+                                    {% if item.attention_reason and 'conflict' in item.attention_reason.lower() and item.blocked_by %}
+                                    <!-- Chunk conflict resolution UI (requires blocked_by to have a target) -->
                                     <form class="resolve-form" action="/work-units/{{ item.chunk }}/resolve" method="post">
                                         <div class="conflict-info">
                                             <div class="conflict-chunks">
                                                 <strong>{{ item.chunk }}</strong>
                                                 <span class="conflict-vs">vs</span>
-                                                <strong>{% if item.blocked_by %}{{ item.blocked_by[0] }}{% else %}(unknown){% endif %}</strong>
+                                                <strong>{{ item.blocked_by[0] }}</strong>
                                             </div>
                                         </div>
-                                        <input type="hidden" name="other_chunk" value="{% if item.blocked_by %}{{ item.blocked_by[0] }}{% endif %}">
+                                        <input type="hidden" name="other_chunk" value="{{ item.blocked_by[0] }}">
                                         <div class="attention-actions">
                                             <button type="submit" name="verdict" value="parallelize" class="btn btn-success">
                                                 Parallelize Anyway
@@ -497,6 +497,21 @@
                                             <button type="submit" name="verdict" value="serialize" class="btn btn-danger">
                                                 Serialize
                                             </button>
+                                        </div>
+                                    </form>
+                                    {% elif item.attention_reason and 'merge to base failed' in item.attention_reason.lower() %}
+                                    <!-- Merge failure UI -->
+                                    <div class="merge-failure-info">
+                                        <p style="margin-bottom: 0.75rem; color: var(--text-secondary);">
+                                            Resolve the git conflict manually, then retry:
+                                        </p>
+                                        <code style="display: block; background: var(--bg-secondary); padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.8rem;">
+                                            cd {{ item.worktree or '(worktree removed)' }} && git status
+                                        </code>
+                                    </div>
+                                    <form class="retry-merge-form" action="/work-units/{{ item.chunk }}/retry-merge" method="post">
+                                        <div class="attention-actions">
+                                            <button type="submit" class="btn btn-primary">Retry Merge</button>
                                         </div>
                                     </form>
                                     {% else %}
@@ -820,12 +835,18 @@
         });
 
         // Form submission handling
-        document.querySelectorAll('.answer-form, .resolve-form').forEach(form => {
+        document.querySelectorAll('.answer-form, .resolve-form, .retry-merge-form').forEach(form => {
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
                 const formData = new FormData(this);
                 const action = this.getAttribute('action');
+
+                // Include the clicked submit button's name/value in the form data
+                // (FormData doesn't capture this automatically)
+                if (e.submitter && e.submitter.name) {
+                    formData.set(e.submitter.name, e.submitter.value);
+                }
 
                 // Disable submit buttons
                 const buttons = this.querySelectorAll('button[type="submit"]');

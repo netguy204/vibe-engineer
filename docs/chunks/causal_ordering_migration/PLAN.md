@@ -131,7 +131,7 @@ Update the chunk's GOAL.md frontmatter to include:
 
 ## Dependencies
 
-- **Chunk 0037-created_after_field**: Adds `created_after` field to all frontmatter models (COMPLETE)
+- **Chunk ordering_field**: Adds `created_after` field to all frontmatter models (COMPLETE)
 - **Chunk 0038-artifact_ordering_index**: Creates `ArtifactIndex` for causal ordering (COMPLETE)
 - **Chunk 0039-populate_created_after**: Auto-populates `created_after` on new artifact creation (COMPLETE)
 - **Chunk 0041-artifact_list_ordering**: Uses `ArtifactIndex` in list commands (COMPLETE)

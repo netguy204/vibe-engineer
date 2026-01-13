@@ -7,7 +7,7 @@
 # Chunk: docs/chunks/future_chunk_creation - Current/activate chunk operations
 # Chunk: docs/chunks/bidirectional_refs - Subsystem validation
 # Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks
-# Chunk: docs/chunks/similarity_prefix_suggest - Prefix suggestion feature
+# Chunk: docs/chunks/cluster_prefix_suggest - Prefix suggestion feature
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class ValidationResult:
     chunk_name: str | None = None
 
 
-# Chunk: docs/chunks/similarity_prefix_suggest - Prefix suggestion result
+# Chunk: docs/chunks/cluster_prefix_suggest - Prefix suggestion result
 @dataclass
 class SuggestPrefixResult:
     """Result of prefix suggestion analysis."""
@@ -102,7 +102,7 @@ class Chunks:
         return len(self.enumerate_chunks())
 
     # Chunk: docs/chunks/implement_chunk_start - Detect duplicate chunk names
-    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name.
 
@@ -230,7 +230,7 @@ class Chunks:
     # Chunk: docs/chunks/chunk_template_expansion - Template context
     # Chunk: docs/chunks/migrate_chunks_template - Template system integration
     # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_chunk(
         self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
@@ -288,7 +288,7 @@ class Chunks:
         return chunk_path
 
     # Chunk: docs/chunks/chunk_overlap_command - Resolve chunk ID to name
-    # Chunk: docs/chunks/remove_sequence_prefix - Handle both legacy and new patterns
+    # Chunk: docs/chunks/ordering_remove_seqno - Handle both legacy and new patterns
     def resolve_chunk_id(self, chunk_id: str) -> str | None:
         """Resolve a chunk ID to its directory name.
 
@@ -553,7 +553,7 @@ class Chunks:
     # Chunk: docs/chunks/chunk_overlap_command - Find overlapping chunks
     # Chunk: docs/chunks/symbolic_code_refs - Added symbolic overlap support
     # Chunk: docs/chunks/chunk_frontmatter_model - Use typed frontmatter access
-    # Chunk: docs/chunks/remove_sequence_prefix - Use causal ordering instead of numeric IDs
+    # Chunk: docs/chunks/ordering_remove_seqno - Use causal ordering instead of numeric IDs
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
         """Find ACTIVE chunks created before target with overlapping code references.
 
@@ -619,7 +619,7 @@ class Chunks:
             candidate_is_symbolic = self._is_symbolic_format(candidate_refs_raw)
 
             # Handle overlap based on format combinations
-            # Chunk: docs/chunks/project_qualified_refs - Use "." as local project context
+            # Chunk: docs/chunks/task_qualified_refs - Use "." as local project context
             local_project = "."
             if target_is_symbolic and candidate_is_symbolic:
                 # Both symbolic: use compute_symbolic_overlap
@@ -811,7 +811,7 @@ class Chunks:
         )
 
     # Chunk: docs/chunks/symbolic_code_refs - Validate symbol existence
-    # Chunk: docs/chunks/project_qualified_refs - Qualify ref before parsing
+    # Chunk: docs/chunks/task_qualified_refs - Qualify ref before parsing
     def _validate_symbol_exists(self, ref: str) -> list[str]:
         """Validate that a symbolic reference points to an existing symbol.
 
@@ -1355,7 +1355,7 @@ def plan_has_content(plan_path: pathlib.Path) -> bool:
 
 
 # Chunk: docs/chunks/symbolic_code_refs - Symbolic reference overlap logic
-# Chunk: docs/chunks/project_qualified_refs - Qualify refs before comparison
+# Chunk: docs/chunks/task_qualified_refs - Qualify refs before comparison
 def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str], project: str) -> bool:
     """Determine if two lists of symbolic references have any overlap.
 
@@ -1797,7 +1797,7 @@ def update_backreferences(
     return replaced_count
 
 
-# Chunk: docs/chunks/similarity_prefix_suggest - Extract text from GOAL.md
+# Chunk: docs/chunks/cluster_prefix_suggest - Extract text from GOAL.md
 def extract_goal_text(goal_path: pathlib.Path) -> str:
     """Extract text content from GOAL.md, skipping frontmatter and HTML comments.
 
@@ -1824,7 +1824,7 @@ def extract_goal_text(goal_path: pathlib.Path) -> str:
     return content.strip()
 
 
-# Chunk: docs/chunks/similarity_prefix_suggest - Get prefix from chunk name
+# Chunk: docs/chunks/cluster_prefix_suggest - Get prefix from chunk name
 def get_chunk_prefix(chunk_name: str) -> str:
     """Get alphabetical prefix (first word before underscore).
 
@@ -1837,7 +1837,7 @@ def get_chunk_prefix(chunk_name: str) -> str:
     return chunk_name.split("_")[0]
 
 
-# Chunk: docs/chunks/similarity_prefix_suggest - Main prefix suggestion function
+# Chunk: docs/chunks/cluster_prefix_suggest - Main prefix suggestion function
 def suggest_prefix(
     project_dir: pathlib.Path,
     chunk_id: str,

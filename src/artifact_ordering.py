@@ -210,7 +210,7 @@ def _parse_yaml_created_after(file_path: Path) -> list[str]:
         return []
 
 
-# Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
+# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
 def _parse_status(file_path: Path) -> str | None:
     """Parse the status field from a file's frontmatter.
 
@@ -235,7 +235,7 @@ def _parse_status(file_path: Path) -> str | None:
 # Chunk: docs/chunks/consolidate_ext_ref_utils - Use ARTIFACT_DIR_NAME from external_refs
 # _ARTIFACT_DIR_NAME is imported from external_refs as ARTIFACT_DIR_NAME
 
-# Chunk: docs/chunks/tip_detection_active_only - Tip-eligible statuses per artifact type
+# Chunk: docs/chunks/ordering_active_only - Tip-eligible statuses per artifact type
 # Chunk: docs/chunks/external_chunk_causal - Added EXTERNAL pseudo-status for external chunks
 # Statuses that are considered "active" for tip detection purposes.
 # None means no status filtering (all statuses are tip-eligible).
@@ -330,7 +330,7 @@ class ArtifactIndex:
 
         return False
 
-    # Chunk: docs/chunks/tip_detection_active_only - Status-aware tip filtering
+    # Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
     # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in index building
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
@@ -472,7 +472,7 @@ class ArtifactIndex:
 
         self._save_index(self._cache)
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Get all ancestors of an artifact
+    # Chunk: docs/chunks/ordering_remove_seqno - Get all ancestors of an artifact
     # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in ancestor lookup
     def get_ancestors(self, artifact_type: ArtifactType, artifact_name: str) -> set[str]:
         """Get all ancestors (artifacts created before) of the given artifact.

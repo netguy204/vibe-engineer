@@ -33,7 +33,7 @@ narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts
     relationship: implements
-created_after: ["investigation_template", "update_crossref_format", "tip_detection_active_only"]
+created_after: ["investigation_template", "update_crossref_format", "ordering_active_only"]
 ---
 
 # Chunk Goal

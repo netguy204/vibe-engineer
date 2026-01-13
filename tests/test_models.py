@@ -227,7 +227,7 @@ class TestChunkFrontmatter:
         assert frontmatter.created_after == ["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
 
 
-# Chunk: docs/chunks/created_after_field - Tests for created_after in NarrativeFrontmatter
+# Chunk: docs/chunks/ordering_field - Tests for created_after in NarrativeFrontmatter
 class TestNarrativeFrontmatterCreatedAfter:
     """Tests for created_after field in NarrativeFrontmatter."""
 
@@ -245,7 +245,7 @@ class TestNarrativeFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["some_artifact", "another_artifact"]
 
 
-# Chunk: docs/chunks/created_after_field - Tests for created_after in InvestigationFrontmatter
+# Chunk: docs/chunks/ordering_field - Tests for created_after in InvestigationFrontmatter
 class TestInvestigationFrontmatterCreatedAfter:
     """Tests for created_after field in InvestigationFrontmatter."""
 
@@ -263,7 +263,7 @@ class TestInvestigationFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["memory_leak_investigation", "another_one"]
 
 
-# Chunk: docs/chunks/created_after_field - Tests for created_after in SubsystemFrontmatter
+# Chunk: docs/chunks/ordering_field - Tests for created_after in SubsystemFrontmatter
 class TestSubsystemFrontmatterCreatedAfter:
     """Tests for created_after field in SubsystemFrontmatter."""
 
@@ -281,7 +281,7 @@ class TestSubsystemFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["template_system", "frontmatter_parsing"]
 
 
-# Chunk: docs/chunks/project_qualified_refs - Project-qualified SymbolicReference tests
+# Chunk: docs/chunks/task_qualified_refs - Project-qualified SymbolicReference tests
 class TestSymbolicReferenceWithProjectQualification:
     """Tests for SymbolicReference with project-qualified paths."""
 

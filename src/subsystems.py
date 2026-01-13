@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from chunks import Chunks
 
 
-# Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new patterns
+# Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new patterns
 # Regex for validating subsystem directory name pattern
 # Legacy: {NNNN}-{short_name}, New: {short_name} (lowercase, starting with letter)
 SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
@@ -67,7 +67,7 @@ class Subsystems:
         return [f.name for f in self.subsystems_dir.iterdir() if f.is_dir()]
 
     # Chunk: docs/chunks/subsystem_schemas_and_model - Validate directory pattern
-    # Chunk: docs/chunks/remove_sequence_prefix - Accept both legacy and new patterns
+    # Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new patterns
     def is_subsystem_dir(self, name: str) -> bool:
         """Check if a directory name matches the subsystem pattern.
 
@@ -118,7 +118,7 @@ class Subsystems:
             return None
 
     # Chunk: docs/chunks/subsystem_cli_scaffolding - Find subsystem by name
-    # Chunk: docs/chunks/remove_sequence_prefix - Handle both legacy and new patterns
+    # Chunk: docs/chunks/ordering_remove_seqno - Handle both legacy and new patterns
     def find_by_shortname(self, shortname: str) -> str | None:
         """Find subsystem directory by shortname.
 
@@ -144,7 +144,7 @@ class Subsystems:
     # Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem directory
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
@@ -194,7 +194,7 @@ class Subsystems:
 
         return subsystem_path
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, shortname: str) -> list[str]:
         """Find existing subsystems with the same short_name.
 
@@ -419,7 +419,7 @@ class Subsystems:
         return results
 
     # Chunk: docs/chunks/subsystem_impact_resolution - Compute reference overlap
-    # Chunk: docs/chunks/project_qualified_refs - Qualify refs before comparison
+    # Chunk: docs/chunks/task_qualified_refs - Qualify refs before comparison
     def _find_overlapping_refs(
         self, chunk_refs: list[str], subsystem_refs: list[str]
     ) -> list[str]:

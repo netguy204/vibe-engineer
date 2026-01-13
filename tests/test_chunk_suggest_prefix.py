@@ -1,5 +1,5 @@
 """Tests for chunk suggest-prefix feature."""
-# Chunk: docs/chunks/similarity_prefix_suggest - TDD tests
+# Chunk: docs/chunks/cluster_prefix_suggest - TDD tests
 
 import pathlib
 import pytest

@@ -539,7 +539,7 @@ def overlap(chunk_id, project_dir):
         click.echo(f"docs/chunks/{name}")
 
 
-# Chunk: docs/chunks/similarity_prefix_suggest - Suggest prefix command
+# Chunk: docs/chunks/cluster_prefix_suggest - Suggest prefix command
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command("suggest-prefix")
 @click.argument("chunk_id")

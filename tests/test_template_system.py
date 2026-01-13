@@ -12,11 +12,11 @@ class TestActiveChunk:
         from template_system import ActiveChunk
 
         chunk = ActiveChunk(
-            short_name="canonical_template_module",
-            id="0023-canonical_template_module",
+            short_name="template_unified_module",
+            id="0023-template_unified_module",
             _project_dir=temp_project,
         )
-        expected = temp_project / "docs" / "chunks" / "0023-canonical_template_module" / "GOAL.md"
+        expected = temp_project / "docs" / "chunks" / "0023-template_unified_module" / "GOAL.md"
         assert chunk.goal_path == expected
         assert isinstance(chunk.goal_path, pathlib.Path)
 
@@ -25,11 +25,11 @@ class TestActiveChunk:
         from template_system import ActiveChunk
 
         chunk = ActiveChunk(
-            short_name="canonical_template_module",
-            id="0023-canonical_template_module",
+            short_name="template_unified_module",
+            id="0023-template_unified_module",
             _project_dir=temp_project,
         )
-        expected = temp_project / "docs" / "chunks" / "0023-canonical_template_module" / "PLAN.md"
+        expected = temp_project / "docs" / "chunks" / "0023-template_unified_module" / "PLAN.md"
         assert chunk.plan_path == expected
         assert isinstance(chunk.plan_path, pathlib.Path)
 

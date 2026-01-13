@@ -21,7 +21,7 @@ narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
 created_after:
-- created_after_clarity
+- ordering_field_clarity
 ---
 
 # Chunk Goal

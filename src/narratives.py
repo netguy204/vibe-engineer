@@ -39,7 +39,7 @@ class Narratives:
     # Chunk: docs/chunks/narrative_cli_commands - Create narrative directory
     # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/remove_sequence_prefix - Use short_name only (no sequence prefix)
+    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
@@ -89,7 +89,7 @@ class Narratives:
 
         return narrative_path
 
-    # Chunk: docs/chunks/remove_sequence_prefix - Collision detection by short_name
+    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing narratives with the same short_name.
 
