@@ -8,6 +8,7 @@ narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
+bug_type: null
 created_after: {{ created_after | default([], true) | tojson }}
 ---
 
@@ -31,6 +32,7 @@ STATUS VALUES:
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only
 
+{# Chunk: docs/chunks/background_keyword_semantic - Background workflow guidance #}
 BACKGROUND WORKFLOW NOTE:
 When a FUTURE chunk is created via the "background" keyword (operator says "in the background"),
 you MUST present the GOAL.md to the operator for review before committing or injecting.
@@ -114,6 +116,20 @@ FRICTION_ENTRIES:
       scope: partial
 - Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
 - When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
+
+{# Chunk: docs/chunks/bug_type_field - BUG_TYPE field documentation #}
+BUG_TYPE:
+- Optional field for bug fix chunks that guides agent behavior at completion
+- Values: semantic | implementation | null (for non-bug chunks)
+  - "semantic": The bug revealed new understanding of intended behavior
+    - Code backreferences REQUIRED (the fix adds to code understanding)
+    - On completion, search for other chunks that may need updating
+    - Status → ACTIVE (the chunk asserts ongoing understanding)
+  - "implementation": The bug corrected known-wrong code
+    - Code backreferences MAY BE SKIPPED (they don't add semantic value)
+    - Focus purely on the fix
+    - Status → HISTORICAL (point-in-time correction, not an ongoing anchor)
+- Leave null for feature chunks and other non-bug work
 
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk

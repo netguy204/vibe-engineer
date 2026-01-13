@@ -1,158 +1,126 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds a `bug_type` field to the chunk schema that influences agent behavior during chunk completion. The implementation follows existing patterns in the codebase:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Schema Pattern**: Add `bug_type` as an optional field on `ChunkFrontmatter` model in `src/models.py`, following the pattern established by `friction_entries` and other optional fields.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Template Pattern**: Update the chunk GOAL.md template (`src/templates/chunk/GOAL.md.jinja2`) to include the field in frontmatter and add conditional guidance in the comment block based on bug_type value.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/bug_type_field/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Command Pattern**: Update the `/chunk-create` template to prompt for bug classification when the work appears to be a bug fix.
+
+4. **Complete Pattern**: Update the `/chunk-complete` template to include conditional behavior based on bug_type:
+   - For `semantic` bugs: require code backreferences, suggest searching for impacted chunks, set status → ACTIVE
+   - For `implementation` bugs: allow skipping backreferences, set status → HISTORICAL
+
+5. **Validation**: The existing `ve chunk validate` command already validates frontmatter via the Pydantic model; the new field will be validated automatically once added to `ChunkFrontmatter`.
+
+6. **Testing**: Following TESTING_PHILOSOPHY.md, tests will focus on validation behavior (rejecting invalid bug_type values) rather than trivial storage verification.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+This chunk uses the template system subsystem (`docs/subsystems/template_system`) but does not modify its patterns. The Jinja2 templates are rendered via `render_to_directory()`, and this chunk adds conditional content within templates following established conventions.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystem deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add BugType enum and field to ChunkFrontmatter
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `BugType` string enum to `src/models.py` with values `semantic` and `implementation`. Add the optional `bug_type` field to `ChunkFrontmatter` with default `None` (for non-bug chunks).
 
-Example:
+**Location**: `src/models.py`
 
-### Step 1: Define the SegmentHeader struct
+**Changes**:
+- Add `BugType` enum class with values `SEMANTIC = "semantic"` and `IMPLEMENTATION = "implementation"`
+- Add `bug_type: BugType | None = None` field to `ChunkFrontmatter` model
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+**Expected behavior**: Schema now accepts `bug_type: semantic`, `bug_type: implementation`, or omission (null).
 
-Location: src/segment/format.rs
+### Step 2: Write validation tests for bug_type field
 
-### Step 2: Implement header serialization
+Following TDD, write tests before modifying templates. Tests verify that:
+- `bug_type: semantic` is accepted
+- `bug_type: implementation` is accepted
+- Missing `bug_type` (None) is accepted (optional field)
+- Invalid `bug_type` values are rejected
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Location**: `tests/test_models.py`
 
-### Step 3: ...
+**Test cases**:
+- `test_valid_bug_type_semantic`: Verify semantic value accepted
+- `test_valid_bug_type_implementation`: Verify implementation value accepted
+- `test_bug_type_defaults_to_none`: Verify field is optional
+- `test_invalid_bug_type_rejected`: Verify invalid values fail validation
 
----
+### Step 3: Update chunk GOAL.md template frontmatter
 
-**BACKREFERENCE COMMENTS**
+Add `bug_type: null` to the default frontmatter in the chunk GOAL.md template.
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+**Location**: `src/templates/chunk/GOAL.md.jinja2`
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+**Changes**:
+- Add `bug_type: null` after `investigation: null` in frontmatter
 
-Format (place immediately before the symbol):
+### Step 4: Add BUG_TYPE documentation to chunk GOAL.md template
+
+Add a documentation section explaining the `bug_type` field in the HTML comment block of the template. This section should:
+- Explain when to use `semantic` vs `implementation`
+- Document the behavioral implications at completion time
+
+**Location**: `src/templates/chunk/GOAL.md.jinja2`
+
+**Changes**: Add after FRICTION_ENTRIES section in the comment block:
+
 ```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+BUG_TYPE:
+- Optional field for bug fix chunks that guides agent behavior at completion
+- Values: semantic | implementation | null (for non-bug chunks)
+  - "semantic": The bug revealed new understanding of intended behavior
+    - Code backreferences REQUIRED (the fix adds to code understanding)
+    - On completion, search for other chunks that may need updating
+    - Status → ACTIVE (the chunk asserts ongoing understanding)
+  - "implementation": The bug corrected known-wrong code
+    - Code backreferences MAY BE SKIPPED (they don't add semantic value)
+    - Focus purely on the fix
+    - Status → HISTORICAL (point-in-time correction, not an ongoing anchor)
+- Leave null for feature chunks and other non-bug work
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+### Step 5: Update /chunk-create command to prompt for bug classification
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+Modify the chunk-create template to detect bug fix work and prompt for classification.
 
-## Dependencies
+**Location**: `src/templates/commands/chunk-create.md.jinja2`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**Changes**: Add a new step after step 5 (refining GOAL.md) to:
+1. Check if the work appears to be a bug fix (keywords: "bug", "fix", "broken", "error", "issue", "defect", "regression")
+2. If yes, ask the operator to classify as semantic or implementation
+3. Set the `bug_type` field accordingly
 
-If there are no dependencies, delete this section.
--->
+### Step 6: Update /chunk-complete command for bug_type-aware behavior
+
+Modify the chunk-complete template to behave differently based on bug_type value.
+
+**Location**: `src/templates/commands/chunk-complete.md.jinja2`
+
+**Changes**:
+- After step 2 (identifying code references), add conditional logic:
+  - If `bug_type: implementation`: inform agent that code_references are optional for pure implementation bugs and can be skipped if they don't add semantic value
+- After step 11 (marking chunk as active), add conditional logic:
+  - If `bug_type: semantic`: set status → ACTIVE, prompt agent to search for other chunks that may be impacted by the new understanding
+  - If `bug_type: implementation`: set status → HISTORICAL instead of ACTIVE
+
+### Step 7: Run tests and verify
+
+Run `uv run pytest tests/` to ensure all tests pass, including the new tests for bug_type validation.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Backward compatibility**: Existing chunks without `bug_type` field should continue to work. The field defaults to `None`, so existing validation should pass.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Agent compliance**: The guidance in templates is advisory; agents may not always follow it. The status transition difference (ACTIVE vs HISTORICAL) is the most concrete behavioral change.
 
 ## Deviations
 

@@ -10,6 +10,7 @@ from models import (
     InvestigationStatus,
     ChunkFrontmatter,
     ChunkStatus,
+    BugType,
     NarrativeFrontmatter,
     NarrativeStatus,
     SubsystemFrontmatter,
@@ -225,6 +226,69 @@ class TestChunkFrontmatter:
             created_after=["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
         )
         assert frontmatter.created_after == ["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
+
+
+# Chunk: docs/chunks/bug_type_field - Tests for bug_type field in ChunkFrontmatter
+class TestChunkFrontmatterBugType:
+    """Tests for bug_type field in ChunkFrontmatter."""
+
+    def test_valid_bug_type_semantic(self):
+        """bug_type: semantic is accepted."""
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            bug_type=BugType.SEMANTIC
+        )
+        assert frontmatter.bug_type == BugType.SEMANTIC
+
+    def test_valid_bug_type_implementation(self):
+        """bug_type: implementation is accepted."""
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.ACTIVE,
+            bug_type=BugType.IMPLEMENTATION
+        )
+        assert frontmatter.bug_type == BugType.IMPLEMENTATION
+
+    def test_bug_type_defaults_to_none(self):
+        """bug_type defaults to None when not provided (optional field)."""
+        frontmatter = ChunkFrontmatter(status=ChunkStatus.IMPLEMENTING)
+        assert frontmatter.bug_type is None
+
+    def test_invalid_bug_type_rejected(self):
+        """Invalid bug_type values are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ChunkFrontmatter(status=ChunkStatus.IMPLEMENTING, bug_type="invalid")
+        assert "bug_type" in str(exc_info.value).lower()
+
+    def test_bug_type_string_values_accepted(self):
+        """bug_type accepts string values that match enum values."""
+        # Pydantic accepts the string "semantic" and converts to enum
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            bug_type="semantic"
+        )
+        assert frontmatter.bug_type == BugType.SEMANTIC
+
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            bug_type="implementation"
+        )
+        assert frontmatter.bug_type == BugType.IMPLEMENTATION
+
+    def test_bug_type_uppercase_rejected(self):
+        """Uppercase bug_type values are rejected (case-sensitive enum)."""
+        with pytest.raises(ValidationError):
+            ChunkFrontmatter(status=ChunkStatus.IMPLEMENTING, bug_type="SEMANTIC")
+
+    def test_bug_type_in_full_frontmatter(self):
+        """bug_type works correctly in full frontmatter with all fields."""
+        frontmatter = ChunkFrontmatter(
+            status=ChunkStatus.IMPLEMENTING,
+            ticket="BUG-123",
+            code_paths=["src/foo.py"],
+            bug_type=BugType.SEMANTIC
+        )
+        assert frontmatter.bug_type == BugType.SEMANTIC
+        assert frontmatter.ticket == "BUG-123"
 
 
 # Chunk: docs/chunks/ordering_field - Tests for created_after in NarrativeFrontmatter
