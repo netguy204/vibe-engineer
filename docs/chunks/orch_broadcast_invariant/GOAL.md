@@ -147,6 +147,11 @@ The orchestrator dashboard doesn't receive real-time updates for certain state t
 
 2. **READY transition on phase advance** (`src/orchestrator/scheduler.py:686-693`): When a work unit advances phases (e.g., PLAN → IMPLEMENT), the status changes to READY but no broadcast is sent.
 
+3. **NEEDS_ATTENTION conflict transition** (investigation needed): When a conflict is detected and `_mark_needs_attention` is called (`src/orchestrator/scheduler.py:785-789`), the code *does* call the broadcast functions, but the dashboard doesn't receive the update. The broadcast code exists at lines 888-894, but something prevents delivery. Possible causes to investigate:
+   - Race condition between WebSocket connection and scheduler loop
+   - Exception being swallowed in the broadcast path
+   - Timing issue where broadcast happens before dashboard reconnects after initial injection
+
 ### Root Cause
 
 The API endpoints (`src/orchestrator/api.py`) consistently broadcast after state changes, but the scheduler (`src/orchestrator/scheduler.py`) does not. There's no documentation establishing this as an invariant, so agents adding scheduler logic don't know they need to broadcast.
