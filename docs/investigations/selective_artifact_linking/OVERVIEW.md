@@ -3,7 +3,7 @@ status: ONGOING
 trigger: "Bug investigation in long-lived cross-repo task revealed only a subset of projects were relevant, but artifacts defaulted to linking to all projects"
 proposed_chunks:
   - prompt: "Add --projects flag to task artifact creation: Implement optional project filtering for ve chunk/investigation/narrative/subsystem create commands in task context"
-    chunk_directory: selective_project_linking
+    chunk_directory: selective_artifact_friction
   - prompt: "Add ve artifact remove-external command: Remove artifact's external.yaml from a project and update dependents list in external repo for consistency"
     chunk_directory: remove_external_ref
 created_after: ["friction_log_artifact"]
