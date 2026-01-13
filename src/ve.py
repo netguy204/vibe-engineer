@@ -581,6 +581,109 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
                 click.echo(f"  - {name} (similarity: {similarity:.2f})")
 
 
+# Chunk: docs/chunks/narrative_consolidation - Backreference census command
+@chunk.command("backrefs")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--threshold", type=int, default=5, help="Minimum unique chunk refs to display (default: 5)")
+@click.option("--pattern", multiple=True, help="Glob patterns to search (default: src/**/*.py)")
+def backrefs(project_dir, threshold, pattern):
+    """Analyze backreference distribution across source files.
+
+    Scans source files for `# Chunk:`, `# Narrative:`, and `# Subsystem:`
+    comments and displays files exceeding the threshold.
+
+    This helps identify code areas with excessive chunk backreferences
+    that may benefit from consolidation into a narrative.
+    """
+    from chunks import count_backreferences
+
+    # Use default patterns if none provided
+    patterns = list(pattern) if pattern else None
+
+    results = count_backreferences(project_dir, source_patterns=patterns)
+
+    # Filter by threshold
+    above_threshold = [r for r in results if r.unique_chunk_count >= threshold]
+
+    if not above_threshold:
+        if results:
+            click.echo(f"No files with {threshold}+ unique chunk backreferences found.")
+            max_refs = max(r.unique_chunk_count for r in results)
+            click.echo(f"Maximum found: {max_refs} unique refs.")
+        else:
+            click.echo("No chunk backreferences found in source files.")
+        return
+
+    click.echo(f"Files with {threshold}+ chunk backreferences:")
+    click.echo("")
+    for info in above_threshold:
+        rel_path = info.file_path.relative_to(project_dir)
+        unique = info.unique_chunk_count
+        total = info.total_chunk_count
+        click.echo(f"  {rel_path}: {unique} unique chunks ({total} total refs)")
+
+        # Show narrative/subsystem context if present
+        if info.narrative_refs:
+            click.echo(f"    Already has {len(set(info.narrative_refs))} narrative ref(s)")
+        if info.subsystem_refs:
+            click.echo(f"    Has {len(set(info.subsystem_refs))} subsystem ref(s)")
+
+    click.echo("")
+    click.echo(f"Total: {len(above_threshold)} file(s) above threshold")
+
+
+# Chunk: docs/chunks/narrative_consolidation - Chunk clustering command
+@chunk.command("cluster")
+@click.argument("chunk_ids", nargs=-1)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--min-similarity", type=float, default=0.3, help="Minimum similarity to cluster (default: 0.3)")
+@click.option("--all", "cluster_all", is_flag=True, help="Cluster all ACTIVE chunks")
+def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
+    """Cluster chunks by content similarity for narrative consolidation.
+
+    Groups related chunks based on TF-IDF similarity of their GOAL.md content.
+    Use this to identify candidate chunks for consolidation into a narrative.
+
+    Examples:
+        ve chunk cluster --all                    # Cluster all ACTIVE chunks
+        ve chunk cluster chunk1 chunk2 chunk3    # Cluster specific chunks
+    """
+    from chunks import cluster_chunks
+
+    # Determine which chunks to cluster
+    if cluster_all:
+        target_chunks = None  # cluster_chunks will use all ACTIVE
+    elif chunk_ids:
+        # Normalize chunk IDs to strip path prefixes
+        target_chunks = [strip_artifact_path_prefix(cid, ArtifactType.CHUNK) for cid in chunk_ids]
+    else:
+        click.echo("Error: Provide chunk IDs or use --all to cluster all ACTIVE chunks", err=True)
+        raise SystemExit(1)
+
+    result = cluster_chunks(project_dir, chunk_ids=target_chunks, min_similarity=min_similarity)
+
+    if not result.clusters:
+        click.echo("No clusters found.")
+        if result.unclustered:
+            click.echo(f"\nUnclustered chunks ({len(result.unclustered)}):")
+            for name in result.unclustered:
+                click.echo(f"  - {name}")
+        return
+
+    # Display clusters
+    click.echo(f"Found {len(result.clusters)} cluster(s):\n")
+    for i, (cluster, theme) in enumerate(zip(result.clusters, result.cluster_themes), 1):
+        click.echo(f"Cluster {i}: {theme}")
+        for name in cluster:
+            click.echo(f"  - {name}")
+        click.echo("")
+
+    if result.unclustered:
+        click.echo(f"Unclustered chunks ({len(result.unclustered)}):")
+        for name in result.unclustered:
+            click.echo(f"  - {name}")
+
+
 # Chunk: docs/chunks/chunk_validate - Validate chunk for completion
 # Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
@@ -878,6 +981,139 @@ def status(narrative_id, new_status, project_dir):
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+
+# Chunk: docs/chunks/narrative_consolidation - Compact command
+@narrative.command("compact")
+@click.argument("chunk_ids", nargs=-1, required=True)
+@click.option("--name", required=True, help="Short name for the consolidated narrative")
+@click.option("--description", default="Consolidated narrative", help="Description for the narrative")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def compact(chunk_ids, name, description, project_dir):
+    """Consolidate multiple chunks into a single narrative.
+
+    Takes a list of ACTIVE chunk IDs and creates a narrative that references them.
+    Updates each chunk's frontmatter to reference the new narrative.
+
+    Example:
+        ve narrative compact chunk_a chunk_b chunk_c --name my_narrative
+    """
+    from chunks import consolidate_chunks
+
+    if len(chunk_ids) < 2:
+        click.echo("Error: Need at least 2 chunks to consolidate", err=True)
+        raise SystemExit(1)
+
+    # Normalize chunk IDs
+    normalized_ids = [strip_artifact_path_prefix(cid, ArtifactType.CHUNK) for cid in chunk_ids]
+
+    try:
+        result = consolidate_chunks(
+            project_dir,
+            chunk_ids=normalized_ids,
+            narrative_name=name,
+            narrative_description=description,
+        )
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Created narrative: docs/narratives/{result.narrative_id}")
+    click.echo("")
+    click.echo(f"Consolidated {len(result.chunks_updated)} chunks:")
+    for chunk_name in result.chunks_updated:
+        click.echo(f"  - {chunk_name}")
+
+    if result.files_to_update:
+        click.echo("")
+        click.echo("Files with backreferences to update:")
+        for file_path, (refs, _) in result.files_to_update.items():
+            click.echo(f"  - {file_path}: {len(refs)} refs -> 1 narrative ref")
+        click.echo("")
+        click.echo(f"Run `ve narrative update-refs {result.narrative_id}` to update code backreferences.")
+
+
+# Chunk: docs/chunks/narrative_consolidation - Update-refs command
+@narrative.command("update-refs")
+@click.argument("narrative_id")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--dry-run", is_flag=True, help="Show what would be changed without modifying files")
+@click.option("--file", "file_path", type=click.Path(exists=True, path_type=pathlib.Path), help="Update only this specific file")
+def update_refs(narrative_id, project_dir, dry_run, file_path):
+    """Update code backreferences to point to a narrative.
+
+    Finds files containing chunk backreferences for chunks consolidated into
+    the specified narrative and replaces them with a single narrative reference.
+
+    Example:
+        ve narrative update-refs my_narrative
+        ve narrative update-refs my_narrative --dry-run
+    """
+    from chunks import update_backreferences, count_backreferences
+
+    # Normalize narrative_id
+    narrative_id = strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)
+
+    narratives = Narratives(project_dir)
+
+    # Parse narrative frontmatter to get consolidated chunk IDs
+    frontmatter = narratives.parse_narrative_frontmatter(narrative_id)
+    if frontmatter is None:
+        click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+        raise SystemExit(1)
+
+    # Get chunk IDs from proposed_chunks
+    chunk_ids = []
+    for proposed in frontmatter.proposed_chunks:
+        if proposed.chunk_directory:
+            chunk_ids.append(proposed.chunk_directory)
+
+    if not chunk_ids:
+        click.echo(f"Narrative '{narrative_id}' has no consolidated chunks")
+        return
+
+    # Find files with backreferences to these chunks
+    backref_results = count_backreferences(project_dir)
+    files_to_process = []
+
+    for info in backref_results:
+        # Check if this file has any of our target chunk refs
+        matching_refs = [ref for ref in set(info.chunk_refs) if ref in chunk_ids]
+        if matching_refs:
+            if file_path is None or info.file_path == file_path:
+                files_to_process.append((info.file_path, matching_refs))
+
+    if not files_to_process:
+        click.echo("No files found with backreferences to update")
+        return
+
+    total_replaced = 0
+    files_updated = []
+
+    for fpath, refs in files_to_process:
+        count = update_backreferences(
+            project_dir,
+            file_path=fpath,
+            chunk_ids_to_replace=refs,
+            narrative_id=narrative_id,
+            narrative_description=frontmatter.advances_trunk_goal or "Consolidated narrative",
+            dry_run=dry_run,
+        )
+        if count > 0:
+            total_replaced += count
+            rel_path = fpath.relative_to(project_dir)
+            files_updated.append((rel_path, count))
+
+    if dry_run:
+        click.echo("Dry run - no files modified")
+        click.echo("")
+        click.echo(f"Would update {len(files_updated)} file(s):")
+        for rel_path, count in files_updated:
+            click.echo(f"  - {rel_path}: {count} chunk refs -> 1 narrative ref")
+    else:
+        click.echo(f"Updated backreferences in {len(files_updated)} file(s):")
+        for rel_path, count in files_updated:
+            click.echo(f"  - {rel_path}: replaced {count} chunk refs with 1 narrative ref")
 
 
 # Chunk: docs/chunks/task_init - Task command group
