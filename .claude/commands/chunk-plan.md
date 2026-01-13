@@ -26,6 +26,7 @@ search for it - run it directly via Bash.
    directory>
 
 
+
 2. Run `ve chunk suggest-prefix <chunk_name>` (using just the directory name,
    not the full path) to check if this chunk should be renamed for better
    semantic clustering. If a prefix is suggested:
@@ -33,6 +34,9 @@ search for it - run it directly via Bash.
      `{prefix}_*` chunks. Consider renaming to `{prefix}_{current_name}`?"
    - If the operator accepts, use `mv` to rename the chunk directory
    - Update <chunk directory> to the new path before continuing
+   - **After any rename:** Run `ve chunk cluster-list` to see how large the
+     new cluster is. If it has 5+ chunks with no subsystem documentation,
+     suggest the operator consider `/subsystem-discover` to capture invariants
 
 3. Study <chunk directory>/GOAL.md
 

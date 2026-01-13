@@ -14,6 +14,7 @@ from constants import template_dir
 
 
 # Chunk: docs/chunks/template_drift_prevention - VE project configuration
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster threshold configuration
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
 class VeConfig:
@@ -23,16 +24,25 @@ class VeConfig:
         is_ve_source_repo: When True, rendered templates include auto-generated
             headers warning against direct editing. Only true in the vibe-engineer
             source repository itself.
+        cluster_subsystem_threshold: Threshold for warning about large prefix
+            clusters. When creating a chunk that would be the Nth chunk in a
+            cluster (where N >= threshold), a warning is emitted suggesting
+            the user consider documenting a subsystem.
     """
 
     is_ve_source_repo: bool = False
+    cluster_subsystem_threshold: int = 5  # Default: warn at 5th chunk in cluster
 
     def as_dict(self) -> dict:
         """Return config as dict suitable for Jinja2 rendering."""
-        return {"is_ve_source_repo": self.is_ve_source_repo}
+        return {
+            "is_ve_source_repo": self.is_ve_source_repo,
+            "cluster_subsystem_threshold": self.cluster_subsystem_threshold,
+        }
 
 
 # Chunk: docs/chunks/template_drift_prevention - Load VE config from project
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster threshold configuration
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
     """Load .ve-config.yaml from project root.
@@ -52,6 +62,7 @@ def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
 
     return VeConfig(
         is_ve_source_repo=data.get("is_ve_source_repo", False),
+        cluster_subsystem_threshold=data.get("cluster_subsystem_threshold", 5),
     )
 
 

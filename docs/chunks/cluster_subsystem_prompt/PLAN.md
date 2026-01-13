@@ -8,168 +8,114 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a cluster size detection feature that warns operators when creating or renaming chunks that would expand a prefix cluster beyond a configurable threshold. This proactively surfaces potential subsystem candidates before bug accumulation reveals complexity.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The implementation follows the existing cluster analysis patterns in `src/cluster_analysis.py` and integrates with:
+1. The chunk creation flow in `src/ve.py` (`create` command)
+2. The prefix suggestion already used in `/chunk-plan` (which may trigger a rename)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Key design decisions:
+- **Non-blocking warnings**: Per success criterion #5, prompts are advisory. The operator can proceed without defining a subsystem.
+- **Subsystem awareness**: Skip the prompt if a subsystem exists for this prefix/area (SC #6).
+- **Configurable threshold**: Default to 5 chunks, configurable in `.ve-config.yaml` (SC #4).
+- **Dual detection points**: Check at create time and after potential rename during `/chunk-plan` (SC #1, #2).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/cluster_subsystem_prompt/GOAL.md)
-with references to the files that you expect to touch.
--->
+This follows DEC-005 (commands don't prescribe git operations) - we only emit warnings, not force any workflow.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems are directly relevant to this work. This chunk adds a new feature that uses existing cluster analysis utilities.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define configuration schema for threshold
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `cluster_subsystem_threshold` field to the project configuration. The config file is `.ve-config.yaml` at project root.
 
-Example:
+Location: `src/project.py` (add to any config loading) or create a simple config loader function.
 
-### Step 1: Define the SegmentHeader struct
+Default value: 5 (as specified in the investigation findings).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add cluster size check utility function
 
-Location: src/segment/format.rs
+Create a function in `src/cluster_analysis.py` that:
+1. Takes a prefix and project_dir
+2. Counts existing chunks with that prefix
+3. Checks if a subsystem exists for that prefix
+4. Returns a `ClusterSizeWarning` dataclass with:
+   - `should_warn: bool`
+   - `cluster_size: int`
+   - `prefix: str`
+   - `has_subsystem: bool`
+   - `threshold: int`
 
-### Step 2: Implement header serialization
+The subsystem check can use `Subsystems.find_by_shortname()` to see if a subsystem with that prefix exists.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/cluster_analysis.py` (add new function `check_cluster_size`)
 
-### Step 3: ...
+### Step 3: Add warning formatting function
 
----
+Create a function to format the cluster size warning message as specified in SC #4:
+- "You're creating the Nth `{prefix}_*` chunk. Consider documenting this as a subsystem with `/subsystem-discover`."
 
-**BACKREFERENCE COMMENTS**
+Location: `src/cluster_analysis.py` (add new function `format_cluster_warning`)
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+### Step 4: Integrate into chunk create command
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+Modify the `create` command in `src/ve.py` to:
+1. After successful creation, extract the prefix from the new chunk name
+2. Call the cluster size check function
+3. If warning is triggered and no `--yes` flag, emit the warning message
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+The warning should appear AFTER the "Created docs/chunks/..." success message so the user knows the chunk was created.
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
+Location: `src/ve.py` (modify `create` function, around line 163-169)
 
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+### Step 5: Export helper for rename detection point
+
+The `/chunk-plan` command (a slash command template) may rename chunks. After rename, it should re-check cluster size. Since templates can't import Python directly, we need to:
+1. Add a new CLI subcommand `ve chunk cluster-check <chunk_name>` that outputs the warning if applicable
+2. The slash command template can invoke this after rename
+
+Alternative: Just document that the agent should manually check using `ve chunk cluster-list` after rename. This is simpler and the agent already runs `ve chunk suggest-prefix` which shows similar chunks.
+
+Decision: Go with option 2 (documentation-based) for simplicity. The agent workflow already includes `ve chunk suggest-prefix` output which shows the cluster. Adding explicit guidance in the `/chunk-plan` template is sufficient.
+
+### Step 6: Write tests for cluster size check
+
+Create tests in `tests/test_cluster_subsystem_prompt.py`:
+
+1. **test_check_cluster_size_below_threshold**: Creating 4th chunk in a cluster doesn't trigger warning
+2. **test_check_cluster_size_at_threshold**: Creating 5th chunk triggers warning
+3. **test_check_cluster_size_with_existing_subsystem**: No warning if subsystem exists for prefix
+4. **test_check_cluster_size_configurable_threshold**: Custom threshold in config is respected
+5. **test_cli_create_emits_warning**: Integration test that `ve chunk create` shows warning when threshold exceeded
+
+### Step 7: Update chunk-plan template with rename guidance
+
+Add guidance to the `/chunk-plan` template noting that after rename, the operator should consider subsystem documentation if the cluster is growing large.
+
+Location: `src/templates/commands/chunk-plan.md.jinja2`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. All required functionality exists:
+- Cluster prefix extraction: `get_chunk_prefix()` in `src/chunks.py`
+- Cluster analysis: `get_chunk_clusters()` in `src/cluster_analysis.py`
+- Subsystem lookup: `Subsystems.find_by_shortname()` in `src/subsystems.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Threshold value**: Default of 5 is based on investigation findings about the orch_* cluster (20 chunks, 55% bug rate). A cluster of 5-6 is arguably still manageable. Consider if 5 is too aggressive - operator feedback will inform future adjustment.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Subsystem matching heuristics**: Current plan checks if a subsystem with exact prefix name exists. A cluster like `auth_*` would need subsystem `auth`. This may miss subsystems with different naming (e.g., `authentication` subsystem for `auth_*` chunks). For v1, exact match is acceptable; can be enhanced later.
+
+3. **False positives**: Large clusters aren't always bad - some domains naturally have many aspects (e.g., `orch_*` for orchestrator). The non-blocking nature mitigates this - operator can dismiss.
+
+4. **Config file location**: Using `.ve-config.yaml` which already exists for `is_ve_source_repo`. Need to ensure config loading handles missing file gracefully.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

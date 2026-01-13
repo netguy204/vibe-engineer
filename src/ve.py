@@ -115,6 +115,7 @@ def chunk():
 # Chunk: docs/chunks/future_chunk_creation - Future chunks support
 # Chunk: docs/chunks/rename_chunk_start_to_create - Rename start to create
 # Chunk: docs/chunks/selective_project_linking - Added --projects option
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings
 @chunk.command("create")
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
@@ -124,6 +125,9 @@ def chunk():
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 def create(short_name, ticket_id, project_dir, yes, future, projects):
     """Create a new chunk."""
+    from chunks import get_chunk_prefix
+    from cluster_analysis import check_cluster_size, format_cluster_warning
+
     errors = validate_short_name(short_name)
     if ticket_id:
         errors.extend(validate_ticket_id(ticket_id))
@@ -167,6 +171,14 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+    # Chunk: docs/chunks/cluster_subsystem_prompt - Check cluster size after creation
+    # Extract prefix from the created chunk name and check if warning should be shown
+    # Use include_new_chunk=False because the chunk has already been created
+    prefix = get_chunk_prefix(chunk_path.name)
+    warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
+    if warning.should_warn:
+        click.echo(f"Note: {format_cluster_warning(warning)}")
 
 
 # Chunk: docs/chunks/rename_chunk_start_to_create - Backward compatibility alias
