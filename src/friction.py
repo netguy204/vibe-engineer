@@ -10,7 +10,7 @@ from enum import StrEnum
 import yaml
 from pydantic import ValidationError
 
-from models import FrictionFrontmatter, FrictionTheme, FrictionProposedChunk
+from models import FrictionFrontmatter, FrictionTheme, FrictionProposedChunk, ExternalFrictionSource
 
 
 class FrictionStatus(StrEnum):
@@ -328,6 +328,18 @@ class Friction:
         if frontmatter is None:
             return []
         return frontmatter.themes
+
+    # Chunk: docs/chunks/selective_artifact_friction - External friction source support
+    def get_external_friction_sources(self) -> list[ExternalFrictionSource]:
+        """Get external friction sources referenced by this friction log.
+
+        Returns:
+            List of ExternalFrictionSource objects.
+        """
+        frontmatter = self.parse_frontmatter()
+        if frontmatter is None:
+            return []
+        return frontmatter.external_friction_sources
 
     def analyze_by_theme(
         self,

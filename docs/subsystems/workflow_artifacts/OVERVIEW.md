@@ -65,6 +65,8 @@ chunks:
   relationship: implements
 - chunk_id: cluster_prefix_suggest
   relationship: implements
+- chunk_id: selective_artifact_friction
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -223,6 +225,24 @@ code_references:
 - ref: src/ve.py#suggest_prefix_cmd
   implements: CLI command for chunk prefix suggestion
   compliance: COMPLIANT
+- ref: src/models.py#ExternalFrictionSource
+  implements: External friction source reference schema for task contexts
+  compliance: COMPLIANT
+- ref: src/task_utils.py#TaskFrictionError
+  implements: Error class for task-aware friction operations
+  compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_friction_entry
+  implements: Task-aware friction entry creation with external references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#add_external_friction_source
+  implements: Add external friction source reference to project FRICTION.md
+  compliance: COMPLIANT
+- ref: src/ve.py#log_entry
+  implements: CLI handler for task-aware friction logging with --projects flag
+  compliance: COMPLIANT
+- ref: src/friction.py#get_external_friction_sources
+  implements: Retrieve external friction sources from friction log
+  compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
     Define chunk lifecycle states (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL)
@@ -370,6 +390,14 @@ duplicated code, and barriers to cross-repo work.
     documented in template comments for human readers AND enforced via a
     `VALID_{TYPE}_TRANSITIONS` dict in `models.py`. This enables both documentation
     and runtime validation of lifecycle paths.
+
+11. **All task-aware artifact creation commands must support `--projects` flag** -
+    When creating artifacts in task context (with `.ve-task.yaml`), operators must be
+    able to selectively specify which projects an artifact links to via the `--projects`
+    flag. When `--projects` is omitted, all projects in the task config are linked
+    (backward compatible default). Commands supporting this flag: `ve chunk create`,
+    `ve narrative create`, `ve investigation create`, `ve subsystem discover`,
+    `ve friction log`.
 
 ### Soft Conventions
 
