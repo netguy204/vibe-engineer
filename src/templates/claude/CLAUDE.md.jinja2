@@ -282,6 +282,35 @@ When working interactively with the operator, consider these proactive actions:
 - **When fixing bugs discovered during work**: Create FUTURE chunks for issues outside current scope
 - **When attention items accumulate**: Alert the operator or help resolve items you have context for
 
+{# Chunk: docs/chunks/background_keyword_semantic - Background keyword documentation #}
+### The "Background" Keyword
+
+When the operator says **"in the background"** (or similar phrases like "do this in the background", "handle this in the background", "run this in the background"), this is an explicit signal to use the background workflow.
+
+**Trigger phrases:**
+- "do this in the background"
+- "handle this in the background"
+- "run this in the background"
+- "in the background"
+
+**Expected agent behavior when triggered:**
+
+1. **Create a FUTURE chunk** (not IMPLEMENTING) using `ve chunk create my_chunk --future`
+2. **Refine the GOAL.md** with the operator as normal
+3. **Present the goal for operator review** and wait for explicit approval
+4. **Commit the chunk** only after the operator approves
+5. **Inject into orchestrator** using `ve orch inject my_chunk`
+6. **Continue with other work** or confirm the chunk has been backgrounded
+
+**Contrast with default behavior:**
+
+| Scenario | Chunk Status | Agent Behavior |
+|----------|--------------|----------------|
+| Without "background" | IMPLEMENTING | Work on the chunk immediately in current session |
+| With "background" | FUTURE | Create chunk, get approval, inject, move on |
+
+**Important:** Always wait for operator approval before committing and injecting background chunks. The "background" keyword signals the operator wants the work queued, not that they've already approved it.
+
 ## Code Backreferences
 
 Source code may contain backreference comments that link code back to the documentation that created or governs it:

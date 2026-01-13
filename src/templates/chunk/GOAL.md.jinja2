@@ -31,6 +31,11 @@ STATUS VALUES:
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only
 
+BACKGROUND WORKFLOW NOTE:
+When a FUTURE chunk is created via the "background" keyword (operator says "in the background"),
+you MUST present the GOAL.md to the operator for review before committing or injecting.
+The background keyword indicates work should be queued, not that it's pre-approved.
+
 PARENT_CHUNK:
 - null for new work
 - chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
@@ -117,6 +122,7 @@ CHUNK ARTIFACTS:
 - Unlike code in src/, chunk artifacts are not expected to be maintained long-term
 - Examples: data migration scripts, one-time fixups, analysis tools used during implementation
 
+{# Chunk: docs/chunks/ordering_field_clarity - CREATED_AFTER field documentation #}
 CREATED_AFTER:
 - Auto-populated by `ve chunk create` - DO NOT MODIFY manually
 - Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
