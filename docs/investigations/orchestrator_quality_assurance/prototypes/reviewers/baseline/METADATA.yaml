@@ -1,0 +1,37 @@
+# Reviewer: baseline
+# The foundational reviewer from which all others are forked.
+
+name: baseline
+description: |
+  Default reviewer with no domain-specific training.
+  All new reviewers start here and develop personality through accumulated examples.
+
+# Trust configuration
+trust_level: observation  # observation | calibration | delegation | full
+
+# Domain scope (empty = all domains)
+domain_scope: []
+
+# Categories this reviewer can auto-decide at delegation+ trust
+# Examples: ["style", "naming", "formatting"]
+delegated_categories: []
+
+# Loop detection settings
+loop_detection:
+  max_iterations: 3
+  escalation_threshold: 2
+  same_issue_threshold: 2
+
+# Lineage tracking
+forked_from: null
+forked_at: null
+created_at: 2026-01-13
+
+# Statistics (updated automatically)
+stats:
+  reviews_completed: 0
+  approvals: 0
+  feedbacks: 0
+  escalations: 0
+  examples_marked_good: 0
+  examples_marked_bad: 0

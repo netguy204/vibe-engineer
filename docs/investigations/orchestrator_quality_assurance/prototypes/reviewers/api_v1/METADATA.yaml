@@ -1,0 +1,41 @@
+# Reviewer: api_v1
+# Domain-specific reviewer for API-related chunks
+
+name: api_v1
+description: |
+  Reviewer specialized for API design, endpoint implementation, and HTTP semantics.
+  Forked from baseline after demonstrating good judgment on API-related chunks.
+
+# Trust configuration
+trust_level: delegation  # Has earned delegation-level trust for API work
+
+# Domain scope
+domain_scope:
+  - "api/*"           # Chunks in api/ cluster
+  - "*_endpoint"      # Chunks ending in _endpoint
+  - "*_validation"    # Input validation chunks
+
+# Categories this reviewer can auto-decide
+delegated_categories:
+  - "style"           # Naming conventions, formatting
+  - "error_messages"  # Error message wording
+
+# Loop detection settings
+loop_detection:
+  max_iterations: 3
+  escalation_threshold: 2
+  same_issue_threshold: 2
+
+# Lineage tracking
+forked_from: baseline
+forked_at: 2026-01-10
+created_at: 2026-01-10
+
+# Statistics
+stats:
+  reviews_completed: 12
+  approvals: 8
+  feedbacks: 3
+  escalations: 1
+  examples_marked_good: 9
+  examples_marked_bad: 2
