@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/subsystems.py
 - src/ve.py
-- src/templates/commands/chunk-complete.md
+- src/templates/commands/chunk-complete.md.jinja2
 - tests/test_subsystem_overlap_logic.py
 - tests/test_subsystem_overlap_cli.py
 code_references:

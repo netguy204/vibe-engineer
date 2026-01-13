@@ -82,7 +82,17 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
    base does now, that the document is now only valuable as a historic reference
    point. If it appears that the goal is not represented in the code, STOP AND
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
-   it is not reflected in the code yet. 
+   it is not reflected in the code yet.
+
+{# Chunk: docs/chunks/bug_type_field - Optional backreferences for implementation bugs #}
+   **Bug type guidance for code_references:**
+   Check the chunk's `bug_type` field in GOAL.md frontmatter:
+   - If `bug_type: semantic` (or `bug_type: null`): Code references are **required**.
+     The fix adds to code understanding and should be traceable.
+   - If `bug_type: implementation`: Code references are **optional**. If the fix
+     doesn't add semantic value (e.g., a typo fix, off-by-one error, null check),
+     you may skip populating code_references. The backreference would just be
+     noise—saying "we fixed a typo here" doesn't help future understanding.
 
 3. The chunk directory short name (e.g., `ordering_audit_seqnums` from
    `docs/chunks/ordering_audit_seqnums`) is the `<chunk_id>` used by CLI commands below.
@@ -123,9 +133,31 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
     recommendations based on each overlapping subsystem's status. For semantic changes,
     always get operator confirmation before expanding scope or updating subsystem documentation.
 
-11. Mark the chunk status as active in the front matter and remove the comment
-    explaining the structure of the front matter from the <chunk
-    directory>/GOAL.md file
+{# Chunk: docs/chunks/bug_type_field - Bug type-aware status transition #}
+11. **Determine final status based on bug_type.** Check the chunk's `bug_type`
+    field in GOAL.md frontmatter to determine the correct final status:
+
+    - If `bug_type: null` (not a bug fix) or `bug_type: semantic`:
+      - Set status to **ACTIVE**
+      - For semantic bugs: The fix revealed new understanding and serves as an
+        ongoing anchor for that understanding
+
+    - If `bug_type: semantic`: Additionally, **search for impacted chunks**.
+      This bug revealed new understanding, which may affect other chunks:
+      a. Run `ve chunk list --active` to see all ACTIVE chunks
+      b. Review any chunks that touch related code paths or concepts
+      c. Report to the operator which chunks may need review based on the new
+         understanding. Don't modify them—just flag for human review.
+
+    - If `bug_type: implementation`:
+      - Set status to **HISTORICAL** (not ACTIVE)
+      - Implementation bugs are point-in-time corrections. The code was simply
+        wrong and we fixed it—there's no ongoing semantic value to preserve.
+      - The chunk served its purpose (tracking the fix) and is now archaeological.
+
+    After determining the correct status, update the chunk's GOAL.md:
+    - Set the status field to the determined value (ACTIVE or HISTORICAL)
+    - Remove the comment block explaining the structure of the front matter
 
 12. **Check for friction entries being resolved.** Read the chunk's GOAL.md
     frontmatter and check if it has a `friction_entries` field with any entries.

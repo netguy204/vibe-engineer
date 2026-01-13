@@ -58,6 +58,19 @@ class ChunkStatus(StrEnum):
     HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
 
 
+# Chunk: docs/chunks/bug_type_field - Bug classification for semantic vs implementation bugs
+class BugType(StrEnum):
+    """Classification of bug fix chunks to guide completion behavior.
+
+    When a chunk is a bug fix, this field distinguishes between:
+    - semantic: The bug revealed new understanding of intended behavior (discovery)
+    - implementation: The bug corrected known-wrong code (we knew how it should work)
+    """
+
+    SEMANTIC = "semantic"  # Bug revealed new understanding; code backreferences required
+    IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
+
+
 # Chunk: docs/chunks/valid_transitions - State transition validation
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
@@ -529,6 +542,7 @@ class InvestigationFrontmatter(BaseModel):
 # Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field
+# Chunk: docs/chunks/bug_type_field - Added bug_type field for bug classification
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -549,6 +563,8 @@ class ChunkFrontmatter(BaseModel):
     created_after: list[str] = []
     # Chunk: docs/chunks/friction_chunk_linking - Friction entries addressed by this chunk
     friction_entries: list["FrictionEntryReference"] = []
+    # Chunk: docs/chunks/bug_type_field - Bug classification for completion behavior
+    bug_type: BugType | None = None
 
 
 # Chunk: docs/chunks/friction_template_and_cli - Friction log models
