@@ -105,3 +105,32 @@ search for it - run it directly via Bash.
 11. Mark the chunk status as active in the front matter and remove the comment
     explaining the structure of the front matter from the <chunk
     directory>/GOAL.md file
+
+12. **Check for friction entries being resolved.** Read the chunk's GOAL.md
+    frontmatter and check if it has a `friction_entries` field with any entries.
+
+    If friction entries are present:
+
+    a. For each friction entry referenced, display the entry ID and its scope
+       (full or partial) to the operator.
+
+    b. Report the friction resolution status:
+       - For `scope: full` entries: These are now fully RESOLVED since the chunk
+         has transitioned to ACTIVE status. The derived status in FRICTION.md
+         will automatically reflect this.
+       - For `scope: partial` entries: Inform the operator that this friction
+         entry has been partially addressed. Additional chunks may be needed
+         to fully resolve it. The entry remains ADDRESSED (not RESOLVED) until
+         all partial chunks are completed.
+
+    c. Summary message example:
+       ```
+       Friction resolution summary:
+       - F001 (full scope): Now RESOLVED
+       - F003 (partial scope): ADDRESSED - additional work may be needed
+       ```
+
+    **Note:** No file updates are required here. Friction entry status is derived
+    from the `proposed_chunks` in FRICTION.md and chunk status. Since this chunk
+    is now ACTIVE, entries with `scope: full` will automatically compute as
+    RESOLVED when querying `ve friction list`.

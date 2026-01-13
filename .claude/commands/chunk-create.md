@@ -127,7 +127,49 @@ completely in order:
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
 
-6. **Check for investigation origin.** If this chunk was derived from an
+6. **Check for friction entries being addressed.** Ask the operator: "Does this
+   chunk address any friction entries from `docs/trunk/FRICTION.md`?"
+
+   If yes (or if the operator's prompt mentions friction, pain points, or
+   accumulated issues):
+
+   a. Run `ve friction list --open` to display OPEN friction entries. Present
+      them to the operator in a readable format showing the entry ID, theme,
+      and title.
+
+   b. Ask the operator to select which entries this chunk addresses. For each
+      selected entry, ask whether the scope is:
+      - **full**: This chunk fully resolves the friction entry
+      - **partial**: This chunk partially addresses the entry (other chunks
+        may be needed for complete resolution)
+
+   c. Add the selected entries to the chunk's `friction_entries` frontmatter:
+      ```yaml
+      friction_entries:
+        - entry_id: F001
+          scope: full
+        - entry_id: F003
+          scope: partial
+      ```
+
+   d. Update `docs/trunk/FRICTION.md` frontmatter to link the friction entries
+      to this chunk. Add or update a `proposed_chunks` entry:
+      ```yaml
+      proposed_chunks:
+        - prompt: "<brief description derived from chunk goal>"
+          chunk_directory: "<chunk directory name>"
+          addresses: ["F001", "F003"]
+      ```
+
+      If an existing `proposed_chunks` entry already covers some of these entry
+      IDs (from prior pattern recognition), update that entry's `chunk_directory`
+      field rather than creating a duplicate.
+
+   This step enables "why did we do this work?" traceability from implementation
+   back to accumulated pain points, and transitions friction entry status from
+   OPEN to ADDRESSED.
+
+7. **Check for investigation origin.** If this chunk was derived from an
    investigation's `proposed_chunks` (e.g., the user referenced an investigation
    or you can identify that the work originated from exploratory findings):
 
