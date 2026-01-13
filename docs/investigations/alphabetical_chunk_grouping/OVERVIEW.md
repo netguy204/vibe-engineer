@@ -7,11 +7,11 @@ proposed_chunks:
   - prompt: "Add characteristic naming prompt for cluster seeds when no similar chunks exist"
     chunk_directory: cluster_seed_naming
   - prompt: "Implement ve cluster list command to show prefix clusters and identify singletons/superclusters"
-    chunk_directory: null
+    chunk_directory: cluster_list_command
   - prompt: "Implement ve cluster rename command for batch prefix renaming with reference updates"
     chunk_directory: cluster_rename
   - prompt: "Update CLAUDE.md with chunk naming guidance preferring initiative nouns over artifact types"
-    chunk_directory: null
+    chunk_directory: naming_guidance_claudemd
 created_after: ["chunk_reference_decay"]
 ---
 

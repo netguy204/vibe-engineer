@@ -7,7 +7,7 @@ proposed_chunks:
   - prompt: "Add friction_entries to chunk GOAL.md template"
     chunk_directory: friction_chunk_linking
   - prompt: "Integrate friction into /chunk-create and /chunk-complete"
-    chunk_directory: null
+    chunk_directory: friction_chunk_workflow
   - prompt: "Document friction log artifact in CLAUDE.md"
     chunk_directory: friction_claude_docs
 created_after: ["template_drift"]

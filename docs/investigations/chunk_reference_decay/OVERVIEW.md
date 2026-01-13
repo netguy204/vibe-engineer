@@ -5,7 +5,7 @@ trigger: Code blocks accumulate many chunk backreferences that drip-feed context
 proposed_chunks:
 - prompt: Implement chunk-to-narrative consolidation workflow that groups related
     chunks into narratives and updates code backreferences
-  chunk_directory: null
+  chunk_directory: narrative_consolidation
 - prompt: 'Add narrative backreference support to code files (# Narrative: docs/narratives/NNNN-name
     format)'
   chunk_directory: narrative_backreference_support
