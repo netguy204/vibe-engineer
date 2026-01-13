@@ -184,6 +184,14 @@ async def create_work_unit_endpoint(request: Request) -> JSONResponse:
     except ValueError as e:
         return _error_response(str(e), status_code=409)  # Conflict
 
+    # Broadcast the new work unit via WebSocket
+    await broadcast_work_unit_update(
+        chunk=created.chunk,
+        status=created.status.value,
+        phase=created.phase.value,
+        attention_reason=created.attention_reason,
+    )
+
     return JSONResponse(
         created.model_dump_json_serializable(),
         status_code=201,
@@ -264,6 +272,14 @@ async def delete_work_unit_endpoint(request: Request) -> JSONResponse:
     deleted = store.delete_work_unit(chunk)
     if not deleted:
         return _not_found_response("Work unit", chunk)
+
+    # Broadcast the deletion via WebSocket (use DELETED as special status)
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status="DELETED",
+        phase="",
+        attention_reason=None,
+    )
 
     # Remove worktree and branch to prevent stale branch reuse on re-inject
     if _project_dir:
@@ -442,6 +458,14 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     except ValueError as e:
         return _error_response(str(e), status_code=409)
 
+    # Broadcast the new work unit via WebSocket
+    await broadcast_work_unit_update(
+        chunk=created.chunk,
+        status=created.status.value,
+        phase=created.phase.value,
+        attention_reason=created.attention_reason,
+    )
+
     # Include any validation warnings in the response
     response_data = created.model_dump_json_serializable()
     if validation_result.warnings:
@@ -496,6 +520,14 @@ async def prioritize_endpoint(request: Request) -> JSONResponse:
         updated = store.update_work_unit(unit)
     except ValueError as e:
         return _error_response(str(e))
+
+    # Broadcast the priority change via WebSocket
+    await broadcast_work_unit_update(
+        chunk=updated.chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+        attention_reason=updated.attention_reason,
+    )
 
     return JSONResponse(updated.model_dump_json_serializable())
 

@@ -763,22 +763,45 @@
         function updateWorkUnit(data) {
             // Find the process card for this chunk
             const card = document.querySelector('.process-card[data-chunk="' + data.chunk + '"]');
-            if (card) {
-                // Update the status class
-                card.className = 'process-card status-' + data.status;
 
-                // Update the status text
-                const statusSpan = card.querySelector('.process-status');
-                if (statusSpan) {
-                    statusSpan.className = 'process-status ' + data.status;
-                    statusSpan.textContent = data.status.replace('_', ' ');
+            // Handle deletion - remove the card
+            if (data.status === 'DELETED') {
+                if (card) {
+                    card.remove();
+                    // Update the work unit count
+                    const countBadge = document.getElementById('work-unit-count');
+                    if (countBadge) {
+                        const currentCount = parseInt(countBadge.textContent) || 0;
+                        countBadge.textContent = Math.max(0, currentCount - 1);
+                    }
                 }
+                showToast(data.chunk + ' was deleted', 'success');
+                return;
+            }
 
-                // Update the phase
-                const metaSpan = card.querySelector('.process-meta span:last-child');
-                if (metaSpan) {
-                    metaSpan.textContent = data.phase;
-                }
+            // Handle new work unit - reload to get fresh state with proper grouping
+            if (!card) {
+                showToast(data.chunk + ' added (' + data.status + ')', 'success');
+                // Reload to get properly grouped view
+                setTimeout(() => window.location.reload(), 500);
+                return;
+            }
+
+            // Update existing card
+            // Update the status class
+            card.className = 'process-card status-' + data.status;
+
+            // Update the status text
+            const statusSpan = card.querySelector('.process-status');
+            if (statusSpan) {
+                statusSpan.className = 'process-status ' + data.status;
+                statusSpan.textContent = data.status.replace('_', ' ');
+            }
+
+            // Update the phase
+            const metaSpan = card.querySelector('.process-meta span:last-child');
+            if (metaSpan) {
+                metaSpan.textContent = data.phase;
             }
 
             // Show a toast notification

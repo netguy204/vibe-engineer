@@ -1,10 +1,11 @@
 ---
 themes:
-  - orchestrator
-  - context-resolution
+- id: orchestrator
+  name: Orchestrator
+- id: context-resolution
+  name: Context Resolution
 proposed_chunks: []
 ---
-
 # Friction Log
 
 <!--
@@ -61,7 +62,7 @@ Where:
 New entries are appended below this comment.
 -->
 
-### 2026-01-12 [orchestrator] Over-eager conflict oracle causes unnecessary blocking
+### F001: 2026-01-12 [orchestrator] Over-eager conflict oracle causes unnecessary blocking
 
 The orchestrator's conflict oracle flags conflicts too aggressively, causing work units
 to get stuck in NEEDS_ATTENTION when they could safely proceed. Issues encountered:
@@ -84,7 +85,7 @@ to get stuck in NEEDS_ATTENTION when they could safely proceed. Issues encounter
 Root cause: State cleanup isn't happening on status transitions. Created future chunk
 `orch_unblock_transition` to address the cleanup bugs.
 
-### 2026-01-12 [context-resolution] Chunk validation uses wrong context in task projects
+### F002: 2026-01-12 [context-resolution] Chunk validation uses wrong context in task projects
 
 When working in a task folder and creating a chunk for a specific project within that task,
 the chunk was created correctly in the project's `docs/chunks/` directory. The CLAUDE.md
@@ -101,3 +102,9 @@ context, not the parent task context.
 
 **Impact**: High—blocked completion of work and required manual intervention to understand
 what was happening.
+
+### F003: 2026-01-12 [orchestrator] Attention list CLI examples truncated
+
+When running 've orch attention list', the output includes example CLI commands for addressing issues like conflicts, but these commands are truncated and unreadable. This makes it harder to quickly resolve attention items without having to guess or look up the correct command syntax.
+
+**Impact**: Medium
