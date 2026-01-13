@@ -713,6 +713,54 @@ def cluster_rename_cmd(old_prefix, new_prefix, execute, project_dir):
         click.echo("Run with --execute to apply these changes.")
 
 
+# Chunk: docs/chunks/cluster_list_command - Cluster list command
+@chunk.command("cluster-list")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--suggest-merges", is_flag=True, help="Suggest singleton merges based on semantic similarity")
+def cluster_list_cmd(project_dir, suggest_merges):
+    """List prefix clusters and identify singletons/superclusters.
+
+    Groups chunks by their alphabetical prefix (first word before underscore)
+    and categorizes clusters by size:
+
+    \b
+    - Superclusters (>8 chunks): Too large, prefix becomes noise
+    - Healthy (3-8 chunks): Optimal for filesystem navigation
+    - Small (2 chunks): Minimal grouping benefit
+    - Singletons (1 chunk): No grouping benefit
+
+    Use --suggest-merges to identify singletons that could be renamed into
+    existing clusters based on semantic similarity (uses TF-IDF analysis).
+
+    Examples:
+
+    \b
+        ve chunk cluster-list
+        ve chunk cluster-list --suggest-merges
+    """
+    from cluster_analysis import (
+        get_chunk_clusters,
+        categorize_clusters,
+        suggest_singleton_merges,
+        format_cluster_output,
+    )
+
+    clusters = get_chunk_clusters(project_dir)
+
+    if not clusters:
+        click.echo("No chunks found.")
+        return
+
+    categories = categorize_clusters(clusters)
+
+    merge_suggestions = None
+    if suggest_merges:
+        merge_suggestions = suggest_singleton_merges(project_dir, clusters)
+
+    output = format_cluster_output(categories, merge_suggestions)
+    click.echo(output)
+
+
 # Chunk: docs/chunks/narrative_cli_commands - Narrative command group
 @cli.group()
 def narrative():
