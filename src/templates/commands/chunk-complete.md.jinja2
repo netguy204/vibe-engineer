@@ -126,9 +126,38 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
 11. Mark the chunk status as active in the front matter and remove the comment
     explaining the structure of the front matter from the <chunk
     directory>/GOAL.md file
+
+12. **Check for friction entries being resolved.** Read the chunk's GOAL.md
+    frontmatter and check if it has a `friction_entries` field with any entries.
+
+    If friction entries are present:
+
+    a. For each friction entry referenced, display the entry ID and its scope
+       (full or partial) to the operator.
+
+    b. Report the friction resolution status:
+       - For `scope: full` entries: These are now fully RESOLVED since the chunk
+         has transitioned to ACTIVE status. The derived status in FRICTION.md
+         will automatically reflect this.
+       - For `scope: partial` entries: Inform the operator that this friction
+         entry has been partially addressed. Additional chunks may be needed
+         to fully resolve it. The entry remains ADDRESSED (not RESOLVED) until
+         all partial chunks are completed.
+
+    c. Summary message example:
+       ```
+       Friction resolution summary:
+       - F001 (full scope): Now RESOLVED
+       - F003 (partial scope): ADDRESSED - additional work may be needed
+       ```
+
+    **Note:** No file updates are required here. Friction entry status is derived
+    from the `proposed_chunks` in FRICTION.md and chunk status. Since this chunk
+    is now ACTIVE, entries with `scope: full` will automatically compute as
+    RESOLVED when querying `ve friction list`.
 {% if task_context %}
 
-12. **Commit in the artifact repo:** Create a commit in the external artifact repo
+13. **Commit in the artifact repo:** Create a commit in the external artifact repo
     (`{{ external_artifact_repo }}`) to capture the completed chunk's GOAL.md changes.
     This commit must happen before the sync step so the pinned SHA includes the
     completed artifact.
@@ -139,7 +168,7 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
     git commit -m "Complete chunk: <chunk_id>"
     ```
 
-13. **Sync external references:** Run `ve sync` to update pinned SHAs in all
+14. **Sync external references:** Run `ve sync` to update pinned SHAs in all
     external.yaml files across participating projects. This ensures that external
     references point to commits that actually contain the referenced artifacts.
 

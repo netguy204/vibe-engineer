@@ -15,7 +15,7 @@ code_references:
   - ref: src/templates/commands/subsystem-discover.md.jinja2
     implements: "Updated pattern matching and example paths to use short name format"
   - ref: CLAUDE.md
-    implements: "Added 'What Counts as Code' section clarifying command templates are code; updated examples to use short name format"
+    implements: "Updated examples to use short name format (e.g., docs/chunks/feature_name/, docs/chunks/symbolic_code_refs)"
 narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts
