@@ -170,6 +170,7 @@ Use these slash commands for artifact management:
 - `/chunk-complete` - Mark a chunk complete and update references
 - `/cluster-rename` - Batch-rename chunks matching a prefix (e.g., `/cluster-rename old_prefix new_prefix`)
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
+- `/narrative-compact` - Consolidate multiple chunks into a narrative (reduces backreference clutter)
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
 - `/friction-log` - Capture a friction point for later pattern analysis
@@ -215,6 +216,8 @@ Source code may contain backreference comments that link code back to the docume
 **When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations. Narrative references point to high-level architectural context.
 
 **When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
+
+**When backreferences accumulate:** Files with 5+ chunk backreferences may benefit from consolidation. Use `ve chunk backrefs` to identify such files, then `/narrative-compact` to consolidate related chunks into a narrative. This replaces multiple `# Chunk:` comments with a single `# Narrative:` comment, reducing noise while preserving chunk links in the narrative for archaeology.
 
 
 ## Development
