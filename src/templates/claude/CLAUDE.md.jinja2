@@ -198,6 +198,90 @@ You don't need to learn everything upfront. Vibe engineering is designed to meet
 
 The documentation teaches itself: follow backreferences in code to discover the chunks and subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
 
+{# Chunk: docs/chunks/orch_agent_guidance - Orchestrator interaction guidance for agents #}
+## Working with the Orchestrator
+
+When the orchestrator is running (`ve orch status` shows "Running"), you can help manage the parallel workflow on behalf of the operator. This section describes common orchestrator interactions.
+
+### Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `ve orch status` | Check if orchestrator is running |
+| `ve orch ps` | List all work units and their status |
+| `ve orch inject <chunk>` | Submit a chunk to the orchestrator |
+| `ve orch attention` | Show chunks needing operator input |
+| `ve orch answer <chunk>` | Answer a question from a work unit |
+| `ve orch resolve <chunk>` | Resolve a conflict verdict |
+| `ve orch work-unit delete <chunk>` | Remove a work unit |
+
+### Creating and Submitting FUTURE Chunks
+
+When the operator asks you to create work for later (or when an IMPLEMENTING chunk already exists), create chunks with FUTURE status:
+
+```bash
+# Create a FUTURE chunk
+uv run ve chunk create my_chunk --future
+
+# After refining GOAL.md, commit the chunk
+git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): create my_chunk"
+
+# Submit to orchestrator
+uv run ve orch inject my_chunk
+```
+
+**Important**: Always commit chunks before injecting them. The orchestrator works from the git state, not your working directory.
+
+### Re-injecting After Updates
+
+If you update a chunk's GOAL.md or PLAN.md after it's been injected, the orchestrator won't see your changes automatically. To update:
+
+```bash
+# Commit your changes
+git add docs/chunks/my_chunk/ && git commit -m "docs: update my_chunk goal"
+
+# Delete and re-inject
+uv run ve orch work-unit delete my_chunk
+uv run ve orch inject my_chunk
+```
+
+### Handling Attention Items
+
+Work units enter NEEDS_ATTENTION status when they require operator input (questions, conflicts, failures). Check the attention queue:
+
+```bash
+uv run ve orch attention
+```
+
+For questions, you can answer on behalf of the operator if you have sufficient context:
+
+```bash
+uv run ve orch answer my_chunk "The answer to the question"
+```
+
+For conflicts between chunks, resolve them:
+
+```bash
+uv run ve orch resolve my_chunk --verdict INDEPENDENT  # or SERIALIZE
+```
+
+### Batch Operations
+
+Use `/orchestrator-submit-future` to submit all FUTURE chunks at once. This command:
+1. Finds all FUTURE chunks
+2. Checks each is committed (no uncommitted changes)
+3. Checks each isn't already in the orchestrator
+4. Injects eligible chunks
+
+### Proactive Orchestrator Support
+
+When working interactively with the operator, consider these proactive actions:
+
+- **After creating FUTURE chunks**: Offer to commit and inject them
+- **When operator mentions parallel work**: Check `ve orch status` and suggest using the orchestrator
+- **When fixing bugs discovered during work**: Create FUTURE chunks for issues outside current scope
+- **When attention items accumulate**: Alert the operator or help resolve items you have context for
+
 ## Code Backreferences
 
 Source code may contain backreference comments that link code back to the documentation that created or governs it:
