@@ -600,7 +600,52 @@ class FrictionProposedChunk(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference for chunks
+# Regex for validating friction entry ID format: F followed by digits
+FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
+
+
+# Chunk: docs/chunks/selective_artifact_friction - External friction source reference
+class ExternalFrictionSource(BaseModel):
+    """Reference to friction entries in an external repository.
+
+    Used in project FRICTION.md frontmatter to track friction entries that
+    originated from external artifact repositories in task contexts.
+    """
+
+    repo: str  # External repo ref in org/repo format (e.g., "acme/ext")
+    track: str = "main"  # Branch to track
+    pinned: str  # Commit SHA when reference was created
+    entry_ids: list[str] = []  # List of F-numbers in that repo this project cares about
+
+    @field_validator("repo")
+    @classmethod
+    def validate_repo(cls, v: str) -> str:
+        """Validate repo is in org/repo format."""
+        return _require_valid_repo_ref(v, "repo")
+
+    @field_validator("pinned")
+    @classmethod
+    def validate_pinned(cls, v: str) -> str:
+        """Validate pinned is a 40-character hex SHA."""
+        if not SHA_PATTERN.match(v):
+            raise ValueError("pinned must be a 40-character lowercase hex SHA")
+        return v
+
+    @field_validator("entry_ids")
+    @classmethod
+    def validate_entry_ids(cls, v: list[str]) -> list[str]:
+        """Validate entry_ids are valid friction entry IDs."""
+        for entry_id in v:
+            if not FRICTION_ENTRY_ID_PATTERN.match(entry_id):
+                raise ValueError(
+                    f"entry_id '{entry_id}' must match pattern F followed by digits (e.g., F001, F123)"
+                )
+        return v
+
+
 # Chunk: docs/chunks/friction_template_and_cli - Friction log frontmatter schema
+# Chunk: docs/chunks/selective_artifact_friction - External friction source support
 class FrictionFrontmatter(BaseModel):
     """Frontmatter schema for FRICTION.md files.
 
@@ -609,11 +654,7 @@ class FrictionFrontmatter(BaseModel):
 
     themes: list[FrictionTheme] = []
     proposed_chunks: list[FrictionProposedChunk] = []
-
-
-# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference for chunks
-# Regex for validating friction entry ID format: F followed by digits
-FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
+    external_friction_sources: list[ExternalFrictionSource] = []
 
 
 class FrictionEntryReference(BaseModel):
