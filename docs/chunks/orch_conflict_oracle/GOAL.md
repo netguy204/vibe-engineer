@@ -14,7 +14,6 @@ code_paths:
   - tests/test_orchestrator_state.py
   - tests/test_orchestrator_scheduler.py
   - tests/test_orchestrator_cli.py
-  - tests/test_orchestrator_integration.py
 code_references:
   - ref: src/orchestrator/oracle.py#ConflictOracle
     implements: "Core conflict analysis class with progressive analysis by lifecycle stage"
@@ -44,6 +43,8 @@ code_references:
     implements: "Retrieve conflict analysis for chunk pair"
   - ref: src/orchestrator/state.py#StateStore::list_conflicts_for_chunk
     implements: "List all conflicts involving a chunk"
+  - ref: src/orchestrator/state.py#StateStore::list_all_conflicts
+    implements: "List all conflicts across all chunks with optional verdict filter"
   - ref: src/orchestrator/state.py#StateStore::clear_conflicts_for_chunk
     implements: "Clear stale conflicts on lifecycle advancement"
   - ref: src/orchestrator/api.py#get_conflicts_endpoint

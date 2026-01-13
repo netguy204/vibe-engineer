@@ -2518,3 +2518,152 @@ status: ACTIVE
         assert updated_b.status == WorkUnitStatus.BLOCKED
         assert "chunk_a" not in updated_b.blocked_by
         assert "chunk_d" in updated_b.blocked_by
+
+
+# Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcast tests
+class TestWebSocketBroadcasts:
+    """Tests for WebSocket broadcast invariant.
+
+    Every work unit state change should broadcast via WebSocket so the
+    dashboard receives real-time updates.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_broadcasts_running_status(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Dispatching a work unit broadcasts RUNNING status via WebSocket."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        # Configure mocks
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update") as mock_broadcast:
+            await scheduler._run_work_unit(work_unit)
+
+            # Verify broadcast was called with RUNNING status
+            mock_broadcast.assert_called()
+            calls = [
+                c
+                for c in mock_broadcast.call_args_list
+                if c.kwargs.get("status") == "RUNNING"
+            ]
+            assert len(calls) >= 1, "Expected at least one broadcast with RUNNING status"
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_broadcasts_ready_status(self, scheduler, state_store):
+        """Advancing phases broadcasts READY status via WebSocket."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update") as mock_broadcast:
+            await scheduler._advance_phase(work_unit)
+
+            # Verify broadcast was called with READY status
+            mock_broadcast.assert_called()
+            calls = [
+                c
+                for c in mock_broadcast.call_args_list
+                if c.kwargs.get("status") == "READY"
+            ]
+            assert len(calls) >= 1, "Expected at least one broadcast with READY status"
+
+            # Verify the phase was also advanced
+            call_args = calls[0].kwargs
+            assert call_args["phase"] == "IMPLEMENT"
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_broadcasts_done_status(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Completing all phases broadcasts DONE status via WebSocket."""
+        # Set up chunk with ACTIVE status
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update") as mock_broadcast:
+            await scheduler._advance_phase(work_unit)
+
+            # Verify broadcast was called with DONE status
+            mock_broadcast.assert_called()
+            calls = [
+                c
+                for c in mock_broadcast.call_args_list
+                if c.kwargs.get("status") == "DONE"
+            ]
+            assert len(calls) >= 1, "Expected at least one broadcast with DONE status"
+
+    @pytest.mark.asyncio
+    async def test_mark_needs_attention_broadcasts_status(self, scheduler, state_store):
+        """_mark_needs_attention broadcasts NEEDS_ATTENTION status via WebSocket."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update") as mock_broadcast:
+            with patch("orchestrator.scheduler.broadcast_attention_update"):
+                await scheduler._mark_needs_attention(work_unit, "Something went wrong")
+
+                # Verify broadcast was called with NEEDS_ATTENTION status
+                mock_broadcast.assert_called_once()
+                call_kwargs = mock_broadcast.call_args.kwargs
+                assert call_kwargs["status"] == "NEEDS_ATTENTION"
+                assert call_kwargs["chunk"] == "test_chunk"

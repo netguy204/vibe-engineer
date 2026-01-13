@@ -205,6 +205,26 @@ class Scheduler:
 
     The scheduler maintains a pool of running agents and dispatches
     work units from the ready queue when slots are available.
+
+    INVARIANT - WebSocket Broadcasting:
+        Every work unit state change MUST call broadcast_work_unit_update()
+        after updating the database. This ensures the dashboard receives
+        real-time notifications. State changes include:
+        - READY → RUNNING (dispatch)
+        - Phase advancement (READY with new phase)
+        - RUNNING → NEEDS_ATTENTION (error/question)
+        - Completion (DONE)
+
+        Pattern:
+            work_unit.status = WorkUnitStatus.RUNNING
+            self.store.update_work_unit(work_unit)
+            await broadcast_work_unit_update(
+                chunk=work_unit.chunk,
+                status=work_unit.status.value,
+                phase=work_unit.phase.value,
+            )
+
+        See also: src/orchestrator/api.py which follows this invariant.
     """
 
     def __init__(
@@ -407,6 +427,14 @@ class Scheduler:
             work_unit.worktree = str(worktree_path)
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
+
+            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast dispatch
+            # Broadcast via WebSocket so dashboard updates
+            await broadcast_work_unit_update(
+                chunk=work_unit.chunk,
+                status=work_unit.status.value,
+                phase=work_unit.phase.value,
+            )
 
             # Set up logging
             log_dir = self.worktree_manager.get_log_path(chunk)
@@ -680,6 +708,14 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
+            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast completion
+            # Broadcast via WebSocket so dashboard updates
+            await broadcast_work_unit_update(
+                chunk=work_unit.chunk,
+                status=work_unit.status.value,
+                phase=work_unit.phase.value,
+            )
+
             # Chunk: docs/chunks/orch_blocked_lifecycle - Unblock dependents after completion
             self._unblock_dependents(chunk)
 
@@ -691,6 +727,14 @@ class Scheduler:
             work_unit.session_id = None
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
+
+            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast phase advancement
+            # Broadcast via WebSocket so dashboard updates
+            await broadcast_work_unit_update(
+                chunk=work_unit.chunk,
+                status=work_unit.status.value,
+                phase=work_unit.phase.value,
+            )
 
             # Chunk: docs/chunks/orch_conflict_oracle - Re-analyze conflicts on phase advance
             # Phase advancement may provide more precise information for conflict analysis
