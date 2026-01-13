@@ -39,6 +39,11 @@ To understand recent work, use `ve chunk list --latest` to find the most recentl
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
+
+### Chunk Naming Conventions
+
+Name chunks by the **initiative** they advance, not the artifact type or action verb. Ask: "What multi-chunk effort does this chunk belong to?" Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes that create superclusters: `chunk_`, `fix_`, `cli_`, `api_`, `util_`. See `docs/investigations/alphabetical_chunk_grouping/OVERVIEW.md` for detailed rationale.
+
 ### Chunk Frontmatter References
 
 Chunk GOAL.md files may reference other artifact types in their frontmatter:
