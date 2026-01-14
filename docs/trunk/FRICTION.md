@@ -163,3 +163,30 @@ created conflicts in 3 files.
 scheduler.py, and test file, then `ve orch work-unit status X DONE`.
 
 **Impact**: High—blocks work unit completion, requires git expertise to resolve.
+
+### F008: 2026-01-13 [orchestrator] Agent completes successfully but commit fails silently
+
+During the COMPLETE phase of `background_keyword_semantic`, the agent successfully:
+1. Updated code references in GOAL.md
+2. Marked the chunk as ACTIVE
+3. Returned a ResultMessage with `subtype='success'`
+
+However, immediately after, an `error_during_execution` ResultMessage was logged and the
+work unit entered NEEDS_ATTENTION with a cryptic error: "Command failed with exit code 1".
+
+**Investigation revealed**: The worktree contained all the completed work as uncommitted
+changes. The agent finished implementation but the commit step failed. The error message
+provided no indication that this was a commit failure or that the work was actually complete.
+
+**Resolution required**: Manual intervention to:
+1. Commit the changes in the worktree (`git add -A && git commit`)
+2. Merge the branch to main
+3. Clean up the worktree
+4. Update work unit status
+
+**Root cause hypothesis**: Something in the commit/merge flow failed after the agent
+returned success. Possibly a race condition or the agent exiting before the commit
+completed.
+
+**Impact**: High—work appears failed when it's actually complete; requires investigation
+to understand the actual state.
