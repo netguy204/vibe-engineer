@@ -291,6 +291,7 @@ class TaskConfig(BaseModel):
 
 
 # Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference
+# Chunk: docs/chunks/external_chunk_causal - Added created_after field for local causal ordering
 class ExternalArtifactRef(BaseModel):
     """Reference to a workflow artifact in another repository.
 
