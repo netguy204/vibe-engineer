@@ -1,21 +1,27 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/chunks.py
+- src/task_utils.py
+- src/ve.py
+- tests/test_taskdir_context_cmds.py
+- docs/subsystems/workflow_artifacts/OVERVIEW.md
 code_references: []
 narrative: null
 investigation: null
 subsystems:
-  - subsystem_id: workflow_artifacts
-    relationship: implements
+- subsystem_id: workflow_artifacts
+  relationship: implements
 friction_entries:
-  - entry_id: F002
-    scope: full
+- entry_id: F002
+  scope: full
 bug_type: semantic
-created_after: ["bug_type_field", "cluster_subsystem_prompt"]
+created_after:
+- bug_type_field
+- cluster_subsystem_prompt
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

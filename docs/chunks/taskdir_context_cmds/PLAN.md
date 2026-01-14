@@ -8,168 +8,159 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extends task-context awareness to the `ve chunk overlap`, `ve chunk validate`,
+and `ve chunk activate` commands. The existing implementations work well in single-project
+mode but don't fully support the task directory context established by the `cross_repo_chunks`
+narrative.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach follows patterns already established by:
+- `validate_chunk_complete()` - already has partial task context support via `task_dir` param
+- `resolve_chunk_location()` - resolves external chunks in task context
+- Task-aware create/list commands - detect task directory and aggregate from multiple repos
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Key strategy:**
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/taskdir_context_cmds/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. **overlap**: Extend `find_overlapping_chunks()` to aggregate chunks from ALL repos in task
+   context (external repo + project repos), and resolve project-qualified code references
+   (e.g., `project_name::src/foo.py#Bar`) to their target projects.
+
+2. **validate**: The existing implementation already has task context support. We need to:
+   - Add verification of project-qualified code references
+   - Support validation of cross-project external chunk references
+   - When run from within a project directory inside a task, respect that project's context
+
+3. **activate**: Extend to work correctly in task context, resolving chunks across the
+   task's repo structure.
+
+**Reference: DEC-002** - Git not assumed. This implementation respects that task directories
+may contain worktrees without assuming git operations.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS task-context
+  extensions to operational commands. The subsystem documents external reference patterns
+  and task-context requirements. Hard Invariant #11 mentions `--projects` flag support;
+  we'll extend or add an invariant for task-context behavior in operational commands.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add task-aware helper for code reference resolution
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a helper function to resolve project-qualified code references in task context.
+This function will parse refs like `project_name::src/foo.py#Bar`, resolve the project
+path via task config, and verify the file/symbol exists.
 
-Example:
+Location: `src/task_utils.py`
 
-### Step 1: Define the SegmentHeader struct
+```python
+def resolve_project_qualified_ref(
+    ref: str,
+    task_dir: Path,
+    default_project: Path,
+) -> tuple[Path, str, str | None]:
+    """Resolve a project-qualified code reference.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Args:
+        ref: Code reference (may be project-qualified like "proj::src/foo.py#Bar")
+        task_dir: Task directory for resolving project names
+        default_project: Project to use for non-qualified refs
 
-Location: src/segment/format.rs
+    Returns:
+        Tuple of (project_path, file_path, symbol_path or None)
+    """
+```
 
-### Step 2: Implement header serialization
+### Step 2: Extend overlap to aggregate chunks from all task repos
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Modify `Chunks.find_overlapping_chunks()` to accept optional `task_dir` parameter.
+When in task context, aggregate chunks from:
+1. External artifact repo
+2. All project repos
 
-### Step 3: ...
+For each candidate chunk, resolve its code references using the task context
+and check for overlap against the target chunk's references.
+
+Location: `src/chunks.py#find_overlapping_chunks`
+
+Add new CLI handler in `src/ve.py#overlap` to detect task context and pass it
+to the method.
+
+### Step 3: Extend validate for project-qualified references
+
+The existing `validate_chunk_complete()` already has task context support.
+Enhance `_validate_symbol_exists_with_context()` to properly handle:
+- Project-qualified refs when task_dir is available
+- Cross-project external chunk references validation
+
+Location: `src/chunks.py#_validate_symbol_exists_with_context`
+
+Update the CLI handler to ensure task context is detected correctly when
+running from within a project directory that's part of a task.
+
+### Step 4: Extend activate for task context
+
+Add task-aware activation that:
+- Detects task context from project_dir
+- Resolves chunk location (could be in external repo or project repo)
+- Updates status in the correct location
+
+Location: `src/chunks.py#activate_chunk` (add task_dir parameter)
+Location: `src/ve.py#activate` (CLI handler updates)
+
+### Step 5: Write tests for task-context scenarios
+
+Create comprehensive tests covering:
+- `ve chunk overlap` with project-qualified refs
+- `ve chunk overlap` aggregating chunks across task repos
+- `ve chunk validate` with cross-project refs
+- `ve chunk validate` from within a project inside a task
+- `ve chunk activate` in task context
+
+Location: `tests/test_taskdir_context_cmds.py` (new file)
+
+Use the existing test helpers from `conftest.py`:
+- `setup_task_directory()`
+- `make_ve_initialized_git_repo()`
+
+### Step 6: Update workflow_artifacts subsystem documentation
+
+Add or extend an invariant documenting task-context requirements for operational
+commands (overlap, validate, activate).
+
+Location: `docs/subsystems/workflow_artifacts/OVERVIEW.md`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+When implementing code, add backreference comments:
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
+```python
+# Chunk: docs/chunks/taskdir_context_cmds - Task context for operational commands
 ```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
-
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
-
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Existing task-aware infrastructure from `cross_repo_chunks` narrative
+- `is_task_directory()`, `load_task_config()`, `resolve_repo_directory()` from `task_utils.py`
+- `resolve_chunk_location()` from `chunks.py`
+- `is_external_artifact()`, `load_external_ref()` from `external_refs.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Performance concern**: Aggregating chunks from all task repos could be slow for
+   large tasks with many chunks. Consider lazy evaluation or caching if needed.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Ambiguous chunk resolution**: When a chunk name exists in multiple repos, how
+   should `activate` resolve it? Proposal: prefer external repo, then search project
+   repos in config order, error if ambiguous.
+
+3. **Circular reference possibility**: If external chunk references another external
+   chunk, overlap detection needs to handle cycles. The existing `get_ancestors()`
+   in `ArtifactIndex` should handle this.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
