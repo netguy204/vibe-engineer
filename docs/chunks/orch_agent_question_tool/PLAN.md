@@ -8,168 +8,191 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The current orchestrator already intercepts `AskUserQuestion` tool calls via a PreToolUse hook
+(implemented in `orch_question_forward`). However, there are two remaining issues:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Error detection heuristic** (`_is_error_result()`) scans result text for patterns like
+   "Error:", "Failed to", "Could not" - which can falsely trigger on success summaries that
+   happen to contain these phrases.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Unknown state fallback** - When an agent result doesn't clearly indicate `completed`,
+   `suspended`, or `error`, the scheduler falls back to NEEDS_ATTENTION with "unknown state".
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_agent_question_tool/GOAL.md)
-with references to the files that you expect to touch.
--->
+The solution is two-fold:
+
+1. **Remove text-parsing heuristics for error detection** - The `_is_error_result()` function
+   should be removed. The `ResultMessage.is_error` flag from the SDK is the authoritative
+   source for whether a result represents an error.
+
+2. **Trust the SDK signals** - When `ResultMessage.is_error=False`, the phase completed
+   successfully. We should not second-guess this with text pattern matching.
+
+The existing `AskUserQuestion` interception via the PreToolUse hook is the correct mechanism
+for question detection and should remain unchanged. The key insight is that question detection
+is already explicit (tool-based), but error detection is still heuristic-based and causing
+false positives.
+
+**No new tool is needed** - the existing `AskUserQuestion` tool and hook infrastructure from
+`orch_question_forward` is correct. We're fixing the false positive issue in error detection.
+
+### Testing Approach
+
+Per TESTING_PHILOSOPHY.md, we will use TDD:
+1. Write failing tests that verify verbose success summaries don't trigger NEEDS_ATTENTION
+2. Update `_is_error_result` tests to verify the function is removed
+3. Verify that actual SDK error signals (`is_error=True`) still trigger error handling
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this work. The orchestrator code is not yet documented
+as a subsystem.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for verbose success summaries
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests in `tests/test_orchestrator_agent.py` that verify:
+- A result with `is_error=False` and verbose text containing "Failed to" or "Error:"
+  is treated as a successful completion, not an error
+- Document the expected behavior: SDK's `is_error` flag is authoritative
 
-Example:
+Location: `tests/test_orchestrator_agent.py`
 
-### Step 1: Define the SegmentHeader struct
+```python
+class TestErrorDetectionRemoval:
+    """Tests verifying heuristic error detection is removed."""
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    def test_verbose_success_with_failed_to_text_not_error(self):
+        """Success result containing 'Failed to' in text is still success."""
+        # ResultMessage with is_error=False but text containing "Failed to"
+        # Should NOT be treated as error
 
-Location: src/segment/format.rs
+    def test_verbose_success_with_error_colon_text_not_error(self):
+        """Success result containing 'Error:' in text is still success."""
+        # ResultMessage with is_error=False but text containing "Error:"
+        # Should NOT be treated as error
+```
 
-### Step 2: Implement header serialization
+### Step 2: Remove `_is_error_result()` function and its usage
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Remove the text-parsing heuristic from `src/orchestrator/agent.py`:
 
-### Step 3: ...
+1. Delete the `_is_error_result()` function (lines 712-729)
+2. Remove all calls to `_is_error_result()` in:
+   - `run_phase()` (line 479)
+   - `run_commit()` (line 588)
+   - `resume_for_active_status()` (line 685)
+
+Update the logic at each call site to only check `is_error` flag from ResultMessage:
+```python
+# Before:
+if is_error:
+    error = result_text or "Agent returned error"
+elif result_text and _is_error_result(result_text):
+    error = result_text
+else:
+    completed = True
+
+# After:
+if is_error:
+    error = result_text or "Agent returned error"
+else:
+    completed = True
+```
+
+Location: `src/orchestrator/agent.py`
+
+### Step 3: Update existing tests for `_is_error_result`
+
+The existing `TestIsErrorResult` test class should be removed since the function
+no longer exists. Replace it with tests that verify the new behavior.
+
+Location: `tests/test_orchestrator_agent.py`
+
+Remove:
+- `TestIsErrorResult` class (lines 94-113)
+
+Add to the new `TestErrorDetectionRemoval` class:
+- Tests verifying `run_phase` only uses `is_error` flag
+- Tests verifying verbose success text doesn't cause errors
+
+### Step 4: Verify question detection still works
+
+Run existing tests to verify the `AskUserQuestion` hook interception still works:
+- `TestQuestionInterceptHook` - hook creation and extraction
+- `TestRunPhaseWithQuestionCallback` - integration with run_phase
+- `TestQuestionForwardingFlow` (in scheduler tests) - end-to-end flow
+
+No changes expected here - just verification that question handling is unaffected.
+
+### Step 5: Add integration test for the full scenario
+
+Add an integration-level test that simulates the `coderef_format_prompting` scenario:
+- Agent completes successfully with `is_error=False`
+- Result text contains phrases that would previously trigger false positives
+- Verify work unit status is NOT NEEDS_ATTENTION
+- Verify phase advances correctly
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+```python
+class TestVerboseSuccessNotMisinterpreted:
+    """Tests that verbose success summaries don't trigger NEEDS_ATTENTION."""
+
+    @pytest.mark.asyncio
+    async def test_verbose_success_advances_phase(self):
+        """Agent completing with verbose text advances phase, not NEEDS_ATTENTION."""
+        # Mock agent returning ResultMessage with:
+        # - is_error=False
+        # - result="Successfully completed. Note: Failed to find optional file X,
+        #           proceeded without it. Error counts: 0."
+        # Verify work unit advances to next phase, not NEEDS_ATTENTION
+```
+
+### Step 6: Manual verification
+
+Perform manual verification as specified in success criteria:
+1. Create a test chunk via orchestrator
+2. Ensure the agent completes with a verbose summary
+3. Verify the work unit advances correctly without triggering NEEDS_ATTENTION
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+Add backreference to modified code:
+```python
+# Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
-
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+This should be added to the result handling sections in `run_phase()`, `run_commit()`,
+and `resume_for_active_status()`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **orch_question_forward** (ACTIVE) - Provides the `AskUserQuestion` hook infrastructure
+  that this chunk preserves and relies on. No changes needed to that chunk's work.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Are there legitimate error patterns missed by the SDK?**
+   The `_is_error_result()` heuristic was presumably added because some errors
+   weren't being flagged via `is_error`. We should investigate whether there are
+   cases where the SDK returns `is_error=False` but the agent actually failed.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Mitigation**: The existing test suite should catch regressions. If we find
+   cases, we can add them back with more targeted patterns.
+
+2. **What about "Unknown slash command:" errors?**
+   One of the patterns in `_is_error_result()` is "Unknown slash command:" which
+   might indicate a configuration issue rather than an agent failure. However,
+   if the SDK doesn't flag this as `is_error`, it's likely being handled at a
+   different layer.
+
+   **Mitigation**: Verify via tests that slash command errors are handled correctly.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

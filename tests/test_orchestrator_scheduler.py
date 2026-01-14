@@ -489,6 +489,117 @@ class TestAgentResultHandling:
         assert updated.status == WorkUnitStatus.READY
 
 
+# Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
+class TestVerboseSuccessNotMisinterpreted:
+    """Tests that verbose success summaries don't trigger NEEDS_ATTENTION.
+
+    These integration tests verify the end-to-end flow: when an agent completes
+    successfully (is_error=False) but with verbose output containing phrases like
+    "Failed to" or "Error:", the work unit should advance phases, NOT enter
+    NEEDS_ATTENTION status.
+    """
+
+    @pytest.mark.asyncio
+    async def test_verbose_success_advances_phase(self, scheduler, state_store):
+        """Agent completing with verbose text advances phase, not NEEDS_ATTENTION.
+
+        This simulates the coderef_format_prompting scenario where an agent
+        outputs a detailed success summary that happens to contain phrases that
+        look like errors (e.g., "Failed to find optional X", "Error: 0 found").
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_verbose",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult indicating successful completion
+        # The actual result text is not stored in AgentResult, but completed=True
+        # is what matters when is_error=False from the SDK
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            session_id="session123",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test_verbose")
+        # Should advance to next phase, NOT enter NEEDS_ATTENTION
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.phase == WorkUnitPhase.IMPLEMENT
+
+    @pytest.mark.asyncio
+    async def test_sdk_error_flag_triggers_attention(self, scheduler, state_store):
+        """SDK is_error=True correctly triggers NEEDS_ATTENTION.
+
+        When the SDK indicates an error via the is_error flag, the work unit
+        should enter NEEDS_ATTENTION. This is the authoritative error signal.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_sdk_error",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult with error (completed=False, error set)
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="SDK reported an error condition",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test_sdk_error")
+        # Should enter NEEDS_ATTENTION for genuine errors
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+
+    @pytest.mark.asyncio
+    async def test_question_detection_still_triggers_attention(
+        self, scheduler, state_store
+    ):
+        """Question detection via hook still correctly triggers NEEDS_ATTENTION.
+
+        The question interception mechanism (via AskUserQuestion hook) should
+        still correctly suspend agents and enter NEEDS_ATTENTION. This verifies
+        that removing text-based error detection doesn't break question handling.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_question",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult from question interception (suspended=True)
+        result = AgentResult(
+            completed=False,
+            suspended=True,
+            session_id="session123",
+            question={"question": "Which approach?", "options": [{"label": "A"}]},
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("test_question")
+        # Should enter NEEDS_ATTENTION for questions
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        # Session should be preserved for resumption
+        assert updated.session_id == "session123"
+
+
 class TestCrashRecovery:
     """Tests for crash recovery."""
 

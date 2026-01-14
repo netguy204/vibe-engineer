@@ -15,7 +15,6 @@ from orchestrator.agent import (
     create_question_intercept_hook,
     create_sandbox_enforcement_hook,
     _load_skill_content,
-    _is_error_result,
     _is_sandbox_violation,
     _merge_hooks,
 )
@@ -91,25 +90,154 @@ Actual content here.
         assert content == "Just plain content"
 
 
-class TestIsErrorResult:
-    """Tests for error detection in result text."""
+# Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
+class TestErrorDetectionRemoval:
+    """Tests verifying heuristic error detection is removed.
 
-    def test_detects_unknown_slash_command(self):
-        """Detects 'Unknown slash command' error."""
-        assert _is_error_result("Unknown slash command: foo") is True
+    The SDK's `is_error` flag is authoritative for error detection.
+    Text content should never trigger error interpretation when is_error=False.
+    """
 
-    def test_detects_error_prefix(self):
-        """Detects 'Error:' prefix."""
-        assert _is_error_result("Error: something went wrong") is True
+    @pytest.mark.asyncio
+    async def test_verbose_success_with_failed_to_text_not_error(self, project_dir, tmp_path):
+        """Success result containing 'Failed to' in text is still success.
 
-    def test_detects_failed_to(self):
-        """Detects 'Failed to' message."""
-        assert _is_error_result("Failed to read file") is True
+        A ResultMessage with is_error=False but text containing "Failed to"
+        should NOT be treated as an error. This prevents false positives when
+        agents report on things that failed during successful completion.
+        """
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
 
-    def test_normal_result_not_error(self):
-        """Normal result text is not an error."""
-        assert _is_error_result("Task completed successfully") is False
-        assert _is_error_result("Implementation done") is False
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            # Verbose success with "Failed to" phrase - should still be success
+            mock_result.result = (
+                "Successfully completed the implementation. "
+                "Note: Failed to find optional file X, proceeded without it."
+            )
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+        assert isinstance(result, AgentResult)
+        assert result.completed is True
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_verbose_success_with_error_colon_text_not_error(self, project_dir, tmp_path):
+        """Success result containing 'Error:' in text is still success.
+
+        A ResultMessage with is_error=False but text containing "Error:"
+        should NOT be treated as an error. This prevents false positives when
+        agents report error counts or mention errors they fixed.
+        """
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            # Verbose success with "Error:" phrase - should still be success
+            mock_result.result = (
+                "Implementation complete. Error: 0 found. "
+                "All tests passing."
+            )
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+        assert isinstance(result, AgentResult)
+        assert result.completed is True
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_verbose_success_with_could_not_text_not_error(self, project_dir, tmp_path):
+        """Success result containing 'Could not' in text is still success."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = (
+                "Task completed. Could not find optional dependency, "
+                "using fallback approach which worked fine."
+            )
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+        assert isinstance(result, AgentResult)
+        assert result.completed is True
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_actual_sdk_error_still_detected(self, project_dir, tmp_path):
+        """ResultMessage with is_error=True is correctly treated as error.
+
+        The SDK's is_error flag is authoritative - when it's True,
+        we should report an error regardless of text content.
+        """
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Something went wrong"
+            mock_result.is_error = True  # SDK says it's an error
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,
+                worktree_path=worktree_path,
+            )
+
+        assert isinstance(result, AgentResult)
+        assert result.completed is False
+        assert result.error is not None
 
 
 class TestAgentRunner:
@@ -211,20 +339,21 @@ class TestAgentRunnerPhaseExecution:
         assert result.error is not None
         assert "Test error" in result.error
 
+    # Chunk: docs/chunks/orch_agent_question_tool - Updated to use SDK is_error flag
     @pytest.mark.asyncio
-    async def test_run_phase_error_from_result(self, project_dir, tmp_path):
-        """Error in result text returns error result."""
+    async def test_run_phase_error_from_sdk_flag(self, project_dir, tmp_path):
+        """Error from SDK is_error=True flag returns error result."""
         runner = AgentRunner(project_dir)
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        # Mock the query function to return an error result
+        # Mock the query function to return an error result via SDK flag
         with patch("orchestrator.agent.query") as mock_query:
             from orchestrator.agent import ResultMessage
 
             mock_result = MagicMock(spec=ResultMessage)
             mock_result.result = "Unknown slash command: foo"
-            mock_result.is_error = False
+            mock_result.is_error = True  # SDK indicates this is an error
 
             async def mock_async_iter(*args, **kwargs):
                 yield mock_result
