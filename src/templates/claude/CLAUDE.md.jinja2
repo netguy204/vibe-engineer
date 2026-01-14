@@ -198,7 +198,6 @@ You don't need to learn everything upfront. Vibe engineering is designed to meet
 
 The documentation teaches itself: follow backreferences in code to discover the chunks and subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
 
-{# Chunk: docs/chunks/orch_agent_guidance - Orchestrator interaction guidance for agents #}
 ## Working with the Orchestrator
 
 When the orchestrator is running (`ve orch status` shows "Running"), you can help manage the parallel workflow on behalf of the operator. This section describes common orchestrator interactions.
@@ -217,13 +216,23 @@ When the orchestrator is running (`ve orch status` shows "Running"), you can hel
 
 ### Creating and Submitting FUTURE Chunks
 
-When the operator asks you to create work for later (or when an IMPLEMENTING chunk already exists), create chunks with FUTURE status:
+When the operator asks you to create work for later (or when an IMPLEMENTING chunk already exists), create chunks with FUTURE status.
+
+**CRITICAL: FUTURE chunks require operator approval before commit/inject.** The workflow is:
+
+1. Create the chunk with `ve chunk create my_chunk --future`
+2. Refine the GOAL.md
+3. **Present the goal to the operator and wait for explicit approval**
+4. Only after approval: commit and inject
 
 ```bash
 # Create a FUTURE chunk
 uv run ve chunk create my_chunk --future
 
-# After refining GOAL.md, commit the chunk
+# Refine GOAL.md, then STOP and present to operator for review
+# DO NOT proceed until operator approves
+
+# After operator approves, commit the chunk
 git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): create my_chunk"
 
 # Submit to orchestrator
@@ -277,7 +286,7 @@ Use `/orchestrator-submit-future` to submit all FUTURE chunks at once. This comm
 
 When working interactively with the operator, consider these proactive actions:
 
-- **After creating FUTURE chunks**: Offer to commit and inject them
+- **After creating FUTURE chunks**: Present the GOAL.md for review; do NOT commit/inject until approved
 - **When operator mentions parallel work**: Check `ve orch status` and suggest using the orchestrator
 - **When fixing bugs discovered during work**: Create FUTURE chunks for issues outside current scope
 - **When attention items accumulate**: Alert the operator or help resolve items you have context for
@@ -288,10 +297,12 @@ When working interactively with the operator, consider these proactive actions:
 When the operator says **"in the background"** (or similar phrases like "do this in the background", "handle this in the background", "run this in the background"), this is an explicit signal to use the background workflow.
 
 **Trigger phrases:**
+- "in the background"
 - "do this in the background"
 - "handle this in the background"
 - "run this in the background"
-- "in the background"
+- "create a future chunk"
+- "create a FUTURE chunk"
 
 **Expected agent behavior when triggered:**
 

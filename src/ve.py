@@ -115,6 +115,7 @@ def chunk():
 # Chunk: docs/chunks/future_chunk_creation - Future chunks support
 # Chunk: docs/chunks/rename_chunk_start_to_create - Rename start to create
 # Chunk: docs/chunks/selective_project_linking - Added --projects option
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings
 @chunk.command("create")
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
@@ -124,6 +125,9 @@ def chunk():
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 def create(short_name, ticket_id, project_dir, yes, future, projects):
     """Create a new chunk."""
+    from chunks import get_chunk_prefix
+    from cluster_analysis import check_cluster_size, format_cluster_warning
+
     errors = validate_short_name(short_name)
     if ticket_id:
         errors.extend(validate_ticket_id(ticket_id))
@@ -167,6 +171,14 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     # Show path relative to project_dir
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
+
+    # Chunk: docs/chunks/cluster_subsystem_prompt - Check cluster size after creation
+    # Extract prefix from the created chunk name and check if warning should be shown
+    # Use include_new_chunk=False because the chunk has already been created
+    prefix = get_chunk_prefix(chunk_path.name)
+    warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
+    if warning.should_warn:
+        click.echo(f"Note: {format_cluster_warning(warning)}")
 
 
 # Chunk: docs/chunks/rename_chunk_start_to_create - Backward compatibility alias
@@ -443,23 +455,53 @@ def list_proposed_chunks_cmd(project_dir):
 
 # Chunk: docs/chunks/future_chunk_creation - Activate FUTURE chunk
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
+# Chunk: docs/chunks/taskdir_context_cmds - Task context support
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def activate(chunk_id, project_dir):
-    """Activate a FUTURE chunk by changing its status to IMPLEMENTING."""
+    """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
+
+    When run in task context (directory with .ve-task.yaml), searches for
+    the chunk across the external repo and all project repos.
+    """
+    from task_utils import (
+        is_task_directory,
+        find_task_directory,
+        activate_task_chunk,
+        TaskActivateError,
+    )
+
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
-    chunks = Chunks(project_dir)
+    # Detect task context
+    task_dir = None
+    if is_task_directory(project_dir):
+        task_dir = project_dir
+    else:
+        task_dir = find_task_directory(project_dir)
 
-    try:
-        activated = chunks.activate_chunk(chunk_id)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    if task_dir is not None:
+        # Task context: search across all repos
+        try:
+            repo_ref, activated = activate_task_chunk(task_dir, chunk_id)
+        except (TaskActivateError, ValueError) as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
 
-    click.echo(f"Activated docs/chunks/{activated}")
+        click.echo(f"Activated {repo_ref}:docs/chunks/{activated}")
+    else:
+        # Single repo context
+        chunks = Chunks(project_dir)
+
+        try:
+            activated = chunks.activate_chunk(chunk_id)
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+        click.echo(f"Activated docs/chunks/{activated}")
 
 
 # Chunk: docs/chunks/valid_transitions - Status command
@@ -519,24 +561,56 @@ def status(chunk_id, new_status, project_dir):
 
 # Chunk: docs/chunks/chunk_overlap_command - Find overlapping chunks
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
+# Chunk: docs/chunks/taskdir_context_cmds - Task context support
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def overlap(chunk_id, project_dir):
-    """Find chunks with overlapping code references."""
+    """Find chunks with overlapping code references.
+
+    When run in task context (directory with .ve-task.yaml), searches for
+    overlapping chunks across the external repo and all project repos.
+    Supports project-qualified code references (e.g., "project::src/foo.py#Bar").
+    """
+    from task_utils import (
+        is_task_directory,
+        find_task_directory,
+        find_task_overlapping_chunks,
+        TaskOverlapError,
+    )
+
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
-    chunks = Chunks(project_dir)
+    # Detect task context
+    task_dir = None
+    if is_task_directory(project_dir):
+        task_dir = project_dir
+    else:
+        task_dir = find_task_directory(project_dir)
 
-    try:
-        affected = chunks.find_overlapping_chunks(chunk_id)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    if task_dir is not None:
+        # Task context: use cross-repo overlap detection
+        try:
+            result = find_task_overlapping_chunks(task_dir, chunk_id)
+        except (TaskOverlapError, ValueError) as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
 
-    for name in affected:
-        click.echo(f"docs/chunks/{name}")
+        for repo_ref, name in result.overlapping_chunks:
+            click.echo(f"{repo_ref}:docs/chunks/{name}")
+    else:
+        # Single repo context
+        chunks = Chunks(project_dir)
+
+        try:
+            affected = chunks.find_overlapping_chunks(chunk_id)
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+        for name in affected:
+            click.echo(f"docs/chunks/{name}")
 
 
 # Chunk: docs/chunks/cluster_prefix_suggest - Suggest prefix command

@@ -469,16 +469,15 @@ class AgentRunner:
                         session_id = message.get("session_id")
 
                 # Check for result message (completion)
+                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
-                    # Check if the result indicates an error
+                    # Check if the result indicates an error using SDK's is_error flag
+                    # The is_error flag is authoritative - we do not parse result text
                     result_text = getattr(message, "result", None)
                     is_error = getattr(message, "is_error", False)
 
                     if is_error:
                         error = result_text or "Agent returned error"
-                    elif result_text and _is_error_result(result_text):
-                        # Detect error patterns in result text
-                        error = result_text
                     else:
                         completed = True
 
@@ -579,14 +578,13 @@ class AgentRunner:
                     if message.get("type") == "init":
                         session_id = message.get("session_id")
 
+                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", None)
                     is_error = getattr(message, "is_error", False)
 
                     if is_error:
                         error = result_text or "Commit returned error"
-                    elif result_text and _is_error_result(result_text):
-                        error = result_text
                     else:
                         completed = True
 
@@ -676,14 +674,13 @@ class AgentRunner:
                     if message.get("type") == "init":
                         new_session_id = message.get("session_id")
 
+                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", None)
                     is_error = getattr(message, "is_error", False)
 
                     if is_error:
                         error = result_text or "Resume returned error"
-                    elif result_text and _is_error_result(result_text):
-                        error = result_text
                     else:
                         completed = True
 
@@ -707,26 +704,6 @@ class AgentRunner:
                 suspended=False,
                 session_id=new_session_id or session_id,
             )
-
-
-def _is_error_result(result_text: str) -> bool:
-    """Check if a result text indicates an error.
-
-    Args:
-        result_text: The result text from the agent
-
-    Returns:
-        True if the result appears to be an error
-    """
-    error_patterns = [
-        "Unknown slash command:",
-        "Error:",
-        "Failed to",
-        "Could not",
-        "Permission denied",
-        "File not found",
-    ]
-    return any(pattern in result_text for pattern in error_patterns)
 
 
 def create_log_callback(chunk: str, phase: WorkUnitPhase, log_dir: Path):

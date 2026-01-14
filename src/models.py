@@ -58,6 +58,19 @@ class ChunkStatus(StrEnum):
     HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
 
 
+# Chunk: docs/chunks/bug_type_field - Bug classification for semantic vs implementation bugs
+class BugType(StrEnum):
+    """Classification of bug fix chunks to guide completion behavior.
+
+    When a chunk is a bug fix, this field distinguishes between:
+    - semantic: The bug revealed new understanding of intended behavior (discovery)
+    - implementation: The bug corrected known-wrong code (we knew how it should work)
+    """
+
+    SEMANTIC = "semantic"  # Bug revealed new understanding; code backreferences required
+    IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
+
+
 # Chunk: docs/chunks/valid_transitions - State transition validation
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
@@ -278,6 +291,7 @@ class TaskConfig(BaseModel):
 
 
 # Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference
+# Chunk: docs/chunks/external_chunk_causal - Added created_after field for local causal ordering
 class ExternalArtifactRef(BaseModel):
     """Reference to a workflow artifact in another repository.
 
@@ -391,6 +405,7 @@ class SymbolicReference(BaseModel):
         else:
             ref_before_symbol = v[:hash_pos]
 
+        # Chunk: docs/chunks/coderef_format_prompting - Improved org/repo format error messages
         # Check for :: in the portion before #
         double_colon_pos = ref_before_symbol.find("::")
         if double_colon_pos != -1:
@@ -406,7 +421,14 @@ class SymbolicReference(BaseModel):
                 raise ValueError("project qualifier cannot be empty before ::")
 
             # Validate project is in org/repo format using existing validator
-            _require_valid_repo_ref(project, "project qualifier")
+            # Wrap with contextual error message that includes the invalid value
+            try:
+                _require_valid_repo_ref(project, "project qualifier")
+            except ValueError:
+                raise ValueError(
+                    f"project qualifier must be in 'org/repo' format "
+                    f"(e.g., 'acme/project::path'), got '{project}'"
+                )
 
             # Check that file path portion is not empty
             if not file_path_part:
@@ -529,6 +551,7 @@ class InvestigationFrontmatter(BaseModel):
 # Chunk: docs/chunks/ordering_field - Causal ordering field
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field
+# Chunk: docs/chunks/bug_type_field - Added bug_type field for bug classification
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -549,6 +572,8 @@ class ChunkFrontmatter(BaseModel):
     created_after: list[str] = []
     # Chunk: docs/chunks/friction_chunk_linking - Friction entries addressed by this chunk
     friction_entries: list["FrictionEntryReference"] = []
+    # Chunk: docs/chunks/bug_type_field - Bug classification for completion behavior
+    bug_type: BugType | None = None
 
 
 # Chunk: docs/chunks/friction_template_and_cli - Friction log models

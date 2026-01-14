@@ -10,7 +10,14 @@ themes:
   name: Skill UX
 - id: workflow
   name: Workflow
-proposed_chunks: []
+- id: template-evolution
+  name: Template Evolution
+proposed_chunks:
+- prompt: Extend task-context awareness to overlap, validate, and activate commands
+  chunk_directory: taskdir_context_cmds
+  addresses:
+  - F002
+external_friction_sources: []
 ---
 # Friction Log
 
@@ -164,7 +171,13 @@ scheduler.py, and test file, then `ve orch work-unit status X DONE`.
 
 **Impact**: High—blocks work unit completion, requires git expertise to resolve.
 
-### F008: 2026-01-13 [orchestrator] Agent completes successfully but commit fails silently
+### F008: 2026-01-13 [template-evolution] ve init lacks semantic merge for templates
+
+After initializing a project, template improvements (CLAUDE.md, trunk GOAL/SPEC, friction log) need semantic merge to incorporate updates while preserving customizations. Current options are only skip or overwrite, forcing a choice between losing customizations or missing template improvements.
+
+**Impact**: Medium
+
+### F009: 2026-01-13 [orchestrator] Agent completes successfully but commit fails silently
 
 During the COMPLETE phase of `background_keyword_semantic`, the agent successfully:
 1. Updated code references in GOAL.md

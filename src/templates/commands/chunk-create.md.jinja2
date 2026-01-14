@@ -122,7 +122,32 @@ completely in order:
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
 
-6. **Check for friction entries being addressed.** Ask the operator: "Does this
+{# Chunk: docs/chunks/bug_type_field - Bug type classification for bug fix chunks #}
+6. **Check if this is a bug fix and classify the bug type.** Look for these
+   signals that indicate bug fix work: "bug", "fix", "broken", "error", "issue",
+   "defect", "regression", "incorrect", "wrong", "failing".
+
+   If the work appears to be a bug fix, ask the operator to classify the bug type:
+
+   - **semantic**: "Did this bug reveal new understanding about how the system
+     should work? Is this a discovery?" Examples: workflow logic was wrong,
+     the spec was unclear, edge cases weren't considered.
+   - **implementation**: "Did you already know how it should work, but the code
+     was just wrong?" Examples: typo, off-by-one error, null check missing,
+     copy-paste mistake.
+
+   Based on their answer, set the `bug_type` field in frontmatter:
+   ```yaml
+   bug_type: semantic    # or bug_type: implementation
+   ```
+
+   If the work is NOT a bug fix, leave `bug_type: null` (the default).
+
+   This classification affects chunk completion behavior:
+   - Semantic bugs require code backreferences and end in ACTIVE status
+   - Implementation bugs may skip backreferences and end in HISTORICAL status
+
+7. **Check for friction entries being addressed.** Ask the operator: "Does this
    chunk address any friction entries from `docs/trunk/FRICTION.md`?"
 
    If yes (or if the operator's prompt mentions friction, pain points, or
@@ -164,7 +189,7 @@ completely in order:
    back to accumulated pain points, and transitions friction entry status from
    OPEN to ADDRESSED.
 
-7. **Check for investigation origin.** If this chunk was derived from an
+8. **Check for investigation origin.** If this chunk was derived from an
    investigation's `proposed_chunks` (e.g., the user referenced an investigation
    or you can identify that the work originated from exploratory findings):
 

@@ -67,6 +67,8 @@ chunks:
   relationship: implements
 - chunk_id: selective_artifact_friction
   relationship: implements
+- chunk_id: taskdir_context_cmds
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -242,6 +244,33 @@ code_references:
   compliance: COMPLIANT
 - ref: src/friction.py#get_external_friction_sources
   implements: Retrieve external friction sources from friction log
+  compliance: COMPLIANT
+- ref: src/task_utils.py#resolve_project_qualified_ref
+  implements: Parse and resolve project-qualified code references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#find_task_overlapping_chunks
+  implements: Task-aware chunk overlap detection across repos
+  compliance: COMPLIANT
+- ref: src/task_utils.py#_compute_cross_project_overlap
+  implements: Cross-project reference overlap computation
+  compliance: COMPLIANT
+- ref: src/task_utils.py#activate_task_chunk
+  implements: Task-aware chunk activation across repos
+  compliance: COMPLIANT
+- ref: src/task_utils.py#TaskOverlapError
+  implements: Error class for task-aware overlap detection
+  compliance: COMPLIANT
+- ref: src/task_utils.py#TaskActivateError
+  implements: Error class for task-aware chunk activation
+  compliance: COMPLIANT
+- ref: src/task_utils.py#TaskOverlapResult
+  implements: Result dataclass for task overlap detection
+  compliance: COMPLIANT
+- ref: src/ve.py#overlap
+  implements: CLI handler for task-aware overlap detection
+  compliance: COMPLIANT
+- ref: src/ve.py#activate
+  implements: CLI handler for task-aware chunk activation
   compliance: COMPLIANT
 proposed_chunks:
 - prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.

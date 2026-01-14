@@ -8,6 +8,7 @@ narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
+bug_type: null
 created_after: {{ created_after | default([], true) | tojson }}
 ---
 
@@ -31,10 +32,13 @@ STATUS VALUES:
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only
 
-BACKGROUND WORKFLOW NOTE:
-When a FUTURE chunk is created via the "background" keyword (operator says "in the background"),
-you MUST present the GOAL.md to the operator for review before committing or injecting.
-The background keyword indicates work should be queued, not that it's pre-approved.
+{# Chunk: docs/chunks/background_keyword_semantic - Background workflow guidance #}
+FUTURE CHUNK APPROVAL REQUIREMENT:
+ALL FUTURE chunks require operator approval before committing or injecting.
+After refining this GOAL.md, you MUST present it to the operator and wait for
+explicit approval. Do NOT commit or inject until the operator approves.
+This applies whether triggered by "in the background", "create a future chunk",
+or any other mechanism that creates a FUTURE chunk.
 
 PARENT_CHUNK:
 - null for new work
@@ -49,13 +53,20 @@ CODE_REFERENCES:
 - Populated after implementation, before PR
 - Uses symbolic references to identify code locations
 {% if task_context %}
-- Format: {project}::{file_path}#{symbol_path}
-- The :: after project separates project from path; :: within symbol indicates nesting
+{# Chunk: docs/chunks/coderef_format_prompting - Full org/repo format examples #}
+- Format: {org/repo}::{file_path}#{symbol_path}
+- The :: after org/repo separates project from path; :: within symbol indicates nesting
+- IMPORTANT: Project qualifier MUST be in org/repo format (e.g., "acme/project::")
+{% if projects %}
+- Available projects (from .ve-task.yaml): {{ projects | join(', ') }}
+{% else %}
+- See `.ve-task.yaml` projects list for org/repo names
+{% endif %}
 - Example:
   code_references:
-    - ref: dotter::xr#worktrees
+    - ref: acme/dotter::xr#worktrees
       implements: "Worktree creation command"
-    - ref: vibe-engineer::src/chunks.py#Chunks::create
+    - ref: acme/vibe-engineer::src/chunks.py#Chunks::create
       implements: "Chunk creation logic"
 {% else %}
 - Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
@@ -84,6 +95,7 @@ INVESTIGATION:
   hypotheses tested, and decisions made during exploration.
 - Validated by `ve chunk validate` to ensure referenced investigations exist.
 
+{# Chunk: docs/chunks/bidirectional_refs - Subsystems field and documentation #}
 SUBSYSTEMS:
 - Optional list of subsystem references that this chunk relates to
 - Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
@@ -114,6 +126,20 @@ FRICTION_ENTRIES:
       scope: partial
 - Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
 - When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
+
+{# Chunk: docs/chunks/bug_type_field - BUG_TYPE field documentation #}
+BUG_TYPE:
+- Optional field for bug fix chunks that guides agent behavior at completion
+- Values: semantic | implementation | null (for non-bug chunks)
+  - "semantic": The bug revealed new understanding of intended behavior
+    - Code backreferences REQUIRED (the fix adds to code understanding)
+    - On completion, search for other chunks that may need updating
+    - Status → ACTIVE (the chunk asserts ongoing understanding)
+  - "implementation": The bug corrected known-wrong code
+    - Code backreferences MAY BE SKIPPED (they don't add semantic value)
+    - Focus purely on the fix
+    - Status → HISTORICAL (point-in-time correction, not an ongoing anchor)
+- Leave null for feature chunks and other non-bug work
 
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk

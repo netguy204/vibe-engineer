@@ -5,6 +5,7 @@ clusters, identifying singletons (no navigational benefit) and superclusters
 (too many members, noise rather than navigation aid).
 """
 # Chunk: docs/chunks/cluster_list_command - Cluster analysis implementation
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings
 
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ from pathlib import Path
 from collections import Counter
 
 from chunks import Chunks, extract_goal_text, get_chunk_prefix
+from subsystems import Subsystems
+from template_system import load_ve_config
 
 
 # Chunk: docs/chunks/cluster_list_command - Cluster category thresholds
@@ -370,3 +373,102 @@ def format_cluster_output(
             lines.append("")
 
     return "\n".join(lines)
+
+
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warning dataclass
+@dataclass
+class ClusterSizeWarning:
+    """Result of cluster size check for subsystem prompt.
+
+    When creating or renaming a chunk, this dataclass captures whether
+    the operation would expand a prefix cluster beyond the configured
+    threshold, triggering a suggestion to define a subsystem.
+    """
+
+    should_warn: bool
+    cluster_size: int  # Size after the new chunk is added
+    prefix: str
+    has_subsystem: bool
+    threshold: int
+
+
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size check function
+def check_cluster_size(
+    prefix: str,
+    project_dir: Path,
+    include_new_chunk: bool = True,
+) -> ClusterSizeWarning:
+    """Check if a cluster size exceeds the subsystem suggestion threshold.
+
+    This function is called when creating or renaming chunks to detect when
+    a prefix cluster is growing large enough that it may benefit from
+    subsystem documentation.
+
+    Args:
+        prefix: The prefix to check (e.g., "orch" for "orch_*" chunks).
+        project_dir: Path to the project directory.
+        include_new_chunk: If True, count assumes a new chunk is being added
+            (used at create time). If False, only counts existing chunks.
+
+    Returns:
+        ClusterSizeWarning with:
+        - should_warn: True if threshold exceeded AND no subsystem exists
+        - cluster_size: Current count (including new chunk if include_new_chunk)
+        - prefix: The prefix being checked
+        - has_subsystem: True if a subsystem exists for this prefix
+        - threshold: The configured threshold
+    """
+    # Load config for threshold
+    ve_config = load_ve_config(project_dir)
+    threshold = ve_config.cluster_subsystem_threshold
+
+    # Count existing chunks with this prefix
+    clusters = get_chunk_clusters(project_dir)
+    existing_count = len(clusters.get(prefix, []))
+
+    # Calculate total count (with or without new chunk)
+    cluster_size = existing_count + (1 if include_new_chunk else 0)
+
+    # Check if a subsystem exists for this prefix
+    subsystems = Subsystems(project_dir)
+    has_subsystem = subsystems.find_by_shortname(prefix) is not None
+
+    # Only warn if threshold exceeded AND no subsystem exists
+    should_warn = cluster_size >= threshold and not has_subsystem
+
+    return ClusterSizeWarning(
+        should_warn=should_warn,
+        cluster_size=cluster_size,
+        prefix=prefix,
+        has_subsystem=has_subsystem,
+        threshold=threshold,
+    )
+
+
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster warning message formatter
+def format_cluster_warning(warning: ClusterSizeWarning) -> str:
+    """Format a cluster size warning message for display.
+
+    Creates an advisory message suggesting the user consider documenting
+    a subsystem for a growing cluster.
+
+    Args:
+        warning: ClusterSizeWarning from check_cluster_size().
+
+    Returns:
+        Formatted warning message string.
+    """
+    ordinal = _ordinal(warning.cluster_size)
+    return (
+        f"You're creating the {ordinal} `{warning.prefix}_*` chunk. "
+        f"Consider documenting this as a subsystem with `/subsystem-discover`."
+    )
+
+
+def _ordinal(n: int) -> str:
+    """Convert integer to ordinal string (1st, 2nd, 3rd, etc.)."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"

@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/subsystems.py
 - src/ve.py
-- src/templates/commands/chunk-complete.md
+- src/templates/commands/chunk-complete.md.jinja2
 - tests/test_subsystem_overlap_logic.py
 - tests/test_subsystem_overlap_cli.py
 code_references:
@@ -14,7 +14,7 @@ code_references:
     chunk's changes
 - ref: src/subsystems.py#Subsystems::_find_overlapping_refs
   implements: Helper method for hierarchical reference comparison using is_parent_of
-- ref: src/ve.py#overlap
+- ref: src/ve.py#subsystem::overlap
   implements: CLI command 've subsystem overlap <chunk_id>' that surfaces overlap
     detection
 - ref: src/templates/commands/chunk-complete.md.jinja2

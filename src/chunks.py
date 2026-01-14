@@ -231,9 +231,15 @@ class Chunks:
     # Chunk: docs/chunks/migrate_chunks_template - Template system integration
     # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
     # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
+    # Chunk: docs/chunks/coderef_format_prompting - Task context and projects support
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_chunk(
-        self, ticket_id: str | None, short_name: str, status: str = "IMPLEMENTING"
+        self,
+        ticket_id: str | None,
+        short_name: str,
+        status: str = "IMPLEMENTING",
+        task_context: bool = False,
+        projects: list[str] | None = None,
     ):
         """Instantiate the chunk templates for the given ticket and short name.
 
@@ -241,6 +247,8 @@ class Chunks:
             ticket_id: Optional ticket ID to include in chunk directory name.
             short_name: Short name for the chunk.
             status: Initial status for the chunk (default: "IMPLEMENTING").
+            task_context: If True, render task-context-aware template examples.
+            projects: List of project org/repo strings for template examples.
 
         Raises:
             ValueError: If a chunk with the same short_name already exists.
@@ -284,6 +292,8 @@ class Chunks:
             ticket_id=ticket_id,
             status=status,
             created_after=tips,
+            task_context=task_context,
+            projects=projects or [],
         )
         return chunk_path
 
@@ -334,23 +344,45 @@ class Chunks:
         Returns:
             ChunkFrontmatter if valid, or None if chunk not found or frontmatter invalid.
         """
+        frontmatter, _ = self.parse_chunk_frontmatter_with_errors(chunk_id)
+        return frontmatter
+
+    # Chunk: docs/chunks/coderef_format_prompting - Surface validation error details
+    def parse_chunk_frontmatter_with_errors(
+        self, chunk_id: str
+    ) -> tuple[ChunkFrontmatter | None, list[str]]:
+        """Parse YAML frontmatter from a chunk's GOAL.md with error details.
+
+        Returns:
+            Tuple of (ChunkFrontmatter, errors) where:
+            - ChunkFrontmatter is the parsed frontmatter if valid, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
         goal_path = self.get_chunk_goal_path(chunk_id)
         if goal_path is None or not goal_path.exists():
-            return None
+            return None, [f"Chunk '{chunk_id}' not found"]
 
         content = goal_path.read_text()
         # Extract frontmatter between --- markers
         match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
         if not match:
-            return None
+            return None, ["GOAL.md missing frontmatter (no --- markers found)"]
 
         try:
             frontmatter = yaml.safe_load(match.group(1))
             if not isinstance(frontmatter, dict):
-                return None
-            return ChunkFrontmatter.model_validate(frontmatter)
-        except (yaml.YAMLError, ValidationError):
-            return None
+                return None, ["Frontmatter is not a valid YAML mapping"]
+            return ChunkFrontmatter.model_validate(frontmatter), []
+        except yaml.YAMLError as e:
+            return None, [f"YAML parsing error: {e}"]
+        except ValidationError as e:
+            # Extract user-friendly error messages from Pydantic validation
+            errors = []
+            for error in e.errors():
+                loc = ".".join(str(x) for x in error["loc"])
+                msg = error["msg"]
+                errors.append(f"{loc}: {msg}")
+            return None, errors
 
     # Chunk: docs/chunks/task_chunk_validation - Parse frontmatter from content string
     def _parse_frontmatter_from_content(self, content: str) -> ChunkFrontmatter | None:
@@ -754,12 +786,17 @@ class Chunks:
                     errors=[f"Chunk '{chunk_id}' not found"],
                 )
 
-        # Parse frontmatter from the resolved chunk location
-        frontmatter = validation_chunks.parse_chunk_frontmatter(chunk_name_to_validate)
+        # Chunk: docs/chunks/coderef_format_prompting - Surface validation error details
+        # Parse frontmatter from the resolved chunk location with error details
+        frontmatter, parse_errors = validation_chunks.parse_chunk_frontmatter_with_errors(
+            chunk_name_to_validate
+        )
         if frontmatter is None:
+            # Include specific parsing errors instead of generic message
+            error_detail = "; ".join(parse_errors) if parse_errors else "unknown error"
             return ValidationResult(
                 success=False,
-                errors=[f"Could not parse frontmatter for chunk '{chunk_id}'"],
+                errors=[f"Could not parse frontmatter for chunk '{chunk_id}': {error_detail}"],
                 chunk_name=chunk_name_to_validate,
             )
 
