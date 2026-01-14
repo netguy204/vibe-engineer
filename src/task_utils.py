@@ -442,14 +442,23 @@ def create_task_chunk(
             f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
         )
 
-    # 4. Create chunk in external repo
+    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
+    # (Moved before chunk creation to pass correct projects to template)
+    effective_projects = projects if projects else config.projects
+
+    # Chunk: docs/chunks/coderef_format_prompting - Pass task context and projects to chunk template
+    # 4. Create chunk in external repo with task context for proper template examples
     chunks = Chunks(external_repo_path)
-    external_chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
+    external_chunk_path = chunks.create_chunk(
+        ticket_id,
+        short_name,
+        status=status,
+        task_context=True,
+        projects=effective_projects,  # Use filtered projects, not all projects
+    )
     external_artifact_id = external_chunk_path.name  # Now short_name format
 
     # 5-6. For each project: create external.yaml with causal ordering, build dependents
-    # Chunk: docs/chunks/selective_project_linking - Use filtered projects if specified
-    effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
 

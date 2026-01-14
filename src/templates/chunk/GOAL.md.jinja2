@@ -51,13 +51,20 @@ CODE_REFERENCES:
 - Populated after implementation, before PR
 - Uses symbolic references to identify code locations
 {% if task_context %}
-- Format: {project}::{file_path}#{symbol_path}
-- The :: after project separates project from path; :: within symbol indicates nesting
+{# Chunk: docs/chunks/coderef_format_prompting - Full org/repo format examples #}
+- Format: {org/repo}::{file_path}#{symbol_path}
+- The :: after org/repo separates project from path; :: within symbol indicates nesting
+- IMPORTANT: Project qualifier MUST be in org/repo format (e.g., "acme/project::")
+{% if projects %}
+- Available projects (from .ve-task.yaml): {{ projects | join(', ') }}
+{% else %}
+- See `.ve-task.yaml` projects list for org/repo names
+{% endif %}
 - Example:
   code_references:
-    - ref: dotter::xr#worktrees
+    - ref: acme/dotter::xr#worktrees
       implements: "Worktree creation command"
-    - ref: vibe-engineer::src/chunks.py#Chunks::create
+    - ref: acme/vibe-engineer::src/chunks.py#Chunks::create
       implements: "Chunk creation logic"
 {% else %}
 - Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator

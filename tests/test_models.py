@@ -414,6 +414,48 @@ class TestSymbolicReferenceWithProjectQualification:
         assert ref.ref == "my-org/my.project::src/foo.py#Bar"
 
 
+# Chunk: docs/chunks/coderef_format_prompting - Tests for improved org/repo error messages
+class TestSymbolicReferenceOrgRepoErrorMessages:
+    """Tests for improved error messages when project qualifier is not in org/repo format."""
+
+    def test_short_project_name_shows_helpful_error(self):
+        """Short project name like 'pybusiness' produces error mentioning org/repo format."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="pybusiness::src/foo.py", implements="Something")
+        error_str = str(exc_info.value)
+        # Should mention org/repo format
+        assert "org/repo" in error_str
+        # Should include the actual invalid value
+        assert "pybusiness" in error_str
+        # Should provide an example
+        assert "acme/project" in error_str or "e.g." in error_str
+
+    def test_short_project_name_with_symbol_shows_helpful_error(self):
+        """Short project name with symbol path produces descriptive error."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="vibe-engineer::src/chunks.py#Chunks", implements="Something")
+        error_str = str(exc_info.value)
+        # Should mention org/repo format
+        assert "org/repo" in error_str
+        # Should include the actual invalid value
+        assert "vibe-engineer" in error_str
+
+    def test_valid_full_org_repo_format_works(self):
+        """Full org/repo format still validates successfully."""
+        ref = SymbolicReference(
+            ref="cloudcapitalco/pybusiness::src/foo.py#Bar",
+            implements="Something"
+        )
+        assert ref.ref == "cloudcapitalco/pybusiness::src/foo.py#Bar"
+
+    def test_error_message_includes_got_prefix(self):
+        """Error message includes 'got' to show what was received."""
+        with pytest.raises(ValidationError) as exc_info:
+            SymbolicReference(ref="justproject::src/foo.py", implements="Something")
+        error_str = str(exc_info.value)
+        assert "got" in error_str.lower() or "justproject" in error_str
+
+
 # Chunk: docs/chunks/friction_template_and_cli - Tests for friction models
 class TestFrictionTheme:
     """Tests for FrictionTheme model."""

@@ -1,17 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/models.py
+- src/chunks.py
+- src/task_utils.py
+- src/templates/chunk/GOAL.md.jinja2
+- tests/test_models.py
+- tests/test_chunks.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: implementation
-created_after: ["taskdir_context_cmds"]
+created_after:
+- taskdir_context_cmds
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

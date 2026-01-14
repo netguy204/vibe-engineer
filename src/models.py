@@ -404,6 +404,7 @@ class SymbolicReference(BaseModel):
         else:
             ref_before_symbol = v[:hash_pos]
 
+        # Chunk: docs/chunks/coderef_format_prompting - Improved org/repo format error messages
         # Check for :: in the portion before #
         double_colon_pos = ref_before_symbol.find("::")
         if double_colon_pos != -1:
@@ -419,7 +420,14 @@ class SymbolicReference(BaseModel):
                 raise ValueError("project qualifier cannot be empty before ::")
 
             # Validate project is in org/repo format using existing validator
-            _require_valid_repo_ref(project, "project qualifier")
+            # Wrap with contextual error message that includes the invalid value
+            try:
+                _require_valid_repo_ref(project, "project qualifier")
+            except ValueError:
+                raise ValueError(
+                    f"project qualifier must be in 'org/repo' format "
+                    f"(e.g., 'acme/project::path'), got '{project}'"
+                )
 
             # Check that file path portion is not empty
             if not file_path_part:

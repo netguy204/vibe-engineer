@@ -600,3 +600,201 @@ code_references: []
         errors = chunk_mgr.validate_subsystem_refs("9999-nonexistent")
         # Should return empty list (no errors possible if chunk doesn't exist)
         assert errors == []
+
+
+# Chunk: docs/chunks/coderef_format_prompting - Tests for frontmatter parsing with error details
+class TestParseChunkFrontmatterWithErrors:
+    """Tests for Chunks.parse_chunk_frontmatter_with_errors() method."""
+
+    def _write_chunk_goal(self, temp_project, chunk_name, content):
+        """Helper to write a GOAL.md file with arbitrary content."""
+        chunk_path = temp_project / "docs" / "chunks" / chunk_name
+        chunk_path.mkdir(parents=True, exist_ok=True)
+        goal_path = chunk_path / "GOAL.md"
+        goal_path.write_text(content)
+
+    def test_valid_frontmatter_returns_no_errors(self, temp_project):
+        """Valid frontmatter returns empty error list."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+code_references: []
+---
+
+# Chunk Goal
+""")
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("test_chunk")
+        assert frontmatter is not None
+        assert errors == []
+
+    def test_chunk_not_found_returns_error(self, temp_project):
+        """Non-existent chunk returns appropriate error."""
+        chunk_mgr = Chunks(temp_project)
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("nonexistent")
+        assert frontmatter is None
+        assert len(errors) == 1
+        assert "not found" in errors[0].lower()
+
+    def test_missing_frontmatter_markers_returns_error(self, temp_project):
+        """File without --- markers returns appropriate error."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """# Just markdown, no frontmatter
+Some content here.
+""")
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("test_chunk")
+        assert frontmatter is None
+        assert len(errors) == 1
+        assert "frontmatter" in errors[0].lower() or "---" in errors[0]
+
+    def test_invalid_yaml_returns_error(self, temp_project):
+        """Invalid YAML syntax returns YAML parsing error."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+invalid_yaml: [this is: broken
+---
+
+# Chunk Goal
+""")
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("test_chunk")
+        assert frontmatter is None
+        assert len(errors) == 1
+        assert "yaml" in errors[0].lower()
+
+    def test_invalid_code_reference_format_returns_error(self, temp_project):
+        """Invalid code_references format returns validation error."""
+        chunk_mgr = Chunks(temp_project)
+        # Use a short project name (no org/) which should fail validation
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+code_references:
+  - ref: pybusiness::src/foo.py
+    implements: "Something"
+---
+
+# Chunk Goal
+""")
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("test_chunk")
+        assert frontmatter is None
+        assert len(errors) >= 1
+        # Error should mention org/repo format
+        error_str = " ".join(errors)
+        assert "org/repo" in error_str
+
+    def test_error_includes_field_location(self, temp_project):
+        """Validation error includes the field location."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+code_references:
+  - ref: shortname::src/foo.py
+    implements: "Something"
+---
+
+# Chunk Goal
+""")
+
+        frontmatter, errors = chunk_mgr.parse_chunk_frontmatter_with_errors("test_chunk")
+        assert frontmatter is None
+        assert len(errors) >= 1
+        # Error should mention where the problem is (code_references.0.ref)
+        error_str = " ".join(errors)
+        assert "code_references" in error_str or "ref" in error_str
+
+    def test_original_parse_method_still_works(self, temp_project):
+        """Original parse_chunk_frontmatter() still works (backward compat)."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+code_references: []
+---
+
+# Chunk Goal
+""")
+
+        # Original method should return frontmatter without errors
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("test_chunk")
+        assert frontmatter is not None
+        assert frontmatter.status.value == "IMPLEMENTING"
+
+    def test_original_parse_method_returns_none_on_error(self, temp_project):
+        """Original parse_chunk_frontmatter() returns None on validation error."""
+        chunk_mgr = Chunks(temp_project)
+        self._write_chunk_goal(temp_project, "test_chunk", """---
+status: IMPLEMENTING
+code_references:
+  - ref: shortname::src/foo.py
+    implements: "Something"
+---
+
+# Chunk Goal
+""")
+
+        frontmatter = chunk_mgr.parse_chunk_frontmatter("test_chunk")
+        assert frontmatter is None
+
+
+# Chunk: docs/chunks/coderef_format_prompting - Tests for task context in templates
+class TestChunkTemplateWithTaskContext:
+    """Tests for chunk template rendering with task context."""
+
+    def test_create_chunk_without_task_context(self, temp_project):
+        """Chunk created without task_context has standard format examples."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "feature")
+
+        goal_content = (result_path / "GOAL.md").read_text()
+        # Standard (non-task-context) template should NOT have org/repo:: format
+        # It should have the local file#symbol format
+        assert "src/segment/writer.rs#SegmentWriter" in goal_content
+        # Should NOT have the IMPORTANT note about org/repo format
+        assert "IMPORTANT: Project qualifier MUST be in org/repo format" not in goal_content
+
+    def test_create_chunk_with_task_context_shows_org_repo_format(self, temp_project):
+        """Chunk created with task_context=True shows org/repo format examples."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(
+            None, "feature",
+            task_context=True,
+            projects=[]
+        )
+
+        goal_content = (result_path / "GOAL.md").read_text()
+        # Task context template should have org/repo:: format examples
+        assert "acme/dotter::" in goal_content or "acme/vibe-engineer::" in goal_content
+        # Should have the IMPORTANT note about org/repo format
+        assert "org/repo" in goal_content.lower()
+
+    def test_create_chunk_with_projects_shows_project_list(self, temp_project):
+        """Chunk created with projects list shows available projects."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(
+            None, "feature",
+            task_context=True,
+            projects=["cloudcapitalco/pybusiness", "cloudcapitalco/frontend"]
+        )
+
+        goal_content = (result_path / "GOAL.md").read_text()
+        # Should list the projects from the task config
+        assert "cloudcapitalco/pybusiness" in goal_content
+        assert "cloudcapitalco/frontend" in goal_content
+        # Should have note about available projects
+        assert "Available projects" in goal_content or ".ve-task.yaml" in goal_content
+
+    def test_create_chunk_with_empty_projects_shows_fallback(self, temp_project):
+        """Chunk created with empty projects list shows fallback guidance."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(
+            None, "feature",
+            task_context=True,
+            projects=[]
+        )
+
+        goal_content = (result_path / "GOAL.md").read_text()
+        # Should have fallback guidance to check .ve-task.yaml
+        assert ".ve-task.yaml" in goal_content
