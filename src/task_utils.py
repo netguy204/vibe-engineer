@@ -2566,12 +2566,10 @@ def _compute_cross_project_overlap(
     Returns:
         True if any overlap exists, False otherwise.
     """
-    from symbols import is_parent_of, parse_reference, qualify_ref
-
     # Normalize refs to (absolute_file_path, symbol_path) form
     def normalize_ref(ref: str, default_project: Path) -> tuple[Path, str | None]:
         """Normalize a ref to (absolute_file, symbol) tuple."""
-        # Check if project-qualified
+        # Check if project-qualified (has :: before any #)
         hash_pos = ref.find("#")
         check_portion = ref[:hash_pos] if hash_pos != -1 else ref
 
@@ -2584,11 +2582,17 @@ def _compute_cross_project_overlap(
                 return (project_path / file_path, symbol_path)
             except (ValueError, FileNotFoundError):
                 # Can't resolve - fall back to default project
-                pass
+                # Remove the project qualifier from the ref
+                double_colon_pos = check_portion.find("::")
+                ref = ref[double_colon_pos + 2:]
 
-        # Non-qualified or resolution failed - use default project
-        qualified = qualify_ref(ref, ".")
-        _, file_path, symbol_path = parse_reference(qualified)
+        # Non-qualified ref - parse file and symbol directly
+        if "#" in ref:
+            file_path, symbol_path = ref.split("#", 1)
+        else:
+            file_path = ref
+            symbol_path = None
+
         return (default_project / file_path, symbol_path)
 
     # Normalize all refs
@@ -2606,11 +2610,14 @@ def _compute_cross_project_overlap(
             if target_symbol is None or candidate_symbol is None:
                 return True
 
-            # Check symbol hierarchy
-            target_qualified = f".:{target_file.name}#{target_symbol}"
-            candidate_qualified = f".:{candidate_file.name}#{candidate_symbol}"
-
-            if is_parent_of(target_qualified, candidate_qualified) or is_parent_of(candidate_qualified, target_qualified):
+            # Check symbol hierarchy (inline implementation)
+            # Two symbols overlap if one is a prefix of the other (with :: separator)
+            # or if they are the same
+            if target_symbol == candidate_symbol:
+                return True
+            if target_symbol.startswith(candidate_symbol + "::"):
+                return True
+            if candidate_symbol.startswith(target_symbol + "::"):
                 return True
 
     return False

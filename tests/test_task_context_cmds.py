@@ -289,7 +289,7 @@ Project chunk.
 status: IMPLEMENTING
 created_after: []
 code_references:
-- ref: proj1::src/service.py#handle_request
+- ref: acme/proj1::src/service.py#handle_request
   implements: Request handler update
 ---
 
