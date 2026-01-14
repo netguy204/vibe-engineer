@@ -10,7 +10,10 @@ themes:
   name: Skill UX
 - id: workflow
   name: Workflow
-proposed_chunks: []
+proposed_chunks:
+  - prompt: "Extend task-context awareness to overlap, validate, and activate commands"
+    chunk_directory: taskdir_context_cmds
+    addresses: ["F002"]
 ---
 # Friction Log
 
