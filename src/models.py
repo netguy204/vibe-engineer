@@ -641,3 +641,54 @@ class FrictionEntryReference(BaseModel):
                 "entry_id must match pattern F followed by digits (e.g., F001, F123)"
             )
         return v
+
+
+# Scratchpad storage models
+# Subsystem: docs/subsystems/workflow_artifacts - User-global scratchpad storage variant
+# Chunk: docs/chunks/scratchpad_storage - Foundation for scratchpad infrastructure
+
+
+class ScratchpadChunkStatus(StrEnum):
+    """Status values for scratchpad chunk lifecycle.
+
+    Scratchpad chunks have a simpler lifecycle than in-repo chunks:
+    - No FUTURE status (scratchpad work is personal, not queued)
+    - No SUPERSEDED status (no code reference tracking)
+    """
+
+    IMPLEMENTING = "IMPLEMENTING"  # Currently working on
+    ACTIVE = "ACTIVE"  # Work completed but entry retained
+    ARCHIVED = "ARCHIVED"  # Moved to archive, kept for reference
+
+
+class ScratchpadChunkFrontmatter(BaseModel):
+    """Frontmatter schema for scratchpad chunk GOAL.md files.
+
+    Simpler than in-repo chunks - no code_references, subsystems, etc.
+    Designed for personal work notes outside git repositories.
+    """
+
+    status: ScratchpadChunkStatus
+    ticket: str | None = None  # Optional Linear/Jira ticket reference
+    success_criteria: list[str] = []  # Goals for this work
+    created_at: str  # ISO timestamp
+
+
+class ScratchpadNarrativeStatus(StrEnum):
+    """Status values for scratchpad narrative lifecycle."""
+
+    DRAFTING = "DRAFTING"  # Planning multi-chunk work
+    ACTIVE = "ACTIVE"  # Chunks being worked on
+    ARCHIVED = "ARCHIVED"  # Moved to archive
+
+
+class ScratchpadNarrativeFrontmatter(BaseModel):
+    """Frontmatter schema for scratchpad narrative OVERVIEW.md files.
+
+    Simpler than in-repo narratives - designed for personal planning.
+    """
+
+    status: ScratchpadNarrativeStatus
+    ambition: str | None = None  # High-level goal
+    chunk_prompts: list[str] = []  # Planned work items
+    created_at: str  # ISO timestamp

@@ -20,6 +20,8 @@ chunks:
   relationship: implements
 - chunk_id: template_drift_prevention
   relationship: implements
+- chunk_id: scratchpad_storage
+  relationship: uses
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass with is_ve_source_repo flag
