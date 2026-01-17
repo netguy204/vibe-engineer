@@ -3127,6 +3127,80 @@ def analyze(project_dir, tags):
             click.echo()
 
 
+# Scratchpad commands
+# Chunk: docs/chunks/scratchpad_cross_project - Cross-project scratchpad queries
+@cli.group()
+def scratchpad():
+    """Scratchpad commands - user-global work notes."""
+    pass
+
+
+@scratchpad.command("list")
+@click.option("--all", "-a", "list_all", is_flag=True,
+              help="List entries across all projects and tasks")
+@click.option("--tasks", is_flag=True,
+              help="List only task entries (task:*)")
+@click.option("--projects", is_flag=True,
+              help="List only project entries (non-task)")
+@click.option("--status", type=str, default=None,
+              help="Filter by status (e.g., IMPLEMENTING, DRAFTING)")
+@click.option("--project-dir", type=click.Path(path_type=pathlib.Path),
+              default=".", help="Project directory (for single-project mode)")
+@click.option("--scratchpad-root", type=click.Path(path_type=pathlib.Path),
+              default=None, help="Override scratchpad root (for testing)")
+def scratchpad_list(list_all, tasks, projects, status, project_dir, scratchpad_root):
+    """List scratchpad entries."""
+    from scratchpad import Scratchpad
+
+    # Create scratchpad instance (custom root for testing, default otherwise)
+    sp = Scratchpad(scratchpad_root=scratchpad_root)
+
+    # Determine context type filter
+    context_type = None
+    if tasks:
+        context_type = "task"
+    elif projects:
+        context_type = "project"
+
+    if list_all:
+        # List all contexts
+        result = sp.list_all(
+            context_type=context_type,
+            status=status,
+        )
+    else:
+        # List current project context only
+        project_dir = project_dir.resolve()
+        context_name = sp.derive_project_name(project_dir)
+        result = sp.list_context(
+            context_name,
+            status=status,
+        )
+
+    if result.total_count == 0:
+        click.echo("No scratchpad entries found")
+        return
+
+    # Format output with grouped display
+    for context_name in sorted(result.entries_by_context.keys()):
+        entries = result.entries_by_context[context_name]
+        click.echo(f"\n{context_name}/")
+
+        # Group entries by artifact type
+        chunks = [e for e in entries if e.artifact_type == "chunk"]
+        narratives = [e for e in entries if e.artifact_type == "narrative"]
+
+        if chunks:
+            click.echo("  chunks:")
+            for entry in chunks:
+                click.echo(f"    - {entry.name} ({entry.status})")
+
+        if narratives:
+            click.echo("  narratives:")
+            for entry in narratives:
+                click.echo(f"    - {entry.name} ({entry.status})")
+
+
 # Migration commands
 @cli.group()
 def migration():

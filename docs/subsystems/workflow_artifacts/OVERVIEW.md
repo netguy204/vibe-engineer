@@ -71,6 +71,8 @@ chunks:
   relationship: implements
 - chunk_id: scratchpad_storage
   relationship: implements
+- chunk_id: scratchpad_cross_project
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -149,6 +151,24 @@ code_references:
   compliance: COMPLIANT
 - ref: src/models.py#ScratchpadNarrativeFrontmatter
   implements: Scratchpad narrative frontmatter schema
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#ScratchpadEntry
+  implements: Data class for scratchpad entry representation in cross-project queries
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#ScratchpadListResult
+  implements: Result container for cross-project scratchpad queries with grouping
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#Scratchpad::list_all
+  implements: Cross-project scratchpad listing with filtering (follows ve list --all pattern)
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#Scratchpad::list_context
+  implements: Single-context scratchpad listing (current project mode)
+  compliance: COMPLIANT
+- ref: src/ve.py#scratchpad
+  implements: CLI command group for scratchpad operations
+  compliance: COMPLIANT
+- ref: src/ve.py#scratchpad_list
+  implements: CLI command for cross-project scratchpad listing with filters
   compliance: COMPLIANT
 - ref: src/external_refs.py
   implements: Consolidated external artifact reference utilities
