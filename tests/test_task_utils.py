@@ -125,7 +125,7 @@ class TestLoadExternalRef:
             load_external_ref(tmp_path)
 
 
-# Chunk: docs/chunks/accept_full_artifact_paths - Tests for flexible project resolution
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 class TestResolveProjectRef:
     """Tests for resolve_project_ref."""
 
@@ -269,8 +269,7 @@ class TestGetNextChunkId:
 class TestCreateExternalYaml:
     """Tests for create_external_yaml.
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
-    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
+    # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
     """
 
     def test_creates_external_yaml_file(self, tmp_path):
@@ -367,7 +366,6 @@ class TestCreateExternalYaml:
 class TestAddDependentsToChunk:
     """Tests for add_dependents_to_chunk.
 
-    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
     """
 
     def test_adds_dependents_to_frontmatter(self, tmp_path):
@@ -567,8 +565,6 @@ class TestUpdateFrontmatterField:
             update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
 
 
-# Chunk: docs/chunks/external_chunk_causal - Tests for created_after in external.yaml
-# Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
 class TestCreateExternalYamlCreatedAfter:
     """Tests for create_external_yaml created_after parameter."""
 

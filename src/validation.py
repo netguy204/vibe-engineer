@@ -1,10 +1,9 @@
 """Shared validation utilities."""
-# Chunk: docs/chunks/implement_chunk_start - Shared validation
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 import re
 
 
-# Chunk: docs/chunks/implement_chunk_start - Identifier validation
 def validate_identifier(
     value: str,
     field_name: str,

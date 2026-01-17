@@ -1,5 +1,5 @@
 """CLI tests for ve external resolve command."""
-# Chunk: docs/chunks/external_resolve - CLI tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 import subprocess
 from pathlib import Path

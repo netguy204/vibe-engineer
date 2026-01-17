@@ -1,7 +1,5 @@
 """Business logic for ve task init command."""
-# Chunk: docs/chunks/task_init - Task directory initialization
-# Chunk: docs/chunks/task_init_scaffolding - Task CLAUDE.md and commands scaffolding
-# Chunk: docs/chunks/task_config_local_paths - Local path resolution
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,8 +10,6 @@ from git_utils import get_github_org_repo, is_git_repository
 from template_system import TaskContext, render_template, render_to_directory
 
 
-# Chunk: docs/chunks/task_init - Result of task init
-# Chunk: docs/chunks/task_init_scaffolding - Added created_files tracking
 @dataclass
 class TaskInitResult:
     """Result of a successful task init."""
@@ -24,7 +20,6 @@ class TaskInitResult:
     created_files: list[str] = field(default_factory=list)
 
 
-# Chunk: docs/chunks/task_init - Resolve repo reference to path
 def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
     """Resolve a repo reference to a filesystem path.
 
@@ -57,7 +52,6 @@ def _resolve_repo_path(cwd: Path, repo_ref: str) -> Path | None:
     return None
 
 
-# Chunk: docs/chunks/task_config_local_paths - Resolve to org/repo format
 def _resolve_to_org_repo(cwd: Path, repo_ref: str) -> str:
     """Resolve a repo reference to org/repo format from its git remote.
 
@@ -79,8 +73,6 @@ def _resolve_to_org_repo(cwd: Path, repo_ref: str) -> str:
     return get_github_org_repo(path)
 
 
-# Chunk: docs/chunks/task_init - Task initialization class
-# Chunk: docs/chunks/task_config_local_paths - Local path resolution in TaskInit
 class TaskInit:
     """Initialize a task directory for cross-repository work."""
 
@@ -180,7 +172,6 @@ class TaskInit:
                 errors.append(f"Directory '{repo_ref}': {error_msg}")
             return errors, None
 
-    # Chunk: docs/chunks/task_init_scaffolding - Render task CLAUDE.md
     def _render_claude_md(self) -> list[str]:
         """Render the task CLAUDE.md template to task root.
 
@@ -202,7 +193,6 @@ class TaskInit:
 
         return created
 
-    # Chunk: docs/chunks/task_init_scaffolding - Render command templates
     def _render_commands(self) -> list[str]:
         """Render command templates to .claude/commands/ with task context.
 

@@ -10,7 +10,7 @@ from task_utils import load_external_ref, load_task_config
 from conftest import make_ve_initialized_git_repo, setup_task_directory
 
 
-# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 class TestChunkCreateInTaskDirectory:
     """Tests for ve chunk start in task directory context."""
 
@@ -52,7 +52,7 @@ class TestChunkCreateInTaskDirectory:
             assert external_yaml.exists()
 
             # Verify content (updated for ExternalArtifactRef format)
-            # Chunk: docs/chunks/consolidate_ext_refs - Use artifact_id instead of chunk
+            # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
             ref = load_external_ref(chunk_dir)
             assert ref.repo == "acme/ext"
             assert ref.artifact_id == "auth_token"
@@ -248,7 +248,6 @@ projects:
         assert "Failed to resolve HEAD SHA" in result.output
 
 
-# Chunk: docs/chunks/selective_project_linking - Selective project linking tests
 class TestChunkCreateSelectiveProjects:
     """Tests for ve chunk create with --projects flag."""
 

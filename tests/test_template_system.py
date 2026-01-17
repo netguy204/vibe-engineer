@@ -887,7 +887,7 @@ Extra info: {{ extra_info }}
             template_system._environments.clear()
 
 
-# Chunk: docs/chunks/task_init_scaffolding - Tests for TaskContext
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 class TestTaskContext:
     """Tests for TaskContext dataclass."""
 
@@ -948,7 +948,6 @@ class TestTaskContext:
             template_system._environments.clear()
 
 
-# Chunk: docs/chunks/task_init_scaffolding - Tests for conditional block processing
 class TestConditionalBlocks:
     """Tests for task_context conditional blocks in templates."""
 

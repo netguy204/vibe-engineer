@@ -1,9 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
-# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
-# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
-# Chunk: docs/chunks/orch_attention_queue - Answer injection on resume
-# Chunk: docs/chunks/orch_question_forward - AskUserQuestion forwarding
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle integration
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -60,7 +55,6 @@ class VerificationResult:
     error: Optional[str] = None
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Refactored to use Chunks class
 def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
     """Verify that a chunk's GOAL.md has status: ACTIVE.
 
@@ -108,7 +102,6 @@ class SchedulerError(Exception):
     pass
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation helper
 def activate_chunk_in_worktree(
     worktree_path: Path,
     target_chunk: str,
@@ -168,7 +161,6 @@ def activate_chunk_in_worktree(
     return displaced_chunk
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk helper
 def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
     """Restore a displaced chunk back to IMPLEMENTING status.
 
@@ -376,7 +368,6 @@ class Scheduler:
                 if unit.chunk in self._running_agents:
                     continue  # Already running
 
-                # Chunk: docs/chunks/orch_conflict_oracle - Check for conflicts before dispatch
                 blocking_chunks = await self._check_conflicts(unit)
                 if blocking_chunks:
                     logger.info(
@@ -410,7 +401,6 @@ class Scheduler:
             logger.info(f"Creating worktree for {chunk}")
             worktree_path = self.worktree_manager.create_worktree(chunk)
 
-            # Chunk: docs/chunks/orch_activate_on_inject - Activate chunk in worktree
             # Activate the target chunk, displacing any existing IMPLEMENTING chunk
             try:
                 displaced = activate_chunk_in_worktree(worktree_path, chunk)
@@ -428,7 +418,6 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
-            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast dispatch
             # Broadcast via WebSocket so dashboard updates
             await broadcast_work_unit_update(
                 chunk=work_unit.chunk,
@@ -440,13 +429,11 @@ class Scheduler:
             log_dir = self.worktree_manager.get_log_path(chunk)
             log_callback = create_log_callback(chunk, phase, log_dir)
 
-            # Chunk: docs/chunks/orch_attention_queue - Pass pending answer on resume
             # Check if there's a pending answer to inject
             pending_answer = work_unit.pending_answer
             if pending_answer:
                 logger.info(f"Injecting pending answer for {chunk}")
 
-            # Chunk: docs/chunks/orch_question_forward - Question callback for attention queue
             # Create callback to log when question is captured (actual handling in AgentResult)
             def question_callback(question_data: dict) -> None:
                 question_text = question_data.get("question", "Unknown question")
@@ -506,7 +493,6 @@ class Scheduler:
             logger.info(f"Agent for {chunk} suspended (question queued)")
             work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
             work_unit.session_id = result.session_id
-            # Chunk: docs/chunks/orch_attention_reason - Capture question as attention reason
             # Extract question text for attention_reason
             if result.question:
                 question_text = result.question.get("question", "Agent asked a question")
@@ -636,7 +622,6 @@ class Scheduler:
             # Status is ACTIVE - proceed with commit/merge
             logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
 
-            # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit
             # Check for uncommitted changes that need to be committed
             if self.worktree_manager.has_uncommitted_changes(chunk):
                 logger.info(f"Uncommitted changes detected for {chunk}, committing")
@@ -651,7 +636,6 @@ class Scheduler:
                     await self._mark_needs_attention(work_unit, f"Commit error: {e}")
                     return
 
-            # Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk before merge
             # Restore any displaced chunk to IMPLEMENTING before the merge
             if work_unit.displaced_chunk:
                 logger.info(
@@ -708,7 +692,6 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
-            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast completion
             # Broadcast via WebSocket so dashboard updates
             await broadcast_work_unit_update(
                 chunk=work_unit.chunk,
@@ -716,7 +699,6 @@ class Scheduler:
                 phase=work_unit.phase.value,
             )
 
-            # Chunk: docs/chunks/orch_blocked_lifecycle - Unblock dependents after completion
             self._unblock_dependents(chunk)
 
         else:
@@ -728,7 +710,6 @@ class Scheduler:
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
-            # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast phase advancement
             # Broadcast via WebSocket so dashboard updates
             await broadcast_work_unit_update(
                 chunk=work_unit.chunk,
@@ -736,12 +717,10 @@ class Scheduler:
                 phase=work_unit.phase.value,
             )
 
-            # Chunk: docs/chunks/orch_conflict_oracle - Re-analyze conflicts on phase advance
             # Phase advancement may provide more precise information for conflict analysis
             # (e.g., PLAN.md now exists with Location: lines)
             await self._reanalyze_conflicts(chunk)
 
-    # Chunk: docs/chunks/orch_conflict_oracle - Conflict checking for dispatch
     async def _check_conflicts(self, work_unit: WorkUnit) -> list[str]:
         """Check for conflicts with active work units and return blocking chunks.
 
@@ -876,7 +855,6 @@ class Scheduler:
 
         # The next dispatch tick will trigger fresh analysis
 
-    # Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock when blockers complete
     def _unblock_dependents(self, completed_chunk: str) -> None:
         """Unblock work units that were blocked by a now-completed chunk.
 
@@ -911,7 +889,6 @@ class Scheduler:
 
                 self.store.update_work_unit(unit)
 
-    # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
     async def _mark_needs_attention(
         self,
         work_unit: WorkUnit,

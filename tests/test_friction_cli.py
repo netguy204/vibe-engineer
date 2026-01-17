@@ -1,5 +1,5 @@
 """Tests for friction CLI commands."""
-# Chunk: docs/chunks/friction_template_and_cli - Friction CLI tests
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 
 import pytest
 from click.testing import CliRunner
@@ -157,7 +157,6 @@ class TestFrictionLogCommand:
         assert "does not exist" in result.output
 
 
-# Chunk: docs/chunks/friction_noninteractive - Non-interactive mode tests
 class TestFrictionLogNonInteractive:
     """Tests for non-interactive friction log command."""
 
@@ -544,7 +543,6 @@ class TestFrictionAnalyzeCommand:
         assert "No friction entries found" in result.output
 
 
-# Chunk: docs/chunks/friction_noninteractive - Non-interactive friction log tests
 class TestFrictionLogNonInteractive:
     """Tests for non-interactive 've friction log' command usage."""
 

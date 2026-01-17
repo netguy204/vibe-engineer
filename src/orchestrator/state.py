@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """SQLite state store for the orchestrator daemon.
 
 Provides persistent storage for work units and their state transitions.
@@ -157,7 +157,6 @@ class StateStore:
             """
         )
 
-    # Chunk: docs/chunks/orch_verify_active - Database migration for completion retry tracking
     def _migrate_v3(self) -> None:
         """Add completion_retries field for ACTIVE status verification."""
         self.connection.executescript(
@@ -167,7 +166,6 @@ class StateStore:
             """
         )
 
-    # Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
     def _migrate_v4(self) -> None:
         """Add attention_reason field for NEEDS_ATTENTION diagnosis."""
         self.connection.executescript(
@@ -177,7 +175,6 @@ class StateStore:
             """
         )
 
-    # Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk tracking
     def _migrate_v5(self) -> None:
         """Add displaced_chunk field for tracking displaced IMPLEMENTING chunks."""
         self.connection.executescript(
@@ -188,7 +185,6 @@ class StateStore:
             """
         )
 
-    # Chunk: docs/chunks/orch_attention_queue - Pending answer storage for resume
     def _migrate_v6(self) -> None:
         """Add pending_answer field for storing operator answers until resume."""
         self.connection.executescript(
@@ -198,7 +194,6 @@ class StateStore:
             """
         )
 
-    # Chunk: docs/chunks/orch_conflict_oracle - Conflict storage migration
     def _migrate_v7(self) -> None:
         """Add conflict analysis storage and work unit conflict fields."""
         self.connection.executescript(
@@ -255,7 +250,6 @@ class StateStore:
             ValueError: If a work unit with the same chunk already exists
         """
         blocked_by_json = json.dumps(work_unit.blocked_by)
-        # Chunk: docs/chunks/orch_conflict_oracle - Serialize conflict verdicts
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
         try:
@@ -330,7 +324,6 @@ class StateStore:
             raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
 
         blocked_by_json = json.dumps(work_unit.blocked_by)
-        # Chunk: docs/chunks/orch_conflict_oracle - Serialize conflict verdicts
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
         self.connection.execute(
@@ -497,7 +490,6 @@ class StateStore:
 
     # Queue operations
 
-    # Chunk: docs/chunks/orch_attention_queue - Attention queue query
     def get_attention_queue(self) -> list[tuple[WorkUnit, int]]:
         """Get NEEDS_ATTENTION work units ordered by priority.
 
@@ -564,7 +556,6 @@ class StateStore:
         cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
         return [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
-    # Chunk: docs/chunks/orch_blocked_lifecycle - Find blocked units by chunk
     def list_blocked_by_chunk(self, chunk: str) -> list[WorkUnit]:
         """Get work units that have the given chunk in their blocked_by list.
 
@@ -628,7 +619,6 @@ class StateStore:
         except (IndexError, KeyError):
             pending_answer = None
 
-        # Chunk: docs/chunks/orch_conflict_oracle - Parse conflict fields
         try:
             conflict_verdicts_str = row["conflict_verdicts"]
             conflict_verdicts = json.loads(conflict_verdicts_str) if conflict_verdicts_str else {}
@@ -658,7 +648,6 @@ class StateStore:
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
-    # Chunk: docs/chunks/orch_conflict_oracle - Conflict persistence methods
 
     def save_conflict_analysis(self, analysis: ConflictAnalysis) -> None:
         """Save or update a conflict analysis.

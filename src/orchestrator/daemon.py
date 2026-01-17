@@ -1,5 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_scheduling - Scheduler integration
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Daemon process management for the orchestrator.
 
 Handles starting, stopping, and monitoring the orchestrator daemon process.
@@ -75,7 +74,6 @@ def get_log_path(project_dir: Path) -> Path:
     return project_dir / ".ve" / "orchestrator.log"
 
 
-# Chunk: docs/chunks/orch_tcp_port - Port file path helper
 def get_port_path(project_dir: Path) -> Path:
     """Get the port file path for a project.
 
@@ -91,7 +89,6 @@ def get_port_path(project_dir: Path) -> Path:
     return project_dir / ".ve" / "orchestrator.port"
 
 
-# Chunk: docs/chunks/orch_tcp_port - Port discovery helper
 def find_available_port(host: str = "127.0.0.1") -> int:
     """Find an available TCP port by binding to port 0.
 
@@ -309,7 +306,6 @@ def _daemonize() -> None:
     # Note: stdout/stderr will be redirected to log file by start_daemon
 
 
-# Chunk: docs/chunks/orch_tcp_port - TCP port support in start_daemon
 def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> Tuple[int, int]:
     """Start the orchestrator daemon.
 
@@ -512,7 +508,6 @@ def _load_config(store: StateStore) -> OrchestratorConfig:
     return config
 
 
-# Chunk: docs/chunks/orch_tcp_port - Dual listener support
 async def _run_daemon_async(
     app,
     socket_path: Path,

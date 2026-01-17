@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Git worktree manager for isolated chunk execution.
 
 Provides worktree lifecycle management for parallel agent execution.
@@ -427,7 +427,6 @@ class WorktreeManager:
         count = int(result.stdout.strip())
         return count > 0
 
-    # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit for worktree
     def commit_changes(self, chunk: str) -> bool:
         """Commit all changes in a worktree with a standard message.
 

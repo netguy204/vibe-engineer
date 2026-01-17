@@ -1,7 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Orchestrator scheduling layer
-# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification
-# Chunk: docs/chunks/orch_attention_queue - Answer injection on agent resume
-# Chunk: docs/chunks/orch_question_forward - AskUserQuestion interception
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.
@@ -44,7 +41,6 @@ PHASE_SKILL_FILES = {
 }
 
 
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement helpers
 def _is_sandbox_violation(
     command: str,
     host_repo_path: Path,
@@ -154,7 +150,6 @@ def _merge_hooks(
     return merged
 
 
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement hook
 def create_sandbox_enforcement_hook(
     host_repo_path: Path,
     worktree_path: Path,
@@ -209,7 +204,6 @@ def create_sandbox_enforcement_hook(
     return {"PreToolUse": [hook_matcher]}
 
 
-# Chunk: docs/chunks/orch_question_forward - AskUserQuestion interception hook
 def create_question_intercept_hook(
     on_question: Callable[[dict], None],
 ) -> dict[str, list[HookMatcher]]:
@@ -320,7 +314,6 @@ class AgentRunner:
             project_dir: The root project directory (host repo path)
         """
         self.project_dir = project_dir.resolve()
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Store host repo path for sandbox enforcement
         self.host_repo_path = self.project_dir
 
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
@@ -390,7 +383,6 @@ class AgentRunner:
         """
         prompt = self.get_phase_prompt(chunk, phase)
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Enhanced CWD reminder with sandbox rules
         # Prepend CWD reminder with sandbox rules to help agent stay isolated
         cwd_reminder = (
             f"**Working Directory:** `{worktree_path}`\n"
@@ -406,7 +398,6 @@ class AgentRunner:
         )
         prompt = cwd_reminder + prompt
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
         # Set GIT_DIR and GIT_WORK_TREE to restrict git operations to the worktree
         env = os.environ.copy()
         env["GIT_DIR"] = str(worktree_path / ".git")
@@ -421,14 +412,12 @@ class AgentRunner:
             env=env,  # Restrict git operations to worktree
         )
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
         # Always add sandbox hook to prevent agents from escaping worktree
         sandbox_hooks = create_sandbox_enforcement_hook(
             host_repo_path=self.host_repo_path,
             worktree_path=worktree_path,
         )
 
-        # Chunk: docs/chunks/orch_question_forward - Configure question intercept hook
         # Track captured question data for building result
         captured_question: dict | None = None
 
@@ -469,7 +458,6 @@ class AgentRunner:
                         session_id = message.get("session_id")
 
                 # Check for result message (completion)
-                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
                     # Check if the result indicates an error using SDK's is_error flag
                     # The is_error flag is authoritative - we do not parse result text
@@ -490,7 +478,6 @@ class AgentRunner:
         except Exception as e:
             error = str(e)
 
-        # Chunk: docs/chunks/orch_question_forward - Check if agent was suspended by question hook
         # If a question was captured, the agent was suspended waiting for an answer
         if captured_question:
             return AgentResult(
@@ -545,7 +532,6 @@ class AgentRunner:
         else:
             prompt = _load_skill_content(commit_skill_path)
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
         env = os.environ.copy()
         env["GIT_DIR"] = str(worktree_path / ".git")
         env["GIT_WORK_TREE"] = str(worktree_path)
@@ -558,7 +544,6 @@ class AgentRunner:
             env=env,  # Restrict git operations to worktree
         )
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
         sandbox_hooks = create_sandbox_enforcement_hook(
             host_repo_path=self.host_repo_path,
             worktree_path=worktree_path,
@@ -578,7 +563,6 @@ class AgentRunner:
                     if message.get("type") == "init":
                         session_id = message.get("session_id")
 
-                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", None)
                     is_error = getattr(message, "is_error", False)
@@ -640,7 +624,6 @@ class AgentRunner:
             "This is the final step to complete the chunk."
         )
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure git environment for worktree
         env = os.environ.copy()
         env["GIT_DIR"] = str(worktree_path / ".git")
         env["GIT_WORK_TREE"] = str(worktree_path)
@@ -654,7 +637,6 @@ class AgentRunner:
             env=env,  # Restrict git operations to worktree
         )
 
-        # Chunk: docs/chunks/orch_sandbox_enforcement - Configure sandbox enforcement hook
         sandbox_hooks = create_sandbox_enforcement_hook(
             host_repo_path=self.host_repo_path,
             worktree_path=worktree_path,
@@ -674,7 +656,6 @@ class AgentRunner:
                     if message.get("type") == "init":
                         new_session_id = message.get("session_id")
 
-                # Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", None)
                     is_error = getattr(message, "is_error", False)

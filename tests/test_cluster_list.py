@@ -1,5 +1,5 @@
 """Tests for chunk cluster-list feature."""
-# Chunk: docs/chunks/cluster_list_command - Cluster list tests
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 
 import pathlib
 import pytest

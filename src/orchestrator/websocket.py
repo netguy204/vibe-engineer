@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_dashboard - WebSocket support for real-time dashboard updates
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """WebSocket support for real-time dashboard updates.
 
 Provides a ConnectionManager for tracking active WebSocket connections

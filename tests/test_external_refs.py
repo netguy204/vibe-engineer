@@ -1,6 +1,6 @@
 """Tests for external artifact reference utilities.
 
-# Chunk: docs/chunks/consolidate_ext_ref_utils - External reference consolidation
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import pytest
@@ -416,7 +416,6 @@ class TestArtifactDirName:
         assert ARTIFACT_DIR_NAME[ArtifactType.SUBSYSTEM] == "subsystems"
 
 
-# Chunk: docs/chunks/accept_full_artifact_paths - Tests for flexible path normalization
 class TestNormalizeArtifactPath:
     """Tests for normalize_artifact_path utility."""
 
@@ -562,7 +561,6 @@ class TestNormalizeArtifactPath:
         assert result == (ArtifactType.CHUNK, "foo")
 
 
-# Chunk: docs/chunks/accept_full_artifact_paths - Tests for prefix stripping
 class TestStripArtifactPathPrefix:
     """Tests for strip_artifact_path_prefix utility."""
 

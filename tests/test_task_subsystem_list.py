@@ -1,7 +1,6 @@
 """Integration tests for task-aware subsystem listing.
 
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem list tests
-# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -225,7 +224,6 @@ projects:
         assert result.exit_code == 1
         assert "No subsystems found" in result.output
 
-    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
     def test_shows_grouped_output_with_external_and_local(self, tmp_path):
         """Shows grouped output with both external and local subsystems."""
         task_dir, external_path, project_paths = setup_task_directory(

@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle for scheduling
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Conflict Oracle for intelligent chunk scheduling.
 
 The oracle analyzes potential conflicts between chunks to determine whether
@@ -393,7 +393,6 @@ class ConflictOracle:
             except Exception:
                 pass
 
-        # Chunk: docs/chunks/orch_conflict_template_fix - Strip template comments
         # Strip HTML comments to avoid false positives from template boilerplate
         # (e.g., example paths like src/segment/writer.rs in the GOAL.md template)
         goal_a_cleaned = self._strip_html_comments(goal_a_content)
@@ -516,7 +515,6 @@ class ConflictOracle:
         Returns:
             Text with HTML comments removed
         """
-        # Chunk: docs/chunks/orch_conflict_template_fix - Strip template comments
         return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
 
     def _find_common_terms(self, text_a: str, text_b: str) -> list[str]:

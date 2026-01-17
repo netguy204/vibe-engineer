@@ -1,5 +1,5 @@
 """Tests for repo_cache module."""
-# Chunk: docs/chunks/external_resolve - Repo cache tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 import subprocess
 from pathlib import Path

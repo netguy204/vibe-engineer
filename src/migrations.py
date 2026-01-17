@@ -80,13 +80,13 @@ class MigrationFrontmatter(BaseModel):
     """Pydantic model for MIGRATION.md frontmatter validation."""
 
     status: MigrationStatus
-    source_type: SourceType
+    source_type: SourceType | None = None  # Only for chunks_to_subsystems
     current_phase: int
     phases_completed: list[int] = []
     last_activity: TimestampStr
     started: TimestampStr
     completed: TimestampStr | None = None
-    chunks_analyzed: int = 0
+    chunks_analyzed: int = 0  # Only for chunks_to_subsystems
     subsystems_proposed: int = 0
     subsystems_approved: int = 0
     questions_pending: int = 0
@@ -214,22 +214,28 @@ class Migrations:
         """Create a new migration directory with MIGRATION.md template.
 
         Args:
-            migration_type: Type of migration (default: chunks_to_subsystems)
+            migration_type: Type of migration. Supported types:
+                - chunks_to_subsystems: Migrate existing chunks to subsystems
+                - subsystem_discovery: Discover subsystems from code (no chunks)
 
         Returns:
             Path to created migration directory.
 
         Raises:
-            ValueError: If a migration of this type already exists.
+            ValueError: If a migration of this type already exists or type is unknown.
         """
+        supported_types = {"chunks_to_subsystems", "subsystem_discovery"}
+        if migration_type not in supported_types:
+            raise ValueError(
+                f"Unknown migration type: '{migration_type}'. "
+                f"Supported types: {', '.join(sorted(supported_types))}"
+            )
+
         if self.migration_exists(migration_type):
             raise ValueError(
                 f"Migration '{migration_type}' already exists. "
                 "Use 'resume' to continue or 'abandon' to restart."
             )
-
-        # Detect source type
-        source_type = self.detect_source_type()
 
         # Create migration directory structure
         migration_dir = self.get_migration_dir(migration_type)
@@ -238,24 +244,37 @@ class Migrations:
         (migration_dir / "proposals").mkdir(exist_ok=True)
         (migration_dir / "questions").mkdir(exist_ok=True)
 
-        # Create migration context
-        migration = ActiveMigration(
-            migration_type=migration_type,
-            source_type=source_type.value,
-            _project_dir=self.project_dir,
-        )
-        context = TemplateContext(active_migration=migration)
-
         # Get current timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
+
+        # Build template context based on migration type
+        template_kwargs = {"timestamp": timestamp}
+
+        if migration_type == "chunks_to_subsystems":
+            # Detect source type for chunk migrations
+            source_type = self.detect_source_type()
+            template_kwargs["source_type"] = source_type.value
+            migration = ActiveMigration(
+                migration_type=migration_type,
+                source_type=source_type.value,
+                _project_dir=self.project_dir,
+            )
+        else:
+            # subsystem_discovery doesn't need source_type
+            migration = ActiveMigration(
+                migration_type=migration_type,
+                source_type="code_only",  # Always code_only for discovery
+                _project_dir=self.project_dir,
+            )
+
+        context = TemplateContext(active_migration=migration)
 
         # Render template to directory (each migration type has its own template)
         render_to_directory(
             f"migrations/{migration_type}",
             migration_dir,
             context=context,
-            source_type=source_type.value,
-            timestamp=timestamp,
+            **template_kwargs,
         )
 
         return migration_dir

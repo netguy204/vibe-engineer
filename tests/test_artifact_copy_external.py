@@ -1,7 +1,7 @@
 """Tests for copying external artifacts as references.
 
-# Chunk: docs/chunks/copy_as_external - Copy artifact as external reference tests
-# Chunk: docs/chunks/artifact_copy_backref - Back-reference creation tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 """
 
 import re
@@ -411,7 +411,6 @@ created_after: []
         assert result.exit_code != 0
 
 
-# Chunk: docs/chunks/artifact_copy_backref - Back-reference creation tests
 class TestCopyArtifactAsExternalBackReference:
     """Tests for back-reference creation when copying artifacts as external."""
 

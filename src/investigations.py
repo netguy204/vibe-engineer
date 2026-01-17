@@ -1,7 +1,5 @@
 """Investigations module - business logic for investigation management."""
-# Chunk: docs/chunks/investigation_commands - Investigation management
-# Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-# Chunk: docs/chunks/valid_transitions - State transition validation
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import pathlib
@@ -15,7 +13,6 @@ from models import InvestigationFrontmatter, InvestigationStatus, VALID_INVESTIG
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
-# Chunk: docs/chunks/investigation_commands - Core investigation class
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 class Investigations:
     """Utility class for managing investigation documentation."""
@@ -48,9 +45,6 @@ class Investigations:
         """Return the number of investigations."""
         return len(self.enumerate_investigations())
 
-    # Chunk: docs/chunks/investigation_commands - Create investigation directory
-    # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
         """Create a new investigation directory with OVERVIEW.md template.
@@ -100,7 +94,6 @@ class Investigations:
 
         return investigation_path
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing investigations with the same short_name.
 
@@ -117,7 +110,6 @@ class Investigations:
                 duplicates.append(name)
         return duplicates
 
-    # Chunk: docs/chunks/investigation_commands - Parse investigation frontmatter
     def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for an investigation.
 
@@ -149,7 +141,6 @@ class Investigations:
         except (yaml.YAMLError, ValidationError):
             return None
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def get_status(self, investigation_id: str) -> InvestigationStatus:
         """Get the current status of an investigation.
 
@@ -167,7 +158,6 @@ class Investigations:
             raise ValueError(f"Investigation '{investigation_id}' not found in docs/investigations/")
         return frontmatter.status
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def update_status(
         self, investigation_id: str, new_status: InvestigationStatus
     ) -> tuple[InvestigationStatus, InvestigationStatus]:
@@ -207,7 +197,6 @@ class Investigations:
 
         return (current_status, new_status)
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def _update_overview_frontmatter(
         self, investigation_id: str, field: str, value
     ) -> None:

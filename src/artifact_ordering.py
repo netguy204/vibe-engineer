@@ -1,9 +1,7 @@
 """Cached ordering system for workflow artifacts.
 
-# Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
-# Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
-# Chunk: docs/chunks/consolidate_ext_refs - Import ArtifactType from models
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Import constants from external_refs
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
@@ -67,12 +65,9 @@ def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
     return result
 
 
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Use ARTIFACT_MAIN_FILE from external_refs
 # _ARTIFACT_MAIN_FILE is imported from external_refs as ARTIFACT_MAIN_FILE
 
 
-# Chunk: docs/chunks/external_chunk_causal - Include external chunks in enumeration
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Use is_external_artifact for detection
 def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
     """Enumerate artifact directory names.
 
@@ -171,7 +166,6 @@ def _parse_created_after(file_path: Path) -> list[str]:
     return []
 
 
-# Chunk: docs/chunks/external_chunk_causal - Parse created_after from external.yaml
 def _parse_yaml_created_after(file_path: Path) -> list[str]:
     """Parse created_after from a plain YAML file (e.g., external.yaml).
 
@@ -210,7 +204,6 @@ def _parse_yaml_created_after(file_path: Path) -> list[str]:
         return []
 
 
-# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
 def _parse_status(file_path: Path) -> str | None:
     """Parse the status field from a file's frontmatter.
 
@@ -232,11 +225,8 @@ def _parse_status(file_path: Path) -> str | None:
     return None
 
 
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Use ARTIFACT_DIR_NAME from external_refs
 # _ARTIFACT_DIR_NAME is imported from external_refs as ARTIFACT_DIR_NAME
 
-# Chunk: docs/chunks/ordering_active_only - Tip-eligible statuses per artifact type
-# Chunk: docs/chunks/external_chunk_causal - Added EXTERNAL pseudo-status for external chunks
 # Statuses that are considered "active" for tip detection purposes.
 # None means no status filtering (all statuses are tip-eligible).
 _TIP_ELIGIBLE_STATUSES: dict[ArtifactType, set[str] | None] = {
@@ -330,8 +320,6 @@ class ArtifactIndex:
 
         return False
 
-    # Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
-    # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in index building
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
         artifact_dir = self._get_artifact_dir(artifact_type)
@@ -472,8 +460,6 @@ class ArtifactIndex:
 
         self._save_index(self._cache)
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Get all ancestors of an artifact
-    # Chunk: docs/chunks/external_chunk_causal - Handle external chunks in ancestor lookup
     def get_ancestors(self, artifact_type: ArtifactType, artifact_name: str) -> set[str]:
         """Get all ancestors (artifacts created before) of the given artifact.
 

@@ -143,7 +143,7 @@ class TestInvestigationFrontmatter:
         assert frontmatter.trigger is None
 
 
-# Chunk: docs/chunks/chunk_frontmatter_model - Test suite for ChunkFrontmatter
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 class TestChunkFrontmatter:
     """Tests for ChunkFrontmatter model validation."""
 
@@ -161,7 +161,7 @@ class TestChunkFrontmatter:
 
     def test_valid_frontmatter_parses_successfully(self):
         """Valid frontmatter with all fields parses correctly."""
-        # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
+        # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
         frontmatter = ChunkFrontmatter(
             status=ChunkStatus.IMPLEMENTING,
             ticket="VE-123",
@@ -228,7 +228,6 @@ class TestChunkFrontmatter:
         assert frontmatter.created_after == ["chunk_frontmatter_model", "proposed_chunks_frontmatter"]
 
 
-# Chunk: docs/chunks/bug_type_field - Tests for bug_type field in ChunkFrontmatter
 class TestChunkFrontmatterBugType:
     """Tests for bug_type field in ChunkFrontmatter."""
 
@@ -291,7 +290,6 @@ class TestChunkFrontmatterBugType:
         assert frontmatter.ticket == "BUG-123"
 
 
-# Chunk: docs/chunks/ordering_field - Tests for created_after in NarrativeFrontmatter
 class TestNarrativeFrontmatterCreatedAfter:
     """Tests for created_after field in NarrativeFrontmatter."""
 
@@ -309,7 +307,6 @@ class TestNarrativeFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["some_artifact", "another_artifact"]
 
 
-# Chunk: docs/chunks/ordering_field - Tests for created_after in InvestigationFrontmatter
 class TestInvestigationFrontmatterCreatedAfter:
     """Tests for created_after field in InvestigationFrontmatter."""
 
@@ -327,7 +324,6 @@ class TestInvestigationFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["memory_leak_investigation", "another_one"]
 
 
-# Chunk: docs/chunks/ordering_field - Tests for created_after in SubsystemFrontmatter
 class TestSubsystemFrontmatterCreatedAfter:
     """Tests for created_after field in SubsystemFrontmatter."""
 
@@ -345,7 +341,6 @@ class TestSubsystemFrontmatterCreatedAfter:
         assert frontmatter.created_after == ["template_system", "frontmatter_parsing"]
 
 
-# Chunk: docs/chunks/task_qualified_refs - Project-qualified SymbolicReference tests
 class TestSymbolicReferenceWithProjectQualification:
     """Tests for SymbolicReference with project-qualified paths."""
 
@@ -414,7 +409,6 @@ class TestSymbolicReferenceWithProjectQualification:
         assert ref.ref == "my-org/my.project::src/foo.py#Bar"
 
 
-# Chunk: docs/chunks/coderef_format_prompting - Tests for improved org/repo error messages
 class TestSymbolicReferenceOrgRepoErrorMessages:
     """Tests for improved error messages when project qualifier is not in org/repo format."""
 
@@ -456,7 +450,7 @@ class TestSymbolicReferenceOrgRepoErrorMessages:
         assert "got" in error_str.lower() or "justproject" in error_str
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Tests for friction models
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 class TestFrictionTheme:
     """Tests for FrictionTheme model."""
 
@@ -593,7 +587,6 @@ class TestFrictionFrontmatter:
         assert frontmatter.proposed_chunks == []
 
 
-# Chunk: docs/chunks/friction_chunk_linking - FrictionEntryReference model tests
 class TestFrictionEntryReference:
     """Tests for FrictionEntryReference model."""
 

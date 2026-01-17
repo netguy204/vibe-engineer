@@ -1,6 +1,6 @@
 """Tests for chunk injection validation.
 
-# Chunk: docs/chunks/orch_inject_validate - Injection-time validation tests
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """
 
 import pathlib
@@ -426,7 +426,6 @@ Do some steps.
         assert plan_has_content(plan_path) is False
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Integration tests for chunk activation
 class TestChunkActivationOnInject:
     """Integration tests for chunk activation during injection workflow."""
 
@@ -561,7 +560,6 @@ class TestChunkActivationOnInject:
         assert frontmatter.status.value == "IMPLEMENTING"
 
 
-# Chunk: docs/chunks/orch_inject_path_compat - Path normalization tests
 class TestOrchInjectPathNormalization:
     """Tests for path normalization in orch inject command.
 

@@ -3,7 +3,7 @@
 from ve import cli
 
 
-# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 class TestInvestigationCreateCommand:
     """Tests for 've investigation create' CLI command."""
 

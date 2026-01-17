@@ -5,10 +5,7 @@ This module provides functionality for the `ve sync` command, which updates
 artifact repositories. Supports all workflow artifact types: chunks, narratives,
 investigations, and subsystems.
 """
-# Chunk: docs/chunks/ve_sync_command - Sync external references
-# Chunk: docs/chunks/external_resolve - Use repo cache for single-repo mode
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
-# Chunk: docs/chunks/sync_all_workflows - Extend sync to all workflow artifact types
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 from dataclasses import dataclass
 from pathlib import Path

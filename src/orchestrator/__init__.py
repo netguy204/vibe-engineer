@@ -1,5 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_scheduling - Scheduling layer exports
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Orchestrator package for parallel agent work management."""
 
 from orchestrator.models import (

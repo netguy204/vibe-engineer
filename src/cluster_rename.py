@@ -3,7 +3,7 @@
 This module provides functionality to rename all chunks matching a prefix pattern
 to a new prefix, updating all references across the project.
 """
-# Chunk: docs/chunks/cluster_rename - Cluster rename functionality
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 
 from __future__ import annotations
 

@@ -1,6 +1,5 @@
 """Tests for external_resolve module."""
-# Chunk: docs/chunks/external_resolve - External resolve tests
-# Chunk: docs/chunks/external_resolve_all_types - Updated for generic artifact resolution
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 import subprocess
 from pathlib import Path
@@ -164,7 +163,6 @@ def task_directory(tmp_path, tmp_path_factory):
     (project_dir / "README.md").write_text("# Service A\n")
 
     # Create external chunk reference (using ExternalArtifactRef format)
-    # Chunk: docs/chunks/consolidate_ext_refs - Updated for ExternalArtifactRef format
     chunks_dir = project_dir / "docs" / "chunks" / "0001-shared_feature"
     chunks_dir.mkdir(parents=True)
     (chunks_dir / "external.yaml").write_text(
@@ -533,7 +531,6 @@ class TestResolveSingleRepo:
         assert "Failed to access" in str(exc_info.value)
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Tests for all artifact types
 class TestFindArtifactInProject:
     """Tests for find_artifact_in_project function."""
 

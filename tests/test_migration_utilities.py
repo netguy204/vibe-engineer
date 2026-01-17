@@ -1,6 +1,6 @@
 """Tests for the causal ordering migration utilities.
 
-# Chunk: docs/chunks/causal_ordering_migration - Migration utilities tests
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 These tests verify the migration script's core functionality:
 - Short name extraction from directory names
@@ -14,11 +14,10 @@ from pathlib import Path
 import pytest
 
 # Import from the chunk's migration script
-# Chunk: docs/chunks/ordering_remove_seqno - Updated path after migration
 import sys
 
 sys.path.insert(
-    0, str(Path(__file__).parent.parent / "docs/chunks/causal_ordering_migration")
+    0, str(Path(__file__).parent.parent / "docs/archive/chunks/causal_ordering_migration")
 )
 from migrate import (
     extract_sequence_number,

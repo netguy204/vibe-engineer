@@ -1,20 +1,8 @@
 """Vibe Engineer CLI - view layer for chunk management."""
-# Chunk: docs/chunks/implement_chunk_start - Core CLI and chunk start
-# Chunk: docs/chunks/chunk_list_command - List chunks command
-# Chunk: docs/chunks/project_init_command - Project init command
-# Chunk: docs/chunks/chunk_overlap_command - Chunk overlap command
-# Chunk: docs/chunks/chunk_validate - Chunk validate command
-# Chunk: docs/chunks/narrative_cli_commands - Narrative commands
-# Chunk: docs/chunks/task_init - Task init command
-# Chunk: docs/chunks/chunk_create_task_aware - Task-aware chunk creation
-# Chunk: docs/chunks/future_chunk_creation - Future chunks and activate
-# Chunk: docs/chunks/subsystem_cli_scaffolding - Subsystem commands
-# Chunk: docs/chunks/bidirectional_refs - Subsystem validation
-# Chunk: docs/chunks/subsystem_status_transitions - Status transitions
-# Chunk: docs/chunks/subsystem_impact_resolution - Subsystem overlap
-# Chunk: docs/chunks/investigation_commands - Investigation commands
-# Chunk: docs/chunks/external_resolve - External resolve command
-# Chunk: docs/chunks/cluster_rename - Cluster rename command
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Subsystem: docs/subsystems/template_system - Template rendering system
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 
 import pathlib
 
@@ -69,13 +57,11 @@ from external_refs import ARTIFACT_MAIN_FILE, detect_artifact_type_from_path
 from validation import validate_identifier
 
 
-# Chunk: docs/chunks/implement_chunk_start - Validate short name input
 def validate_short_name(short_name: str) -> list[str]:
     """Validate short_name and return list of error messages."""
     return validate_identifier(short_name, "short_name", max_length=31)
 
 
-# Chunk: docs/chunks/implement_chunk_start - Validate ticket ID input
 def validate_ticket_id(ticket_id: str) -> list[str]:
     """Validate ticket_id and return list of error messages."""
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
@@ -87,7 +73,6 @@ def cli():
     pass
 
 
-# Chunk: docs/chunks/project_init_command - Project initialization command
 @cli.command()
 @click.option("--project-dir", type=click.Path(path_type=pathlib.Path), default=".")
 def init(project_dir):
@@ -111,11 +96,6 @@ def chunk():
     pass
 
 
-# Chunk: docs/chunks/implement_chunk_start - Create new chunk command
-# Chunk: docs/chunks/future_chunk_creation - Future chunks support
-# Chunk: docs/chunks/rename_chunk_start_to_create - Rename start to create
-# Chunk: docs/chunks/selective_project_linking - Added --projects option
-# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings
 @chunk.command("create")
 @click.argument("short_name")
 @click.argument("ticket_id", required=False, default=None)
@@ -162,7 +142,6 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
         if not click.confirm("Create another chunk with the same name?"):
             raise SystemExit(1)
 
-    # Chunk: docs/chunks/chunk_create_guard - Catch guard errors
     try:
         chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
     except ValueError as e:
@@ -172,7 +151,6 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     relative_path = chunk_path.relative_to(project_dir)
     click.echo(f"Created {relative_path}")
 
-    # Chunk: docs/chunks/cluster_subsystem_prompt - Check cluster size after creation
     # Extract prefix from the created chunk name and check if warning should be shown
     # Use include_new_chunk=False because the chunk has already been created
     prefix = get_chunk_prefix(chunk_path.name)
@@ -181,12 +159,9 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
         click.echo(f"Note: {format_cluster_warning(warning)}")
 
 
-# Chunk: docs/chunks/rename_chunk_start_to_create - Backward compatibility alias
 chunk.add_command(create, name="start")
 
 
-# Chunk: docs/chunks/chunk_create_task_aware - Task directory chunk creation
-# Chunk: docs/chunks/selective_project_linking - Selective project linking
 def _start_task_chunk(
     task_dir: pathlib.Path,
     short_name: str,
@@ -222,10 +197,6 @@ def _start_task_chunk(
         click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/chunk_list_command - List all chunks
-# Chunk: docs/chunks/future_chunk_creation - Current chunk filtering
-# Chunk: docs/chunks/list_task_aware - Task-aware chunk listing
-# Chunk: docs/chunks/artifact_list_ordering - Use ArtifactIndex for causal ordering
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -280,7 +251,6 @@ def list_chunks(latest, project_dir):
             click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
 
-# Chunk: docs/chunks/task_status_command - Grouped artifact listing output formatter
 def _format_grouped_artifact_list(
     grouped_data: dict,
     artifact_type_dir: str,
@@ -334,9 +304,6 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
-# Chunk: docs/chunks/list_task_aware - Task directory chunk listing handler
-# Chunk: docs/chunks/task_status_command - Grouped artifact listing
-# Chunk: docs/chunks/chunk_list_repo_source - Include repo ref in --latest output
 def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
     """Handle chunk listing in task directory (cross-repo mode)."""
     try:
@@ -354,7 +321,6 @@ def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/task_list_proposed - Helper to format proposed chunks by source
 def _format_proposed_chunks_by_source(proposed: list[dict]) -> None:
     """Format proposed chunks grouped by source artifact.
 
@@ -380,7 +346,6 @@ def _format_proposed_chunks_by_source(proposed: list[dict]) -> None:
             click.echo(f"  - {prompt}")
 
 
-# Chunk: docs/chunks/task_list_proposed - Grouped proposed chunks formatter
 def _format_grouped_proposed_chunks(grouped_data: dict) -> None:
     """Format and display grouped proposed chunk listing output.
 
@@ -416,7 +381,6 @@ def _format_grouped_proposed_chunks(grouped_data: dict) -> None:
         click.echo()
 
 
-# Chunk: docs/chunks/task_list_proposed - Task directory proposed chunk listing handler
 def _list_task_proposed_chunks(task_dir: pathlib.Path):
     """Handle proposed chunk listing in task directory (cross-repo mode)."""
     try:
@@ -427,8 +391,6 @@ def _list_task_proposed_chunks(task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/proposed_chunks_frontmatter - List proposed chunks command
-# Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
 @chunk.command("list-proposed")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_proposed_chunks_cmd(project_dir):
@@ -453,9 +415,6 @@ def list_proposed_chunks_cmd(project_dir):
     _format_proposed_chunks_by_source(proposed)
 
 
-# Chunk: docs/chunks/future_chunk_creation - Activate FUTURE chunk
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
-# Chunk: docs/chunks/taskdir_context_cmds - Task context support
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -504,8 +463,6 @@ def activate(chunk_id, project_dir):
         click.echo(f"Activated docs/chunks/{activated}")
 
 
-# Chunk: docs/chunks/valid_transitions - Status command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command()
 @click.argument("chunk_id")
 @click.argument("new_status", required=False, default=None)
@@ -559,9 +516,6 @@ def status(chunk_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/chunk_overlap_command - Find overlapping chunks
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
-# Chunk: docs/chunks/taskdir_context_cmds - Task context support
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -613,8 +567,6 @@ def overlap(chunk_id, project_dir):
             click.echo(f"docs/chunks/{name}")
 
 
-# Chunk: docs/chunks/cluster_prefix_suggest - Suggest prefix command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @chunk.command("suggest-prefix")
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -655,7 +607,6 @@ def suggest_prefix_cmd(chunk_id, project_dir, threshold, top_k):
                 click.echo(f"  - {name} (similarity: {similarity:.2f})")
 
 
-# Chunk: docs/chunks/narrative_consolidation - Backreference census command
 @chunk.command("backrefs")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--threshold", type=int, default=5, help="Minimum unique chunk refs to display (default: 5)")
@@ -706,7 +657,6 @@ def backrefs(project_dir, threshold, pattern):
     click.echo(f"Total: {len(above_threshold)} file(s) above threshold")
 
 
-# Chunk: docs/chunks/narrative_consolidation - Chunk clustering command
 @chunk.command("cluster")
 @click.argument("chunk_ids", nargs=-1)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -758,11 +708,7 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
             click.echo(f"  - {name}")
 
 
-# Chunk: docs/chunks/chunk_validate - Validate chunk for completion
-# Chunk: docs/chunks/bidirectional_refs - Subsystem ref validation
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
-# Chunk: docs/chunks/task_chunk_validation - Task context awareness
-# Chunk: docs/chunks/orch_inject_validate - Injectable validation mode
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -827,7 +773,6 @@ def validate(chunk_id, project_dir, injectable):
     click.echo(success_message)
 
 
-# Chunk: docs/chunks/cluster_rename - Cluster rename command
 @chunk.command("cluster-rename")
 @click.argument("old_prefix")
 @click.argument("new_prefix")
@@ -890,7 +835,6 @@ def cluster_rename_cmd(old_prefix, new_prefix, execute, project_dir):
         click.echo("Run with --execute to apply these changes.")
 
 
-# Chunk: docs/chunks/cluster_list_command - Cluster list command
 @chunk.command("cluster-list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--suggest-merges", is_flag=True, help="Suggest singleton merges based on semantic similarity")
@@ -938,16 +882,12 @@ def cluster_list_cmd(project_dir, suggest_merges):
     click.echo(output)
 
 
-# Chunk: docs/chunks/narrative_cli_commands - Narrative command group
 @cli.group()
 def narrative():
     """Narrative commands"""
     pass
 
 
-# Chunk: docs/chunks/narrative_cli_commands - Create narrative command
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative creation
-# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -978,8 +918,6 @@ def create_narrative(short_name, project_dir, projects):
     click.echo(f"Created {relative_path}")
 
 
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative creation
-# Chunk: docs/chunks/selective_project_linking - Selective project linking
 def _create_task_narrative(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle narrative creation in task directory (cross-repo mode)."""
     # Parse and validate projects option
@@ -1009,8 +947,6 @@ def _create_task_narrative(task_dir: pathlib.Path, short_name: str, projects_inp
         click.echo(f"Created reference in {project_ref}: {narrative_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/artifact_list_ordering - List narratives command
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative listing
 @narrative.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_narratives(project_dir):
@@ -1044,8 +980,6 @@ def list_narratives(project_dir):
         click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
 
 
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task directory narrative listing handler
-# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_narratives(task_dir: pathlib.Path):
     """Handle narrative listing in task directory (cross-repo mode)."""
     try:
@@ -1056,8 +990,6 @@ def _list_task_narratives(task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/valid_transitions - Status command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @narrative.command()
 @click.argument("narrative_id")
 @click.argument("new_status", required=False, default=None)
@@ -1105,7 +1037,6 @@ def status(narrative_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/narrative_consolidation - Compact command
 @narrative.command("compact")
 @click.argument("chunk_ids", nargs=-1, required=True)
 @click.option("--name", required=True, help="Short name for the consolidated narrative")
@@ -1155,7 +1086,6 @@ def compact(chunk_ids, name, description, project_dir):
         click.echo(f"Run `ve narrative update-refs {result.narrative_id}` to update code backreferences.")
 
 
-# Chunk: docs/chunks/narrative_consolidation - Update-refs command
 @narrative.command("update-refs")
 @click.argument("narrative_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1238,14 +1168,12 @@ def update_refs(narrative_id, project_dir, dry_run, file_path):
             click.echo(f"  - {rel_path}: replaced {count} chunk refs with 1 narrative ref")
 
 
-# Chunk: docs/chunks/task_init - Task command group
 @cli.group()
 def task():
     """Task directory commands."""
     pass
 
 
-# Chunk: docs/chunks/task_init - Initialize task directory
 @task.command()
 @click.option(
     "--external",
@@ -1278,16 +1206,12 @@ def init(external, projects):
     click.echo(f"  Projects: {', '.join(result.projects)}")
 
 
-# Chunk: docs/chunks/subsystem_cli_scaffolding - Subsystem command group
 @cli.group()
 def subsystem():
     """Subsystem commands"""
     pass
 
 
-# Chunk: docs/chunks/subsystem_cli_scaffolding - List subsystems command
-# Chunk: docs/chunks/artifact_list_ordering - Use ArtifactIndex for causal ordering
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem listing
 @subsystem.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_subsystems(project_dir):
@@ -1321,8 +1245,6 @@ def list_subsystems(project_dir):
         click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
 
 
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem listing handler
-# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_subsystems(task_dir: pathlib.Path):
     """Handle subsystem listing in task directory (cross-repo mode)."""
     try:
@@ -1333,9 +1255,6 @@ def _list_task_subsystems(task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem command
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem discovery
-# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1374,8 +1293,6 @@ def discover(shortname, project_dir, projects):
     click.echo(f"Created {relative_path}")
 
 
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task directory subsystem creation handler
-# Chunk: docs/chunks/selective_project_linking - Selective project linking
 def _create_task_subsystem(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle subsystem creation in task directory (cross-repo mode)."""
     # Parse and validate projects option
@@ -1405,8 +1322,6 @@ def _create_task_subsystem(task_dir: pathlib.Path, short_name: str, projects_inp
         click.echo(f"Created reference in {project_ref}: {subsystem_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/bidirectional_refs - Validate subsystem command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1434,8 +1349,6 @@ def validate(subsystem_id, project_dir):
     click.echo(f"Subsystem {subsystem_id} validation passed")
 
 
-# Chunk: docs/chunks/subsystem_status_transitions - Status command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.argument("new_status", required=False, default=None)
@@ -1493,8 +1406,6 @@ def status(subsystem_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/subsystem_impact_resolution - Subsystem overlap command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @subsystem.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1516,16 +1427,12 @@ def overlap(chunk_id, project_dir):
         click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
 
 
-# Chunk: docs/chunks/investigation_commands - Investigation command group
 @cli.group()
 def investigation():
     """Investigation commands"""
     pass
 
 
-# Chunk: docs/chunks/investigation_commands - Create investigation command
-# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation creation
-# Chunk: docs/chunks/selective_project_linking - Added --projects option
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1556,8 +1463,6 @@ def create_investigation(short_name, project_dir, projects):
     click.echo(f"Created {relative_path}")
 
 
-# Chunk: docs/chunks/task_aware_investigations - Task directory investigation creation
-# Chunk: docs/chunks/selective_project_linking - Selective project linking
 def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle investigation creation in task directory (cross-repo mode)."""
     # Parse and validate projects option
@@ -1587,9 +1492,6 @@ def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects
         click.echo(f"Created reference in {project_ref}: {investigation_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/investigation_commands - List investigations command
-# Chunk: docs/chunks/artifact_list_ordering - Use ArtifactIndex for causal ordering
-# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation listing
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1646,8 +1548,6 @@ def list_investigations(state, project_dir):
         click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
 
 
-# Chunk: docs/chunks/task_aware_investigations - Task directory investigation listing handler
-# Chunk: docs/chunks/task_status_command - Grouped artifact listing
 def _list_task_investigations(task_dir: pathlib.Path):
     """Handle investigation listing in task directory (cross-repo mode)."""
     try:
@@ -1658,8 +1558,6 @@ def _list_task_investigations(task_dir: pathlib.Path):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/valid_transitions - Status command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @investigation.command()
 @click.argument("investigation_id")
 @click.argument("new_status", required=False, default=None)
@@ -1707,8 +1605,6 @@ def status(investigation_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/ve_sync_command - Sync external references
-# Chunk: docs/chunks/sync_all_workflows - Extended to all workflow artifact types
 @cli.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--project", "projects", multiple=True, help="Sync only specified project(s) (task directory only)")
@@ -1835,16 +1731,12 @@ def _display_sync_results(results: list, dry_run: bool):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/external_resolve - External command group
-# Chunk: docs/chunks/external_resolve_all_types - Extended to all artifact types
 @cli.group()
 def external():
     """External artifact reference commands."""
     pass
 
 
-# Chunk: docs/chunks/external_resolve - Resolve external chunk command
-# Chunk: docs/chunks/external_resolve_all_types - Extended to all artifact types
 @external.command()
 @click.argument("local_artifact_id")
 @click.option("--at-pinned", is_flag=True, help="Show content at pinned SHA instead of current HEAD")
@@ -1891,8 +1783,6 @@ def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, 
         )
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path normalization
 def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id: str) -> tuple[ArtifactType, str]:
     """Detect artifact type by searching for the artifact in project directories.
 
@@ -2025,7 +1915,6 @@ def _resolve_external_single_repo(
     _display_resolve_result(result, main_only, secondary_only)
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Type-aware display
 def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_only: bool):
     """Display the resolve result to the user."""
     # Header with metadata
@@ -2061,14 +1950,12 @@ def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_on
             click.echo("(not found)")
 
 
-# Chunk: docs/chunks/artifact_promote - Artifact command group
 @cli.group()
 def artifact():
     """Artifact management commands."""
     pass
 
 
-# Chunk: docs/chunks/artifact_promote - Promote artifact command
 @artifact.command()
 @click.argument("artifact_path", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option("--name", "new_name", type=str, help="New name for artifact in destination")
@@ -2100,8 +1987,6 @@ def promote(artifact_path, new_name, project_dir):
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
-# Chunk: docs/chunks/copy_as_external - Copy external artifact command
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path input
 @artifact.command("copy-external")
 @click.argument("artifact_path")
 @click.argument("target_project")
@@ -2134,7 +2019,6 @@ def copy_external(artifact_path, target_project, new_name, cwd):
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
-# Chunk: docs/chunks/remove_external_ref - Remove external artifact command
 @artifact.command("remove-external")
 @click.argument("artifact_path")
 @click.argument("target_project")
@@ -2180,15 +2064,12 @@ def remove_external(artifact_path, target_project, cwd):
         click.echo(f"No external reference found for '{artifact_path}' in '{target_project}' (already removed)")
 
 
-# Chunk: docs/chunks/orch_foundation - Orchestrator CLI commands
 @cli.group()
 def orch():
     """Orchestrator daemon commands."""
     pass
 
 
-# Chunk: docs/chunks/orch_foundation - Start daemon command
-# Chunk: docs/chunks/orch_tcp_port - TCP port and host options
 @orch.command()
 @click.option("--port", type=int, default=0, help="TCP port for dashboard (0 = auto-select)")
 @click.option("--host", type=str, default="127.0.0.1", help="Host to bind TCP server to")
@@ -2206,7 +2087,6 @@ def start(port, host, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/orch_foundation - Stop daemon command
 @orch.command()
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def stop(project_dir):
@@ -2224,7 +2104,6 @@ def stop(project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/orch_foundation - Daemon status command
 @orch.command("status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2259,8 +2138,6 @@ def orch_status(json_output, project_dir):
             click.echo("Status: Stopped")
 
 
-# Chunk: docs/chunks/orch_foundation - List work units command
-# Chunk: docs/chunks/orch_attention_reason - Display attention reason in ps output
 @orch.command("ps")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -2317,14 +2194,12 @@ def orch_ps(status_filter, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_foundation - Work unit command group
 @orch.group("work-unit")
 def work_unit():
     """Work unit management commands."""
     pass
 
 
-# Chunk: docs/chunks/orch_foundation - Create work unit command
 @work_unit.command("create")
 @click.argument("chunk")
 @click.option("--phase", default="GOAL", help="Initial phase (GOAL, PLAN, IMPLEMENT, COMPLETE)")
@@ -2361,7 +2236,6 @@ def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project
         client.close()
 
 
-# Chunk: docs/chunks/orch_foundation - Work unit status command
 @work_unit.command("status")
 @click.argument("chunk")
 @click.argument("new_status", required=False, default=None)
@@ -2400,7 +2274,6 @@ def work_unit_status(chunk, new_status, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_attention_reason - Work unit show command
 @work_unit.command("show")
 @click.argument("chunk")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -2442,7 +2315,6 @@ def work_unit_show(chunk, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_foundation - Work unit list command
 @work_unit.command("list")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -2455,7 +2327,6 @@ def work_unit_list(status_filter, json_output, project_dir):
     ctx.invoke(orch_ps, status_filter=status_filter, json_output=json_output, project_dir=project_dir)
 
 
-# Chunk: docs/chunks/orch_foundation - Delete work unit command
 @work_unit.command("delete")
 @click.argument("chunk")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -2484,7 +2355,6 @@ def work_unit_delete(chunk, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_scheduling - Inject chunk into work pool
 @orch.command("inject")
 @click.argument("chunk")
 @click.option("--phase", type=str, default=None, help="Override initial phase (GOAL, PLAN, IMPLEMENT)")
@@ -2499,7 +2369,6 @@ def orch_inject(chunk, phase, priority, json_output, project_dir):
     from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    # Chunk: docs/chunks/orch_inject_path_compat - Normalize chunk path for CLI consistency
     chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
 
     client = create_client(project_dir)
@@ -2526,7 +2395,6 @@ def orch_inject(chunk, phase, priority, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_scheduling - Show ready queue
 @orch.command("queue")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2563,7 +2431,6 @@ def orch_queue(json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_scheduling - Prioritize work unit
 @orch.command("prioritize")
 @click.argument("chunk")
 @click.argument("priority", type=int)
@@ -2597,7 +2464,6 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_scheduling - Config command
 @orch.command("config")
 @click.option("--max-agents", type=int, help="Maximum concurrent agents")
 @click.option("--dispatch-interval", type=float, help="Dispatch interval in seconds")
@@ -2643,7 +2509,6 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_attention_queue - Attention queue CLI commands
 @orch.command("attention")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2749,7 +2614,6 @@ def orch_answer(chunk, answer, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict CLI commands
 
 
 @orch.command("conflicts")
@@ -2916,16 +2780,13 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
         client.close()
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Friction log commands
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 @cli.group()
 def friction():
     """Friction log commands."""
     pass
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Log a new friction entry
-# Chunk: docs/chunks/friction_noninteractive - Non-interactive support
-# Chunk: docs/chunks/selective_artifact_friction - Task context and --projects flag
 @friction.command("log")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--title", help="Brief title for the friction entry")
@@ -3055,7 +2916,6 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/selective_artifact_friction - Task context friction logging
 def _log_entry_task_context(project_dir, title, description, impact, theme, theme_name, projects):
     """Handle friction logging in task context."""
     from friction import Friction
@@ -3191,7 +3051,6 @@ def _log_entry_task_context(project_dir, title, description, impact, theme, them
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/friction_template_and_cli - List friction entries
 @friction.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--open", "status_open", is_flag=True, help="Show only OPEN entries")
@@ -3222,7 +3081,6 @@ def list_entries(project_dir, status_open, tags):
         click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Analyze friction patterns
 @friction.command("analyze")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--tags", multiple=True, help="Filter analysis to specific themes")
@@ -3324,12 +3182,14 @@ def migration_status(migration_type, project_dir):
 
     click.echo(f"Migration: {migration_type}")
     click.echo(f"  Status: {frontmatter.status.value}")
-    click.echo(f"  Source type: {frontmatter.source_type.value}")
+    if frontmatter.source_type:
+        click.echo(f"  Source type: {frontmatter.source_type.value}")
     click.echo(f"  Current phase: {frontmatter.current_phase}")
     click.echo(f"  Phases completed: {frontmatter.phases_completed}")
     click.echo(f"  Started: {frontmatter.started}")
     click.echo()
-    click.echo(f"  Chunks analyzed: {frontmatter.chunks_analyzed}")
+    if frontmatter.chunks_analyzed > 0:
+        click.echo(f"  Chunks analyzed: {frontmatter.chunks_analyzed}")
     click.echo(f"  Subsystems proposed: {frontmatter.subsystems_proposed}")
     click.echo(f"  Subsystems approved: {frontmatter.subsystems_approved}")
     click.echo(f"  Questions pending: {frontmatter.questions_pending}")

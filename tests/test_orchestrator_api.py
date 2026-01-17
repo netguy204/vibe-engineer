@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator HTTP API."""
 
 import pytest
@@ -363,7 +363,6 @@ class TestStatusHistoryEndpoint:
         assert response.status_code == 404
 
 
-# Chunk: docs/chunks/orch_inject_validate - Tests for inject endpoint validation
 class TestInjectEndpointValidation:
     """Tests for POST /work-units/inject endpoint with validation."""
 
@@ -594,7 +593,6 @@ Steps here.
         assert response.json()["phase"] == "PLAN"
 
 
-# Chunk: docs/chunks/orch_attention_queue - Attention queue API tests
 class TestAttentionEndpoint:
     """Tests for GET /attention endpoint."""
 
@@ -730,7 +728,6 @@ class TestAnswerEndpoint:
         assert "Invalid JSON" in response.json()["error"]
 
 
-# Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE status transition tests
 class TestResolveConflictEndpoint:
     """Tests for POST /work-units/{chunk}/resolve endpoint."""
 
@@ -821,7 +818,6 @@ class TestResolveConflictEndpoint:
         assert response.status_code == 404
 
 
-# Chunk: docs/chunks/orch_blocked_lifecycle - Full lifecycle integration test
 class TestBlockedLifecycleIntegration:
     """Integration tests for the full blocked work unit lifecycle.
 

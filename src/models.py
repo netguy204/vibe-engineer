@@ -1,12 +1,6 @@
 """Pydantic models for chunk validation."""
-# Chunk: docs/chunks/chunk_validate - Code reference models
-# Chunk: docs/chunks/cross_repo_schemas - Cross-repository schemas
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic reference model
-# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem schemas
-# Chunk: docs/chunks/subsystem_template - Compliance levels
-# Chunk: docs/chunks/bidirectional_refs - Subsystem relationship
-# Chunk: docs/chunks/subsystem_status_transitions - Status transitions
-# Chunk: docs/chunks/investigation_commands - Investigation schemas
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 import re
 from enum import StrEnum
@@ -17,7 +11,6 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
-# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem lifecycle states
 class SubsystemStatus(StrEnum):
     """Status values for subsystem documentation lifecycle."""
 
@@ -28,7 +21,6 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
-# Chunk: docs/chunks/investigation_commands - Investigation lifecycle states
 class InvestigationStatus(StrEnum):
     """Status values for investigation lifecycle."""
 
@@ -38,7 +30,6 @@ class InvestigationStatus(StrEnum):
     DEFERRED = "DEFERRED"  # Investigation paused; may be revisited later
 
 
-# Chunk: docs/chunks/valid_transitions - State transition validation
 VALID_INVESTIGATION_TRANSITIONS: dict[InvestigationStatus, set[InvestigationStatus]] = {
     InvestigationStatus.ONGOING: {InvestigationStatus.SOLVED, InvestigationStatus.NOTED, InvestigationStatus.DEFERRED},
     InvestigationStatus.SOLVED: set(),  # Terminal state
@@ -47,7 +38,6 @@ VALID_INVESTIGATION_TRANSITIONS: dict[InvestigationStatus, set[InvestigationStat
 }
 
 
-# Chunk: docs/chunks/chunk_frontmatter_model - Chunk lifecycle states
 class ChunkStatus(StrEnum):
     """Status values for chunk lifecycle."""
 
@@ -58,7 +48,6 @@ class ChunkStatus(StrEnum):
     HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
 
 
-# Chunk: docs/chunks/bug_type_field - Bug classification for semantic vs implementation bugs
 class BugType(StrEnum):
     """Classification of bug fix chunks to guide completion behavior.
 
@@ -71,7 +60,6 @@ class BugType(StrEnum):
     IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
 
 
-# Chunk: docs/chunks/valid_transitions - State transition validation
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
     ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
@@ -81,8 +69,6 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
 }
 
 
-# Chunk: docs/chunks/artifact_ordering_index - Artifact type enum for ordering
-# Chunk: docs/chunks/consolidate_ext_refs - Moved from artifact_ordering.py
 class ArtifactType(StrEnum):
     """Types of workflow artifacts that can be ordered."""
 
@@ -92,7 +78,6 @@ class ArtifactType(StrEnum):
     SUBSYSTEM = "subsystem"
 
 
-# Chunk: docs/chunks/subsystem_status_transitions - Valid state transitions
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
     SubsystemStatus.DOCUMENTED: {SubsystemStatus.REFACTORING, SubsystemStatus.DEPRECATED},
@@ -102,7 +87,6 @@ VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
 }
 
 
-# Chunk: docs/chunks/subsystem_template - Code reference compliance levels
 class ComplianceLevel(StrEnum):
     """Compliance level for code references in subsystem documentation.
 
@@ -114,7 +98,6 @@ class ComplianceLevel(StrEnum):
     NON_COMPLIANT = "NON_COMPLIANT"  # Does not follow the patterns
 
 
-# Chunk: docs/chunks/ordering_remove_seqno - Short name extraction utility
 def extract_short_name(dir_name: str) -> str:
     """Extract short name from directory name, handling both patterns.
 
@@ -131,7 +114,6 @@ def extract_short_name(dir_name: str) -> str:
     return dir_name
 
 
-# Chunk: docs/chunks/ordering_remove_seqno - Artifact ID pattern (both formats)
 # Regex for validating artifact ID format: {NNNN}-{short_name} (legacy) or {short_name} (new)
 # Legacy pattern: 4 digits, hyphen, then name
 # New pattern: lowercase letters, digits, underscores, hyphens (no leading digits)
@@ -141,8 +123,6 @@ ARTIFACT_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 CHUNK_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
-# Chunk: docs/chunks/subsystem_schemas_and_model - Chunk-to-subsystem relationship
-# Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new ID formats
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -176,8 +156,6 @@ class ChunkRelationship(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/bidirectional_refs - Subsystem-to-chunk relationship
-# Chunk: docs/chunks/ordering_remove_seqno - Accept both legacy and new ID formats
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
@@ -215,7 +193,6 @@ class SubsystemRelationship(BaseModel):
 # (SymbolicReference is defined later in the file)
 
 
-# Chunk: docs/chunks/cross_repo_schemas - Directory name validation
 def _require_valid_dir_name(value: str, field_name: str) -> str:
     """Validate a directory name, raising ValueError if invalid."""
     errors = validate_identifier(value, field_name, allow_dot=True, max_length=31)
@@ -224,7 +201,6 @@ def _require_valid_dir_name(value: str, field_name: str) -> str:
     return value
 
 
-# Chunk: docs/chunks/chunk_create_task_aware - Repository ref validation
 def _require_valid_repo_ref(value: str, field_name: str) -> str:
     """Validate a GitHub-style org/repo reference.
 
@@ -260,8 +236,6 @@ def _require_valid_repo_ref(value: str, field_name: str) -> str:
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
-# Chunk: docs/chunks/cross_repo_schemas - Cross-repo task configuration
-# Chunk: docs/chunks/task_aware_narrative_cmds - Renamed to external_artifact_repo
 class TaskConfig(BaseModel):
     """Configuration for cross-repository workflow artifact management.
 
@@ -290,8 +264,6 @@ class TaskConfig(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference
-# Chunk: docs/chunks/external_chunk_causal - Added created_after field for local causal ordering
 class ExternalArtifactRef(BaseModel):
     """Reference to a workflow artifact in another repository.
 
@@ -330,15 +302,12 @@ class ExternalArtifactRef(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/cross_repo_schemas - Chunk dependents schema
-# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
 class ChunkDependent(BaseModel):
     """Frontmatter schema for chunk GOAL.md files with dependents."""
 
     dependents: list[ExternalArtifactRef] = []
 
 
-# Chunk: docs/chunks/chunk_validate - Line range for code references
 class CodeRange(BaseModel):
     """A range of lines in a file that implements a specific requirement."""
 
@@ -346,7 +315,6 @@ class CodeRange(BaseModel):
     implements: str
 
 
-# Chunk: docs/chunks/chunk_validate - File-based code reference
 class CodeReference(BaseModel):
     """A file with code ranges that implement requirements."""
 
@@ -354,9 +322,6 @@ class CodeReference(BaseModel):
     ranges: list[CodeRange]
 
 
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference
-# Chunk: docs/chunks/task_qualified_refs - Project-qualified path support
-# Chunk: docs/chunks/subsystem_template - Optional compliance field for subsystem docs
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
@@ -405,7 +370,6 @@ class SymbolicReference(BaseModel):
         else:
             ref_before_symbol = v[:hash_pos]
 
-        # Chunk: docs/chunks/coderef_format_prompting - Improved org/repo format error messages
         # Check for :: in the portion before #
         double_colon_pos = ref_before_symbol.find("::")
         if double_colon_pos != -1:
@@ -459,7 +423,6 @@ class SymbolicReference(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Proposed chunk schema
 class ProposedChunk(BaseModel):
     """A proposed chunk entry used across narratives, subsystems, and investigations.
 
@@ -479,10 +442,6 @@ class ProposedChunk(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem frontmatter schema
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Added proposed_chunks field
-# Chunk: docs/chunks/ordering_field - Causal ordering field
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Added dependents field
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -497,7 +456,6 @@ class SubsystemFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo subsystems
 
 
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative status enum
 class NarrativeStatus(StrEnum):
     """Status values for narrative lifecycle."""
 
@@ -506,7 +464,6 @@ class NarrativeStatus(StrEnum):
     COMPLETED = "COMPLETED"  # All chunks created and narrative's ambition realized
 
 
-# Chunk: docs/chunks/valid_transitions - State transition validation
 VALID_NARRATIVE_TRANSITIONS: dict[NarrativeStatus, set[NarrativeStatus]] = {
     NarrativeStatus.DRAFTING: {NarrativeStatus.ACTIVE},
     NarrativeStatus.ACTIVE: {NarrativeStatus.COMPLETED},
@@ -514,9 +471,6 @@ VALID_NARRATIVE_TRANSITIONS: dict[NarrativeStatus, set[NarrativeStatus]] = {
 }
 
 
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter schema
-# Chunk: docs/chunks/ordering_field - Causal ordering field
-# Chunk: docs/chunks/task_aware_narrative_cmds - Added dependents field
 class NarrativeFrontmatter(BaseModel):
     """Frontmatter schema for narrative OVERVIEW.md files.
 
@@ -530,10 +484,6 @@ class NarrativeFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo narratives
 
 
-# Chunk: docs/chunks/investigation_commands - Investigation frontmatter schema
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Updated to use ProposedChunk
-# Chunk: docs/chunks/ordering_field - Causal ordering field
-# Chunk: docs/chunks/task_aware_investigations - Added dependents field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 
@@ -547,11 +497,7 @@ class InvestigationFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo investigations
 
 
-# Chunk: docs/chunks/chunk_frontmatter_model - Chunk frontmatter schema
-# Chunk: docs/chunks/ordering_field - Causal ordering field
-# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef
-# Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field
-# Chunk: docs/chunks/bug_type_field - Added bug_type field for bug classification
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -564,19 +510,15 @@ class ChunkFrontmatter(BaseModel):
     code_paths: list[str] = []
     code_references: list[SymbolicReference] = []
     narrative: str | None = None
-    # Chunk: docs/chunks/investigation_chunk_refs - Investigation field for traceability
     investigation: str | None = None
     subsystems: list[SubsystemRelationship] = []
     proposed_chunks: list[ProposedChunk] = []
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []
-    # Chunk: docs/chunks/friction_chunk_linking - Friction entries addressed by this chunk
     friction_entries: list["FrictionEntryReference"] = []
-    # Chunk: docs/chunks/bug_type_field - Bug classification for completion behavior
     bug_type: BugType | None = None
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Friction log models
 class FrictionTheme(BaseModel):
     """A friction theme/category in the frontmatter.
 
@@ -604,7 +546,6 @@ class FrictionTheme(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Proposed chunk with friction addresses
 class FrictionProposedChunk(BaseModel):
     """A proposed chunk that addresses friction entries.
 
@@ -625,12 +566,10 @@ class FrictionProposedChunk(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference for chunks
 # Regex for validating friction entry ID format: F followed by digits
 FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
 
 
-# Chunk: docs/chunks/selective_artifact_friction - External friction source reference
 class ExternalFrictionSource(BaseModel):
     """Reference to friction entries in an external repository.
 
@@ -669,8 +608,6 @@ class ExternalFrictionSource(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Friction log frontmatter schema
-# Chunk: docs/chunks/selective_artifact_friction - External friction source support
 class FrictionFrontmatter(BaseModel):
     """Frontmatter schema for FRICTION.md files.
 

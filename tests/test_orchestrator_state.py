@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator SQLite state store."""
 
 import pytest
@@ -338,7 +338,6 @@ class TestDefaultDbPath:
         assert result == tmp_path / ".ve" / "orchestrator.db"
 
 
-# Chunk: docs/chunks/orch_attention_reason - Attention reason persistence tests
 class TestAttentionReasonPersistence:
     """Tests for attention_reason field persistence."""
 
@@ -420,7 +419,6 @@ class TestAttentionReasonPersistence:
         assert units[0].attention_reason == "Agent asked a question"
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk persistence tests
 class TestDisplacedChunkPersistence:
     """Tests for displaced_chunk field persistence."""
 
@@ -479,7 +477,6 @@ class TestDisplacedChunkPersistence:
         assert units[0].displaced_chunk == "existing_chunk"
 
 
-# Chunk: docs/chunks/orch_blocked_lifecycle - list_blocked_by_chunk tests
 class TestListBlockedByChunk:
     """Tests for list_blocked_by_chunk method."""
 

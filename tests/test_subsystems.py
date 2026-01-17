@@ -57,7 +57,7 @@ class TestSubsystemFrontmatter:
     def test_invalid_chunk_relationship_propagates(self):
         """Invalid chunk relationship fails (propagates from ChunkRelationship).
 
-        # Chunk: docs/chunks/ordering_remove_seqno - Must use truly invalid format
+        # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
         """
         with pytest.raises(ValidationError) as exc_info:
             SubsystemFrontmatter(
@@ -129,7 +129,6 @@ class TestSubsystems:
     def test_is_subsystem_dir_invalid_patterns(self, temp_project):
         """is_subsystem_dir() returns False for invalid patterns.
 
-        # Chunk: docs/chunks/ordering_remove_seqno - Updated for new pattern acceptance
         """
         from subsystems import Subsystems
 
@@ -223,7 +222,6 @@ status: INVALID_STATUS
 class TestSubsystemCreatedAfterPopulation:
     """Tests for created_after population during subsystem creation.
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_first_subsystem_has_empty_created_after(self, temp_project):
@@ -253,7 +251,6 @@ class TestSubsystemCreatedAfterPopulation:
 class TestSubsystemsCreateSubsystem:
     """Tests for Subsystems.create_subsystem() method.
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
     """
 
     def test_create_subsystem_first_subsystem(self, temp_project):

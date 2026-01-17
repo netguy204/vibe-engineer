@@ -1,6 +1,6 @@
 """Integration tests for task-aware investigation creation.
 
-# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation create tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -227,7 +227,6 @@ projects:
         assert "Failed to resolve HEAD SHA" in result.output
 
 
-# Chunk: docs/chunks/selective_project_linking - Selective project linking tests
 class TestInvestigationCreateSelectiveProjects:
     """Tests for ve investigation create with --projects flag."""
 

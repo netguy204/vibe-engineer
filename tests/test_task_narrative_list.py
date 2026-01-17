@@ -1,7 +1,6 @@
 """Integration tests for task-aware narrative listing.
 
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative list tests
-# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -195,7 +194,6 @@ projects:
         assert result.exit_code == 1
         assert "No narratives found" in result.output
 
-    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
     def test_shows_grouped_output_with_external_and_local(self, tmp_path):
         """Shows grouped output with both external and local narratives."""
         task_dir, external_path, project_paths = setup_task_directory(

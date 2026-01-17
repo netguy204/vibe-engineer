@@ -1,5 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Scheduler tests
-# Chunk: docs/chunks/orch_verify_active - ACTIVE status verification tests
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -263,7 +262,6 @@ status: ACTIVE
         )
 
 
-# Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit tests
 class TestMechanicalCommit:
     """Tests for mechanical commit in scheduler."""
 
@@ -489,7 +487,6 @@ class TestAgentResultHandling:
         assert updated.status == WorkUnitStatus.READY
 
 
-# Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
 class TestVerboseSuccessNotMisinterpreted:
     """Tests that verbose success summaries don't trigger NEEDS_ATTENTION.
 
@@ -929,7 +926,6 @@ status: IMPLEMENTING
         assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
 
 
-# Chunk: docs/chunks/orch_attention_reason - Attention reason tracking tests
 class TestAttentionReason:
     """Tests for attention_reason tracking."""
 
@@ -1080,7 +1076,6 @@ status: IMPLEMENTING
         )
 
 
-# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation and displacement tests
 class TestActivateChunkInWorktree:
     """Tests for the activate_chunk_in_worktree helper function."""
 
@@ -1417,7 +1412,6 @@ ticket: null
         assert "status: IMPLEMENTING" in content
 
 
-# Chunk: docs/chunks/deferred_worktree_creation - Deferred worktree creation tests
 class TestDeferredWorktreeCreation:
     """Tests for deferred worktree creation.
 
@@ -1696,7 +1690,6 @@ ticket: null
         mock_worktree_manager.create_worktree.assert_not_called()
 
 
-# Chunk: docs/chunks/deferred_worktree_creation - Integration tests with real git
 class TestDeferredWorktreeCreationIntegration:
     """Integration tests for deferred worktree creation with real git repos.
 
@@ -1820,7 +1813,6 @@ class TestDeferredWorktreeCreationIntegration:
         manager.remove_worktree("chunk_b", remove_branch=True)
 
 
-# Chunk: docs/chunks/orch_attention_queue - Answer injection tests
 class TestPendingAnswerInjection:
     """Tests for pending_answer injection during work unit execution."""
 
@@ -2011,7 +2003,6 @@ ticket: null
         assert final.pending_answer is None
 
 
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict integration tests
 class TestConflictChecking:
     """Tests for conflict oracle integration in scheduler."""
 
@@ -2234,7 +2225,6 @@ class TestConflictChecking:
         assert updated.conflict_verdicts == {}
 
 
-# Chunk: docs/chunks/orch_question_forward - Question forwarding integration tests
 class TestQuestionForwardingFlow:
     """Tests for the complete question forwarding flow.
 
@@ -2426,7 +2416,6 @@ ticket: null
         assert completed.pending_answer is None
 
 
-# Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock tests
 class TestAutomaticUnblock:
     """Tests for automatic unblocking when blockers complete."""
 
@@ -2631,7 +2620,6 @@ status: ACTIVE
         assert "chunk_d" in updated_b.blocked_by
 
 
-# Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcast tests
 class TestWebSocketBroadcasts:
     """Tests for WebSocket broadcast invariant.
 

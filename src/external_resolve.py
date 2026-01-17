@@ -1,8 +1,6 @@
 """Resolve external artifact references and retrieve their content.
 
-# Chunk: docs/chunks/external_resolve - External chunk resolution
-# Chunk: docs/chunks/consolidate_ext_ref_utils - Import from external_refs module
-# Chunk: docs/chunks/external_resolve_all_types - Extended to all artifact types
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 This module provides functions to resolve external artifact references and
 read their content, supporting both task directory mode (using local worktrees)
@@ -32,7 +30,6 @@ from task_utils import (
 )
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
 @dataclass
 class ResolveResult:
     """Result of resolving an external artifact reference."""
@@ -46,7 +43,6 @@ class ResolveResult:
     secondary_content: str | None  # PLAN.md for chunks, None for others
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
 def find_artifact_in_project(
     project_path: Path,
     local_artifact_id: str,
@@ -91,7 +87,6 @@ def find_chunk_in_project(project_path: Path, local_chunk_id: str) -> Path | Non
     return find_artifact_in_project(project_path, local_chunk_id, ArtifactType.CHUNK)
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
 def resolve_artifact_task_directory(
     task_dir: Path,
     local_artifact_id: str,
@@ -293,7 +288,6 @@ def _read_file_at_sha(repo_path: Path, sha: str, file_path: str) -> str | None:
         return None
 
 
-# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
 def resolve_artifact_single_repo(
     repo_path: Path,
     local_artifact_id: str,

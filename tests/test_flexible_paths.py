@@ -1,6 +1,6 @@
 """Tests for flexible artifact path handling in CLI commands.
 
-# Chunk: docs/chunks/accept_full_artifact_paths - Integration tests for flexible paths
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import pytest

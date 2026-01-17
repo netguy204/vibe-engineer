@@ -1,6 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Agent runner tests
-# Chunk: docs/chunks/orch_question_forward - Question intercept hook tests
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement tests
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator agent runner."""
 
 import pytest
@@ -90,7 +88,6 @@ Actual content here.
         assert content == "Just plain content"
 
 
-# Chunk: docs/chunks/orch_agent_question_tool - Remove text-parsing error heuristics
 class TestErrorDetectionRemoval:
     """Tests verifying heuristic error detection is removed.
 
@@ -339,7 +336,6 @@ class TestAgentRunnerPhaseExecution:
         assert result.error is not None
         assert "Test error" in result.error
 
-    # Chunk: docs/chunks/orch_agent_question_tool - Updated to use SDK is_error flag
     @pytest.mark.asyncio
     async def test_run_phase_error_from_sdk_flag(self, project_dir, tmp_path):
         """Error from SDK is_error=True flag returns error result."""
@@ -519,7 +515,6 @@ class TestLogCallback:
         assert (log_dir / "implement.txt").exists()
 
 
-# Chunk: docs/chunks/orch_question_forward - Question intercept hook tests
 class TestQuestionInterceptHook:
     """Tests for AskUserQuestion interception hook."""
 
@@ -801,7 +796,6 @@ class TestRunPhaseWithQuestionCallback:
             assert captured_questions[0]["question"] == "Which approach?"
 
 
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement tests
 class TestSandboxViolationDetection:
     """Tests for _is_sandbox_violation helper function."""
 

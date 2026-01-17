@@ -1,6 +1,6 @@
 """Integration tests for task-aware subsystem discovery.
 
-# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem discover tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -227,7 +227,6 @@ projects:
         assert "Failed to resolve HEAD SHA" in result.output
 
 
-# Chunk: docs/chunks/selective_project_linking - Selective project linking tests
 class TestSubsystemDiscoverSelectiveProjects:
     """Tests for ve subsystem discover with --projects flag."""
 

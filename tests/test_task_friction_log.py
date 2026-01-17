@@ -1,6 +1,6 @@
 """Integration tests for task-aware friction logging.
 
-# Chunk: docs/chunks/selective_artifact_friction - Task-aware friction log tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -196,7 +196,6 @@ class TestFrictionLogInTaskDirectory:
         assert expected_sha in content
 
 
-# Chunk: docs/chunks/selective_artifact_friction - Selective project linking tests
 class TestFrictionLogSelectiveProjects:
     """Tests for ve friction log with --projects flag."""
 

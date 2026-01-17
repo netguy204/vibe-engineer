@@ -1,0 +1,380 @@
+---
+description: Discover and document subsystems from code analysis
+---
+{% set source_template = "discover-subsystems.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+## Tips
+
+{% include "partials/common-tips.md.jinja2" %}
+
+**Discovery-specific tips:**
+- This workflow is for repositories WITHOUT existing chunks
+- The discovery can be paused and resumed at any point
+- Team members can review pending questions asynchronously via the questions/ directory
+- Use `ve migration status` to check progress at any time
+- Use `ve migration pause` to pause from CLI (or say "pause" during the workflow)
+
+## Instructions
+
+The operator has provided the following input:
+
+$ARGUMENTS
+
+---
+
+## Step 1: Check for Existing Discovery
+
+First, check if a discovery is already in progress:
+
+```bash
+uv run ve migration status subsystem_discovery
+```
+
+**If discovery exists**: The command shows the current status. Go to **Resuming Discovery** section below.
+
+**If no discovery exists**: The command reports "not found". Continue to **Step 2: Initialize Discovery**.
+
+---
+
+## Resuming Discovery
+
+The `ve migration status` command from Step 1 shows the current status. Handle based on that status:
+
+### Status: ANALYZING
+- Report current phase and progress
+- Continue from current_phase
+- Go to **Step 3: Execute Analysis Phases**
+
+### Status: REFINING
+- Report pending questions count
+- Present pending questions to operator
+- Go to **Step 4: Refinement Loop**
+
+### Status: EXECUTING
+- Report execution progress
+- Continue creating subsystem documentation
+- Go to **Step 5: Create Subsystems**
+
+### Status: PAUSED
+- Show pause context and resume_instructions
+- Ask operator: "Ready to resume discovery?"
+- If yes: Restore previous status and continue
+- If no: Remain paused, exit
+
+### Status: COMPLETED
+- Report completion summary
+- Show location of subsystem documentation
+- Offer to show discovery report
+- Exit (discovery already done)
+
+### Status: ABANDONED
+- Ask operator: "Would you like to restart the discovery fresh?"
+- If yes: Delete migration directory, go to Step 2
+- If no: Exit
+
+---
+
+## Step 2: Initialize Discovery
+
+Create the discovery using the CLI:
+
+```bash
+uv run ve migration create subsystem_discovery
+```
+
+This command will:
+1. Create the migration directory structure
+2. Initialize MIGRATION.md from template with guidance comments
+3. Set up analysis/, proposals/, and questions/ subdirectories
+
+The template includes `<!-- GUIDANCE: -->` blocks explaining each section. Keep these
+comments until discovery reaches COMPLETED status - they help agents understand the
+artifact structure when resuming.
+
+**Read the created MIGRATION.md** to understand:
+- Status state machine (when to transition between statuses)
+- Progress log format (append-only entries for archaeology)
+- Question tracking (PENDING → answered → moved to Resolved)
+
+---
+
+## Step 3: Execute Analysis Phases
+
+Follow the domain-oriented bootstrap workflow at:
+`docs/investigations/bidirectional_doc_code_sync/prototypes/domain_oriented_bootstrap_workflow.md`
+
+Execute the workflow phases, saving outputs to the analysis/ directory.
+
+### For Each Phase:
+
+1. **Execute the phase** following the workflow prompt
+2. **Save output** to `analysis/phaseN_[name].md`
+3. **Update MIGRATION.md**:
+   - Add entry to Progress Log
+   - Update current_phase
+   - Update last_activity timestamp
+4. **Check for operator questions**:
+   - If analysis reveals ambiguities needing human input
+   - If boundary decisions are unclear
+
+### Question Detection
+
+During analysis, watch for these signals that need operator input:
+
+| Signal | Question Type | Example |
+|--------|---------------|---------|
+| Overlapping responsibilities | BOUNDARY | "Should logging be part of core or infrastructure?" |
+| Ambiguous naming | NAMING | "Is 'task_management' or 'workflow_engine' clearer?" |
+| Unclear scope inclusion | SCOPE_IN | "Is error handling part of this subsystem?" |
+| Multiple valid groupings | MERGE/SPLIT | "Should these be one or two subsystems?" |
+
+### After Analysis Completes
+
+After Phase 6 completes:
+
+1. **Generate subsystem proposals** in proposals/ directory:
+   - Create `proposals/[subsystem_name]/OVERVIEW.md` for each proposed subsystem
+   - Use confidence markers: [SYNTHESIZED], [INFERRED], [NEEDS_HUMAN]
+   - Include Synthesis Metrics table
+
+2. **Generate pending questions** in questions/ directory:
+   - Create `questions/pending_questions.md` if questions exist
+
+3. **Update MIGRATION.md**:
+   - Set status: REFINING
+   - Update subsystems_proposed count
+   - Update questions_pending count
+
+4. **Go to Step 4: Refinement Loop**
+
+---
+
+## Step 4: Refinement Loop
+
+Present proposed subsystems to operator and gather input.
+
+**IMPORTANT**: When presenting questions to the operator, you MUST use the AskUserQuestion tool. Do NOT output questions as plain text. The AskUserQuestion tool provides a better user experience by:
+- Allowing structured option selection
+- Supporting multiple questions in one interaction
+- Enabling the operator to provide custom input via "Other"
+
+### Using AskUserQuestion
+
+For each subsystem with pending questions, use the AskUserQuestion tool with:
+- `header`: Short label like "Boundary" or "Scope"
+- `question`: The specific question about the subsystem
+- `options`: 2-4 concrete options with descriptions and implications
+
+Example tool usage for a boundary question:
+```json
+{
+  "questions": [
+    {
+      "header": "Boundary",
+      "question": "Should logging functionality be part of the core subsystem or infrastructure?",
+      "options": [
+        {"label": "Core subsystem", "description": "Logging is tightly coupled to business logic and benefits from shared context"},
+        {"label": "Infrastructure", "description": "Logging is a cross-cutting concern that should be independent"},
+        {"label": "Split", "description": "Business logging in core, technical logging in infrastructure"}
+      ],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+### Initial Presentation
+
+First, provide a summary of your findings, then use AskUserQuestion for any questions:
+
+```
+I've analyzed your codebase and identified [N] subsystems. Here's what I found:
+
+## Proposed Subsystems
+
+### 1. [Subsystem Name] (Confidence: X%)
+
+**What it does**: [Intent summary from analysis]
+
+**Includes**:
+- [capability]
+- [capability]
+
+**Key invariants**:
+- [inferred rule]
+- [inferred rule]
+
+### 2. [Next subsystem]...
+
+---
+
+```
+
+After presenting the summary, use AskUserQuestion to ask about next steps AND any pending subsystem questions. You can ask up to 4 questions at once, so batch questions when possible:
+
+```json
+{
+  "questions": [
+    {
+      "header": "Next step",
+      "question": "How would you like to proceed with the discovery?",
+      "options": [
+        {"label": "Answer questions", "description": "I'll answer questions about subsystem boundaries and scope"},
+        {"label": "See details", "description": "Show me more detail about a specific subsystem"},
+        {"label": "Pause for team", "description": "Pause discovery so my team can review the proposals"},
+        {"label": "Approve all", "description": "Skip remaining questions and approve all proposals as-is"}
+      ],
+      "multiSelect": false
+    },
+    {
+      "header": "Boundary",
+      "question": "[First pending question about subsystem boundaries]",
+      "options": [/* 2-4 options */],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+### Handle Operator Response
+
+**If operator answers a question**:
+1. Record answer in MIGRATION.md (Pending Questions section)
+2. Update the proposal based on answer
+3. Increment questions_resolved
+4. Decrement questions_pending
+5. If more questions for this subsystem → present next question
+6. If subsystem questions complete → ask for approval
+7. If approved → mark subsystem APPROVED, continue to next
+
+**If operator requests pause**:
+1. Generate/update `questions/pending_questions.md` with all pending questions
+2. Update MIGRATION.md:
+   - Set status: PAUSED
+   - Set pause_reason: "Operator requested pause for team review"
+   - Set paused_by: human
+   - Set paused_at: [timestamp]
+   - Set resume_instructions: "Run /discover-subsystems to continue"
+3. Confirm to operator:
+   ```
+   Discovery paused.
+
+   **Current state**:
+   - Phases completed: 1-6
+   - Subsystems proposed: [N]
+   - Subsystems approved: [M]
+   - Questions pending: [P]
+
+   **For team review**, see:
+   - `docs/migrations/subsystem_discovery/MIGRATION.md` - Status
+   - `docs/migrations/subsystem_discovery/questions/pending_questions.md` - Questions
+   - `docs/migrations/subsystem_discovery/proposals/` - Subsystem drafts
+
+   **To resume**: Run `/discover-subsystems`
+   ```
+4. Exit
+
+**If operator approves all**:
+1. Mark all subsystems APPROVED
+2. Update MIGRATION.md: status → EXECUTING
+3. Go to Step 5: Create Subsystems
+
+**If operator wants more detail**:
+1. Show the full proposal OVERVIEW.md for the requested subsystem
+2. Explain confidence markers and what each section means
+3. Return to question presentation
+
+### Refinement Loop Exit Criteria
+
+Exit when ALL of:
+- All proposed subsystems have status APPROVED
+- questions_pending = 0
+
+Then: Update MIGRATION.md status to EXECUTING, go to Step 5
+
+---
+
+## Step 5: Create Subsystems
+
+Create the final subsystem documentation.
+
+### For Each APPROVED Subsystem:
+
+1. Create directory: `docs/subsystems/[name]/`
+2. Copy proposal OVERVIEW.md, removing confidence markers
+3. Convert [SYNTHESIZED] and [INFERRED] content to final form
+4. Update MIGRATION.md progress log
+
+### Validation
+
+Verify:
+- [ ] All subsystem OVERVIEW.md files exist in docs/subsystems/
+- [ ] No proposals remain unapproved
+
+---
+
+## Step 6: Complete Discovery
+
+### Update MIGRATION.md
+
+Set final state:
+```yaml
+status: COMPLETED
+completed: [timestamp]
+```
+
+### Report Completion
+
+```
+Discovery complete!
+
+## Summary
+- Subsystems created: [N]
+
+## What Was Created
+- New subsystems in docs/subsystems/:
+  - [subsystem_name] - [brief intent]
+  - [subsystem_name] - [brief intent]
+
+## Human Review Needed
+[If any [NEEDS_HUMAN] items remain in subsystems]
+- [subsystem]/OVERVIEW.md: [section] needs human input
+
+## Next Steps
+- Use /subsystem-discover to create additional subsystems
+- Add code backreferences: `# Subsystem: docs/subsystems/[name]`
+- Consider using /chunk-create for implementation work
+
+The full discovery log is in docs/migrations/subsystem_discovery/MIGRATION.md
+```
+
+---
+
+## Pause Handling
+
+At any point, if operator says "pause", "stop", "wait", "let me think", or similar:
+
+1. Save current state to MIGRATION.md
+2. Generate questions/pending_questions.md if in REFINING
+3. Set status: PAUSED with context
+4. Confirm pause and provide resume instructions
+5. Exit
+
+---
+
+## Error Handling
+
+### If analysis fails:
+- Save partial progress
+- Report error to operator
+- Suggest manual intervention or retry
+
+### If file operations fail:
+- Do not proceed with dependent operations
+- Report specific failure
+- Suggest manual fix and resume
+
+### If operator abandons:
+- Confirm abandonment
+- Set status: ABANDONED
+- Note that discovery can be restarted fresh

@@ -1,6 +1,6 @@
 """Tests for cluster subsystem prompt feature.
 
-# Chunk: docs/chunks/cluster_subsystem_prompt - Tests for cluster size warnings
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 """
 
 import pathlib

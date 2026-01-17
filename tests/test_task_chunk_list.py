@@ -1,6 +1,6 @@
 """Integration tests for task-aware chunk listing.
 
-# Chunk: docs/chunks/task_status_command - Updated for grouped listing output
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -153,7 +153,6 @@ class TestChunkListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        # Chunk: docs/chunks/chunk_list_repo_source - Include repo ref in output
         # In task context, output format is: {external_artifact_repo}::docs/chunks/{chunk_name}
         assert result.output.strip() == "acme/ext::docs/chunks/0002-auth_validation"
 
@@ -211,7 +210,6 @@ projects:
         assert result.exit_code == 1
         assert "No implementing chunk found" in result.output
 
-    # Chunk: docs/chunks/task_status_command - New tests for grouped listing
     def test_shows_grouped_output_with_external_and_local(self, tmp_path):
         """Shows grouped output with both external and local chunks."""
         task_dir, external_path, project_paths = setup_task_directory(

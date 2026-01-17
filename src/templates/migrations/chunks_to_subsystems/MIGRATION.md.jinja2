@@ -181,13 +181,38 @@ Format:
 GUIDANCE: Track the plan for updating code backreferences.
 
 Populated during Phase 7. Tracks:
-- Files to update
+- Files to update (src/ AND tests/)
 - Current refs → new refs
 - Priority order
 - Template files needing special handling
+
+IMPORTANT: Search ALL code locations including tests/:
+  grep -r "# Chunk:" src/ tests/ --include="*.py"
+
+Categories to track:
+- Production code (src/**/*.py)
+- Test files (tests/**/*.py) - commonly missed!
+- Templates (src/templates/**/*.jinja2)
 -->
 
-(Populated during Phase 7)
+### Production Code (src/)
+
+(List files and their chunk → subsystem mappings)
+
+### Test Files (tests/)
+
+(List test files with backreferences - don't skip these!)
+
+### Template Files
+
+(Templates need source file updates, then `ve init` to regenerate)
+
+### Summary
+
+- [ ] All src/ backreferences updated
+- [ ] All tests/ backreferences updated
+- [ ] All template sources updated
+- [ ] `ve init` run to regenerate from templates
 
 ## Archive Plan
 

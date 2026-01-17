@@ -4,13 +4,12 @@ This module provides utilities for extracting symbol definitions from Python
 source files using the ast module, and for parsing/manipulating symbolic
 references in the {file_path}#{symbol_path} format.
 """
-# Chunk: docs/chunks/symbolic_code_refs - Symbol extraction and parsing
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 import ast
 from pathlib import Path
 
 
-# Chunk: docs/chunks/symbolic_code_refs - Extract symbols from Python files
 def extract_symbols(file_path: Path) -> set[str]:
     """Extract all symbol definitions from a Python source file.
 
@@ -50,7 +49,6 @@ def extract_symbols(file_path: Path) -> set[str]:
     return symbols
 
 
-# Chunk: docs/chunks/symbolic_code_refs - Recursive AST traversal
 def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> None:
     """Recursively extract symbols from an AST node.
 
@@ -81,8 +79,7 @@ def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> N
             _extract_from_node(child, prefix + [class_name], symbols)
 
 
-# Chunk: docs/chunks/symbolic_code_refs - Parse reference into components
-# Chunk: docs/chunks/task_qualified_refs - Extended for project qualification
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 def parse_reference(
     ref: str, *, current_project: str | None = None
 ) -> tuple[str, str, str | None]:
@@ -150,7 +147,6 @@ def parse_reference(
     return project, file_and_symbol, None
 
 
-# Chunk: docs/chunks/task_qualified_refs - Qualify a reference string
 def qualify_ref(ref: str, project: str) -> str:
     """Ensure a reference string is project-qualified.
 
@@ -176,8 +172,6 @@ def qualify_ref(ref: str, project: str) -> str:
     return f"{project}::{ref}"
 
 
-# Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
-# Chunk: docs/chunks/task_qualified_refs - Requires qualified references
 def is_parent_of(parent: str, child: str) -> bool:
     """Check if parent reference hierarchically contains child reference.
 

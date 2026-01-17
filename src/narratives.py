@@ -1,9 +1,6 @@
 """Narratives module - business logic for narrative management."""
-# Chunk: docs/chunks/narrative_cli_commands - Narrative creation and management
-# Chunk: docs/chunks/template_system_consolidation - Template system integration
-# Chunk: docs/chunks/proposed_chunks_frontmatter - Narrative frontmatter parsing
-# Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-# Chunk: docs/chunks/valid_transitions - State transition validation
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import re
@@ -16,7 +13,6 @@ from models import NarrativeFrontmatter, NarrativeStatus, VALID_NARRATIVE_TRANSI
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
-# Chunk: docs/chunks/narrative_cli_commands - Core narrative class
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 class Narratives:
     def __init__(self, project_dir):
@@ -36,10 +32,6 @@ class Narratives:
     def num_narratives(self):
         return len(self.enumerate_narratives())
 
-    # Chunk: docs/chunks/narrative_cli_commands - Create narrative directory
-    # Chunk: docs/chunks/template_system_consolidation - Template system integration
-    # Chunk: docs/chunks/populate_created_after - Populate created_after from tips
-    # Chunk: docs/chunks/ordering_remove_seqno - Use short_name only (no sequence prefix)
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_narrative(self, short_name: str):
         """Create a new narrative directory with templates.
@@ -89,7 +81,6 @@ class Narratives:
 
         return narrative_path
 
-    # Chunk: docs/chunks/ordering_remove_seqno - Collision detection by short_name
     def find_duplicates(self, short_name: str) -> list[str]:
         """Find existing narratives with the same short_name.
 
@@ -106,7 +97,6 @@ class Narratives:
                 duplicates.append(name)
         return duplicates
 
-    # Chunk: docs/chunks/proposed_chunks_frontmatter - Parse narrative frontmatter
     def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a narrative.
 
@@ -141,7 +131,6 @@ class Narratives:
         except (yaml.YAMLError, ValidationError):
             return None
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def get_status(self, narrative_id: str) -> NarrativeStatus:
         """Get the current status of a narrative.
 
@@ -159,7 +148,6 @@ class Narratives:
             raise ValueError(f"Narrative '{narrative_id}' not found in docs/narratives/")
         return frontmatter.status
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def update_status(
         self, narrative_id: str, new_status: NarrativeStatus
     ) -> tuple[NarrativeStatus, NarrativeStatus]:
@@ -199,7 +187,6 @@ class Narratives:
 
         return (current_status, new_status)
 
-    # Chunk: docs/chunks/valid_transitions - State transition validation
     def _update_overview_frontmatter(
         self, narrative_id: str, field: str, value
     ) -> None:

@@ -1,8 +1,6 @@
 """Project module - business logic for project initialization."""
-# Chunk: docs/chunks/project_init_command - Project initialization
-# Chunk: docs/chunks/narrative_cli_commands - Narratives initialization
-# Chunk: docs/chunks/template_system_consolidation - Template system integration
-# Chunk: docs/chunks/template_drift_prevention - Pass VE config to template rendering
+# Subsystem: docs/subsystems/template_system - Template rendering system
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 
 import pathlib
@@ -18,7 +16,6 @@ from template_system import (
 )
 
 
-# Chunk: docs/chunks/project_init_command - Initialization result tracking
 @dataclass
 class InitResult:
     """Result of an initialization operation."""
@@ -27,8 +24,6 @@ class InitResult:
     warnings: list[str] = field(default_factory=list)
 
 
-# Chunk: docs/chunks/project_init_command - Core project class
-# Chunk: docs/chunks/template_drift_prevention - VE config loading
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 class Project:
     def __init__(self, project_dir: pathlib.Path):
@@ -50,8 +45,6 @@ class Project:
             self._ve_config = load_ve_config(self.project_dir)
         return self._ve_config
 
-    # Chunk: docs/chunks/project_init_command - Trunk document initialization
-    # Chunk: docs/chunks/template_system_consolidation - Template system integration
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def _init_trunk(self) -> InitResult:
         """Initialize trunk documents from templates."""
@@ -70,10 +63,7 @@ class Project:
 
         return result
 
-    # Chunk: docs/chunks/project_init_command - Claude commands initialization
-    # Chunk: docs/chunks/template_system_consolidation - Template system integration
-    # Chunk: docs/chunks/task_init_scaffolding - task_context=False for project context
-    # Chunk: docs/chunks/template_drift_prevention - Pass ve_config to templates
+    # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def _init_commands(self) -> InitResult:
         """Set up Claude commands by rendering templates.
@@ -111,7 +101,6 @@ class Project:
 
         return result
 
-    # Chunk: docs/chunks/narrative_cli_commands - Narratives directory creation
     def _init_narratives(self) -> InitResult:
         """Create docs/narratives/ directory for narrative documents."""
         result = InitResult()
@@ -125,7 +114,6 @@ class Project:
 
         return result
 
-    # Chunk: docs/chunks/init_creates_chunks_dir - Chunks directory creation
     def _init_chunks(self) -> InitResult:
         """Create docs/chunks/ directory for chunk documents."""
         result = InitResult()
@@ -167,9 +155,6 @@ class Project:
 
         return result
 
-    # Chunk: docs/chunks/project_init_command - CLAUDE.md creation
-    # Chunk: docs/chunks/template_system_consolidation - Template system integration
-    # Chunk: docs/chunks/template_drift_prevention - Pass ve_config to templates
     # Subsystem: docs/subsystems/template_system - Uses render_template
     def _init_claude_md(self) -> InitResult:
         """Create CLAUDE.md at project root from template.
@@ -196,7 +181,6 @@ class Project:
 
         return result
 
-    # Chunk: docs/chunks/project_init_command - Main initialization entry point
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 

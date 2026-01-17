@@ -1,7 +1,6 @@
 """Tests for the 've narrative list' CLI command.
 
-# Chunk: docs/chunks/artifact_list_ordering - Narrative list command tests
-# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 """
 
 from ve import cli

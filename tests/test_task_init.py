@@ -243,7 +243,7 @@ class TestTaskInitExecute:
         assert config.projects == ["acme/proj"]
 
 
-# Chunk: docs/chunks/task_init_scaffolding - Tests for CLAUDE.md generation
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 class TestTaskInitClaudeMd:
     """Tests for CLAUDE.md generation in task init."""
 
@@ -310,7 +310,6 @@ class TestTaskInitClaudeMd:
         assert "Multi-Project Task" in content
 
 
-# Chunk: docs/chunks/task_init_scaffolding - Tests for command rendering
 class TestTaskInitCommands:
     """Tests for command template rendering in task init."""
 
@@ -384,7 +383,6 @@ class TestTaskInitCommands:
         assert "acme/proj2" in chunk_impl
 
 
-# Chunk: docs/chunks/task_init_scaffolding - Tests for created_files tracking
 class TestTaskInitCreatedFiles:
     """Tests for created_files tracking in TaskInitResult."""
 

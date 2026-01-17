@@ -1,6 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_question_forward - AgentResult question field
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle for scheduling
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.
@@ -13,7 +11,6 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis models
 class ConflictVerdict(StrEnum):
     """Verdict from conflict analysis between two chunks.
 
@@ -81,10 +78,6 @@ class WorkUnitStatus(StrEnum):
     DONE = "DONE"  # Work unit completed
 
 
-# Chunk: docs/chunks/orch_attention_reason - Attention reason tracking for work units
-# Chunk: docs/chunks/orch_activate_on_inject - Displaced chunk tracking
-# Chunk: docs/chunks/orch_attention_queue - Pending answer storage for resume
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict verdict storage
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 
@@ -99,12 +92,10 @@ class WorkUnit(BaseModel):
     worktree: Optional[str] = None  # Git worktree path, if assigned
     priority: int = 0  # Scheduling priority (higher = more urgent)
     session_id: Optional[str] = None  # Agent session ID for suspended sessions
-    # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification retry tracking
     completion_retries: int = 0  # Retry count for ACTIVE status verification
     attention_reason: Optional[str] = None  # Why work unit needs operator attention
     displaced_chunk: Optional[str] = None  # Chunk that was IMPLEMENTING when worktree created
     pending_answer: Optional[str] = None  # Operator answer to be injected on resume
-    # Chunk: docs/chunks/orch_conflict_oracle - Conflict tracking fields
     conflict_verdicts: dict[str, str] = {}  # Maps other chunk names to ConflictVerdict values
     conflict_override: Optional[str] = None  # Operator override for ASK_OPERATOR cases
     created_at: datetime
@@ -178,7 +169,6 @@ class OrchestratorConfig(BaseModel):
 
     max_agents: int = 2  # Maximum concurrent agents
     dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
-    # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification max retries
     max_completion_retries: int = 2  # Max retries for ACTIVE status verification
 
     def model_dump_json_serializable(self) -> dict:

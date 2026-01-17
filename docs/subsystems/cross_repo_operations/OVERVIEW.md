@@ -1,0 +1,245 @@
+---
+status: DOCUMENTED
+proposed_chunks: []
+chunks:
+- chunk_id: task_init
+  relationship: implements
+- chunk_id: task_init_scaffolding
+  relationship: implements
+- chunk_id: task_config_local_paths
+  relationship: implements
+- chunk_id: task_aware_investigations
+  relationship: implements
+- chunk_id: task_aware_narrative_cmds
+  relationship: implements
+- chunk_id: task_aware_subsystem_cmds
+  relationship: implements
+- chunk_id: task_chunk_validation
+  relationship: implements
+- chunk_id: task_list_proposed
+  relationship: implements
+- chunk_id: task_qualified_refs
+  relationship: implements
+- chunk_id: task_status_command
+  relationship: implements
+- chunk_id: taskdir_context_cmds
+  relationship: implements
+- chunk_id: chunk_create_task_aware
+  relationship: implements
+- chunk_id: chunk_list_repo_source
+  relationship: implements
+- chunk_id: list_task_aware
+  relationship: implements
+- chunk_id: cross_repo_schemas
+  relationship: implements
+- chunk_id: external_resolve
+  relationship: implements
+- chunk_id: external_resolve_all_types
+  relationship: implements
+- chunk_id: external_chunk_causal
+  relationship: implements
+- chunk_id: consolidate_ext_refs
+  relationship: implements
+- chunk_id: consolidate_ext_ref_utils
+  relationship: implements
+- chunk_id: copy_as_external
+  relationship: implements
+- chunk_id: accept_full_artifact_paths
+  relationship: implements
+- chunk_id: selective_artifact_friction
+  relationship: implements
+- chunk_id: selective_project_linking
+  relationship: implements
+- chunk_id: remove_external_ref
+  relationship: implements
+- chunk_id: git_local_utilities
+  relationship: implements
+- chunk_id: ve_sync_command
+  relationship: implements
+- chunk_id: sync_all_workflows
+  relationship: implements
+code_references:
+- ref: src/task_init.py#TaskInit
+  implements: Task directory initialization class
+  compliance: COMPLIANT
+- ref: src/task_init.py#TaskInitResult
+  implements: Result dataclass for init operations
+  compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_chunk
+  implements: Task-aware chunk creation with external references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#list_task_chunks
+  implements: Task-aware chunk listing from external repo
+  compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_narrative
+  implements: Task-aware narrative creation
+  compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_investigation
+  implements: Task-aware investigation creation
+  compliance: COMPLIANT
+- ref: src/task_utils.py#create_task_subsystem
+  implements: Task-aware subsystem creation
+  compliance: COMPLIANT
+- ref: src/task_utils.py#resolve_project_qualified_ref
+  implements: Parse and resolve project-qualified code references
+  compliance: COMPLIANT
+- ref: src/task_utils.py#find_task_overlapping_chunks
+  implements: Cross-project chunk overlap detection
+  compliance: COMPLIANT
+- ref: src/external_refs.py#is_external_artifact
+  implements: Generic external artifact detection
+  compliance: COMPLIANT
+- ref: src/external_refs.py#load_external_ref
+  implements: External reference loading and validation
+  compliance: COMPLIANT
+- ref: src/external_refs.py#create_external_yaml
+  implements: External reference file creation
+  compliance: COMPLIANT
+- ref: src/external_refs.py#detect_artifact_type_from_path
+  implements: Infer artifact type from directory path
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#find_artifact_in_project
+  implements: Generic artifact finding for any type
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_artifact_task_directory
+  implements: Artifact resolution in task directory mode
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_artifact_single_repo
+  implements: Artifact resolution in single repo mode
+  compliance: COMPLIANT
+- ref: src/sync.py#find_external_refs
+  implements: External reference finder for all artifact types
+  compliance: COMPLIANT
+- ref: src/sync.py#sync_task_directory
+  implements: Task directory sync with artifact type filtering
+  compliance: COMPLIANT
+- ref: src/git_utils.py#is_git_repository
+  implements: Git repository validation
+  compliance: COMPLIANT
+- ref: src/git_utils.py#get_current_sha
+  implements: Get HEAD SHA of local repo
+  compliance: COMPLIANT
+- ref: src/repo_cache.py#RepoCache
+  implements: Clone/fetch cache for external repos
+  compliance: COMPLIANT
+- ref: src/models.py#TaskConfig
+  implements: .ve-task.yaml configuration model
+  compliance: COMPLIANT
+- ref: src/models.py#ExternalArtifactRef
+  implements: Generic external reference model
+  compliance: COMPLIANT
+created_after:
+- workflow_artifacts
+---
+
+# cross_repo_operations
+
+## Intent
+
+Enable engineering work that spans multiple git repositories by providing
+task directories, external artifact references, and synchronization. Without this
+subsystem, work spanning repos has no natural home and relies on ad-hoc coordination.
+
+This subsystem formalizes cross-repo work:
+- **Task directories** coordinate multiple repo worktrees with a central external repo
+- **External references** let project repos point to artifacts in the external repo
+- **Sync operations** maintain point-in-time snapshots for archaeology
+- **Task-aware commands** detect context and operate across repos seamlessly
+
+## Scope
+
+### In Scope
+
+- **Task directory initialization**: `ve task init` to set up cross-repo coordination
+- **Task context detection**: Automatic detection of task vs single-repo mode
+- **External artifact references**: `external.yaml` pattern for cross-repo artifacts
+- **Bidirectional references**: Dependents list in artifacts, external.yaml in projects
+- **Sync operations**: Update pinned SHAs to capture point-in-time state
+- **External resolution**: View content from external repos
+- **Task-aware commands**: All artifact commands (create, list) in task context
+- **Git utilities**: Local worktree operations (SHA, validation)
+- **Repo cache**: Clone/fetch cache for external repos in single-repo mode
+- **Project-qualified references**: `project:file#symbol` format
+
+### Out of Scope
+
+- **Artifact lifecycle management**: Defined in workflow_artifacts subsystem
+- **Orchestrator operations**: Task directories don't require orchestrator
+- **Template rendering**: Uses template_system but doesn't extend it
+
+## Invariants
+
+### Hard Invariants
+
+1. **Task directory detected by presence of .ve-task.yaml** - Consistent context detection
+   across all commands.
+
+2. **External references must have pinned SHA for archaeology** - Point-in-time snapshots
+   enable checking out historical commits.
+
+3. **All specified directories must be VE-initialized git repos** - Validation during
+   task init prevents configuration errors.
+
+4. **Bidirectional references enable full graph traversal** - External artifacts list
+   dependents, project repos point to external artifacts.
+
+5. **Sync updates pinned fields to current SHA** - Archaeology preservation when external
+   content changes.
+
+6. **External artifacts participate in local causal ordering** - `created_after` field
+   in external.yaml enables proper ordering.
+
+7. **External resolution works in both task and single-repo mode** - Dual context support
+   for flexibility.
+
+### Soft Conventions
+
+1. **Task-aware commands support --projects flag** - Selective linking to specific projects.
+
+2. **External repo uses standard VE structure** - Same docs/chunks/, docs/narratives/ layout.
+
+## Implementation Locations
+
+**Primary files**:
+- `src/task_init.py` - Task directory initialization (TaskInit class)
+- `src/task_utils.py` - Task-aware artifact operations (~88 chunk refs - the core module)
+- `src/external_refs.py` - External reference utilities (consolidated from multiple chunks)
+- `src/external_resolve.py` - External artifact resolution
+- `src/sync.py` - Sync operations for external references
+- `src/git_utils.py` - Git helper functions
+- `src/repo_cache.py` - External repo clone/fetch cache
+
+**Models**: `src/models.py#TaskConfig`, `src/models.py#ExternalArtifactRef`
+
+CLI commands: `ve task init`, `ve sync`, `ve external resolve`, plus task-aware versions
+of all artifact commands.
+
+## Known Deviations
+
+### suggest_prefix Does Not Dereference External Artifacts (INHERITED)
+
+This deviation is documented in workflow_artifacts subsystem. When operating in
+single-repo mode, `suggest_prefix()` only considers local chunks. External artifact
+references are silently skipped because the GOAL.md content isn't locally available.
+
+**Impact**: Prefix suggestions don't consider semantically similar external chunks
+in project context.
+
+**Workaround**: Run from task directory for complete corpus coverage.
+
+## Chunk Relationships
+
+### Implements
+
+28 chunks implement this subsystem. See frontmatter for complete list.
+
+Key capability groups:
+- **Task initialization**: task_init, task_init_scaffolding, task_config_local_paths
+- **Task-aware commands**: chunk_create_task_aware, list_task_aware, task_aware_*
+- **External references**: external_resolve, consolidate_ext_refs, external_chunk_causal
+- **Git/sync**: git_local_utilities, ve_sync_command, sync_all_workflows
+
+## Narrative Reference
+
+This subsystem implements the vision from the `cross_repo_chunks` narrative, which
+established the task directory pattern and external reference semantics.

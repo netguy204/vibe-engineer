@@ -1,5 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_tcp_port - TCP port CLI tests
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator CLI commands.
 
 Tests the CLI layer using Click's test runner. These tests mock the daemon
@@ -381,7 +380,6 @@ class TestWorkUnitDelete:
             assert result.exit_code == 1
 
 
-# Chunk: docs/chunks/orch_scheduling - Tests for scheduling CLI commands
 
 
 class TestOrchInject:
@@ -645,7 +643,6 @@ class TestOrchConfig:
             assert data["max_agents"] == 2
 
 
-# Chunk: docs/chunks/orch_attention_reason - Tests for work-unit show command
 
 
 class TestWorkUnitShow:
@@ -753,7 +750,6 @@ class TestWorkUnitShow:
             assert "not found" in result.output.lower()
 
 
-# Chunk: docs/chunks/orch_attention_reason - Tests for ps with attention_reason
 
 
 class TestOrchPsAttentionReason:

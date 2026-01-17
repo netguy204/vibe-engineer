@@ -334,12 +334,26 @@ For each APPROVED subsystem:
 
 ### Phase 8: Update Backreferences
 
+Search ALL code locations for `# Chunk:` backreferences using:
+
+```bash
+grep -r "# Chunk:" src/ tests/ --include="*.py" | head -50
+```
+
+**Important**: Backreferences exist in BOTH production code AND test files. Test files often have chunk references for the code they test. Do not skip tests/.
+
 For each file with `# Chunk:` backreferences:
 
 1. Identify target subsystem from backreference plan
 2. Replace `# Chunk: chunk_name` with `# Subsystem: subsystem_name`
 3. If multiple chunks → single subsystem reference
 4. Track changes in MIGRATION.md
+
+**File categories to check:**
+- `src/**/*.py` - Production code
+- `tests/**/*.py` - Test files (commonly missed!)
+- `src/templates/**/*.jinja2` - Template files (see below)
+- Any other code directories in the project
 
 **For template files** (AUTO-GENERATED header):
 - Update the source template instead

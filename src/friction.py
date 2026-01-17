@@ -1,5 +1,5 @@
 """Friction module - business logic for friction log management."""
-# Chunk: docs/chunks/friction_template_and_cli - Friction log artifact type
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 
 import pathlib
 import re
@@ -38,7 +38,6 @@ class FrictionEntry:
     content: str  # Full markdown content after the heading
 
 
-# Chunk: docs/chunks/friction_template_and_cli - Friction log business logic
 class Friction:
     """Business logic for friction log management."""
 
@@ -329,7 +328,7 @@ class Friction:
             return []
         return frontmatter.themes
 
-    # Chunk: docs/chunks/selective_artifact_friction - External friction source support
+    # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
     def get_external_friction_sources(self) -> list[ExternalFrictionSource]:
         """Get external friction sources referenced by this friction log.
 

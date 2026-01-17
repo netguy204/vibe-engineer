@@ -1,6 +1,6 @@
 """Integration tests for task-aware narrative creation.
 
-# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative create tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 """
 
 import subprocess
@@ -227,7 +227,6 @@ projects:
         assert "Failed to resolve HEAD SHA" in result.output
 
 
-# Chunk: docs/chunks/selective_project_linking - Selective project linking tests
 class TestNarrativeCreateSelectiveProjects:
     """Tests for ve narrative create with --projects flag."""
 

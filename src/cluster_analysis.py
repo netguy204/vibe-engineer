@@ -4,8 +4,7 @@ Provides utilities to analyze how chunks group by their alphabetical prefix
 clusters, identifying singletons (no navigational benefit) and superclusters
 (too many members, noise rather than navigation aid).
 """
-# Chunk: docs/chunks/cluster_list_command - Cluster analysis implementation
-# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ from subsystems import Subsystems
 from template_system import load_ve_config
 
 
-# Chunk: docs/chunks/cluster_list_command - Cluster category thresholds
 # Thresholds based on investigation findings about optimal cluster sizes
 SINGLETON_SIZE = 1
 SMALL_MAX_SIZE = 2
@@ -375,7 +373,6 @@ def format_cluster_output(
     return "\n".join(lines)
 
 
-# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warning dataclass
 @dataclass
 class ClusterSizeWarning:
     """Result of cluster size check for subsystem prompt.
@@ -392,7 +389,6 @@ class ClusterSizeWarning:
     threshold: int
 
 
-# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size check function
 def check_cluster_size(
     prefix: str,
     project_dir: Path,
@@ -445,7 +441,6 @@ def check_cluster_size(
     )
 
 
-# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster warning message formatter
 def format_cluster_warning(warning: ClusterSizeWarning) -> str:
     """Format a cluster size warning message for display.
 

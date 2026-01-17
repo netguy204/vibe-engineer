@@ -83,7 +83,7 @@ Test chunk content.
     goal_path.write_text(frontmatter)
 
 
-# Chunk: docs/chunks/ordering_remove_seqno - Updated for short_name only format
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 class TestValidateCommandInterface:
     """Tests for 've chunk validate' command interface."""
 
@@ -641,7 +641,6 @@ code_references: []
         assert result.exit_code == 0
 
 
-# Chunk: docs/chunks/investigation_chunk_refs - Investigation field for traceability
 class TestInvestigationRefValidation:
     """Tests for investigation reference validation in 've chunk validate'."""
 
@@ -765,7 +764,7 @@ proposed_chunks: []
         assert result.exit_code == 0
 
 
-# Chunk: docs/chunks/task_chunk_validation - External chunk validation tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 class TestExternalChunkValidation:
     """Tests for validating external chunks from project context."""
 
@@ -895,7 +894,6 @@ pinned: {pinned_sha}
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
 
-# Chunk: docs/chunks/task_chunk_validation - Task context validation tests
 class TestTaskContextValidation:
     """Tests for validating chunks with cross-project code references in task context."""
 
@@ -1046,7 +1044,6 @@ Test chunk content.
         assert result.exit_code == 0
 
 
-# Chunk: docs/chunks/task_chunk_validation - Project context partial validation tests
 class TestProjectContextPartialValidation:
     """Tests for partial validation when running from project context (not task)."""
 
@@ -1173,7 +1170,6 @@ Test chunk content.
         assert "skip" in result.output.lower() or "cross-project" in result.output.lower()
 
 
-# Chunk: docs/chunks/narrative_backreference_support - Narrative reference validation tests
 class TestNarrativeRefValidation:
     """Tests for narrative reference validation in 've chunk validate'."""
 
@@ -1296,7 +1292,7 @@ proposed_chunks: []
         assert result.exit_code == 0
 
 
-# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference validation tests
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
 class TestFrictionEntryRefValidation:
     """Tests for friction entry reference validation in 've chunk validate'."""
 

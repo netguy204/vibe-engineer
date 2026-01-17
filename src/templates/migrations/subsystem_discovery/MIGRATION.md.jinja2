@@ -1,0 +1,206 @@
+---
+# Migration Status
+status: ANALYZING
+current_phase: 1
+phases_completed: []
+last_activity: {{ timestamp }}
+
+# Timing
+started: {{ timestamp }}
+completed: null
+
+# Discovery Summary
+subsystems_proposed: 0
+subsystems_approved: 0
+questions_pending: 0
+questions_resolved: 0
+
+# Pause Context
+pause_reason: null
+paused_by: null
+paused_at: null
+resume_instructions: null
+---
+
+<!--
+DO NOT DELETE THIS COMMENT BLOCK until migration reaches COMPLETED status.
+This documents the frontmatter schema and guides the discovery workflow.
+
+STATUS VALUES:
+- ANALYZING: Running analysis phases (1-6), discovering domain boundaries
+- REFINING: Presenting proposals to operator, awaiting input on questions
+- EXECUTING: Creating subsystem documentation files
+- COMPLETED: Discovery finished, subsystems documented
+- PAUSED: Explicitly paused for team review or operator break
+- ABANDONED: Discovery cancelled (can restart fresh)
+
+STATUS TRANSITIONS:
+  ANALYZING → REFINING    (when analysis phases complete)
+  REFINING → EXECUTING    (when all subsystems approved)
+  EXECUTING → COMPLETED   (when all subsystems created)
+  Any → PAUSED            (operator requests pause)
+  PAUSED → previous       (operator resumes)
+  Any → ABANDONED         (operator cancels)
+
+CURRENT_PHASE:
+- 1: Entry Point Discovery (main files, CLI handlers, API endpoints)
+- 2: Business Capability Mapping (what the system does)
+- 3: Entity and Value Object Identification
+- 4: Business Rule Extraction
+- 5: Domain Boundary Synthesis
+- 6: Infrastructure Layer Identification
+- 7: Subsystem Documentation Creation
+
+PAUSE CONTEXT:
+When status is PAUSED, these fields explain why and how to resume:
+- pause_reason: Why the pause occurred
+- paused_by: "human" (operator requested) or "agent" (blocked on something)
+- paused_at: Timestamp of pause
+- resume_instructions: What to do to continue
+-->
+
+# Subsystem Discovery
+
+## Current State
+
+<!--
+GUIDANCE: Update this section after each significant action.
+This is the first thing an agent reads when resuming.
+
+Include:
+- What phase we're in
+- What was last accomplished
+- What needs to happen next
+- Any blockers or questions
+-->
+
+Discovery initialized. Beginning code analysis phase.
+
+## Proposed Subsystems
+
+<!--
+GUIDANCE: This table tracks all proposed subsystems and their approval status.
+
+Status values:
+- PROPOSED: Initial proposal, not yet reviewed
+- REFINING: Operator is answering questions about this subsystem
+- APPROVED: Operator approved, ready for documentation
+- REJECTED: Operator rejected, needs redesign (rare)
+
+Update this table as subsystems move through refinement.
+-->
+
+| Subsystem | Status | Confidence | Questions Pending |
+|-----------|--------|------------|-------------------|
+| (none yet) | - | - | - |
+
+## Progress Log
+
+<!--
+GUIDANCE: Append entries as phases complete. Never delete entries.
+This provides archaeology for understanding how the discovery progressed.
+
+Format:
+### Phase N: [Name] ([STATUS])
+- Started: [timestamp]
+- Completed: [timestamp] (if applicable)
+- Key findings: [brief summary]
+- Questions raised: [count] (if any)
+-->
+
+### Initialization
+- Started: {{ timestamp }}
+- Workflow: domain_oriented_bootstrap_workflow.md
+
+## Pending Questions
+
+<!--
+GUIDANCE: Track questions that need operator input.
+
+Question lifecycle:
+1. Detected during analysis → add here with status PENDING
+2. Presented to operator → update with operator's answer
+3. Applied to proposal → move to Resolved Questions section
+
+Format:
+### Q[N]: [Brief Title] ([STATUS])
+**Context**: Why this question matters
+**Options**:
+- A) [option] - [implications]
+- B) [option] - [implications]
+**Agent Recommendation**: [A/B] because [reasoning]
+**Asked**: [timestamp]
+**Answered**: [timestamp or null]
+**Resolution**: [what was decided]
+-->
+
+(None yet - questions will appear as analysis progresses)
+
+## Resolved Questions
+
+<!--
+GUIDANCE: Move questions here once resolved. Preserves decision history.
+-->
+
+(None yet)
+
+## Subsystem Details
+
+<!--
+GUIDANCE: For each proposed subsystem, provide discovery summary.
+
+This section helps operators understand what was discovered without
+reading full proposal files. Update as refinement progresses.
+
+Format:
+### [Subsystem Name]
+**Confidence**: X%
+**Intent**: [discovered from code analysis]
+**Key Invariants**: [inferred from code patterns]
+**Entry Points**: [main files/functions]
+**Open Questions**: [count]
+-->
+
+(Populated after analysis completes)
+
+## Validation Results
+
+<!--
+GUIDANCE: Record validation check results during execution.
+
+Format:
+| Check | Result | Notes |
+|-------|--------|-------|
+| Subsystems created | PASS/FAIL | [details] |
+-->
+
+(Populated during execution)
+
+## Human Effort Summary
+
+<!--
+GUIDANCE: Summarize what automation accomplished vs what needs human review.
+
+Populated after synthesis. Helps operators understand remaining work.
+
+Include:
+- Confidence percentages by subsystem
+- Categories of human input needed
+- Priority order for review
+-->
+
+(Populated after synthesis)
+
+## Post-Discovery Notes
+
+<!--
+GUIDANCE: Record any notes for after discovery completes.
+
+Include:
+- Subsystems that need additional human refinement
+- Known issues or technical debt discovered
+- Recommendations for next steps
+- Any deferred decisions
+-->
+
+(Populated at completion)

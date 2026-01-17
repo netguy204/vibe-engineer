@@ -1,6 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_scheduling - Scheduling API endpoints
-# Chunk: docs/chunks/orch_dashboard - Web dashboard with WebSocket support
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.
@@ -244,7 +242,6 @@ async def update_work_unit_endpoint(request: Request) -> JSONResponse:
     except ValueError as e:
         return _error_response(str(e))
 
-    # Chunk: docs/chunks/orch_dashboard - Broadcast status changes via WebSocket
     await broadcast_work_unit_update(
         chunk=chunk,
         status=updated.status.value,
@@ -314,8 +311,6 @@ async def get_status_history_endpoint(request: Request) -> JSONResponse:
 # Scheduling endpoints
 
 
-# Chunk: docs/chunks/orch_inject_validate - Import shared validation
-# Chunk: docs/chunks/orch_activate_on_inject - Use Chunks class for status parsing
 from chunks import plan_has_content, Chunks
 
 
@@ -388,8 +383,6 @@ def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
     return WorkUnitPhase.IMPLEMENT
 
 
-# Chunk: docs/chunks/orch_scheduling - Original inject endpoint
-# Chunk: docs/chunks/orch_inject_validate - Added injection validation
 async def inject_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/inject - Inject a chunk into the work pool.
 
@@ -599,7 +592,6 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(config.model_dump_json_serializable())
 
 
-# Chunk: docs/chunks/orch_attention_queue - Attention queue endpoints
 
 
 def _get_goal_summary(chunk_dir: Path) -> Optional[str]:
@@ -669,7 +661,6 @@ async def attention_endpoint(request: Request) -> JSONResponse:
     })
 
 
-# Chunk: docs/chunks/orch_dashboard - Dashboard and WebSocket endpoints
 
 
 async def dashboard_endpoint(request: Request) -> HTMLResponse:
@@ -792,7 +783,6 @@ async def answer_endpoint(request: Request):
             status_code=400,
         )
 
-    # Chunk: docs/chunks/orch_dashboard - Support form submissions
     # Check content type to determine how to parse the body
     content_type = request.headers.get("content-type", "")
     is_form_submission = "application/x-www-form-urlencoded" in content_type
@@ -841,7 +831,6 @@ async def answer_endpoint(request: Request):
     return JSONResponse(updated.model_dump_json_serializable())
 
 
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis endpoints
 
 
 async def get_conflicts_endpoint(request: Request) -> JSONResponse:
@@ -946,7 +935,6 @@ async def resolve_conflict_endpoint(request: Request):
     if unit is None:
         return _not_found_response("Work unit", chunk)
 
-    # Chunk: docs/chunks/orch_dashboard - Support form submissions
     content_type = request.headers.get("content-type", "")
     is_form_submission = "application/x-www-form-urlencoded" in content_type
 
@@ -983,7 +971,6 @@ async def resolve_conflict_endpoint(request: Request):
     unit.updated_at = datetime.now(timezone.utc)
 
     # If verdict is SERIALIZE, add to blocked_by if not already there
-    # Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE status transition
     if resolved_verdict == ConflictVerdict.SERIALIZE:
         if other_chunk not in unit.blocked_by:
             unit.blocked_by.append(other_chunk)
@@ -1141,7 +1128,6 @@ def create_app(project_dir: Path) -> Starlette:
 
     # Note: More specific routes must come before generic {chunk:path} routes
     routes = [
-        # Chunk: docs/chunks/orch_dashboard - Dashboard and WebSocket routes
         Route("/", endpoint=dashboard_endpoint, methods=["GET"]),
         WebSocketRoute("/ws", endpoint=websocket_endpoint),
         Route("/status", endpoint=status_endpoint, methods=["GET"]),
@@ -1150,7 +1136,6 @@ def create_app(project_dir: Path) -> Starlette:
         Route("/config", endpoint=update_config_endpoint, methods=["PATCH"]),
         # Attention queue endpoint
         Route("/attention", endpoint=attention_endpoint, methods=["GET"]),
-        # Chunk: docs/chunks/orch_conflict_oracle - Conflict endpoints
         Route("/conflicts", endpoint=list_all_conflicts_endpoint, methods=["GET"]),
         Route("/conflicts/analyze", endpoint=analyze_conflicts_endpoint, methods=["POST"]),
         Route("/conflicts/{chunk:path}", endpoint=get_conflicts_endpoint, methods=["GET"]),
@@ -1176,7 +1161,6 @@ def create_app(project_dir: Path) -> Starlette:
             endpoint=prioritize_endpoint,
             methods=["PATCH"],
         ),
-        # Chunk: docs/chunks/orch_conflict_oracle - Conflict resolution endpoint
         Route(
             "/work-units/{chunk}/resolve",
             endpoint=resolve_conflict_endpoint,

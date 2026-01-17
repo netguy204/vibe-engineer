@@ -1,7 +1,6 @@
 """Tests for artifact ordering system.
 
-# Chunk: docs/chunks/artifact_ordering_index - Causal ordering infrastructure
-# Chunk: docs/chunks/artifact_index_no_git - Directory-based staleness detection
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 """
 
 from pathlib import Path
@@ -702,7 +701,6 @@ class TestPerformance:
         assert elapsed_ms < 50, f"Warm query took {elapsed_ms:.1f}ms, expected <50ms"
 
 
-# Chunk: docs/chunks/artifact_list_ordering - Backward compatibility tests
 class TestBackwardCompatibility:
     """Tests for backward compatibility with mixed created_after scenarios.
 
@@ -788,7 +786,6 @@ class TestBackwardCompatibility:
         assert tips == ["0002-legacy_b", "0003-new_a"]
 
 
-# Chunk: docs/chunks/artifact_index_no_git - Non-git operation tests
 class TestNonGitOperation:
     """Tests that verify ArtifactIndex works without git.
 
@@ -880,7 +877,6 @@ created_after: []
         assert index_file.read_text() == initial_content
 
 
-# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering tests
 class TestStatusFilteredTips:
     """Tests for status-aware tip filtering.
 
@@ -1164,7 +1160,7 @@ created_after: []
         assert tips == ["0003-implementing"]
 
 
-# Chunk: docs/chunks/external_chunk_causal - External chunk ordering tests
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 class TestExternalChunkOrdering:
     """Tests for external chunk handling in causal ordering.
 

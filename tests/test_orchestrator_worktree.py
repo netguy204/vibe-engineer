@@ -1,4 +1,4 @@
-# Chunk: docs/chunks/orch_scheduling - Worktree manager tests
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """Tests for the orchestrator worktree manager."""
 
 import subprocess
@@ -348,7 +348,6 @@ class TestMergeToBase:
         assert manager._branch_exists("orch/test_chunk")
 
 
-# Chunk: docs/chunks/orch_mechanical_commit - Tests for mechanical commit
 class TestCommitChanges:
     """Tests for WorktreeManager.commit_changes()."""
 

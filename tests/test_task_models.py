@@ -1,6 +1,5 @@
 """Tests for cross-repository chunk management models."""
-# Chunk: docs/chunks/cross_repo_schemas - Validation tests for TaskConfig, ChunkDependent
-# Chunk: docs/chunks/consolidate_ext_refs - Validation tests for ExternalArtifactRef
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 
 import pytest
 from pydantic import ValidationError
@@ -80,7 +79,6 @@ class TestChunkDependent:
         assert dependent.dependents[0].artifact_id == "my_feature"
 
 
-# Chunk: docs/chunks/consolidate_ext_refs - Tests for ExternalArtifactRef model
 class TestExternalArtifactRef:
     """Tests for the ExternalArtifactRef schema."""
 

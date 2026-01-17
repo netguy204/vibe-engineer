@@ -1,7 +1,6 @@
 """External artifact reference utilities.
 
-# Chunk: docs/chunks/consolidate_ext_ref_utils - External reference consolidation
-# Chunk: docs/chunks/external_chunk_causal - created_after parameter for causal ordering
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/workflow_artifacts - External reference utilities
 
 This module provides type-agnostic utilities for working with external artifact
@@ -96,7 +95,6 @@ def detect_artifact_type_from_path(path: Path) -> ArtifactType:
     )
 
 
-# Chunk: docs/chunks/consolidate_ext_refs - Updated to return ExternalArtifactRef
 def load_external_ref(path: Path) -> ExternalArtifactRef:
     """Load and validate external.yaml from artifact path.
 
@@ -120,10 +118,6 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
     return ExternalArtifactRef.model_validate(data)
 
 
-# Chunk: docs/chunks/chunk_create_task_aware - Original implementation in task_utils.py
-# Chunk: docs/chunks/consolidate_ext_refs - Updated to use artifact_type and artifact_id fields
-# Chunk: docs/chunks/external_chunk_causal - created_after parameter for causal ordering
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path normalization
 def normalize_artifact_path(
     input_path: str,
     search_path: Path | None = None,
@@ -228,7 +222,6 @@ def normalize_artifact_path(
     )
 
 
-# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path prefix stripping
 def strip_artifact_path_prefix(
     input_id: str,
     artifact_type: ArtifactType,
@@ -266,10 +259,7 @@ def strip_artifact_path_prefix(
     return input_id
 
 
-# Chunk: docs/chunks/chunk_create_task_aware - Create external.yaml in project directory
-# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format
-# Chunk: docs/chunks/external_chunk_causal - Added created_after parameter
-# Chunk: docs/chunks/ordering_remove_seqno - Use short_name only directory format
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 def create_external_yaml(
     project_path: Path,
     short_name: str,

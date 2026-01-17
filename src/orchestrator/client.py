@@ -1,5 +1,4 @@
-# Chunk: docs/chunks/orch_foundation - Orchestrator daemon foundation
-# Chunk: docs/chunks/orch_attention_queue - Attention queue client methods
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 """HTTP client for communicating with the orchestrator daemon.
 
 Provides a Python interface for CLI commands to interact with the daemon.
@@ -269,7 +268,6 @@ class OrchestratorClient:
             json={"answer": answer},
         )
 
-    # Chunk: docs/chunks/orch_conflict_oracle - Conflict client methods
 
     def get_conflicts(self, chunk: str) -> dict:
         """Get all conflict analyses for a chunk.

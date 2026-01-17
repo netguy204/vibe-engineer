@@ -168,7 +168,7 @@ class TestInitCommand:
         # Entry should appear exactly once
         assert content.count(".artifact-order.json") == 1
 
-    # Chunk: docs/chunks/friction_template_and_cli - Friction log initialization test
+    # Subsystem: docs/subsystems/friction_tracking - Friction log management
     def test_init_creates_friction_log(self, runner, temp_project):
         """ve init creates docs/trunk/FRICTION.md from template."""
         result = runner.invoke(
