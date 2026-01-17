@@ -294,33 +294,60 @@ When working interactively with the operator, consider these proactive actions:
 
 ### The "Background" Keyword
 
-When the operator says **"in the background"** (or similar phrases like "do this in the background", "handle this in the background", "run this in the background"), this is an explicit signal to use the background workflow.
+When the operator says **"in the background"** (or similar phrases), this signals use of the orchestrator for background execution.
+
+**Two distinct use cases:**
+
+#### 1. Execute an existing chunk in the background
 
 **Trigger phrases:**
-- "in the background"
+- "execute [chunk] in the background"
+- "run [chunk] in the background"
+- "run [chunk] in the orchestrator"
+- "inject [chunk]"
+
+**Expected agent behavior:**
+
+1. **Ensure chunk is committed** - if there are uncommitted changes, commit them first
+2. **Start orchestrator if needed** - `ve orch start` if not running
+3. **Inject the chunk** - `ve orch inject <chunk_name>`
+4. **Confirm injection** - report the work unit status
+
+Do NOT change the chunk status to IMPLEMENTING - the orchestrator manages that.
+
+```bash
+# Example workflow
+git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): add my_chunk"
+uv run ve orch start  # if not running
+uv run ve orch inject my_chunk
+```
+
+#### 2. Create a new chunk for background execution
+
+**Trigger phrases:**
 - "do this in the background"
 - "handle this in the background"
-- "run this in the background"
 - "create a future chunk"
 - "create a FUTURE chunk"
 
-**Expected agent behavior when triggered:**
+**Expected agent behavior:**
 
-1. **Create a FUTURE chunk** (not IMPLEMENTING) using `ve chunk create my_chunk --future`
+1. **Create a FUTURE chunk** using `ve chunk create my_chunk --future`
 2. **Refine the GOAL.md** with the operator as normal
 3. **Present the goal for operator review** and wait for explicit approval
 4. **Commit the chunk** only after the operator approves
 5. **Inject into orchestrator** using `ve orch inject my_chunk`
-6. **Continue with other work** or confirm the chunk has been backgrounded
+6. **Continue with other work**
 
 **Contrast with default behavior:**
 
 | Scenario | Chunk Status | Agent Behavior |
 |----------|--------------|----------------|
 | Without "background" | IMPLEMENTING | Work on the chunk immediately in current session |
-| With "background" | FUTURE | Create chunk, get approval, inject, move on |
+| With "background" (new) | FUTURE | Create chunk, get approval, commit, inject |
+| With "background" (existing) | (unchanged) | Commit if needed, inject into orchestrator |
 
-**Important:** Always wait for operator approval before committing and injecting background chunks. The "background" keyword signals the operator wants the work queued, not that they've already approved it.
+**Important:** For new chunks, always wait for operator approval before committing. For existing chunks the operator is explicitly requesting execution, so proceed directly.
 
 ## Code Backreferences
 
