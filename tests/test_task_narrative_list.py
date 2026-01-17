@@ -1,12 +1,25 @@
 """Integration tests for task-aware narrative listing.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+
+NOTE: These tests are for the OBSOLETE external repo narrative behavior.
+As of docs/chunks/scratchpad_narrative_commands, narrative commands now use
+scratchpad storage (~/.vibe/scratchpad/) instead of external repos.
+In task context, narratives go to ~/.vibe/scratchpad/task:[name]/narratives/.
+
+See tests/test_narrative_scratchpad.py for the current behavior tests.
 """
 
 import subprocess
 
 import pytest
 from click.testing import CliRunner
+
+# Skip all tests in this file - they test obsolete external repo behavior
+pytestmark = pytest.mark.skip(
+    reason="Obsolete: narrative commands now use scratchpad storage. "
+    "See tests/test_narrative_scratchpad.py"
+)
 
 from ve import cli
 from conftest import make_ve_initialized_git_repo, setup_task_directory

@@ -71,6 +71,8 @@ chunks:
   relationship: implements
 - chunk_id: scratchpad_storage
   relationship: implements
+- chunk_id: scratchpad_narrative_commands
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class

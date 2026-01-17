@@ -506,6 +506,48 @@ class ScratchpadNarratives:
         narrative_times.sort(key=lambda x: x[1], reverse=True)
         return [narrative_id for narrative_id, _ in narrative_times]
 
+    # Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
+    def update_status(
+        self, narrative_id: str, new_status: ScratchpadNarrativeStatus
+    ) -> tuple[ScratchpadNarrativeStatus, ScratchpadNarrativeStatus]:
+        """Update a narrative's status.
+
+        Args:
+            narrative_id: The narrative directory name.
+            new_status: The new status to set.
+
+        Returns:
+            Tuple of (old_status, new_status).
+
+        Raises:
+            ValueError: If narrative not found or has invalid frontmatter.
+        """
+        overview_path = self.get_narrative_overview_path(narrative_id)
+        if overview_path is None:
+            raise ValueError(f"Narrative '{narrative_id}' not found")
+
+        content = overview_path.read_text()
+        match = re.match(r"^(---\s*\n)(.*?)(\n---)", content, re.DOTALL)
+        if not match:
+            raise ValueError(f"Narrative '{narrative_id}' has invalid frontmatter")
+
+        try:
+            frontmatter = yaml.safe_load(match.group(2))
+            if not isinstance(frontmatter, dict):
+                raise ValueError(f"Narrative '{narrative_id}' has invalid frontmatter")
+
+            old_status = ScratchpadNarrativeStatus(frontmatter.get("status", "DRAFTING"))
+            frontmatter["status"] = new_status.value
+            new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+
+            rest_of_file = content[match.end():]
+            overview_path.write_text(f"---\n{new_frontmatter}---{rest_of_file}")
+
+            return (old_status, new_status)
+
+        except yaml.YAMLError as e:
+            raise ValueError(f"Narrative '{narrative_id}' has invalid YAML frontmatter: {e}")
+
     def archive_narrative(self, narrative_id: str) -> Path:
         """Archive a narrative by updating its status.
 
@@ -518,29 +560,5 @@ class ScratchpadNarratives:
         Raises:
             ValueError: If narrative not found.
         """
-        overview_path = self.get_narrative_overview_path(narrative_id)
-        if overview_path is None:
-            raise ValueError(f"Narrative '{narrative_id}' not found")
-
-        # Update status in frontmatter
-        content = overview_path.read_text()
-        match = re.match(r"^(---\s*\n)(.*?)(\n---)", content, re.DOTALL)
-        if not match:
-            raise ValueError(f"Narrative '{narrative_id}' has invalid frontmatter")
-
-        try:
-            frontmatter = yaml.safe_load(match.group(2))
-            if not isinstance(frontmatter, dict):
-                raise ValueError(f"Narrative '{narrative_id}' has invalid frontmatter")
-
-            frontmatter["status"] = ScratchpadNarrativeStatus.ARCHIVED.value
-            new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-
-            # Preserve content after frontmatter
-            rest_of_file = content[match.end():]
-            overview_path.write_text(f"---\n{new_frontmatter}---{rest_of_file}")
-
-        except yaml.YAMLError as e:
-            raise ValueError(f"Narrative '{narrative_id}' has invalid YAML frontmatter: {e}")
-
+        self.update_status(narrative_id, ScratchpadNarrativeStatus.ARCHIVED)
         return self.narratives_dir / narrative_id

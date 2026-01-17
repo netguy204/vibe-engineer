@@ -244,8 +244,16 @@ class TestChunkStatusErrors:
 # =============================================================================
 # Narrative Status CLI Tests
 # =============================================================================
+# NOTE: These narrative tests are for the OBSOLETE in-repo narrative behavior.
+# As of docs/chunks/scratchpad_narrative_commands, narrative commands now use
+# scratchpad storage (~/.vibe/scratchpad/) instead of in-repo docs/narratives/.
+# See tests/test_narrative_scratchpad.py for the current behavior tests.
 
 
+@pytest.mark.skip(
+    reason="Obsolete: narrative commands now use scratchpad storage. "
+    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
+)
 class TestNarrativeStatusDisplay:
     """Tests for 've narrative status <id>' (display mode)."""
 
@@ -263,6 +271,10 @@ class TestNarrativeStatusDisplay:
         assert "migration: DRAFTING" in result.output
 
 
+@pytest.mark.skip(
+    reason="Obsolete: narrative commands now use scratchpad storage. "
+    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
+)
 class TestNarrativeStatusTransitions:
     """Tests for valid and invalid narrative status transitions."""
 
@@ -335,6 +347,10 @@ class TestNarrativeStatusTransitions:
         assert "terminal state" in result.output
 
 
+@pytest.mark.skip(
+    reason="Obsolete: narrative commands now use scratchpad storage. "
+    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
+)
 class TestNarrativeStatusErrors:
     """Tests for narrative status error handling."""
 
