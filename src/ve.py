@@ -55,6 +55,12 @@ from external_resolve import (
 )
 from external_refs import ARTIFACT_MAIN_FILE, detect_artifact_type_from_path
 from validation import validate_identifier
+from scratchpad_commands import (
+    detect_scratchpad_context,
+    scratchpad_create_chunk,
+    scratchpad_list_chunks,
+    scratchpad_complete_chunk,
+)
 
 
 def validate_short_name(short_name: str) -> list[str]:
@@ -101,13 +107,14 @@ def chunk():
 @click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
-@click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
+@click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING (ignored for scratchpad)")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 def create(short_name, ticket_id, project_dir, yes, future, projects):
-    """Create a new chunk."""
-    from chunks import get_chunk_prefix
-    from cluster_analysis import check_cluster_size, format_cluster_warning
+    """Create a new chunk.
 
+    Creates chunks in the scratchpad storage (~/.vibe/scratchpad/) instead of
+    in-repo docs/chunks/. Task context routes to task-scoped scratchpad.
+    """
     errors = validate_short_name(short_name)
     if ticket_id:
         errors.extend(validate_ticket_id(ticket_id))
@@ -122,7 +129,7 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     if ticket_id:
         ticket_id = ticket_id.lower()
 
-    # Determine status based on --future flag
+    # Determine status based on --future flag (for task context only)
     status = "FUTURE" if future else "IMPLEMENTING"
 
     # Check if we're in a task directory (cross-repo mode)
@@ -130,33 +137,22 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
         _start_task_chunk(project_dir, short_name, ticket_id, status, projects)
         return
 
-    # Single-repo mode
-    chunks = Chunks(project_dir)
-
-    # Check for duplicates
-    duplicates = chunks.find_duplicates(short_name, ticket_id)
-    if duplicates and not yes:
-        click.echo(f"Chunk with short_name '{short_name}' and ticket_id '{ticket_id}' already exists:")
-        for dup in duplicates:
-            click.echo(f"  - {dup}")
-        if not click.confirm("Create another chunk with the same name?"):
-            raise SystemExit(1)
-
+    # Single-repo mode - route to scratchpad storage
+    # Scratchpad chunks don't have FUTURE status (personal work notes)
     try:
-        chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
+        project_path, task_name = detect_scratchpad_context(project_dir)
+        chunk_path = scratchpad_create_chunk(
+            project_path=project_path,
+            task_name=task_name,
+            short_name=short_name,
+            ticket=ticket_id,
+        )
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
-    # Show path relative to project_dir
-    relative_path = chunk_path.relative_to(project_dir)
-    click.echo(f"Created {relative_path}")
 
-    # Extract prefix from the created chunk name and check if warning should be shown
-    # Use include_new_chunk=False because the chunk has already been created
-    prefix = get_chunk_prefix(chunk_path.name)
-    warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
-    if warning.should_warn:
-        click.echo(f"Note: {format_cluster_warning(warning)}")
+    # Show the scratchpad path
+    click.echo(f"Created {chunk_path}")
 
 
 chunk.add_command(create, name="start")
@@ -201,54 +197,71 @@ def _start_task_chunk(
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_chunks(latest, project_dir):
-    """List all chunks."""
-    from artifact_ordering import ArtifactIndex, ArtifactType
+    """List all chunks from scratchpad storage.
 
+    Lists chunks from ~/.vibe/scratchpad/[project]/ or task-scoped scratchpad.
+    """
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
         _list_task_chunks(latest, project_dir)
         return
 
-    # Single-repo mode
-    chunks = Chunks(project_dir)
-    chunk_list = chunks.list_chunks()
-
-    if not chunk_list:
-        click.echo("No chunks found", err=True)
+    # Single-repo mode - route to scratchpad storage
+    try:
+        project_path, task_name = detect_scratchpad_context(project_dir)
+        result = scratchpad_list_chunks(
+            project_path=project_path,
+            task_name=task_name,
+            latest=latest,
+        )
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
     if latest:
-        current_chunk = chunks.get_current_chunk()
-        if current_chunk is None:
+        if result is None:
             click.echo("No implementing chunk found", err=True)
             raise SystemExit(1)
-        click.echo(f"docs/chunks/{current_chunk}")
+        click.echo(result)
     else:
-        # Get tips for indicator display
-        artifact_index = ArtifactIndex(project_dir)
-        tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
+        if not result:
+            click.echo("No chunks found", err=True)
+            raise SystemExit(1)
 
-        for chunk_name in chunk_list:
-            frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
-            if frontmatter:
-                status = frontmatter.status.value
-            else:
-                # Check if it's an external chunk - try to resolve and get real status
-                chunk_path = project_dir / "docs" / "chunks" / chunk_name
-                if is_external_artifact(chunk_path, ArtifactType.CHUNK):
-                    location = chunks.resolve_chunk_location(chunk_name)
-                    if location and location.cached_content:
-                        ext_frontmatter = chunks._parse_frontmatter_from_content(location.cached_content)
-                        if ext_frontmatter:
-                            status = ext_frontmatter.status.value
-                        else:
-                            status = "EXTERNAL"
-                    else:
-                        status = "EXTERNAL"
-                else:
-                    status = "UNKNOWN"
-            tip_indicator = " *" if chunk_name in tips else ""
-            click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+        for chunk_info in result:
+            name = chunk_info["name"]
+            status = chunk_info["status"]
+            path = chunk_info["path"]
+            click.echo(f"{path} [{status}]")
+
+
+@chunk.command("complete")
+@click.argument("chunk_id", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def complete_chunk(chunk_id, project_dir):
+    """Complete (archive) a chunk in the scratchpad.
+
+    Archives the specified chunk by updating its status to ARCHIVED.
+    If no CHUNK_ID is provided, completes the current IMPLEMENTING chunk.
+    """
+    # Check if we're in a task directory (cross-repo mode)
+    if is_task_directory(project_dir):
+        click.echo("Error: complete command not supported in task context", err=True)
+        raise SystemExit(1)
+
+    # Single-repo mode - route to scratchpad storage
+    try:
+        project_path, task_name = detect_scratchpad_context(project_dir)
+        completed_id = scratchpad_complete_chunk(
+            project_path=project_path,
+            task_name=task_name,
+            chunk_id=chunk_id,
+        )
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Completed {completed_id}")
 
 
 def _format_grouped_artifact_list(

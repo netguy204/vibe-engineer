@@ -124,6 +124,7 @@ class TestScratchpadNarrativeFrontmatter:
 class TestScratchpad:
     """Tests for Scratchpad class."""
 
+    @pytest.mark.no_isolated_scratchpad
     def test_default_root(self):
         """Default root is ~/.vibe/scratchpad/."""
         scratchpad = Scratchpad()
@@ -137,7 +138,7 @@ class TestScratchpad:
 
     def test_ensure_initialized_creates_directory(self, tmp_path: Path):
         """ensure_initialized() creates the directory structure."""
-        scratchpad_root = tmp_path / "scratchpad"
+        scratchpad_root = tmp_path / "test_scratchpad_init"
         scratchpad = Scratchpad(scratchpad_root=scratchpad_root)
 
         assert not scratchpad_root.exists()
@@ -221,14 +222,15 @@ class TestScratchpad:
 
     def test_list_contexts(self, tmp_path: Path):
         """list_contexts() lists all context directories."""
-        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad_root = tmp_path / "test_list_contexts_root"
+        scratchpad = Scratchpad(scratchpad_root=scratchpad_root)
         scratchpad.ensure_initialized()
 
         # Create some context directories
-        (tmp_path / "project-a").mkdir()
-        (tmp_path / "project-b").mkdir()
-        (tmp_path / "task:migration").mkdir()
-        (tmp_path / ".hidden").mkdir()  # Should be ignored
+        (scratchpad_root / "project-a").mkdir()
+        (scratchpad_root / "project-b").mkdir()
+        (scratchpad_root / "task:migration").mkdir()
+        (scratchpad_root / ".hidden").mkdir()  # Should be ignored
 
         contexts = sorted(scratchpad.list_contexts())
         assert contexts == ["project-a", "project-b", "task:migration"]

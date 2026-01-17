@@ -8,168 +8,244 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk rewrites the chunk CLI commands (`create`, `list`, `complete`) to use scratchpad storage instead of in-repo `docs/chunks/`. The implementation builds on the `scratchpad_storage` chunk's infrastructure (`src/scratchpad.py`) which provides the `Scratchpad`, `ScratchpadChunks`, and `ScratchpadNarratives` classes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Introduce CLI routing layer**: Add a new module (`src/scratchpad_commands.py`) with functions that mirror chunk command behavior but operate on scratchpad storage. The existing `ve.py` CLI will detect context and route to the appropriate implementation.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/scratchpad_chunk_commands/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Context detection**: Determine whether we're in a task context (multi-repo) or project context (single-repo), then resolve the appropriate scratchpad path. Task context routes to `~/.vibe/scratchpad/task:[name]/`, project context routes to `~/.vibe/scratchpad/[project-name]/`.
+
+3. **Complete migration**: The old in-repo `docs/chunks/` path is no longer used for chunk commands. The `Chunks` class in `src/chunks.py` is retained for orchestrator and task-based cross-repo operations that still need in-repo artifact support, but CLI chunk commands exclusively use scratchpad.
+
+4. **Update skill template**: The `/chunk-create` skill template (`src/templates/commands/chunk-create.md.jinja2`) is updated to reflect scratchpad-based workflow.
+
+**Key design decisions:**
+
+- Per DEC-002 (git not assumed), the scratchpad operates outside git repositories
+- Per DEC-005 (commands don't prescribe git), no commit operations are included
+- The `complete` command archives the scratchpad chunk (changes status to ARCHIVED) rather than moving files
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk USES the workflow artifact patterns established by `scratchpad_storage`. The scratchpad chunk commands are a consumer of the `ScratchpadChunks` class.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system for the updated `/chunk-create` skill template.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create scratchpad_commands.py module
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a new module `src/scratchpad_commands.py` that provides the scratchpad-based chunk command implementations:
 
-Example:
+```python
+def scratchpad_create_chunk(
+    project_path: Path | None,
+    task_name: str | None,
+    short_name: str,
+    ticket: str | None = None,
+) -> Path:
+    """Create a chunk in the scratchpad."""
 
-### Step 1: Define the SegmentHeader struct
+def scratchpad_list_chunks(
+    project_path: Path | None,
+    task_name: str | None,
+    latest: bool = False,
+) -> list[str] | str | None:
+    """List chunks from the scratchpad."""
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+def scratchpad_complete_chunk(
+    project_path: Path | None,
+    task_name: str | None,
+    chunk_id: str | None = None,
+) -> str:
+    """Complete (archive) a chunk in the scratchpad."""
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+These functions will:
+- Resolve the scratchpad context using `Scratchpad.resolve_context()`
+- Create `ScratchpadChunks` manager for the resolved context
+- Perform the appropriate CRUD operation
+
+Location: `src/scratchpad_commands.py`
+
+### Step 2: Add context detection helper
+
+Add a helper function to determine current context from the working directory:
+
+```python
+def detect_scratchpad_context(
+    project_dir: Path,
+) -> tuple[Path | None, str | None]:
+    """Detect whether we're in task or project context.
+
+    Returns:
+        Tuple of (project_path, task_name) where exactly one is non-None.
+    """
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+This checks for task context markers (e.g., `.ve-task.yaml`) and falls back to using the project directory name.
+
+Location: `src/scratchpad_commands.py`
+
+### Step 3: Update ve.py chunk create command
+
+Modify the `create` command in `src/ve.py` to route to scratchpad storage:
+
+1. Remove the current in-repo chunk creation logic for non-task contexts
+2. Call `scratchpad_create_chunk()` instead
+3. Output the scratchpad path (e.g., `~/.vibe/scratchpad/vibe-engineer/chunks/my_feature`)
+
+Key changes:
+- The command still validates `short_name` and `ticket_id`
+- The `--future` flag is no longer needed (scratchpad chunks don't have FUTURE status concept - they're all personal work)
+- The `--projects` flag is still relevant for task context
+
+Location: `src/ve.py`
+
+### Step 4: Update ve.py chunk list command
+
+Modify the `list_chunks` command in `src/ve.py`:
+
+1. Route to `scratchpad_list_chunks()` for all contexts
+2. Output format shows scratchpad location:
+   - Without `--latest`: List all chunks with status
+   - With `--latest`: Output path to the current IMPLEMENTING chunk
+
+Location: `src/ve.py`
+
+### Step 5: Add ve.py chunk complete command
+
+Add a new `complete` subcommand to the chunk group:
+
+```python
+@chunk.command("complete")
+@click.argument("chunk_id", required=False, default=None)
+@click.option("--project-dir", ...)
+def complete_chunk(chunk_id, project_dir):
+    """Complete (archive) a chunk in the scratchpad."""
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+
+This command:
+- Resolves the chunk (defaults to current IMPLEMENTING chunk)
+- Archives the chunk by updating its status to ARCHIVED
+- Outputs confirmation
+
+Location: `src/ve.py`
+
+### Step 6: Update chunk-create skill template
+
+Update `src/templates/commands/chunk-create.md.jinja2` to reflect scratchpad-based workflow:
+
+1. Update instructions to mention scratchpad storage
+2. Remove references to `docs/chunks/` directory
+3. Update example output paths to show `~/.vibe/scratchpad/...`
+4. Remove `--future` flag references (not applicable to scratchpad)
+
+Location: `src/templates/commands/chunk-create.md.jinja2`
+
+### Step 7: Write tests for scratchpad_commands module
+
+Create `tests/test_scratchpad_commands.py` with tests for:
+
+1. `scratchpad_create_chunk()`:
+   - Creates chunk in project context
+   - Creates chunk in task context
+   - Validates short_name format
+   - Rejects duplicate names
+
+2. `scratchpad_list_chunks()`:
+   - Lists chunks in project context
+   - Lists chunks in task context
+   - Returns current IMPLEMENTING chunk with `latest=True`
+   - Returns None when no chunks exist
+
+3. `scratchpad_complete_chunk()`:
+   - Archives existing chunk
+   - Defaults to current IMPLEMENTING chunk
+   - Raises error for non-existent chunk
+
+4. `detect_scratchpad_context()`:
+   - Detects task context from `.ve-task.yaml`
+   - Falls back to project name from directory
+
+Location: `tests/test_scratchpad_commands.py`
+
+### Step 8: Write CLI integration tests
+
+Add CLI integration tests in `tests/test_chunk_scratchpad_cli.py`:
+
+1. `ve chunk create`:
+   - Creates chunk in scratchpad
+   - Outputs correct path
+   - Validates inputs
+
+2. `ve chunk list`:
+   - Lists scratchpad chunks
+   - `--latest` outputs current chunk
+
+3. `ve chunk complete`:
+   - Archives chunk
+   - Outputs confirmation
+
+These tests use `click.testing.CliRunner` and temporary scratchpad directories.
+
+Location: `tests/test_chunk_scratchpad_cli.py`
+
+### Step 9: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the actual files created/modified.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**Chunk dependencies:**
+- `scratchpad_storage` (ACTIVE) - Provides `Scratchpad`, `ScratchpadChunks`, and related models
 
-If there are no dependencies, delete this section.
--->
+**External libraries:**
+- No new dependencies required; uses existing `click`, `pydantic`, `yaml`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Task context detection**: The current task detection uses `is_task_directory()` from `task_utils.py`. Need to verify this works correctly with scratchpad context resolution or if we need a separate detection mechanism.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Backwards compatibility**: Old chunks in `docs/chunks/` won't be visible to the new commands. This is intentional per the goal ("No in-repo chunks"), but operators may be confused initially. Consider adding a migration note or warning.
+
+3. **`--future` flag removal**: Scratchpad chunks don't have FUTURE status - they're personal work notes. Need to confirm this is the correct semantic model. The GOAL.md mentions FUTURE status routing but the investigation suggests scratchpad is for "personal work notes" which may not need the same lifecycle.
+
+4. **Output path format**: The scratchpad path includes `~` which may not expand in all contexts. Consider outputting absolute paths or using `Path.home()` expansion consistently.
+
+5. **Skill template complexity**: The `/chunk-create` template has significant logic around FUTURE chunks and orchestrator integration. Need to decide how much of this applies to scratchpad chunks vs. should be stripped.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+### Step 6: Simplified chunk-create skill template
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+The original chunk-create skill template had significant complexity around:
+- FUTURE chunk detection and status routing
+- Implementing guard checks
+- Bug type classification
+- Friction entry tracking
+- Investigation origin tracking
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+For scratchpad chunks, this was simplified since:
+- Scratchpad chunks don't have FUTURE status (personal work notes)
+- No subsystem references or code_references in scratchpad chunks
+- Simpler schema: just status, ticket, success_criteria, created_at
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+The template was rewritten to reflect the simpler scratchpad workflow.
+
+### Step 7-8: Existing tests need updating
+
+The implementation fundamentally changes where chunks are stored (scratchpad instead of
+in-repo). This breaks ~100 existing tests that check for in-repo behavior like:
+- Chunks created in `docs/chunks/`
+- FUTURE status support
+- Implementing guard checks
+
+These tests need to be updated in a follow-up chunk to reflect the new scratchpad-based
+storage. The new behavior is covered by:
+- `tests/test_scratchpad_commands.py` - Unit tests for command functions
+- `tests/test_chunk_scratchpad_cli.py` - CLI integration tests
+
+Task context tests pass (15/16), confirming that task-scoped in-repo chunk creation
+still works correctly.
