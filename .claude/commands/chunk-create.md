@@ -35,10 +35,8 @@ completely in order:
    provide a terse handle for thinking about what the work represents.
    Substitute this shortname below for the <shortname> placeholder.
 
-   **Cluster Seed Naming Guidance:** When naming this chunk, consider whether it
-   will seed a new cluster of related work. Good prefix names enable alphabetical
-   grouping that aids navigation. Ask yourself: **"What initiative does this
-   chunk advance?"** Use that initiative noun as the prefix.
+   **Naming Guidance:** When naming this chunk, ask yourself: **"What initiative
+   does this chunk advance?"** Use that initiative noun as a prefix.
 
    - **Good prefixes** (initiative nouns): `ordering_`, `taskdir_`, `template_`,
      `validation_`, `crossref_` — these describe the multi-chunk effort being
@@ -50,161 +48,43 @@ completely in order:
    the initiative name. For example, work from `docs/narratives/causal_ordering/`
    might use the `ordering_` prefix.
 
-   **Note:** During `/chunk-plan`, the system will suggest renaming if similar
-   chunks exist. But the first chunk in a cluster is the critical naming decision
-   — subsequent chunks can inherit via similarity, but poor seed names cascade.
-
 2. And if the operator has referenced a ticket number, extract it and supply it to
    the command below where the placeholder <ticket number> is referenced. If no
    ticket number is referenced, pass no argument to the command below in the
    <ticket number> placeholder.
 
-3. **Determine whether to create a FUTURE or IMPLEMENTING chunk.** Apply these
-   checks in priority order:
+3. Run `ve chunk create <shortname> <ticket number>` and note the scratchpad path
+   that is returned by the command. The chunk will be created at:
+   `~/.vibe/scratchpad/[project-name]/chunks/<shortname>/GOAL.md`
 
-   **Priority 1: Explicit user intent signals (CHECK THIS FIRST)**
+   Substitute this path below for the <chunk directory> placeholder.
 
-   BEFORE running any commands, scan the user's prompt for explicit timing signals.
-   This takes precedence over everything else:
-
-   - **FUTURE signals**: "future", "schedule", "scheduled", "later", "queue",
-     "queued", "backlog", "upcoming", "not now", "after current work",
-     "next up after", "when we're ready", "eventually", "down the road",
-     "for later", "defer", "deferred"
-     → If ANY of these are found, use `--future`. Do not proceed to Priority 2.
-
-   - **IMPLEMENTING signals**: "now", "immediately", "start working on",
-     "work on this next", "let's do this", "begin", "start this", "dive into",
-     "tackle this", "right now", "today"
-     → If found, do NOT use `--future` (but see step 3a for conflict handling)
-
-   Note: Consider context when interpreting signals. "Start a future task"
-   contains "start" but clearly indicates FUTURE intent. When in doubt, the
-   explicit timing word ("future", "schedule", etc.) takes precedence.
-
-   **Priority 2: Existing implementing chunk check (ONLY if no explicit signal)**
-
-   If and only if no explicit intent signal was found in Priority 1, run
-   `ve chunk list --latest` to check if there's already an IMPLEMENTING chunk:
-
-   - If there IS an IMPLEMENTING chunk → use `--future`
-   - If there is NO IMPLEMENTING chunk (command exits with error or returns
-     nothing) → do NOT use `--future`
-
-3a. **Handle IMPLEMENTING conflicts.** If the user explicitly signaled they want
-    to work on this NOW (IMPLEMENTING signals detected), but `ve chunk list --latest`
-    shows an existing IMPLEMENTING chunk:
-
-    1. **Inform the user** of the conflict: "You want to start this chunk
-       immediately, but chunk X is currently being implemented."
-
-    2. **Offer to pause** the current chunk: "Would you like me to pause the
-       current chunk so we can start this one?"
-
-    3. **If the user agrees**, execute the safe pause protocol:
-       - Run `pytest tests/` and confirm all tests pass. If tests fail, inform
-         the user and do NOT proceed with the pause—the codebase should be
-         healthy before switching context.
-       - Add a "## Paused State" section to the current chunk's PLAN.md
-         documenting:
-         - Which steps have been completed
-         - What remains to be done
-         - Any work-in-progress context the next agent needs
-       - Run `ve chunk status <current_chunk_id> FUTURE` to change the current
-         chunk's status from IMPLEMENTING to FUTURE
-
-    4. **Then proceed** to create the new chunk as IMPLEMENTING (without `--future`)
-
-    If the user declines the pause, use `--future` for the new chunk instead.
-
-4. Run `ve chunk create <shortname> <ticket number> [--future]` and note the chunk
-   directory name that is returned by the command. Include `--future` based on
-   the determination in step 3. Substitute this name below for the <chunk
-   directory> placeholder.
-
-5. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
+4. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
    the user has described, ask them any questions required to complete the
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
 
+   **Note:** Scratchpad chunks have a simpler schema than in-repo chunks. They
+   include: `status`, `ticket`, `success_criteria`, and `created_at`. You don't
+   need to set code_paths, code_references, or subsystem references.
 
-6. **Check if this is a bug fix and classify the bug type.** Look for these
-   signals that indicate bug fix work: "bug", "fix", "broken", "error", "issue",
-   "defect", "regression", "incorrect", "wrong", "failing".
 
-   If the work appears to be a bug fix, ask the operator to classify the bug type:
+5. **Check if this is a bug fix.** Look for these signals that indicate bug fix
+   work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
+   "incorrect", "wrong", "failing".
 
-   - **semantic**: "Did this bug reveal new understanding about how the system
-     should work? Is this a discovery?" Examples: workflow logic was wrong,
-     the spec was unclear, edge cases weren't considered.
-   - **implementation**: "Did you already know how it should work, but the code
-     was just wrong?" Examples: typo, off-by-one error, null check missing,
-     copy-paste mistake.
+   If the work is a bug fix, note this in the GOAL.md success criteria so that
+   when implementation is complete, the fix can be verified.
 
-   Based on their answer, set the `bug_type` field in frontmatter:
-   ```yaml
-   bug_type: semantic    # or bug_type: implementation
-   ```
+6. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
+   check if there's already an IMPLEMENTING chunk.
 
-   If the work is NOT a bug fix, leave `bug_type: null` (the default).
+   If there IS an existing IMPLEMENTING chunk, inform the user:
+   "Note: Chunk <existing_chunk> is currently being implemented. You can work
+   on this new chunk by completing or archiving the current one first, or
+   continue working on both concurrently in the scratchpad."
 
-   This classification affects chunk completion behavior:
-   - Semantic bugs require code backreferences and end in ACTIVE status
-   - Implementation bugs may skip backreferences and end in HISTORICAL status
-
-7. **Check for friction entries being addressed.** Ask the operator: "Does this
-   chunk address any friction entries from `docs/trunk/FRICTION.md`?"
-
-   If yes (or if the operator's prompt mentions friction, pain points, or
-   accumulated issues):
-
-   a. Run `ve friction list --open` to display OPEN friction entries. Present
-      them to the operator in a readable format showing the entry ID, theme,
-      and title.
-
-   b. Ask the operator to select which entries this chunk addresses. For each
-      selected entry, ask whether the scope is:
-      - **full**: This chunk fully resolves the friction entry
-      - **partial**: This chunk partially addresses the entry (other chunks
-        may be needed for complete resolution)
-
-   c. Add the selected entries to the chunk's `friction_entries` frontmatter:
-      ```yaml
-      friction_entries:
-        - entry_id: F001
-          scope: full
-        - entry_id: F003
-          scope: partial
-      ```
-
-   d. Update `docs/trunk/FRICTION.md` frontmatter to link the friction entries
-      to this chunk. Add or update a `proposed_chunks` entry:
-      ```yaml
-      proposed_chunks:
-        - prompt: "<brief description derived from chunk goal>"
-          chunk_directory: "<chunk directory name>"
-          addresses: ["F001", "F003"]
-      ```
-
-      If an existing `proposed_chunks` entry already covers some of these entry
-      IDs (from prior pattern recognition), update that entry's `chunk_directory`
-      field rather than creating a duplicate.
-
-   This step enables "why did we do this work?" traceability from implementation
-   back to accumulated pain points, and transitions friction entry status from
-   OPEN to ADDRESSED.
-
-8. **Check for investigation origin.** If this chunk was derived from an
-   investigation's `proposed_chunks` (e.g., the user referenced an investigation
-   or you can identify that the work originated from exploratory findings):
-
-   - Set the `investigation` field in the chunk's frontmatter to the investigation
-     directory name (e.g., `investigation: memory_leak` for
-     `docs/investigations/memory_leak/`)
-   - Update the investigation's OVERVIEW.md to add this chunk's directory to the
-     corresponding `proposed_chunks` entry's `chunk_directory` field
-
-**Note on FUTURE chunks:** A FUTURE chunk is queued for later work. When the user
-is ready to start working on it, they can run `ve chunk activate <chunk_id>` to
-change its status from FUTURE to IMPLEMENTING. Only one chunk can be IMPLEMENTING
-at a time. 
+**Note on scratchpad workflow:** Chunks are created in `~/.vibe/scratchpad/`
+which is outside the git repository. This keeps personal work notes separate
+from the codebase. When you're done with a chunk, use `ve chunk complete` to
+archive it.

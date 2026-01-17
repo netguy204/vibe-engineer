@@ -221,3 +221,9 @@ When working in a task context with multiple active projects, artifact creation 
 When running 've subsystem status savings_accounting STABLE' from a task directory, the command failed with 'Subsystem not found in docs/subsystems/'. The subsystem existed in the artifacts repo, not the task's local docs/subsystems/. The command only searched the task-level directory instead of resolving the subsystem in the artifacts repository where it was actually defined.
 
 **Impact**: High
+
+### F012: 2026-01-17 [context-resolution] Agents fail to dereference external.yml files
+
+Agents can't reliably dereference external.yml files. They don't think to use CLI tools to resolve the target of these files. Need additional prompting in CLAUDE.md and generic CLI tools for dereferencing. Help text in the external files themselves would also help agents realize they need to dereference.
+
+**Impact**: Medium

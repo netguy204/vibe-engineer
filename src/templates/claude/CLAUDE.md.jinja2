@@ -371,9 +371,9 @@ Source code may contain backreference comments that link code back to the docume
 
 **When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations. Narrative references point to high-level architectural context.
 
-**When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
+**When implementing code:** Add `# Subsystem:` backreference comments when code implements or extends a documented subsystem. This links code to its governing patterns and invariants.
 
-**When backreferences accumulate:** Files with 5+ chunk backreferences may benefit from consolidation. Use `ve chunk backrefs` to identify such files, then `/narrative-compact` to consolidate related chunks into a narrative. This replaces multiple `# Chunk:` comments with a single `# Narrative:` comment, reducing noise while preserving chunk links in the narrative for archaeology.
+**When you encounter `# Chunk:` backreferences:** Remove them. Chunks are ephemeral work-in-progress that get archived after completion. These historical references add noise without value. Subsystem and narrative backreferences should be preserved.
 
 {# Chunk: docs/chunks/restore_template_content - Development section with uv run instructions #}
 ## Development

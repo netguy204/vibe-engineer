@@ -1,5 +1,6 @@
 """Tests for scratchpad storage module."""
 # Chunk: docs/chunks/scratchpad_storage - Unit tests for scratchpad infrastructure
+# Chunk: docs/chunks/scratchpad_cross_project - Cross-project listing tests
 
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,13 @@ from models import (
     ScratchpadNarrativeFrontmatter,
     ScratchpadNarrativeStatus,
 )
-from scratchpad import Scratchpad, ScratchpadChunks, ScratchpadNarratives
+from scratchpad import (
+    Scratchpad,
+    ScratchpadChunks,
+    ScratchpadNarratives,
+    ScratchpadEntry,
+    ScratchpadListResult,
+)
 
 
 # ============================================================================
@@ -579,3 +586,318 @@ class TestScratchpadNarratives:
 
         with pytest.raises(ValueError, match="not found"):
             narratives.archive_narrative("nonexistent")
+
+
+# ============================================================================
+# Cross-Project Listing Tests (scratchpad_cross_project chunk)
+# ============================================================================
+
+
+class TestScratchpadEntry:
+    """Tests for ScratchpadEntry dataclass."""
+
+    def test_entry_creation(self):
+        """ScratchpadEntry can be created with all fields."""
+        entry = ScratchpadEntry(
+            context_name="vibe-engineer",
+            artifact_type="chunk",
+            name="my-chunk",
+            status="IMPLEMENTING",
+            created_at="2025-01-01T10:00:00",
+        )
+        assert entry.context_name == "vibe-engineer"
+        assert entry.artifact_type == "chunk"
+        assert entry.name == "my-chunk"
+        assert entry.status == "IMPLEMENTING"
+        assert entry.created_at == "2025-01-01T10:00:00"
+
+    def test_entry_task_context(self):
+        """ScratchpadEntry supports task: prefixed context names."""
+        entry = ScratchpadEntry(
+            context_name="task:cloud-migration",
+            artifact_type="narrative",
+            name="migration-plan",
+            status="DRAFTING",
+            created_at="2025-01-02T10:00:00",
+        )
+        assert entry.context_name == "task:cloud-migration"
+
+
+class TestScratchpadListResult:
+    """Tests for ScratchpadListResult dataclass."""
+
+    def test_empty_result(self):
+        """ScratchpadListResult with no entries."""
+        result = ScratchpadListResult(entries_by_context={}, total_count=0)
+        assert result.entries_by_context == {}
+        assert result.total_count == 0
+
+    def test_result_with_entries(self):
+        """ScratchpadListResult with multiple contexts."""
+        entries = [
+            ScratchpadEntry("project-a", "chunk", "chunk1", "IMPLEMENTING", "2025-01-01T10:00:00"),
+            ScratchpadEntry("project-a", "narrative", "plan", "DRAFTING", "2025-01-01T10:00:00"),
+        ]
+        result = ScratchpadListResult(
+            entries_by_context={"project-a": entries},
+            total_count=2,
+        )
+        assert len(result.entries_by_context["project-a"]) == 2
+        assert result.total_count == 2
+
+
+class TestScratchpadListAll:
+    """Tests for Scratchpad.list_all() cross-project listing."""
+
+    @pytest.fixture
+    def setup_multi_context(self, tmp_path: Path):
+        """Create a scratchpad with multiple contexts for testing."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad.ensure_initialized()
+
+        # Create multiple contexts
+        contexts = {
+            "vibe-engineer": {"chunks": ["chunk-a", "chunk-b"], "narratives": ["plan-1"]},
+            "pybusiness": {"chunks": ["fix-bug"], "narratives": []},
+            "task:cloud-migration": {"chunks": ["migrate-auth"], "narratives": ["migration-plan"]},
+        }
+
+        for context_name, artifacts in contexts.items():
+            context_path = tmp_path / context_name
+            context_path.mkdir(parents=True)
+
+            # Create chunks
+            chunks_dir = context_path / "chunks"
+            chunks_dir.mkdir()
+            for i, chunk_name in enumerate(artifacts["chunks"]):
+                chunk_path = chunks_dir / chunk_name
+                chunk_path.mkdir()
+                (chunk_path / "GOAL.md").write_text(
+                    f'---\nstatus: IMPLEMENTING\ncreated_at: "2025-01-0{i+1}T10:00:00"\n---\n# {chunk_name}\n'
+                )
+
+            # Create narratives
+            narratives_dir = context_path / "narratives"
+            narratives_dir.mkdir()
+            for i, narrative_name in enumerate(artifacts["narratives"]):
+                narrative_path = narratives_dir / narrative_name
+                narrative_path.mkdir()
+                (narrative_path / "OVERVIEW.md").write_text(
+                    f'---\nstatus: DRAFTING\ncreated_at: "2025-01-0{i+1}T10:00:00"\n---\n# {narrative_name}\n'
+                )
+
+        return scratchpad
+
+    def test_list_all_returns_all_contexts(self, setup_multi_context):
+        """list_all() returns entries from all contexts."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all()
+
+        assert "vibe-engineer" in result.entries_by_context
+        assert "pybusiness" in result.entries_by_context
+        assert "task:cloud-migration" in result.entries_by_context
+
+    def test_list_all_includes_both_artifact_types(self, setup_multi_context):
+        """list_all() includes both chunks and narratives."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all()
+
+        # vibe-engineer should have 2 chunks and 1 narrative
+        ve_entries = result.entries_by_context["vibe-engineer"]
+        chunks = [e for e in ve_entries if e.artifact_type == "chunk"]
+        narratives = [e for e in ve_entries if e.artifact_type == "narrative"]
+        assert len(chunks) == 2
+        assert len(narratives) == 1
+
+    def test_list_all_total_count(self, setup_multi_context):
+        """list_all() returns correct total count."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all()
+
+        # 2 + 1 + 1 + 1 + 1 = 6 total entries
+        assert result.total_count == 6
+
+    def test_list_all_empty_scratchpad(self, tmp_path: Path):
+        """list_all() returns empty result for empty scratchpad."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path / "nonexistent")
+
+        result = scratchpad.list_all()
+
+        assert result.entries_by_context == {}
+        assert result.total_count == 0
+
+    def test_list_all_filter_chunks_only(self, setup_multi_context):
+        """list_all(artifact_type='chunk') returns only chunks."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all(artifact_type="chunk")
+
+        for entries in result.entries_by_context.values():
+            for entry in entries:
+                assert entry.artifact_type == "chunk"
+
+    def test_list_all_filter_narratives_only(self, setup_multi_context):
+        """list_all(artifact_type='narrative') returns only narratives."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all(artifact_type="narrative")
+
+        for entries in result.entries_by_context.values():
+            for entry in entries:
+                assert entry.artifact_type == "narrative"
+
+    def test_list_all_filter_tasks_only(self, setup_multi_context):
+        """list_all(context_type='task') returns only task contexts."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all(context_type="task")
+
+        assert "task:cloud-migration" in result.entries_by_context
+        assert "vibe-engineer" not in result.entries_by_context
+        assert "pybusiness" not in result.entries_by_context
+
+    def test_list_all_filter_projects_only(self, setup_multi_context):
+        """list_all(context_type='project') returns only project contexts."""
+        scratchpad = setup_multi_context
+
+        result = scratchpad.list_all(context_type="project")
+
+        assert "vibe-engineer" in result.entries_by_context
+        assert "pybusiness" in result.entries_by_context
+        assert "task:cloud-migration" not in result.entries_by_context
+
+    def test_list_all_filter_by_status(self, tmp_path: Path):
+        """list_all(status='ACTIVE') returns only entries with that status."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad.ensure_initialized()
+
+        # Create context with mixed statuses
+        context_path = tmp_path / "test-project"
+        chunks_dir = context_path / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        for name, status in [("active-chunk", "ACTIVE"), ("implementing-chunk", "IMPLEMENTING")]:
+            chunk_path = chunks_dir / name
+            chunk_path.mkdir()
+            (chunk_path / "GOAL.md").write_text(
+                f'---\nstatus: {status}\ncreated_at: "2025-01-01T10:00:00"\n---\n# {name}\n'
+            )
+
+        result = scratchpad.list_all(status="ACTIVE")
+
+        all_entries = [e for entries in result.entries_by_context.values() for e in entries]
+        assert len(all_entries) == 1
+        assert all_entries[0].name == "active-chunk"
+        assert all_entries[0].status == "ACTIVE"
+
+    def test_list_all_status_case_insensitive(self, tmp_path: Path):
+        """list_all() normalizes status filter to uppercase."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad.ensure_initialized()
+
+        context_path = tmp_path / "test-project"
+        chunks_dir = context_path / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        chunk_path = chunks_dir / "test-chunk"
+        chunk_path.mkdir()
+        (chunk_path / "GOAL.md").write_text(
+            '---\nstatus: IMPLEMENTING\ncreated_at: "2025-01-01T10:00:00"\n---\n# test-chunk\n'
+        )
+
+        result = scratchpad.list_all(status="implementing")  # lowercase
+
+        all_entries = [e for entries in result.entries_by_context.values() for e in entries]
+        assert len(all_entries) == 1
+        assert all_entries[0].status == "IMPLEMENTING"
+
+    def test_list_all_entries_sorted_newest_first(self, tmp_path: Path):
+        """list_all() returns entries sorted by creation time (newest first)."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad.ensure_initialized()
+
+        context_path = tmp_path / "test-project"
+        chunks_dir = context_path / "chunks"
+        chunks_dir.mkdir(parents=True)
+
+        for name, time in [
+            ("old-chunk", "2025-01-01T10:00:00"),
+            ("new-chunk", "2025-01-03T10:00:00"),
+            ("middle-chunk", "2025-01-02T10:00:00"),
+        ]:
+            chunk_path = chunks_dir / name
+            chunk_path.mkdir()
+            (chunk_path / "GOAL.md").write_text(
+                f'---\nstatus: IMPLEMENTING\ncreated_at: "{time}"\n---\n# {name}\n'
+            )
+
+        result = scratchpad.list_all()
+
+        entries = result.entries_by_context["test-project"]
+        assert entries[0].name == "new-chunk"
+        assert entries[1].name == "middle-chunk"
+        assert entries[2].name == "old-chunk"
+
+
+class TestScratchpadListContext:
+    """Tests for Scratchpad.list_context() single-context listing."""
+
+    @pytest.fixture
+    def setup_single_context(self, tmp_path: Path):
+        """Create a scratchpad with a single context for testing."""
+        scratchpad = Scratchpad(scratchpad_root=tmp_path)
+        scratchpad.ensure_initialized()
+
+        context_path = tmp_path / "test-project"
+        context_path.mkdir()
+
+        # Create chunks
+        chunks_dir = context_path / "chunks"
+        chunks_dir.mkdir()
+        chunk_path = chunks_dir / "my-chunk"
+        chunk_path.mkdir()
+        (chunk_path / "GOAL.md").write_text(
+            '---\nstatus: IMPLEMENTING\ncreated_at: "2025-01-01T10:00:00"\n---\n# my-chunk\n'
+        )
+
+        # Create narratives
+        narratives_dir = context_path / "narratives"
+        narratives_dir.mkdir()
+        narrative_path = narratives_dir / "my-narrative"
+        narrative_path.mkdir()
+        (narrative_path / "OVERVIEW.md").write_text(
+            '---\nstatus: DRAFTING\ncreated_at: "2025-01-01T10:00:00"\n---\n# my-narrative\n'
+        )
+
+        return scratchpad
+
+    def test_list_context_returns_single_context(self, setup_single_context):
+        """list_context() returns entries for specified context only."""
+        scratchpad = setup_single_context
+
+        result = scratchpad.list_context("test-project")
+
+        assert "test-project" in result.entries_by_context
+        assert len(result.entries_by_context) == 1
+
+    def test_list_context_nonexistent(self, setup_single_context):
+        """list_context() returns empty result for nonexistent context."""
+        scratchpad = setup_single_context
+
+        result = scratchpad.list_context("nonexistent-project")
+
+        assert result.entries_by_context == {}
+        assert result.total_count == 0
+
+    def test_list_context_with_filters(self, setup_single_context):
+        """list_context() applies artifact_type and status filters."""
+        scratchpad = setup_single_context
+
+        result = scratchpad.list_context("test-project", artifact_type="chunk")
+
+        entries = result.entries_by_context["test-project"]
+        assert len(entries) == 1
+        assert entries[0].artifact_type == "chunk"

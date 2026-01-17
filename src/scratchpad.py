@@ -6,9 +6,11 @@ scratchpad entries.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - User-global scratchpad storage variant
 # Chunk: docs/chunks/scratchpad_storage - Scratchpad storage infrastructure
+# Chunk: docs/chunks/scratchpad_cross_project - Cross-project scratchpad queries
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import re
@@ -23,6 +25,31 @@ from models import (
     ScratchpadNarrativeStatus,
 )
 from template_system import render_template
+
+
+@dataclass
+class ScratchpadEntry:
+    """Represents a single scratchpad entry (chunk or narrative).
+
+    Used for cross-project listing results.
+    """
+
+    context_name: str  # e.g., "vibe-engineer" or "task:cloud-migration"
+    artifact_type: str  # "chunk" or "narrative"
+    name: str  # directory name
+    status: str  # e.g., "IMPLEMENTING", "DRAFTING"
+    created_at: str  # ISO timestamp
+
+
+@dataclass
+class ScratchpadListResult:
+    """Result of a scratchpad list operation.
+
+    Groups entries by context for display purposes.
+    """
+
+    entries_by_context: dict[str, list[ScratchpadEntry]]
+    total_count: int
 
 
 class Scratchpad:
@@ -150,6 +177,158 @@ class Scratchpad:
             for d in self.root.iterdir()
             if d.is_dir() and not d.name.startswith(".")
         ]
+
+    def _collect_entries_for_context(
+        self,
+        context_name: str,
+        artifact_type: str | None = None,
+        status: str | None = None,
+    ) -> list[ScratchpadEntry]:
+        """Collect entries from a single context.
+
+        Args:
+            context_name: The context name (project or task:name).
+            artifact_type: Filter by "chunk" or "narrative" (None = both).
+            status: Filter by status value (None = all statuses).
+
+        Returns:
+            List of ScratchpadEntry objects, sorted by created_at descending.
+        """
+        entries: list[ScratchpadEntry] = []
+        context_path = self.root / context_name
+
+        if not context_path.exists():
+            return entries
+
+        # Normalize status filter to uppercase
+        status_filter = status.upper() if status else None
+
+        # Collect chunks
+        if artifact_type is None or artifact_type == "chunk":
+            chunks_mgr = ScratchpadChunks(self, context_path)
+            for chunk_id in chunks_mgr.enumerate_chunks():
+                fm = chunks_mgr.parse_chunk_frontmatter(chunk_id)
+                if fm:
+                    entry_status = fm.status.value
+                    created = fm.created_at
+                else:
+                    entry_status = "UNKNOWN"
+                    created = ""
+
+                # Apply status filter
+                if status_filter and entry_status != status_filter:
+                    continue
+
+                entries.append(
+                    ScratchpadEntry(
+                        context_name=context_name,
+                        artifact_type="chunk",
+                        name=chunk_id,
+                        status=entry_status,
+                        created_at=created,
+                    )
+                )
+
+        # Collect narratives
+        if artifact_type is None or artifact_type == "narrative":
+            narratives_mgr = ScratchpadNarratives(self, context_path)
+            for narrative_id in narratives_mgr.enumerate_narratives():
+                fm = narratives_mgr.parse_narrative_frontmatter(narrative_id)
+                if fm:
+                    entry_status = fm.status.value
+                    created = fm.created_at
+                else:
+                    entry_status = "UNKNOWN"
+                    created = ""
+
+                # Apply status filter
+                if status_filter and entry_status != status_filter:
+                    continue
+
+                entries.append(
+                    ScratchpadEntry(
+                        context_name=context_name,
+                        artifact_type="narrative",
+                        name=narrative_id,
+                        status=entry_status,
+                        created_at=created,
+                    )
+                )
+
+        # Sort by created_at descending (newest first)
+        entries.sort(key=lambda e: e.created_at, reverse=True)
+        return entries
+
+    def list_all(
+        self,
+        artifact_type: str | None = None,
+        context_type: str | None = None,
+        status: str | None = None,
+    ) -> ScratchpadListResult:
+        """List all scratchpad entries across all contexts.
+
+        Args:
+            artifact_type: Filter by "chunk" or "narrative" (None = both).
+            context_type: Filter by "task" or "project" (None = all).
+            status: Filter by status value (None = all statuses).
+
+        Returns:
+            ScratchpadListResult with entries grouped by context.
+        """
+        entries_by_context: dict[str, list[ScratchpadEntry]] = {}
+        total_count = 0
+
+        for context_name in self.list_contexts():
+            # Apply context type filter
+            is_task = context_name.startswith("task:")
+            if context_type == "task" and not is_task:
+                continue
+            if context_type == "project" and is_task:
+                continue
+
+            entries = self._collect_entries_for_context(
+                context_name,
+                artifact_type=artifact_type,
+                status=status,
+            )
+
+            if entries:
+                entries_by_context[context_name] = entries
+                total_count += len(entries)
+
+        return ScratchpadListResult(
+            entries_by_context=entries_by_context,
+            total_count=total_count,
+        )
+
+    def list_context(
+        self,
+        context_name: str,
+        artifact_type: str | None = None,
+        status: str | None = None,
+    ) -> ScratchpadListResult:
+        """List scratchpad entries for a single context.
+
+        Args:
+            context_name: The context name (project or task:name).
+            artifact_type: Filter by "chunk" or "narrative" (None = both).
+            status: Filter by status value (None = all statuses).
+
+        Returns:
+            ScratchpadListResult with entries for the specified context only.
+        """
+        entries = self._collect_entries_for_context(
+            context_name,
+            artifact_type=artifact_type,
+            status=status,
+        )
+
+        if entries:
+            return ScratchpadListResult(
+                entries_by_context={context_name: entries},
+                total_count=len(entries),
+            )
+        return ScratchpadListResult(entries_by_context={}, total_count=0)
 
 
 class ScratchpadChunks:
