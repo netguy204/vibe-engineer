@@ -150,6 +150,26 @@ class ActiveInvestigation:
         return self._project_dir / "docs" / "investigations" / self.id / "OVERVIEW.md"
 
 
+# Migration context for templates
+@dataclass
+class ActiveMigration:
+    """Represents an active migration context for template rendering."""
+
+    migration_type: str
+    source_type: str  # "chunks" or "code_only"
+    _project_dir: pathlib.Path
+
+    @property
+    def migration_path(self) -> pathlib.Path:
+        """Return path to this migration's MIGRATION.md file."""
+        return self._project_dir / "docs" / "migrations" / self.migration_type / "MIGRATION.md"
+
+    @property
+    def migration_dir(self) -> pathlib.Path:
+        """Return path to this migration's directory."""
+        return self._project_dir / "docs" / "migrations" / self.migration_type
+
+
 # Chunk: docs/chunks/task_init_scaffolding - Task context for template rendering
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
@@ -179,18 +199,19 @@ class TaskContext:
 class TemplateContext:
     """Holds project-level context for template rendering.
 
-    Only one active artifact (chunk, narrative, subsystem, or investigation) can be set at a time.
+    Only one active artifact (chunk, narrative, subsystem, investigation, or migration) can be set at a time.
     """
 
     active_chunk: ActiveChunk | None = None
     active_narrative: ActiveNarrative | None = None
     active_subsystem: ActiveSubsystem | None = None
     active_investigation: ActiveInvestigation | None = None
+    active_migration: ActiveMigration | None = None
 
     def __post_init__(self):
         count = sum(
             1
-            for x in [self.active_chunk, self.active_narrative, self.active_subsystem, self.active_investigation]
+            for x in [self.active_chunk, self.active_narrative, self.active_subsystem, self.active_investigation, self.active_migration]
             if x is not None
         )
         if count > 1:

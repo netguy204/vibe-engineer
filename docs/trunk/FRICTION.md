@@ -203,3 +203,21 @@ completed.
 
 **Impact**: High—work appears failed when it's actually complete; requires investigation
 to understand the actual state.
+
+### F010: 2026-01-15 [context-resolution] Artifact commands lack project subset selection in task context
+
+When working in a task context with multiple active projects, artifact creation commands (like `/subsystem-discover`) don't offer a way to select which project(s) the artifact should attach to. The commands assume all active projects are relevant.
+
+**Observed friction**: Hesitated to start `/subsystem-discover` because of uncertainty about which projects would be affected. The fear of the artifact attaching to all projects—some potentially irrelevant—created a barrier to starting the workflow at all.
+
+**Expected behavior**: Artifact creation commands in task context should either:
+1. Prompt for project selection upfront, or
+2. Allow specifying a project subset as an argument
+
+**Impact**: Medium—creates hesitation and workflow friction, but has workarounds (cd into specific project first).
+
+### F011: 2026-01-15 [context-resolution] Subsystem status command fails in task context
+
+When running 've subsystem status savings_accounting STABLE' from a task directory, the command failed with 'Subsystem not found in docs/subsystems/'. The subsystem existed in the artifacts repo, not the task's local docs/subsystems/. The command only searched the task-level directory instead of resolving the subsystem in the artifacts repository where it was actually defined.
+
+**Impact**: High
