@@ -3,15 +3,15 @@ description: Collaboratively refine a high-level ambition into a set of chunk pr
 ---
 {% set source_template = "narrative-create.md.jinja2" %}
 {% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands #}
+{# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts #}
 ## Tips
 
 {% include "partials/common-tips.md.jinja2" %}
-{% if task_context %}
 
-**Task Context:** This command creates artifacts in the external artifact repo
-(`{{ external_artifact_repo }}`). The narrative OVERVIEW.md will be created there.
-Proposed chunks from this narrative will span participating projects.
-{% endif %}
+**Note:** Narratives are stored in the user-global scratchpad at `~/.vibe/scratchpad/`.
+In project context, narratives are stored in `~/.vibe/scratchpad/[project]/narratives/`.
+In task context, narratives are stored in `~/.vibe/scratchpad/task:[name]/narratives/`.
 
 ## Instructions
 
@@ -25,9 +25,13 @@ $ARGUMENTS
    be 32 characters or less and words should be underscore separated. We will
    refer to this shortname later as <shortname>.
 
-2. Run `ve narrative create <shortname>` and note the created directory name. We
-   will refer to this name later as <narrative_directory>.
+2. Run `ve narrative create <shortname>` and note the created path. The narrative
+   will be created in the scratchpad. Example output:
+   ```
+   Created ~/.vibe/scratchpad/[project]/narratives/<shortname>
+   ```
+   We will refer to this path later as <narrative_path>.
 
-3. Complete the template in <narrative_directory>/OVERVIEW.md with the
+3. Complete the template in <narrative_path>/OVERVIEW.md with the
    information supplied by the operator and through further clarification
    interactions with the operator. 
