@@ -69,6 +69,8 @@ chunks:
   relationship: implements
 - chunk_id: taskdir_context_cmds
   relationship: implements
+- chunk_id: scratchpad_storage
+  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -126,6 +128,27 @@ code_references:
   compliance: COMPLIANT
 - ref: src/models.py#ArtifactType
   implements: Workflow artifact type enum (moved from artifact_ordering.py)
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#Scratchpad
+  implements: User-global scratchpad storage manager (variant of workflow artifact pattern)
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#ScratchpadChunks
+  implements: Scratchpad chunk manager (follows workflow artifact manager pattern)
+  compliance: COMPLIANT
+- ref: src/scratchpad.py#ScratchpadNarratives
+  implements: Scratchpad narrative manager (follows workflow artifact manager pattern)
+  compliance: COMPLIANT
+- ref: src/models.py#ScratchpadChunkStatus
+  implements: Scratchpad chunk lifecycle states
+  compliance: COMPLIANT
+- ref: src/models.py#ScratchpadChunkFrontmatter
+  implements: Scratchpad chunk frontmatter schema
+  compliance: COMPLIANT
+- ref: src/models.py#ScratchpadNarrativeStatus
+  implements: Scratchpad narrative lifecycle states
+  compliance: COMPLIANT
+- ref: src/models.py#ScratchpadNarrativeFrontmatter
+  implements: Scratchpad narrative frontmatter schema
   compliance: COMPLIANT
 - ref: src/external_refs.py
   implements: Consolidated external artifact reference utilities

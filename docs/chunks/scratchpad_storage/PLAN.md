@@ -8,151 +8,308 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new `src/scratchpad.py` module that provides user-global scratchpad storage at `~/.vibe/scratchpad/`. This module will be independent of git repositories (per DEC-002) and provide CRUD operations for scratchpad chunks and narratives.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The implementation follows the established workflow_artifacts subsystem pattern (manager class with `enumerate_`, `create_`, `parse_frontmatter` methods) but adapts it for user-global storage rather than project-local storage. Key differences:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Storage location**: `~/.vibe/scratchpad/` instead of `docs/chunks/`
+2. **Project routing**: Derive project name from repository path or task context
+3. **Simplified frontmatter**: Lighter-weight than in-repo chunks (no code_references, subsystems, etc.)
+4. **No external.yaml pattern**: Scratchpad entries are personal, not cross-repo artifacts
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/scratchpad_storage/GOAL.md)
-with references to the files that you expect to touch.
--->
+The models will be Pydantic-based (following workflow_artifacts patterns) with status enums and frontmatter schemas. Tests will use temporary directories to avoid polluting the real `~/.vibe/` location.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS a new variant of the workflow artifact pattern for user-global storage. Will follow the manager class interface pattern but with scratchpad-specific semantics.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system for rendering GOAL.md and OVERVIEW.md files for scratchpad entries.
 
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Note: The scratchpad module intentionally does NOT participate in the cross_repo_operations subsystem - scratchpad entries are personal and local to the user.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define ScratchpadChunkStatus and ScratchpadChunkFrontmatter models
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create Pydantic models in `src/models.py` for scratchpad chunk frontmatter. The scratchpad chunk has simpler frontmatter than in-repo chunks (no code_references, subsystems, investigations, friction_entries):
 
-Example:
+```python
+class ScratchpadChunkStatus(StrEnum):
+    IMPLEMENTING = "IMPLEMENTING"  # Currently working on
+    ACTIVE = "ACTIVE"  # Work completed but entry retained
+    ARCHIVED = "ARCHIVED"  # Moved to archive, kept for reference
 
-### Step 1: Define the SegmentHeader struct
+class ScratchpadChunkFrontmatter(BaseModel):
+    status: ScratchpadChunkStatus
+    ticket: str | None = None  # Optional Linear ticket reference
+    success_criteria: list[str] = []  # Goals for this work
+    created_at: str  # ISO timestamp
+```
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/models.py`
 
-Location: src/segment/format.rs
+### Step 2: Define ScratchpadNarrativeStatus and ScratchpadNarrativeFrontmatter models
 
-### Step 2: Implement header serialization
+Create Pydantic models for scratchpad narrative frontmatter:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+```python
+class ScratchpadNarrativeStatus(StrEnum):
+    DRAFTING = "DRAFTING"  # Planning multi-chunk work
+    ACTIVE = "ACTIVE"  # Chunks being worked on
+    ARCHIVED = "ARCHIVED"  # Moved to archive
 
-### Step 3: ...
+class ScratchpadNarrativeFrontmatter(BaseModel):
+    status: ScratchpadNarrativeStatus
+    ambition: str | None = None  # High-level goal
+    chunk_prompts: list[str] = []  # Planned work items
+    created_at: str  # ISO timestamp
+```
 
+Location: `src/models.py`
+
+### Step 3: Create the Scratchpad class with storage initialization
+
+Create `src/scratchpad.py` with the `Scratchpad` class. This class manages the `~/.vibe/scratchpad/` directory structure and provides project/task routing.
+
+```python
+class Scratchpad:
+    def __init__(self, scratchpad_root: Path | None = None):
+        # Default to ~/.vibe/scratchpad/ but allow override for testing
+        self.root = scratchpad_root or Path.home() / ".vibe" / "scratchpad"
+
+    def ensure_initialized(self):
+        """Create scratchpad directory structure if it doesn't exist."""
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def derive_project_name(repo_path: Path) -> str:
+        """Derive project name from repository path (uses directory name)."""
+
+    @staticmethod
+    def get_task_prefix(task_name: str) -> str:
+        """Format task name as 'task:' prefix."""
+        return f"task:{task_name}"
+```
+
+Location: `src/scratchpad.py`
+
+### Step 4: Implement project and task routing
+
+Add methods to resolve the correct scratchpad subdirectory based on context:
+
+```python
+def get_project_dir(self, project_name: str) -> Path:
+    """Get path to project's scratchpad directory."""
+    return self.root / project_name
+
+def get_task_dir(self, task_name: str) -> Path:
+    """Get path to task's scratchpad directory (prefixed with 'task:')."""
+    return self.root / f"task:{task_name}"
+
+def resolve_context(self,
+    project_path: Path | None = None,
+    task_name: str | None = None
+) -> Path:
+    """Resolve scratchpad directory from context.
+
+    Priority:
+    1. task_name (if provided) -> task:[task_name]/
+    2. project_path (if provided) -> [derived_project_name]/
+    3. Current directory (if VE-initialized) -> [derived_project_name]/
+    """
+```
+
+Location: `src/scratchpad.py`
+
+### Step 5: Implement ScratchpadChunks manager class
+
+Create the `ScratchpadChunks` class following the workflow_artifacts manager pattern:
+
+```python
+class ScratchpadChunks:
+    def __init__(self, scratchpad: Scratchpad, context_path: Path):
+        self.scratchpad = scratchpad
+        self.context_path = context_path
+        self.chunks_dir = context_path / "chunks"
+
+    def enumerate_chunks(self) -> list[str]:
+        """List chunk directory names."""
+
+    def create_chunk(self, short_name: str, ticket: str | None = None) -> Path:
+        """Create a new scratchpad chunk with GOAL.md."""
+
+    def parse_chunk_frontmatter(self, chunk_id: str) -> ScratchpadChunkFrontmatter | None:
+        """Parse GOAL.md frontmatter."""
+
+    def list_chunks(self) -> list[str]:
+        """List chunks ordered by creation time (newest first)."""
+
+    def archive_chunk(self, chunk_id: str) -> Path:
+        """Move chunk to archived status."""
+```
+
+Location: `src/scratchpad.py`
+
+### Step 6: Implement ScratchpadNarratives manager class
+
+Create the `ScratchpadNarratives` class:
+
+```python
+class ScratchpadNarratives:
+    def __init__(self, scratchpad: Scratchpad, context_path: Path):
+        self.scratchpad = scratchpad
+        self.context_path = context_path
+        self.narratives_dir = context_path / "narratives"
+
+    def enumerate_narratives(self) -> list[str]:
+        """List narrative directory names."""
+
+    def create_narrative(self, short_name: str) -> Path:
+        """Create a new scratchpad narrative with OVERVIEW.md."""
+
+    def parse_narrative_frontmatter(self, narrative_id: str) -> ScratchpadNarrativeFrontmatter | None:
+        """Parse OVERVIEW.md frontmatter."""
+
+    def list_narratives(self) -> list[str]:
+        """List narratives ordered by creation time (newest first)."""
+
+    def archive_narrative(self, narrative_id: str) -> Path:
+        """Move narrative to archived status."""
+```
+
+Location: `src/scratchpad.py`
+
+### Step 7: Create scratchpad chunk template
+
+Create a minimal GOAL.md template for scratchpad chunks. This is simpler than in-repo chunk templates:
+
+```yaml
 ---
+status: IMPLEMENTING
+ticket: null
+success_criteria: []
+created_at: "{{ created_at }}"
+---
+# {{ short_name }}
 
-**BACKREFERENCE COMMENTS**
+## Goal
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+<!-- What are you trying to accomplish? -->
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+## Success Criteria
 
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
-```
+<!-- When is this work done? List testable outcomes. -->
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+## Notes
+
+<!-- Working notes, context, decisions made along the way. -->
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+Location: `src/templates/scratchpad_chunk/GOAL.md.jinja2`
+
+### Step 8: Create scratchpad narrative template
+
+Create a minimal OVERVIEW.md template for scratchpad narratives:
+
+```yaml
+---
+status: DRAFTING
+ambition: null
+chunk_prompts: []
+created_at: "{{ created_at }}"
+---
+# {{ short_name }}
+
+## Ambition
+
+<!-- What larger goal does this multi-chunk effort serve? -->
+
+## Chunks
+
+<!-- Work items to accomplish this ambition. -->
+
+## Progress
+
+<!-- Notes on progress, blockers, decisions. -->
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
--->
+
+Location: `src/templates/scratchpad_narrative/OVERVIEW.md.jinja2`
+
+### Step 9: Write unit tests for models
+
+Test the Pydantic models for validation:
+
+- Valid status enum values
+- Frontmatter parsing with all fields
+- Frontmatter parsing with minimal fields
+- Validation errors for invalid status
+
+Location: `tests/test_scratchpad.py`
+
+### Step 10: Write unit tests for Scratchpad class
+
+Test storage and routing:
+
+- `ensure_initialized()` creates directory structure
+- `derive_project_name()` extracts correct name from paths
+- `get_task_prefix()` formats task names correctly
+- `resolve_context()` routes to correct directory
+
+Location: `tests/test_scratchpad.py`
+
+### Step 11: Write unit tests for ScratchpadChunks
+
+Test CRUD operations:
+
+- `create_chunk()` creates directory and GOAL.md
+- `create_chunk()` rejects duplicate names
+- `enumerate_chunks()` lists directories correctly
+- `list_chunks()` orders by creation time
+- `parse_chunk_frontmatter()` parses valid frontmatter
+- `parse_chunk_frontmatter()` handles missing/invalid files
+- `archive_chunk()` updates status
+
+Location: `tests/test_scratchpad.py`
+
+### Step 12: Write unit tests for ScratchpadNarratives
+
+Test CRUD operations:
+
+- `create_narrative()` creates directory and OVERVIEW.md
+- `create_narrative()` rejects duplicate names
+- `enumerate_narratives()` lists directories correctly
+- `list_narratives()` orders by creation time
+- `parse_narrative_frontmatter()` parses valid frontmatter
+- `parse_narrative_frontmatter()` handles missing/invalid files
+- `archive_narrative()` updates status
+
+Location: `tests/test_scratchpad.py`
+
+### Step 13: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the actual files created.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+No dependencies on other chunks. This chunk creates new functionality that doesn't modify existing code.
 
-If there are no dependencies, delete this section.
--->
+External libraries already in use:
+- `pydantic` - for model validation
+- `yaml` - for frontmatter parsing
+- `jinja2` - for template rendering (via template_system)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Project name derivation**: Using the directory name as project name is simple but could collide if users have multiple projects with the same directory name in different locations. For v1, accept this limitation and document it.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Task context detection**: Need to determine how the scratchpad module learns it's in a task context. Options:
+   - Pass task_name explicitly to API
+   - Check for `.ve-task.yaml` in working directory
+   Decision: Use explicit task_name parameter for clarity; let CLI layer handle detection.
+
+3. **Archive semantics**: Should archived entries be moved to a separate directory, or just have their status changed? Decision: Just change status; moving files adds complexity for marginal benefit.
+
+4. **Template rendering**: The template_system subsystem is designed for in-repo templates. Need to verify it works for user-global scratchpad templates, or add a minimal inline template approach if needed.
 
 ## Deviations
 
