@@ -1,5 +1,4 @@
 """Tests for scratchpad CLI commands."""
-# Chunk: docs/chunks/scratchpad_cross_project - CLI tests for scratchpad list command
 
 from pathlib import Path
 

@@ -1,5 +1,4 @@
 """CLI integration tests for scratchpad-based chunk commands."""
-# Chunk: docs/chunks/scratchpad_chunk_commands - CLI integration tests
 
 from pathlib import Path
 import pytest

@@ -84,8 +84,7 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet.
 
-{# Chunk: docs/chunks/bug_type_field - Optional backreferences for implementation bugs #}
-   **Bug type guidance for code_references:**
+**Bug type guidance for code_references:**
    Check the chunk's `bug_type` field in GOAL.md frontmatter:
    - If `bug_type: semantic` (or `bug_type: null`): Code references are **required**.
      The fix adds to code understanding and should be traceable.
@@ -133,7 +132,6 @@ The chunk GOAL.md is updated in the external artifact repo (`{{ external_artifac
     recommendations based on each overlapping subsystem's status. For semantic changes,
     always get operator confirmation before expanding scope or updating subsystem documentation.
 
-{# Chunk: docs/chunks/bug_type_field - Bug type-aware status transition #}
 11. **Determine final status based on bug_type.** Check the chunk's `bug_type`
     field in GOAL.md frontmatter to determine the correct final status:
 

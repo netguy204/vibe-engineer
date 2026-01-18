@@ -32,7 +32,6 @@ STATUS VALUES:
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only
 
-{# Chunk: docs/chunks/background_keyword_semantic - Background workflow guidance #}
 FUTURE CHUNK APPROVAL REQUIREMENT:
 ALL FUTURE chunks require operator approval before committing or injecting.
 After refining this GOAL.md, you MUST present it to the operator and wait for
@@ -53,7 +52,6 @@ CODE_REFERENCES:
 - Populated after implementation, before PR
 - Uses symbolic references to identify code locations
 {% if task_context %}
-{# Chunk: docs/chunks/coderef_format_prompting - Full org/repo format examples #}
 - Format: {org/repo}::{file_path}#{symbol_path}
 - The :: after org/repo separates project from path; :: within symbol indicates nesting
 - IMPORTANT: Project qualifier MUST be in org/repo format (e.g., "acme/project::")
@@ -95,7 +93,6 @@ INVESTIGATION:
   hypotheses tested, and decisions made during exploration.
 - Validated by `ve chunk validate` to ensure referenced investigations exist.
 
-{# Chunk: docs/chunks/bidirectional_refs - Subsystems field and documentation #}
 SUBSYSTEMS:
 - Optional list of subsystem references that this chunk relates to
 - Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
@@ -127,7 +124,6 @@ FRICTION_ENTRIES:
 - Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
 - When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
 
-{# Chunk: docs/chunks/bug_type_field - BUG_TYPE field documentation #}
 BUG_TYPE:
 - Optional field for bug fix chunks that guides agent behavior at completion
 - Values: semantic | implementation | null (for non-bug chunks)
@@ -148,7 +144,6 @@ CHUNK ARTIFACTS:
 - Unlike code in src/, chunk artifacts are not expected to be maintained long-term
 - Examples: data migration scripts, one-time fixups, analysis tools used during implementation
 
-{# Chunk: docs/chunks/ordering_field_clarity - CREATED_AFTER field documentation #}
 CREATED_AFTER:
 - Auto-populated by `ve chunk create` - DO NOT MODIFY manually
 - Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)

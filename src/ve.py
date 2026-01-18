@@ -16,7 +16,6 @@ from project import Project
 from subsystems import Subsystems
 from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus, ArtifactType
 from task_init import TaskInit
-# Chunk: docs/chunks/scratchpad_narrative_commands - Removed create_task_narrative, list_task_narratives, TaskNarrativeError
 from task_utils import (
     is_task_directory,
     create_task_chunk,
@@ -899,8 +898,7 @@ def narrative():
     pass
 
 
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
+# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -945,8 +943,7 @@ def create_narrative(short_name, project_dir, projects):
     click.echo(f"Created {narrative_path}")
 
 
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
+# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
 @narrative.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_narratives(project_dir):
@@ -980,8 +977,7 @@ def list_narratives(project_dir):
         click.echo(f"{narrative_path} [{status}]")
 
 
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
+# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
 @narrative.command()
 @click.argument("narrative_id")
 @click.argument("new_status", required=False, default=None)
@@ -1037,8 +1033,7 @@ def status(narrative_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
+# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
 @narrative.command("compact")
 @click.argument("chunk_ids", nargs=-1, required=True)
 @click.option("--name", required=True, help="Short name for the consolidated narrative")
@@ -1123,8 +1118,7 @@ def compact(chunk_ids, name, description, project_dir):
         click.echo(f"  - {chunk_name}")
 
 
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
+# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
 @narrative.command("update-refs")
 @click.argument("narrative_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -3110,7 +3104,7 @@ def analyze(project_dir, tags):
 
 
 # Scratchpad commands
-# Chunk: docs/chunks/scratchpad_cross_project - Cross-project scratchpad queries
+# Subsystem: docs/subsystems/workflow_artifacts - Cross-project scratchpad queries
 @cli.group()
 def scratchpad():
     """Scratchpad commands - user-global work notes."""

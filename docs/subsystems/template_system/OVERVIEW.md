@@ -1,27 +1,5 @@
 ---
 status: STABLE
-proposed_chunks: []
-chunks:
-- chunk_id: project_init_command
-  relationship: implements
-- chunk_id: narrative_cli_commands
-  relationship: implements
-- chunk_id: chunk_template_expansion
-  relationship: implements
-- chunk_id: subsystem_cli_scaffolding
-  relationship: implements
-- chunk_id: subsystem_template
-  relationship: uses
-- chunk_id: template_unified_module
-  relationship: implements
-- chunk_id: migrate_chunks_template
-  relationship: implements
-- chunk_id: template_system_consolidation
-  relationship: implements
-- chunk_id: template_drift_prevention
-  relationship: implements
-- chunk_id: scratchpad_storage
-  relationship: uses
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass with is_ve_source_repo flag

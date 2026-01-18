@@ -4,7 +4,6 @@ description: Update code references in the current chunk and move both the PLAN.
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -63,8 +62,7 @@ search for it - run it directly via Bash.
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet.
 
-
-   **Bug type guidance for code_references:**
+**Bug type guidance for code_references:**
    Check the chunk's `bug_type` field in GOAL.md frontmatter:
    - If `bug_type: semantic` (or `bug_type: null`): Code references are **required**.
      The fix adds to code understanding and should be traceable.
@@ -111,7 +109,6 @@ search for it - run it directly via Bash.
 10. Report subsystem analysis results to operator with concrete next-step
     recommendations based on each overlapping subsystem's status. For semantic changes,
     always get operator confirmation before expanding scope or updating subsystem documentation.
-
 
 11. **Determine final status based on bug_type.** Check the chunk's `bug_type`
     field in GOAL.md frontmatter to determine the correct final status:

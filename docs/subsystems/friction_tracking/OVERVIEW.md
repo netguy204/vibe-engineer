@@ -1,17 +1,5 @@
 ---
 status: DOCUMENTED
-proposed_chunks: []
-chunks:
-- chunk_id: friction_template_and_cli
-  relationship: implements
-- chunk_id: friction_chunk_workflow
-  relationship: implements
-- chunk_id: friction_claude_docs
-  relationship: implements
-- chunk_id: friction_noninteractive
-  relationship: implements
-- chunk_id: friction_chunk_linking
-  relationship: implements
 code_references:
 - ref: src/friction.py#FrictionStatus
   implements: Derived status enum for friction entries (OPEN/ADDRESSED/RESOLVED)

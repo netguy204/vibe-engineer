@@ -4,7 +4,6 @@ description: Create a new chunk of work and refine its goal.
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -67,7 +66,6 @@ completely in order:
    **Note:** Scratchpad chunks have a simpler schema than in-repo chunks. They
    include: `status`, `ticket`, `success_criteria`, and `created_at`. You don't
    need to set code_paths, code_references, or subsystem references.
-
 
 5. **Check if this is a bug fix.** Look for these signals that indicate bug fix
    work: "bug", "fix", "broken", "error", "issue", "defect", "regression",

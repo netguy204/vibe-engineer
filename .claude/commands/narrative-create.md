@@ -4,15 +4,12 @@ description: Collaboratively refine a high-level ambition into a set of chunk pr
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
 This file is rendered from: src/templates/commands/narrative-create.md.jinja2
 Edit the source template, then run `ve init` to regenerate.
 -->
-
-
 
 
 ## Tips

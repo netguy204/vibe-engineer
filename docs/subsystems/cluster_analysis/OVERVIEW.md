@@ -1,19 +1,5 @@
 ---
 status: DOCUMENTED
-proposed_chunks: []
-chunks:
-- chunk_id: cluster_list_command
-  relationship: implements
-- chunk_id: cluster_naming_guidance
-  relationship: implements
-- chunk_id: cluster_prefix_suggest
-  relationship: implements
-- chunk_id: cluster_rename
-  relationship: implements
-- chunk_id: cluster_seed_naming
-  relationship: implements
-- chunk_id: cluster_subsystem_prompt
-  relationship: implements
 code_references:
 - ref: src/cluster_analysis.py#ClusterInfo
   implements: Cluster data model with prefix, chunks, and characteristics

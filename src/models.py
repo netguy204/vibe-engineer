@@ -645,7 +645,6 @@ class FrictionEntryReference(BaseModel):
 
 # Scratchpad storage models
 # Subsystem: docs/subsystems/workflow_artifacts - User-global scratchpad storage variant
-# Chunk: docs/chunks/scratchpad_storage - Foundation for scratchpad infrastructure
 
 
 class ScratchpadChunkStatus(StrEnum):

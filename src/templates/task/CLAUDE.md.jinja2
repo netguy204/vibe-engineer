@@ -25,9 +25,12 @@ Run `ve chunk list` to see task-level chunks. Use `/help` for detailed command g
 
 ## Backreferences
 
-When implementing, add backreferences to the **project-local** path:
+When implementing code that relates to a documented subsystem, add backreference
+comments to link the code to its governing documentation:
 ```python
-# Chunk: docs/chunks/<chunk_name>
+# Subsystem: docs/subsystems/<subsystem_name> - Brief description
 ```
 
-This points to the project's external.yaml, which resolves to the external repo.
+Subsystems are the only valid code backreference type. Chunks and narratives are
+ephemeral work notes stored in user-global scratchpad, not permanent in-repo
+documentation.

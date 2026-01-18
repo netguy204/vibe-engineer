@@ -23,11 +23,14 @@ $ARGUMENTS
 
 ## Background
 
-Code backreferences (`# Chunk: ...`) accumulate over time, creating "reference decay":
-- Files with many chunk refs drip-feed context rather than providing high-value understanding
-- Narratives provide PURPOSE context (why code exists architecturally)
-- Chunks provide HISTORY context (what work created the code)
-- Consolidating chunks into narratives reduces noise while preserving archaeology
+**NOTE:** This command is for legacy cleanup only. In the current workflow:
+- Chunks and narratives are stored in user-global scratchpad (`~/.vibe/scratchpad/`)
+- Only subsystems (`# Subsystem:`) are valid code backreferences
+- `# Chunk:` and `# Narrative:` backreferences should be removed when found
+
+Use this command to:
+1. Clean up legacy `# Chunk:` backreferences from older code
+2. Archive related chunks for historical context
 
 ## Phase 1: Analyze Current State
 
@@ -101,29 +104,21 @@ Otherwise, cluster the chunks to find related groups:
    > Files with backreferences to update:
    > - src/file.py: N refs -> 1 narrative ref"
 
-## Phase 4: Update Code Backreferences
+## Phase 4: Remove Legacy Backreferences
 
-1. **Ask the operator** if they want to update backreferences now:
-   > "Would you like to update the code backreferences now?
-   > This will replace multiple `# Chunk:` comments with a single `# Narrative:` comment
-   > in affected files.
-   >
-   > Run: `ve narrative update-refs [narrative_name]`"
+1. **Ask the operator** if they want to clean up backreferences now:
+   > "Would you like to remove legacy `# Chunk:` backreferences now?
+   > These are no longer valid since chunks are stored in the user-global scratchpad.
+   > If code relates to a subsystem, it should use `# Subsystem:` instead."
 
-2. **If the operator agrees**, run the update:
+2. **If the operator agrees**, search for and remove legacy references:
    ```
-   ve narrative update-refs narrative_name
+   grep -r "# Chunk:" src/ tests/ --include="*.py"
    ```
 
-   Or for a dry run first:
-   ```
-   ve narrative update-refs narrative_name --dry-run
-   ```
-
-3. **Report the changes**:
-   > "Updated backreferences in N file(s):
-   > - src/file.py: replaced X chunk refs with 1 narrative ref
-   > - ..."
+3. **For each file with legacy backreferences**:
+   - If the code relates to a documented subsystem, replace with `# Subsystem:` reference
+   - Otherwise, simply remove the `# Chunk:` comment
 
 ## Phase 5: Refine Narrative Content (Optional)
 

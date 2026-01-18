@@ -4,7 +4,6 @@ description: Capture a friction point for later pattern analysis
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 

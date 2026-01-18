@@ -1,8 +1,4 @@
-"""Tests for narrative commands with scratchpad storage.
-
-# Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
-# Narrative: docs/narratives/global_scratchpad - User-global scratchpad for flow artifacts
-"""
+"""Tests for narrative commands with scratchpad storage."""
 
 import pathlib
 import pytest

@@ -4,7 +4,6 @@ This module provides chunk command implementations that operate on scratchpad
 storage (~/.vibe/scratchpad/) instead of in-repo docs/chunks/. These commands
 support the workflow where personal work notes live outside git repositories.
 """
-# Chunk: docs/chunks/scratchpad_chunk_commands - Scratchpad-based chunk CLI commands
 # Subsystem: docs/subsystems/workflow_artifacts - User-global scratchpad storage variant
 
 from __future__ import annotations

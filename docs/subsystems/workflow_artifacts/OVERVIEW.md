@@ -1,80 +1,5 @@
 ---
 status: STABLE
-chunks:
-- chunk_id: implement_chunk_start
-  relationship: implements
-- chunk_id: narrative_cli_commands
-  relationship: implements
-- chunk_id: subsystem_schemas_and_model
-  relationship: implements
-- chunk_id: subsystem_cli_scaffolding
-  relationship: implements
-- chunk_id: subsystem_status_transitions
-  relationship: implements
-- chunk_id: investigation_commands
-  relationship: implements
-- chunk_id: proposed_chunks_frontmatter
-  relationship: implements
-- chunk_id: cross_repo_schemas
-  relationship: implements
-- chunk_id: chunk_create_task_aware
-  relationship: implements
-- chunk_id: chunk_frontmatter_model
-  relationship: implements
-- chunk_id: ordering_field
-  relationship: implements
-- chunk_id: artifact_ordering_index
-  relationship: implements
-- chunk_id: populate_created_after
-  relationship: implements
-- chunk_id: artifact_list_ordering
-  relationship: implements
-- chunk_id: artifact_index_no_git
-  relationship: implements
-- chunk_id: causal_ordering_migration
-  relationship: implements
-- chunk_id: subsystem_docs_update
-  relationship: implements
-- chunk_id: ordering_remove_seqno
-  relationship: implements
-- chunk_id: update_crossref_format
-  relationship: implements
-- chunk_id: ordering_active_only
-  relationship: implements
-- chunk_id: external_chunk_causal
-  relationship: implements
-- chunk_id: rename_chunk_start_to_create
-  relationship: implements
-- chunk_id: valid_transitions
-  relationship: implements
-- chunk_id: consolidate_ext_refs
-  relationship: implements
-- chunk_id: consolidate_ext_ref_utils
-  relationship: implements
-- chunk_id: external_resolve_all_types
-  relationship: implements
-- chunk_id: sync_all_workflows
-  relationship: implements
-- chunk_id: task_aware_narrative_cmds
-  relationship: implements
-- chunk_id: task_aware_investigations
-  relationship: implements
-- chunk_id: task_aware_subsystem_cmds
-  relationship: implements
-- chunk_id: task_status_command
-  relationship: implements
-- chunk_id: cluster_prefix_suggest
-  relationship: implements
-- chunk_id: selective_artifact_friction
-  relationship: implements
-- chunk_id: taskdir_context_cmds
-  relationship: implements
-- chunk_id: scratchpad_storage
-  relationship: implements
-- chunk_id: scratchpad_narrative_commands
-  relationship: implements
-- chunk_id: scratchpad_cross_project
-  relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -134,7 +59,8 @@ code_references:
   implements: Workflow artifact type enum (moved from artifact_ordering.py)
   compliance: COMPLIANT
 - ref: src/scratchpad.py#Scratchpad
-  implements: User-global scratchpad storage manager (variant of workflow artifact pattern)
+  implements: User-global scratchpad storage manager (variant of workflow artifact
+    pattern)
   compliance: COMPLIANT
 - ref: src/scratchpad.py#ScratchpadChunks
   implements: Scratchpad chunk manager (follows workflow artifact manager pattern)
@@ -161,7 +87,8 @@ code_references:
   implements: Result container for cross-project scratchpad queries with grouping
   compliance: COMPLIANT
 - ref: src/scratchpad.py#Scratchpad::list_all
-  implements: Cross-project scratchpad listing with filtering (follows ve list --all pattern)
+  implements: Cross-project scratchpad listing with filtering (follows ve list --all
+    pattern)
   compliance: COMPLIANT
 - ref: src/scratchpad.py#Scratchpad::list_context
   implements: Single-context scratchpad listing (current project mode)
@@ -317,62 +244,6 @@ code_references:
 - ref: src/ve.py#activate
   implements: CLI handler for task-aware chunk activation
   compliance: COMPLIANT
-proposed_chunks:
-- prompt: Add ChunkStatus StrEnum and ChunkFrontmatter Pydantic model to models.py.
-    Define chunk lifecycle states (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL)
-    as a StrEnum. Create ChunkFrontmatter model with status, ticket, parent_chunk,
-    code_paths, code_references, narrative, subsystems, and proposed_chunks fields.
-    Update chunks.py to use the new model for frontmatter parsing and validation.
-  chunk_directory: chunk_frontmatter_model
-- prompt: Add VALID_CHUNK_TRANSITIONS, VALID_NARRATIVE_TRANSITIONS, and VALID_INVESTIGATION_TRANSITIONS
-    dicts to models.py. Follow the pattern established by VALID_STATUS_TRANSITIONS
-    for subsystems. Update the respective manager classes to validate transitions
-    when status changes.
-  chunk_directory: valid_transitions
-- prompt: Rename ve chunk start to ve chunk create for CLI consistency. Update src/ve.py
-    to rename the 'start' command to 'create' while maintaining backward compatibility
-    via an alias. Update all documentation and slash commands that reference 'chunk
-    start'.
-  chunk_directory: rename_chunk_start_to_create
-- prompt: 'Consolidate external reference model: Replace ExternalChunkRef with a generic
-    ExternalArtifactRef model that works for any workflow type. Add artifact_type
-    field (chunk, narrative, investigation, subsystem) and artifact_id field (replaces
-    chunk field). Update existing chunk external reference code to use the new model.
-    This enables code reuse across all workflow types.'
-  chunk_directory: consolidate_ext_refs
-- prompt: 'Consolidate external reference utilities: Create generic external artifact
-    utilities in a new src/external_refs.py module. Include is_external_artifact(path,
-    artifact_type), load_external_ref(path), create_external_yaml(path, ref), and
-    detect_artifact_type_from_path(path). Migrate chunk-specific code from task_utils.py
-    to use these generic utilities.'
-  chunk_directory: consolidate_ext_ref_utils
-- prompt: 'Extend ve sync to all workflow types: Update ve sync to find and update
-    external.yaml files in docs/narratives/, docs/investigations/, and docs/subsystems/
-    directories, not just docs/chunks/. Use the consolidated external reference utilities.'
-  chunk_directory: sync_all_workflows
-- prompt: 'Extend ve external resolve to all workflow types: Update ve external resolve
-    to work with any workflow artifact type. Detect type from directory path (chunks/,
-    narratives/, investigations/, subsystems/). Display appropriate files (GOAL.md+PLAN.md
-    for chunks, OVERVIEW.md for others). Use consolidated external reference utilities.'
-  chunk_directory: external_resolve_all_types
-- prompt: 'Task-aware narrative commands: Extend ve narrative create and ve narrative
-    list to detect task directory context. When in task directory: create narrative
-    in external repo with dependents, create external.yaml in projects; list from
-    external repo showing dependents. Follow the pattern established by chunk task-aware
-    commands.'
-  chunk_directory: task_aware_narrative_cmds
-- prompt: 'Task-aware investigation commands: Extend ve investigation create and ve
-    investigation list to detect task directory context. When in task directory: create
-    investigation in external repo with dependents, create external.yaml in projects;
-    list from external repo showing dependents. Follow the pattern established by
-    chunk task-aware commands.'
-  chunk_directory: task_aware_investigations
-- prompt: 'Task-aware subsystem commands: Extend ve subsystem discover and ve subsystem
-    list to detect task directory context. When in task directory: create subsystem
-    in external repo with dependents, create external.yaml in projects; list from
-    external repo showing dependents. Follow the pattern established by chunk task-aware
-    commands.'
-  chunk_directory: task_aware_subsystem_cmds
 created_after:
 - template_system
 ---

@@ -1,5 +1,4 @@
 """Tests for scratchpad_commands module."""
-# Chunk: docs/chunks/scratchpad_chunk_commands - Unit tests for scratchpad command functions
 
 from pathlib import Path
 import pytest

@@ -4,7 +4,6 @@ description: Rename all chunks matching a prefix to use a new prefix.
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -39,7 +38,6 @@ Parse the arguments to extract `<old_prefix>` and `<new_prefix>`. The format sho
 2. Review the output, which shows:
    - **Directories to be renamed**: Chunk directories that will be renamed
    - **Frontmatter references to update**: `created_after`, subsystem `chunks`, narrative/investigation `proposed_chunks`
-   - **Code backreferences to update**: `# Chunk: docs/chunks/...` comments in source files
    - **Prose references for manual review**: Potential mentions in documentation that may need updating
 
 3. If no chunks match the prefix or there are validation errors (collisions, dirty working tree), the command will fail with an error message. Address any issues before proceeding.
@@ -60,7 +58,6 @@ Execute the rename to apply all automatable changes:
 2. The command will automatically:
    - Rename chunk directories
    - Update all frontmatter references (`created_after`, subsystem `chunks`, narrative/investigation `proposed_chunks`)
-   - Update code backreferences (`# Chunk: docs/chunks/...` comments) in source files
 
 3. Verify the automated changes:
    - Run `ve chunk list` to see the renamed chunks

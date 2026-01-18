@@ -1,6 +1,4 @@
 """Tests for scratchpad storage module."""
-# Chunk: docs/chunks/scratchpad_storage - Unit tests for scratchpad infrastructure
-# Chunk: docs/chunks/scratchpad_cross_project - Cross-project listing tests
 
 from datetime import datetime
 from pathlib import Path

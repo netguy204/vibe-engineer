@@ -1,8 +1,6 @@
 ---
 status: DISCOVERING
-chunks: []
 code_references: []
-proposed_chunks: []
 created_after: {{ created_after | default([], true) | tojson }}
 ---
 
@@ -18,13 +16,13 @@ STATUS VALUES:
 - DEPRECATED: Subsystem being phased out; see notes for migration guidance
 
 AGENT BEHAVIOR BY STATUS:
-- DOCUMENTED: When working on a chunk that touches this subsystem, document any new
+- DOCUMENTED: When working on code that touches this subsystem, document any new
   deviations you discover in the Known Deviations section below. Do NOT prioritize
-  fixing deviations as part of your chunk work—your chunk has its own goals.
-- REFACTORING: When working on a chunk that touches this subsystem, attempt to leave
-  the subsystem better than you found it. If your chunk work touches code that deviates
+  fixing deviations as part of unrelated work.
+- REFACTORING: When working on code that touches this subsystem, attempt to leave
+  the subsystem better than you found it. If your work touches code that deviates
   from the subsystem's patterns, improve that code as part of your work (where relevant
-  to your chunk's scope). This is "opportunistic improvement"—not a mandate to fix
+  to your scope). This is "opportunistic improvement"—not a mandate to fix
   everything, but to improve what you touch.
 
 STATUS TRANSITIONS:
@@ -35,19 +33,6 @@ STATUS TRANSITIONS:
 - REFACTORING -> DOCUMENTED: When consolidation is paused (deviations remain but are
   no longer being actively prioritized)
 - Any -> DEPRECATED: When the subsystem is being replaced or removed
-
-CHUNKS:
-- Records chunks that relate to this subsystem
-- Format: list of {chunk_id, relationship} where:
-  - chunk_id: The chunk directory name (e.g., "0005-validation_enhancements")
-  - relationship: "implements" (contributed code) or "uses" (depends on the subsystem)
-- This array grows over time as chunks reference this subsystem
-- Example:
-  chunks:
-    - chunk_id: "0005-validation_enhancements"
-      relationship: implements
-    - chunk_id: "0008-chunk_completion"
-      relationship: uses
 
 CODE_REFERENCES:
 - Symbolic references to code related to this subsystem
@@ -70,19 +55,6 @@ CODE_REFERENCES:
     - ref: src/api/handler.py#process_input
       implements: "Input processing with inline validation"
       compliance: PARTIAL
-
-PROPOSED_CHUNKS:
-- Tracks consolidation work that has been proposed but not yet created as chunks
-- Format: list of {prompt, chunk_directory} where:
-  - prompt: Description of the consolidation work needed
-  - chunk_directory: null until a chunk is created, then the directory name
-- Use `ve chunk list-proposed` to see all proposed chunks across the system
-- Example:
-  proposed_chunks:
-    - prompt: "Migrate old_validator.py to use the validation subsystem's regex patterns"
-      chunk_directory: null
-    - prompt: "Add validation subsystem integration to third_party.py"
-      chunk_directory: "0015-third_party_validation"
 -->
 
 # {{ short_name }}
@@ -204,11 +176,9 @@ the symbol:
 # Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
 ```
 
-If the code was also created by a specific chunk, include both:
-```
-# Chunk: docs/chunks/NNNN-short_name - Brief chunk description
-# Subsystem: docs/subsystems/NNNN-short_name - Brief subsystem description
-```
+Subsystems are the only valid code backreference type. Chunks and narratives are
+ephemeral work notes stored in user-global scratchpad, not permanent in-repo
+documentation.
 
 Delete this comment block once context is provided.
 -->
@@ -226,7 +196,7 @@ These are not bugs—the code works—but it deviates from the subsystem's appro
 
 WHEN TO ADD ENTRIES:
 - During initial subsystem discovery, as you identify existing non-compliant code
-- During chunk work, when you discover code that deviates from this subsystem's patterns
+- When working on code and you discover it deviates from this subsystem's patterns
 - After code review identifies inconsistencies
 
 For each deviation, add an entry to code_references with compliance: NON_COMPLIANT
@@ -237,8 +207,8 @@ or compliance: PARTIAL, then optionally add prose context here explaining:
 
 HOW STATUS AFFECTS BEHAVIOR:
 - DOCUMENTED status: Add deviations as you discover them, but don't fix them
-  as part of unrelated chunk work. Your chunk has its own goals.
-- REFACTORING status: When your chunk work touches deviating code, attempt to
+  as part of unrelated work.
+- REFACTORING status: When your work touches deviating code, attempt to
   bring it into compliance. Update code_references when deviations are resolved.
 
 Example:
@@ -248,72 +218,4 @@ was never migrated. Impact is low (only used by deprecated API) but creates
 maintenance burden when validation rules change.
 
 Delete this comment block once deviation tracking is underway.
--->
-
-## Chunk Relationships
-
-<!--
-GUIDANCE:
-
-This section tracks which chunks relate to this subsystem and how. There are
-two relationship types:
-
-- **implements**: Chunk directly modifies/extends the subsystem (contributed code).
-  Read these chunks to understand the subsystem's internals.
-
-- **uses**: Chunk depends on the subsystem (consumes its API/patterns).
-  Read these chunks to understand the subsystem's interface and usage patterns.
-
-This section gets populated over time as chunks reference this subsystem.
-When creating or completing a chunk that touches this subsystem, update both:
-1. The chunks array in this document's frontmatter
-2. The list below (mirroring the frontmatter for readability)
-
-Example:
-### Implements
-- **0005-validation_enhancements** - Added the `validate_frontmatter()` function
-
-### Uses
-- **0008-chunk_completion** - Calls `validate_frontmatter()` to check GOAL.md
-
-Delete this comment block once chunk relationships begin to accumulate.
--->
-
-## Consolidation Chunks
-
-<!--
-GUIDANCE:
-
-This section provides prose context for consolidation work. The authoritative
-list of proposed consolidation chunks is in the `proposed_chunks` frontmatter.
-
-When you discover out-of-compliance code during exploration:
-1. Add an entry to `proposed_chunks` in the frontmatter with the draft prompt
-2. Optionally add prose context here explaining the issue and any blockers
-
-When consolidation work is scheduled:
-1. Create a real chunk via `/chunk-create` using the prompt
-2. Update the `proposed_chunks` entry to set `chunk_directory` to the created chunk
-3. Update this section to reference the created chunk
-
-Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet.
-
-This differs from narrative proposed_chunks:
-- Narrative proposed_chunks are forward-planned from an ambition
-- Subsystem proposed_chunks are backward-discovered from inconsistencies
-
-Example prose context:
-### Pending Consolidation
-
-1. **src/legacy/old_validator.py** - Uses string matching instead of regex patterns.
-   Impact is low (only used by deprecated API) but creates maintenance burden.
-   - Status: Not yet scheduled
-
-2. **src/external/third_party.py** - Bypasses validation entirely.
-   - Status: Blocked on upstream changes
-
-### Completed Consolidation
-- **src/api/handler.py** - Migrated in chunk 0012-api_validation
-
-Delete this comment block once consolidation tracking is underway.
 -->

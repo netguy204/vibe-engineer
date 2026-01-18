@@ -4,7 +4,6 @@ description: Create a chunk PLAN.md file containing the technical breakdown for 
 
 
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -24,8 +23,6 @@ search for it - run it directly via Bash.
 1. Determine the currently active chunk by running `ve chunk list --latest`. We
    will refer to the directory returned by this command below as <chunk
    directory>
-
-
 
 2. Run `ve chunk suggest-prefix <chunk_name>` (using just the directory name,
    not the full path) to check if this chunk should be renamed for better

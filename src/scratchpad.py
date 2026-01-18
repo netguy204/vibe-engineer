@@ -5,8 +5,6 @@ belong in git repositories. Supports both project-scoped and task-scoped
 scratchpad entries.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - User-global scratchpad storage variant
-# Chunk: docs/chunks/scratchpad_storage - Scratchpad storage infrastructure
-# Chunk: docs/chunks/scratchpad_cross_project - Cross-project scratchpad queries
 
 from __future__ import annotations
 
@@ -685,7 +683,6 @@ class ScratchpadNarratives:
         narrative_times.sort(key=lambda x: x[1], reverse=True)
         return [narrative_id for narrative_id, _ in narrative_times]
 
-    # Chunk: docs/chunks/scratchpad_narrative_commands - Scratchpad narrative commands
     def update_status(
         self, narrative_id: str, new_status: ScratchpadNarrativeStatus
     ) -> tuple[ScratchpadNarrativeStatus, ScratchpadNarrativeStatus]:

@@ -1,5 +1,4 @@
 
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -39,7 +38,6 @@ To understand recent work, use `ve chunk list --latest` to find the most recentl
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
-
 ### Chunk Naming Conventions
 
 Name chunks by the **initiative** they advance, not the artifact type or action verb. Ask: "What multi-chunk effort does this chunk belong to?" Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes that create superclusters: `chunk_`, `fix_`, `cli_`, `api_`, `util_`. See `docs/investigations/alphabetical_chunk_grouping/OVERVIEW.md` for detailed rationale.
@@ -50,7 +48,6 @@ Chunk GOAL.md files may reference other artifact types in their frontmatter:
 
 - **narrative**: References a narrative directory (e.g., `investigations`) that this chunk helps implement
 - **investigation**: References an investigation directory (e.g., `memory_leak`) from which this chunk originated, providing traceability from implementation work back to exploratory findings
-- **subsystems**: List of subsystem relationships indicating which subsystems this chunk implements or uses
 - **friction_entries**: Links to friction log entries this chunk addresses, providing "why did we do this work?" traceability
 
 When you see these references, read the referenced artifact to understand the broader context.
@@ -71,20 +68,17 @@ Subsystems document emergent architectural patterns discovered in the codebase. 
 - **Intent** - What the subsystem accomplishes
 - **Scope** - What's in and out of scope
 - **Invariants** - Rules that must always hold
-- **Code References** - Symbolic references to implementations
-- **Proposed Chunks** - Consolidation work discovered but not yet implemented (in `proposed_chunks` frontmatter)
+- **Code References** - Symbolic references to implementations with compliance levels
 
 Subsystem status values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
 
 **When to check subsystems**: Before implementing patterns that might already exist in the codebase, check `docs/subsystems/` for existing documentation. Subsystems capture how things *should* work, including known inconsistencies.
 
 **Subsystem status affects your behavior**:
-- `DISCOVERING` / `DOCUMENTED`: The pattern is documented but may have inconsistencies. Do NOT expand chunk scope to fix inconsistencies unless explicitly asked.
+- `DISCOVERING` / `DOCUMENTED`: The pattern is documented but may have inconsistencies. Do NOT expand scope to fix inconsistencies unless explicitly asked.
 - `REFACTORING`: Active consolidation work. You MAY expand scope for consistency improvements.
 - `STABLE`: The subsystem is authoritative. Follow its patterns for new code.
 - `DEPRECATED`: Avoid using this pattern; may suggest alternatives.
-
-When a chunk references a subsystem with relationship `implements`, the chunk contributes code to that subsystem. When the relationship is `uses`, the chunk depends on the subsystem's patterns.
 
 ## Investigations (`docs/investigations/`)
 
@@ -102,7 +96,6 @@ Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
 - **Chunk**: When you know what needs to be done and can proceed directly to implementation
 - **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
 - **Friction Log**: When you encounter a pain point that doesn't need immediate action but should be remembered—captures friction over time; patterns emerge organically
-
 
 ## Friction Log (`docs/trunk/FRICTION.md`)
 
@@ -151,19 +144,14 @@ Chunks created from friction should reference the entries they address via the `
 
 Use `/friction-log` to quickly capture a friction point without ceremony.
 
-
 ## Proposed Chunks
 
-The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, subsystems, and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
+The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
 
 - **prompt**: The chunk prompt text describing the work
 - **chunk_directory**: `null` until a chunk is created, then the directory name
 
 Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet across the entire project. This helps identify pending work from all sources.
-
-The distinction between `chunks` (in subsystem frontmatter) and `proposed_chunks` is important:
-- `chunks`: Tracks relationships to already-created chunks (implements/uses)
-- `proposed_chunks`: Tracks proposed work that may or may not become chunks
 
 ## Available Commands
 
@@ -186,7 +174,6 @@ Use these slash commands for artifact management:
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
 
-
 ## Learning Philosophy
 
 You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
@@ -196,7 +183,7 @@ You don't need to learn everything upfront. Vibe engineering is designed to meet
 3. **Graduate to tasks for multi-project work** - When work spans repositories, the same patterns apply at a larger scale.
 4. **Use orchestration for parallel workflows** - When managing multiple concurrent workstreams, the orchestrator (`ve orch`) automates scheduling, attention routing, and conflict detection.
 
-The documentation teaches itself: follow backreferences in code to discover the chunks and subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
+The documentation teaches itself: follow backreferences in code to discover the subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
 
 ## Working with the Orchestrator
 
@@ -291,7 +278,6 @@ When working interactively with the operator, consider these proactive actions:
 - **When fixing bugs discovered during work**: Create FUTURE chunks for issues outside current scope
 - **When attention items accumulate**: Alert the operator or help resolve items you have context for
 
-
 ### The "Background" Keyword
 
 When the operator says **"in the background"** (or similar phrases), this signals use of the orchestrator for background execution.
@@ -351,30 +337,22 @@ uv run ve orch inject my_chunk
 
 ## Code Backreferences
 
-Source code may contain backreference comments that link code back to the documentation that created or governs it:
+Source code may contain backreference comments that link code back to the subsystem documentation that governs it:
 
 ```python
-# Narrative: docs/narratives/chunk_lifecycle_management - Core lifecycle infrastructure
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 ```
 
 **What backreferences mean:**
-- `# Narrative: ...` - This code is part of an architectural initiative. Read the narrative's OVERVIEW.md for the broader purpose and how this code fits into the larger vision.
-- `# Chunk: ...` - This code was created or modified by the referenced chunk. Read the chunk's GOAL.md for business context.
 - `# Subsystem: ...` - This code is part of a documented subsystem. Read the subsystem's OVERVIEW.md for patterns and invariants.
 
-**Semantic hierarchy of context types:**
-- **Narratives**: PURPOSE context - why the code exists architecturally, the larger initiative it serves
-- **Chunks**: HISTORY context - what work created or modified the code, providing traceability
-- **Subsystems**: PATTERN context - what rules govern the code, including invariants and best practices
+Subsystems are the only valid code backreference type. They represent enduring architectural documentation that lives in the repository.
 
-**When you see backreferences:** Follow the path to understand why the code exists. Multiple chunk references indicate code that evolved over several iterations. Narrative references point to high-level architectural context.
+**When implementing code:** Add `# Subsystem:` backreference comments when code implements or extends a documented subsystem. This links code to its governing patterns and invariants.
 
-**When implementing code:** Add backreference comments at the appropriate semantic level (module, class, or method) to help future agents trace code back to its documentation.
-
-**When backreferences accumulate:** Files with 5+ chunk backreferences may benefit from consolidation. Use `ve chunk backrefs` to identify such files, then `/narrative-compact` to consolidate related chunks into a narrative. This replaces multiple `# Chunk:` comments with a single `# Narrative:` comment, reducing noise while preserving chunk links in the narrative for archaeology.
-
+**When you encounter other backreference types:** Remove them.
+- `# Chunk: ...` - Chunks are ephemeral work notes in user-global scratchpad. Remove these references.
+- `# Narrative: ...` - Narratives are planning artifacts in user-global scratchpad. Remove these references.
 
 ## Development
 
@@ -394,7 +372,6 @@ ve chunk list
 ```
 
 This ensures you're testing your changes with the local development code, not a previously installed version.
-
 
 
 

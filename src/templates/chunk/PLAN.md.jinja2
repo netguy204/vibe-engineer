@@ -105,29 +105,22 @@ Use little-endian encoding per SPEC.md Section 3.1.
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
+When implementing code that relates to a documented subsystem, add backreference
+comments to help future agents trace code back to its governing documentation.
+Subsystems are the only valid code backreference type.
 
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
+Place comments at the appropriate level:
+- **Module-level**: If this code implements the subsystem's core functionality
+- **Class-level**: If this class is part of the subsystem pattern
+- **Method-level**: If this method implements a specific subsystem behavior
 
 Format (place immediately before the symbol):
 ```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
-```
-
-If the code also relates to a subsystem, include subsystem backreferences:
-```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
-```
+Do NOT add chunk or narrative backreferences. Chunks and narratives are ephemeral
+work notes stored in user-global scratchpad, not permanent in-repo documentation.
 -->
 
 ## Dependencies
