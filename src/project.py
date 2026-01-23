@@ -5,6 +5,7 @@
 
 import pathlib
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from chunks import Chunks
 from template_system import (
@@ -14,6 +15,88 @@ from template_system import (
     render_template,
     render_to_directory,
 )
+
+
+# Magic marker constants for CLAUDE.md managed content
+MARKER_START = "<!-- VE:MANAGED:START -->"
+MARKER_END = "<!-- VE:MANAGED:END -->"
+
+
+class MarkerParseResult(NamedTuple):
+    """Result of parsing magic markers from content."""
+
+    has_markers: bool
+    before: str  # Content before START marker
+    inside: str  # Content between markers (including markers)
+    after: str  # Content after END marker
+    error: str | None  # Error message if markers are malformed
+
+
+def parse_markers(content: str) -> MarkerParseResult:
+    """Parse magic markers from content.
+
+    Returns a MarkerParseResult indicating whether valid markers exist and
+    the content segments. If markers are malformed, returns an error message.
+    """
+    start_count = content.count(MARKER_START)
+    end_count = content.count(MARKER_END)
+
+    # No markers at all
+    if start_count == 0 and end_count == 0:
+        return MarkerParseResult(
+            has_markers=False, before="", inside="", after="", error=None
+        )
+
+    # Missing one marker
+    if start_count == 0 and end_count > 0:
+        return MarkerParseResult(
+            has_markers=False,
+            before="",
+            inside="",
+            after="",
+            error="CLAUDE.md has END marker but no START marker",
+        )
+    if start_count > 0 and end_count == 0:
+        return MarkerParseResult(
+            has_markers=False,
+            before="",
+            inside="",
+            after="",
+            error="CLAUDE.md has START marker but no END marker",
+        )
+
+    # Multiple marker pairs
+    if start_count > 1 or end_count > 1:
+        return MarkerParseResult(
+            has_markers=False,
+            before="",
+            inside="",
+            after="",
+            error="CLAUDE.md has multiple marker pairs (not supported)",
+        )
+
+    # Find positions
+    start_idx = content.index(MARKER_START)
+    end_idx = content.index(MARKER_END)
+
+    # Wrong order
+    if end_idx < start_idx:
+        return MarkerParseResult(
+            has_markers=False,
+            before="",
+            inside="",
+            after="",
+            error="CLAUDE.md has END marker before START marker",
+        )
+
+    # Valid markers - split content
+    before = content[:start_idx]
+    inside = content[start_idx : end_idx + len(MARKER_END)]
+    after = content[end_idx + len(MARKER_END) :]
+
+    return MarkerParseResult(
+        has_markers=True, before=before, inside=inside, after=after, error=None
+    )
 
 
 @dataclass
@@ -157,27 +240,64 @@ class Project:
 
     # Subsystem: docs/subsystems/template_system - Uses render_template
     def _init_claude_md(self) -> InitResult:
-        """Create CLAUDE.md at project root from template.
+        """Create or update CLAUDE.md at project root from template.
 
-        CLAUDE.md is never overwritten if it exists (user content).
+        Behavior depends on file state:
+        1. File doesn't exist: Create with markers
+        2. File exists without markers: Skip (backward compatible)
+        3. File exists with valid markers: Rewrite content inside markers
+        4. File exists with malformed markers: Skip with warning
         """
         result = InitResult()
         dest_file = self.project_dir / "CLAUDE.md"
 
-        if dest_file.exists():
-            result.skipped.append("CLAUDE.md")
-        else:
-            # Render the CLAUDE.md template directly
-            # Pass ve_config so template can conditionally render auto-generated header
-            context = TemplateContext()
-            rendered = render_template(
-                "claude",
-                "CLAUDE.md.jinja2",
-                context=context,
-                ve_config=self.ve_config.as_dict(),
-            )
+        # Render the template (we may need it for new files or marker updates)
+        context = TemplateContext()
+        rendered = render_template(
+            "claude",
+            "CLAUDE.md.jinja2",
+            context=context,
+            ve_config=self.ve_config.as_dict(),
+        )
+
+        if not dest_file.exists():
+            # Case 1: New file - write with markers
             dest_file.write_text(rendered)
             result.created.append("CLAUDE.md")
+            return result
+
+        # File exists - check for markers
+        existing_content = dest_file.read_text()
+        parse_result = parse_markers(existing_content)
+
+        if parse_result.error:
+            # Case 4: Malformed markers - skip with warning
+            result.skipped.append("CLAUDE.md")
+            result.warnings.append(parse_result.error)
+            return result
+
+        if not parse_result.has_markers:
+            # Case 2: No markers - skip (backward compatible)
+            result.skipped.append("CLAUDE.md")
+            return result
+
+        # Case 3: Valid markers - rewrite content inside markers
+        # Parse the rendered template to get just the managed content
+        rendered_parse = parse_markers(rendered)
+        if not rendered_parse.has_markers:
+            # Template should have markers; if not, skip with warning
+            result.skipped.append("CLAUDE.md")
+            result.warnings.append(
+                "CLAUDE.md template does not contain markers (internal error)"
+            )
+            return result
+
+        # Combine: existing before + rendered inside + existing after
+        new_content = (
+            parse_result.before + rendered_parse.inside + parse_result.after
+        )
+        dest_file.write_text(new_content)
+        result.created.append("CLAUDE.md")
 
         return result
 

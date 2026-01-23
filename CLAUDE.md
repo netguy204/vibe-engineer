@@ -7,6 +7,7 @@ Edit the source template, then run `ve init` to regenerate.
 -->
 
 
+<!-- VE:MANAGED:START -->
 # Vibe Engineering Workflow
 
 This project uses a documentation-driven development workflow. As an agent working on this codebase, familiarize yourself with these key locations.
@@ -397,3 +398,5 @@ This is the vibe-engineer source repository. Many files are **rendered from Jinj
 Edits to rendered files will be **lost** when templates are re-rendered. Always modify the source template instead.
 
 If you see a rendered file with an `AUTO-GENERATED` header, that file is managed by the template system and should not be edited directly.
+
+<!-- VE:MANAGED:END -->

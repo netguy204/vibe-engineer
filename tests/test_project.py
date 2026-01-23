@@ -153,16 +153,210 @@ class TestProjectInitChunks:
         assert "docs/chunks/" not in result.created
 
 
+class TestMagicMarkers:
+    """Tests for CLAUDE.md magic marker functionality."""
+
+    MARKER_START = "<!-- VE:MANAGED:START -->"
+    MARKER_END = "<!-- VE:MANAGED:END -->"
+
+    def test_new_claude_md_includes_markers(self, temp_project):
+        """New CLAUDE.md files include magic markers."""
+        project = Project(temp_project)
+        project.init()
+
+        claude_md = temp_project / "CLAUDE.md"
+        content = claude_md.read_text()
+
+        assert self.MARKER_START in content
+        assert self.MARKER_END in content
+        # START should come before END
+        assert content.index(self.MARKER_START) < content.index(self.MARKER_END)
+
+    def test_markers_preserve_content_before(self, temp_project):
+        """Content before START marker is preserved on reinit."""
+        project = Project(temp_project)
+        project.init()
+
+        claude_md = temp_project / "CLAUDE.md"
+        original = claude_md.read_text()
+
+        # Add custom content before the START marker
+        custom_header = "# My Custom Project\n\nThis is my custom documentation.\n\n"
+        start_idx = original.index(self.MARKER_START)
+        modified = custom_header + original[start_idx:]
+        claude_md.write_text(modified)
+
+        # Reinit should preserve custom content
+        project.init()
+        result = claude_md.read_text()
+
+        assert result.startswith(custom_header)
+        assert self.MARKER_START in result
+        assert self.MARKER_END in result
+
+    def test_markers_preserve_content_after(self, temp_project):
+        """Content after END marker is preserved on reinit."""
+        project = Project(temp_project)
+        project.init()
+
+        claude_md = temp_project / "CLAUDE.md"
+        original = claude_md.read_text()
+
+        # Add custom content after the END marker
+        custom_footer = "\n\n## My Custom Section\n\nMore custom content here.\n"
+        modified = original + custom_footer
+        claude_md.write_text(modified)
+
+        # Reinit should preserve custom content
+        project.init()
+        result = claude_md.read_text()
+
+        assert result.endswith(custom_footer)
+        assert self.MARKER_START in result
+        assert self.MARKER_END in result
+
+    def test_markers_rewrite_content_inside(self, temp_project):
+        """Content inside markers is rewritten with latest template."""
+        project = Project(temp_project)
+        project.init()
+
+        claude_md = temp_project / "CLAUDE.md"
+        original = claude_md.read_text()
+
+        # Modify content inside markers
+        start_idx = original.index(self.MARKER_START)
+        end_idx = original.index(self.MARKER_END) + len(self.MARKER_END)
+        modified = (
+            original[:start_idx]
+            + self.MARKER_START
+            + "\n\nOLD MANAGED CONTENT THAT SHOULD BE REPLACED\n\n"
+            + self.MARKER_END
+            + original[end_idx:]
+        )
+        claude_md.write_text(modified)
+
+        # Reinit should replace the managed content
+        project.init()
+        result = claude_md.read_text()
+
+        assert "OLD MANAGED CONTENT THAT SHOULD BE REPLACED" not in result
+        # The managed content should contain VE instructions
+        assert "Vibe Engineering" in result
+
+    def test_existing_without_markers_unchanged(self, temp_project):
+        """Existing CLAUDE.md without markers is left unchanged (backward compat)."""
+        project = Project(temp_project)
+
+        # Create a CLAUDE.md without markers
+        claude_md = temp_project / "CLAUDE.md"
+        custom_content = "# Custom CLAUDE.md\n\nNo markers here.\n"
+        claude_md.write_text(custom_content)
+
+        result = project.init()
+
+        # File should be unchanged
+        assert claude_md.read_text() == custom_content
+        assert "CLAUDE.md" in result.skipped
+
+    def test_malformed_markers_missing_end_warns(self, temp_project):
+        """Missing END marker results in warning and file unchanged."""
+        project = Project(temp_project)
+
+        # Create CLAUDE.md with only START marker
+        claude_md = temp_project / "CLAUDE.md"
+        malformed_content = f"# Header\n\n{self.MARKER_START}\n\nSome content\n"
+        claude_md.write_text(malformed_content)
+
+        result = project.init()
+
+        # File should be unchanged
+        assert claude_md.read_text() == malformed_content
+        assert "CLAUDE.md" in result.skipped
+        # Should have a warning about malformed markers
+        assert any("marker" in w.lower() for w in result.warnings)
+
+    def test_malformed_markers_missing_start_warns(self, temp_project):
+        """Missing START marker results in warning and file unchanged."""
+        project = Project(temp_project)
+
+        # Create CLAUDE.md with only END marker
+        claude_md = temp_project / "CLAUDE.md"
+        malformed_content = f"# Header\n\nSome content\n\n{self.MARKER_END}\n"
+        claude_md.write_text(malformed_content)
+
+        result = project.init()
+
+        # File should be unchanged
+        assert claude_md.read_text() == malformed_content
+        assert "CLAUDE.md" in result.skipped
+        # Should have a warning about malformed markers
+        assert any("marker" in w.lower() for w in result.warnings)
+
+    def test_malformed_markers_wrong_order_warns(self, temp_project):
+        """END before START marker results in warning and file unchanged."""
+        project = Project(temp_project)
+
+        # Create CLAUDE.md with markers in wrong order
+        claude_md = temp_project / "CLAUDE.md"
+        malformed_content = f"# Header\n\n{self.MARKER_END}\n\nContent\n\n{self.MARKER_START}\n"
+        claude_md.write_text(malformed_content)
+
+        result = project.init()
+
+        # File should be unchanged
+        assert claude_md.read_text() == malformed_content
+        assert "CLAUDE.md" in result.skipped
+        # Should have a warning about malformed markers
+        assert any("marker" in w.lower() for w in result.warnings)
+
+    def test_multiple_marker_pairs_warns(self, temp_project):
+        """Multiple marker pairs results in warning and file unchanged."""
+        project = Project(temp_project)
+
+        # Create CLAUDE.md with multiple marker pairs
+        claude_md = temp_project / "CLAUDE.md"
+        malformed_content = (
+            f"# Header\n\n"
+            f"{self.MARKER_START}\nContent 1\n{self.MARKER_END}\n\n"
+            f"{self.MARKER_START}\nContent 2\n{self.MARKER_END}\n"
+        )
+        claude_md.write_text(malformed_content)
+
+        result = project.init()
+
+        # File should be unchanged
+        assert claude_md.read_text() == malformed_content
+        assert "CLAUDE.md" in result.skipped
+        # Should have a warning about multiple markers
+        assert any("marker" in w.lower() for w in result.warnings)
+
+    def test_reinit_reports_updated_not_skipped(self, temp_project):
+        """When markers exist and content is rewritten, report as created not skipped."""
+        project = Project(temp_project)
+        project.init()
+
+        # Second init should update the managed content
+        result = project.init()
+
+        # With markers, we should see it in created (updated), not skipped
+        assert "CLAUDE.md" in result.created
+
+
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.
 
     Note: Commands are always updated (overwrite=True) so they appear in
-    created on every run. Trunk docs and CLAUDE.md are never overwritten
-    (overwrite=False) so they appear in skipped on subsequent runs.
+    created on every run. Trunk docs are never overwritten (overwrite=False)
+    so they appear in skipped on subsequent runs. CLAUDE.md with markers
+    has its managed content updated while preserving user content.
     """
 
     def test_init_preserves_user_content_skips_commands(self, temp_project):
-        """Running init() twice: trunk/CLAUDE.md skipped, commands always updated."""
+        """Running init() twice: trunk skipped, commands and CLAUDE.md updated.
+
+        Note: CLAUDE.md with markers is now updated (in created) on subsequent runs,
+        preserving user content outside markers while refreshing managed content.
+        """
         project = Project(temp_project)
         result1 = project.init()
         result2 = project.init()
@@ -170,14 +364,15 @@ class TestProjectInitIdempotency:
         # First run creates everything
         assert len(result1.created) > 0
 
-        # Second run: trunk, CLAUDE.md, narratives, chunks are skipped (user content)
+        # Second run: trunk, narratives, chunks are skipped (user content)
         assert any("docs/trunk/" in f for f in result2.skipped)
-        assert "CLAUDE.md" in result2.skipped
         assert "docs/narratives/" in result2.skipped
         assert "docs/chunks/" in result2.skipped
 
-        # Commands are always updated (in created, not skipped)
+        # Commands and CLAUDE.md (with markers) are always updated
         assert any(".claude/commands/" in f for f in result2.created)
+        # CLAUDE.md with markers is updated, not skipped
+        assert "CLAUDE.md" in result2.created
 
     def test_init_skips_existing_trunk_files(self, temp_project):
         """init() skips existing trunk files without overwriting."""
