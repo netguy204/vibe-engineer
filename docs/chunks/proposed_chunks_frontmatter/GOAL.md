@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
 ticket: null
 parent_chunk: null
 code_paths:
@@ -8,11 +8,6 @@ code_paths:
 - src/chunks.py
 - src/ve.py
 - src/templates/narrative/OVERVIEW.md.jinja2
-- src/templates/subsystem/OVERVIEW.md.jinja2
-- docs/narratives/0001-cross_repo_chunks/OVERVIEW.md
-- docs/narratives/0002-subsystem_documentation/OVERVIEW.md
-- docs/narratives/0003-investigations/OVERVIEW.md
-- docs/subsystems/0001-template_system/OVERVIEW.md
 - CLAUDE.md
 - tests/test_chunk_list_proposed.py
 - tests/test_narratives.py
@@ -35,8 +30,6 @@ code_references:
   implements: CLI command 've chunk list-proposed'
 - ref: src/templates/narrative/OVERVIEW.md.jinja2
   implements: Narrative template with proposed_chunks frontmatter
-- ref: src/templates/subsystem/OVERVIEW.md.jinja2
-  implements: Subsystem template with proposed_chunks frontmatter
 - ref: tests/test_chunk_list_proposed.py
   implements: Tests for list-proposed command and logic
 - ref: tests/test_narratives.py#TestNarrativeFrontmatterParsing

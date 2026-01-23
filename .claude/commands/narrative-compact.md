@@ -29,9 +29,8 @@ $ARGUMENTS
 ## Background
 
 **NOTE:** This command is for legacy cleanup only. In the current workflow:
-- Chunks and narratives are stored in user-global scratchpad (`~/.vibe/scratchpad/`)
 - Only subsystems (`# Subsystem:`) are valid code backreferences
-- `# Chunk:` and `# Narrative:` backreferences should be removed when found
+- `# Chunk:` and `# Narrative:` backreferences are legacy artifacts that should be removed when found
 
 Use this command to:
 1. Clean up legacy `# Chunk:` backreferences from older code
@@ -113,7 +112,7 @@ Otherwise, cluster the chunks to find related groups:
 
 1. **Ask the operator** if they want to clean up backreferences now:
    > "Would you like to remove legacy `# Chunk:` backreferences now?
-   > These are no longer valid since chunks are stored in the user-global scratchpad.
+   > These are no longer valid—only subsystems are valid code backreference types.
    > If code relates to a subsystem, it should use `# Subsystem:` instead."
 
 2. **If the operator agrees**, search for and remove legacy references:

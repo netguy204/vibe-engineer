@@ -17,10 +17,6 @@ Edit the source template, then run `ve init` to regenerate.
 - The ve command is an installed CLI tool, not a file in the repository. Do not
 search for it - run it directly via Bash.
 
-**Note:** Narratives are stored in the user-global scratchpad at `~/.vibe/scratchpad/`.
-In project context, narratives are stored in `~/.vibe/scratchpad/[project]/narratives/`.
-In task context, narratives are stored in `~/.vibe/scratchpad/task:[name]/narratives/`.
-
 ## Instructions
 
 The operator wants to collaboratively develop this concept with you:
@@ -34,12 +30,12 @@ $ARGUMENTS
    refer to this shortname later as <shortname>.
 
 2. Run `ve narrative create <shortname>` and note the created path. The narrative
-   will be created in the scratchpad. Example output:
+   will be created in `docs/narratives/`. Example output:
    ```
-   Created ~/.vibe/scratchpad/[project]/narratives/<shortname>
+   Created docs/narratives/<shortname>
    ```
    We will refer to this path later as <narrative_path>.
 
 3. Complete the template in <narrative_path>/OVERVIEW.md with the
    information supplied by the operator and through further clarification
-   interactions with the operator. 
+   interactions with the operator.

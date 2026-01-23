@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
 ticket: null
 parent_chunk: null
 code_paths:
@@ -8,8 +8,8 @@ code_paths:
 code_references:
 - ref: src/templates/subsystem/OVERVIEW.md.jinja2
   implements: Subsystem discovery guide template with frontmatter schema docs, Intent,
-    Scope, Invariants, Implementation Locations, Known Deviations, Chunk Relationships,
-    and Consolidation Chunks sections
+    Scope, Invariants, Implementation Locations, and Known Deviations sections (Chunk
+    Relationships and Consolidation Chunks sections removed in refactor a465762)
 - ref: src/templates/chunk/PLAN.md.jinja2
   implements: Subsystem Considerations section guiding agents to check subsystems
     during planning and document deviations based on subsystem status

@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
 ticket: null
 parent_chunk: null
 code_paths:
@@ -7,18 +7,13 @@ code_paths:
 - tests/**/*.py
 - docs/**/*.md
 - src/templates/**/*.jinja2
-code_references:
-- ref: docs/chunks/update_crossref_format/migrate_crossrefs.py
-  implements: "Migration script to update cross-references from NNNN-short_name to short_name format"
-- ref: src/templates/chunk/PLAN.md.jinja2
-  implements: "Updated backreference format examples in PLAN template"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Updated documentation examples to use new short_name format"
+code_references: []
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
   relationship: implements
 created_after: ["ordering_remove_seqno"]
+superseded_by: "scratchpad_remove_infra - Chunk backreferences were eliminated entirely (not just reformatted). Templates now instruct agents to remove all # Chunk: and # Narrative: comments rather than update their format."
 ---
 
 # Chunk Goal

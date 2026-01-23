@@ -1,22 +1,17 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
 ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/claude/CLAUDE.md.jinja2
 - src/templates/commands/chunk-plan.md.jinja2
 - src/templates/commands/partials/auto-generated-header.md.jinja2
-code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Jinja backreference comments for auto-generated header, proposed chunks, learning philosophy, development, and template workflow sections"
-  - ref: src/templates/commands/chunk-plan.md.jinja2
-    implements: "Jinja backreference comment for cluster prefix suggestion step"
-  - ref: src/templates/commands/partials/auto-generated-header.md.jinja2
-    implements: "Jinja backreference comment for auto-generated header partial"
+code_references: []
 narrative: null
 investigation: template_drift
 subsystems: []
 created_after: ["restore_template_content", "template_drift_prevention"]
+superseded_by: "Commit a465762 (refactor: remove chunk/narrative backreferences, simplify subsystems)"
 ---
 
 <!--

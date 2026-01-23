@@ -351,8 +351,8 @@ Subsystems are the only valid code backreference type. They represent enduring a
 **When implementing code:** Add `# Subsystem:` backreference comments when code implements or extends a documented subsystem. This links code to its governing patterns and invariants.
 
 **When you encounter other backreference types:** Remove them.
-- `# Chunk: ...` - Chunks are ephemeral work notes in user-global scratchpad. Remove these references.
-- `# Narrative: ...` - Narratives are planning artifacts in user-global scratchpad. Remove these references.
+- `# Chunk: ...` - Chunks are legacy backreferences that are no longer valid. Remove these references.
+- `# Narrative: ...` - Narratives are legacy backreferences that are no longer valid. Remove these references.
 
 ## Development
 

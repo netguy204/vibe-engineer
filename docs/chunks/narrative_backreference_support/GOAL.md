@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
 ticket: null
 parent_chunk: null
 code_paths:
@@ -11,8 +11,6 @@ code_references:
     implements: "Validates that narrative references in chunk frontmatter point to existing narratives"
   - ref: src/chunks.py#Chunks::validate_chunk_complete
     implements: "Integration point that calls narrative validation during chunk completion"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Documents the # Narrative: backreference format and semantic hierarchy"
   - ref: tests/test_chunk_validate.py#TestNarrativeRefValidation
     implements: "Tests for narrative backreference validation logic"
 narrative: null
@@ -23,6 +21,7 @@ created_after:
 - orch_attention_reason
 - orch_inject_validate
 - deferred_worktree_creation
+superseded_reason: "Narrative backreferences in source code were removed as a design decision. CLAUDE.md.jinja2 now states that # Narrative: comments are legacy backreferences that should be removed. The frontmatter narrative field for chunks remains valid, but code-to-narrative backreferences are deprecated."
 ---
 
 # Chunk Goal

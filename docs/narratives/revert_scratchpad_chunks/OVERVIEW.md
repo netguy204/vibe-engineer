@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: COMPLETED
 advances_trunk_goal: "Restore agent context about the 'why' of changes by keeping chunks and narratives in-repo"
 proposed_chunks:
   - prompt: "Migrate scratchpad artifacts to docs/ and restore in-repo CLI commands"
@@ -7,7 +7,7 @@ proposed_chunks:
   - prompt: "Remove all scratchpad infrastructure and migrate-to-subsystems"
     chunk_directory: scratchpad_remove_infra
   - prompt: "Update CLAUDE.md template and documentation"
-    chunk_directory: null
+    chunk_directory: scratchpad_docs_cleanup
 created_after:
   - task_artifact_discovery
 ---
