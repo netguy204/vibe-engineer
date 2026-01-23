@@ -1,17 +1,17 @@
 ---
-status: DRAFTING
+status: COMPLETE
 advances_trunk_goal: "Required Properties: Must support multi-repository workflows"
 proposed_chunks:
   - prompt: "Remove external artifact pinning. Always resolve to HEAD, remove ve sync command, remove pinned_sha from ExternalArtifactRef model."
     chunk_directory: external_artifact_unpin
   - prompt: "Enhance `ve external resolve` to output local filesystem path and directory listing alongside content, making it a single-command solution for agents needing to work with external artifacts."
-    chunk_directory: external_resolve_enhance
+    chunk_directory: external_resolve
   - prompt: "Add magic marker syntax (`<!-- VE:MANAGED:START -->` / `<!-- VE:MANAGED:END -->`) to CLAUDE.md template. Content between markers is owned by VE and can be rewritten on `ve init`."
     chunk_directory: claudemd_magic_markers
   - prompt: "Create `/migrate-managed-claude-md` slash command following the migration pattern from docs/investigations/bidirectional_doc_code_sync. Creates docs/migrations/managed_claude_md/ with MIGRATION.md tracking progress, phases for detection/wrapping/validation, and questions for operator input."
     chunk_directory: claudemd_migrate_managed
   - prompt: "Update CLAUDE.md template to prompt agents to use `ve external resolve` when they encounter external.yaml references."
-    chunk_directory: null
+    chunk_directory: claudemd_external_prompt
 created_after: []
 ---
 
@@ -188,3 +188,6 @@ operators to understand what the migration did months later.
 - 2026-01-23: Completed `claudemd_migrate_managed` chunk. The `/migrate-managed-claude-md`
   slash command now exists, enabling migration of legacy CLAUDE.md files to use magic
   markers. One chunk remaining: `claudemd_external_prompt`.
+- 2026-01-23: Implemented `claudemd_external_prompt` chunk. CLAUDE.md template now
+  includes an "External Artifacts" section explaining how to identify and resolve
+  external.yaml files using `ve external resolve`. All narrative chunks complete.

@@ -154,6 +154,53 @@ The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narra
 
 Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet across the entire project. This helps identify pending work from all sources.
 
+## External Artifacts
+
+When work spans multiple repositories, artifact directories may contain an `external.yaml` file instead of the usual GOAL.md or OVERVIEW.md. These files are pointers to artifacts that live in other repositories.
+
+### Identifying External Artifacts
+
+External artifacts are files named `external.yaml` found in artifact directories:
+
+```
+docs/chunks/some_feature/external.yaml      # External chunk
+docs/narratives/big_initiative/external.yaml  # External narrative
+docs/investigations/root_cause/external.yaml  # External investigation
+```
+
+### External File Structure
+
+```yaml
+artifact_id: some_feature
+artifact_type: chunk          # chunk, narrative, investigation, or subsystem
+repo: org/other-repo          # Repository containing the actual artifact
+track: main                   # Branch to follow
+```
+
+### Resolving External Artifacts
+
+When you encounter an `external.yaml` file, use `ve external resolve` to view the actual artifact content:
+
+```bash
+ve external resolve <artifact_id>
+```
+
+This command:
+- Displays the artifact's goal/overview content
+- Shows the local filesystem path where the artifact is cached
+- Lists the artifact's directory contents
+
+The resolve command always fetches the current HEAD of the external repository, ensuring you see the latest version.
+
+### When You'll Encounter External Artifacts
+
+External artifacts appear in multi-repository workflows:
+- **Task directories**: When a task spans multiple projects, chunks in one project may reference work happening in another
+- **Shared narratives**: Large initiatives may have components implemented across different codebases
+- **Cross-repo investigations**: Debugging issues that span system boundaries
+
+When you see an `external.yaml`, resolve it to understand the work before proceeding.
+
 ## Available Commands
 
 Use these slash commands for artifact management:
