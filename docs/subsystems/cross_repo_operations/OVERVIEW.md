@@ -49,12 +49,6 @@ code_references:
 - ref: src/external_resolve.py#resolve_artifact_single_repo
   implements: Artifact resolution in single repo mode
   compliance: COMPLIANT
-- ref: src/sync.py#find_external_refs
-  implements: External reference finder for all artifact types
-  compliance: COMPLIANT
-- ref: src/sync.py#sync_task_directory
-  implements: Task directory sync with artifact type filtering
-  compliance: COMPLIANT
 - ref: src/git_utils.py#is_git_repository
   implements: Git repository validation
   compliance: COMPLIANT
@@ -116,8 +110,8 @@ This subsystem formalizes cross-repo work:
 1. **Task directory detected by presence of .ve-task.yaml** - Consistent context detection
    across all commands.
 
-2. **External references must have pinned SHA for archaeology** - Point-in-time snapshots
-   enable checking out historical commits.
+2. **External references always resolve to HEAD** - No point-in-time pinning;
+   external content is always read from current HEAD of tracked branch (DEC-002).
 
 3. **All specified directories must be VE-initialized git repos** - Validation during
    task init prevents configuration errors.
@@ -125,13 +119,10 @@ This subsystem formalizes cross-repo work:
 4. **Bidirectional references enable full graph traversal** - External artifacts list
    dependents, project repos point to external artifacts.
 
-5. **Sync updates pinned fields to current SHA** - Archaeology preservation when external
-   content changes.
-
-6. **External artifacts participate in local causal ordering** - `created_after` field
+5. **External artifacts participate in local causal ordering** - `created_after` field
    in external.yaml enables proper ordering.
 
-7. **External resolution works in both task and single-repo mode** - Dual context support
+6. **External resolution works in both task and single-repo mode** - Dual context support
    for flexibility.
 
 ### Soft Conventions
@@ -147,13 +138,12 @@ This subsystem formalizes cross-repo work:
 - `src/task_utils.py` - Task-aware artifact operations (~88 chunk refs - the core module)
 - `src/external_refs.py` - External reference utilities (consolidated from multiple chunks)
 - `src/external_resolve.py` - External artifact resolution
-- `src/sync.py` - Sync operations for external references
 - `src/git_utils.py` - Git helper functions
 - `src/repo_cache.py` - External repo clone/fetch cache
 
 **Models**: `src/models.py#TaskConfig`, `src/models.py#ExternalArtifactRef`
 
-CLI commands: `ve task init`, `ve sync`, `ve external resolve`, plus task-aware versions
+CLI commands: `ve task init`, `ve external resolve`, plus task-aware versions
 of all artifact commands.
 
 ## Known Deviations

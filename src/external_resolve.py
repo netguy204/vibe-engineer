@@ -91,18 +91,17 @@ def resolve_artifact_task_directory(
     task_dir: Path,
     local_artifact_id: str,
     artifact_type: ArtifactType,
-    at_pinned: bool = False,
     project_filter: str | None = None,
 ) -> ResolveResult:
     """Resolve external artifact in task directory mode.
 
     Uses local worktrees to access external artifact content.
+    Always resolves to current HEAD of the external repository.
 
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         local_artifact_id: Local artifact ID or qualified project:artifact format
         artifact_type: The type of artifact to resolve
-        at_pinned: If True, use pinned SHA instead of current HEAD
         project_filter: If provided, only look in this project
 
     Returns:
@@ -172,53 +171,32 @@ def resolve_artifact_task_directory(
     except FileNotFoundError as e:
         raise TaskChunkError(f"External repository '{ref.repo}' not found") from e
 
-    # Determine SHA to use
-    if at_pinned:
-        if not ref.pinned:
-            raise TaskChunkError(
-                f"Cannot use --at-pinned: {artifact_type_name} '{local_artifact_id}' has no pinned SHA"
-            )
-        resolved_sha = ref.pinned
-    else:
-        # Use current HEAD of external repo
-        try:
-            resolved_sha = get_current_sha(external_repo_path)
-        except ValueError as e:
-            raise TaskChunkError(f"Failed to get current SHA from external repo: {e}") from e
+    # Always use current HEAD of external repo
+    try:
+        resolved_sha = get_current_sha(external_repo_path)
+    except ValueError as e:
+        raise TaskChunkError(f"Failed to get current SHA from external repo: {e}") from e
 
-    # Read content from external repo at the resolved SHA
+    # Read content from external repo working tree
     external_artifact_dir = external_repo_path / "docs" / dir_name / ref.artifact_id
 
     # For chunks, we have both main (GOAL.md) and secondary (PLAN.md) files
     # For other artifact types, we only have the main file (OVERVIEW.md)
     secondary_file = "PLAN.md" if artifact_type == ArtifactType.CHUNK else None
 
-    if at_pinned:
-        # Read at pinned SHA using git show
-        main_content = _read_file_at_sha(
-            external_repo_path, resolved_sha, f"docs/{dir_name}/{ref.artifact_id}/{main_file}"
+    main_path = external_artifact_dir / main_file
+
+    if not main_path.exists():
+        raise TaskChunkError(
+            f"External {artifact_type_name} '{ref.artifact_id}' not found in repository '{ref.repo}'"
         )
-        if secondary_file:
-            secondary_content = _read_file_at_sha(
-                external_repo_path, resolved_sha, f"docs/{dir_name}/{ref.artifact_id}/{secondary_file}"
-            )
-        else:
-            secondary_content = None
+
+    main_content = main_path.read_text()
+    if secondary_file:
+        secondary_path = external_artifact_dir / secondary_file
+        secondary_content = secondary_path.read_text() if secondary_path.exists() else None
     else:
-        # Read from working tree
-        main_path = external_artifact_dir / main_file
-
-        if not main_path.exists():
-            raise TaskChunkError(
-                f"External {artifact_type_name} '{ref.artifact_id}' not found in repository '{ref.repo}'"
-            )
-
-        main_content = main_path.read_text()
-        if secondary_file:
-            secondary_path = external_artifact_dir / secondary_file
-            secondary_content = secondary_path.read_text() if secondary_path.exists() else None
-        else:
-            secondary_content = None
+        secondary_content = None
 
     return ResolveResult(
         repo=ref.repo,
@@ -234,7 +212,6 @@ def resolve_artifact_task_directory(
 def resolve_task_directory(
     task_dir: Path,
     local_chunk_id: str,
-    at_pinned: bool = False,
     project_filter: str | None = None,
 ) -> ResolveResult:
     """Resolve external chunk in task directory mode.
@@ -244,7 +221,6 @@ def resolve_task_directory(
     Args:
         task_dir: Path to the task directory containing .ve-task.yaml
         local_chunk_id: Local chunk ID or qualified project:chunk format
-        at_pinned: If True, use pinned SHA instead of current HEAD
         project_filter: If provided, only look in this project
 
     Returns:
@@ -257,52 +233,24 @@ def resolve_task_directory(
         task_dir=task_dir,
         local_artifact_id=local_chunk_id,
         artifact_type=ArtifactType.CHUNK,
-        at_pinned=at_pinned,
         project_filter=project_filter,
     )
-
-
-def _read_file_at_sha(repo_path: Path, sha: str, file_path: str) -> str | None:
-    """Read a file at a specific SHA from a local git repository.
-
-    Args:
-        repo_path: Path to the git repository
-        sha: The SHA to read from
-        file_path: Path to the file within the repository
-
-    Returns:
-        The file content, or None if the file doesn't exist at that SHA
-    """
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "show", f"{sha}:{file_path}"],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout
-    except subprocess.CalledProcessError:
-        return None
 
 
 def resolve_artifact_single_repo(
     repo_path: Path,
     local_artifact_id: str,
     artifact_type: ArtifactType,
-    at_pinned: bool = False,
 ) -> ResolveResult:
     """Resolve external artifact in single repo mode using cache.
 
     Uses the repo cache to clone/fetch the external repository and read content.
+    Always resolves to the tracked branch (or HEAD if no track specified).
 
     Args:
         repo_path: Path to the local repository
         local_artifact_id: Local artifact ID (e.g., "0001-feature")
         artifact_type: The type of artifact to resolve
-        at_pinned: If True, use pinned SHA instead of resolving track
 
     Returns:
         ResolveResult with resolved artifact information and content
@@ -334,20 +282,12 @@ def resolve_artifact_single_repo(
     except ValueError as e:
         raise TaskChunkError(f"Failed to access external repository '{ref.repo}': {e}") from e
 
-    # Determine SHA to use
-    if at_pinned:
-        if not ref.pinned:
-            raise TaskChunkError(
-                f"Cannot use --at-pinned: {artifact_type_name} '{local_artifact_id}' has no pinned SHA"
-            )
-        resolved_sha = ref.pinned
-    else:
-        # Resolve track to SHA via cache
-        track = ref.track or "HEAD"
-        try:
-            resolved_sha = repo_cache.resolve_ref(ref.repo, track)
-        except ValueError as e:
-            raise TaskChunkError(f"Failed to resolve track '{track}': {e}") from e
+    # Resolve track to SHA via cache (always use HEAD/track, never pinned)
+    track = ref.track or "HEAD"
+    try:
+        resolved_sha = repo_cache.resolve_ref(ref.repo, track)
+    except ValueError as e:
+        raise TaskChunkError(f"Failed to resolve track '{track}': {e}") from e
 
     # Read content from cache
     # For chunks, we have both main (GOAL.md) and secondary (PLAN.md) files
@@ -385,7 +325,6 @@ def resolve_artifact_single_repo(
 def resolve_single_repo(
     repo_path: Path,
     local_chunk_id: str,
-    at_pinned: bool = False,
 ) -> ResolveResult:
     """Resolve external chunk in single repo mode using cache.
 
@@ -394,7 +333,6 @@ def resolve_single_repo(
     Args:
         repo_path: Path to the local repository
         local_chunk_id: Local chunk ID (e.g., "0001-feature")
-        at_pinned: If True, use pinned SHA instead of resolving track
 
     Returns:
         ResolveResult with resolved chunk information and content
@@ -406,5 +344,4 @@ def resolve_single_repo(
         repo_path=repo_path,
         local_artifact_id=local_chunk_id,
         artifact_type=ArtifactType.CHUNK,
-        at_pinned=at_pinned,
     )

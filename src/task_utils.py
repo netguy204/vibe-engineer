@@ -401,18 +401,10 @@ def create_task_chunk(
             f"External chunk repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
-    # 3. Get current SHA from external repo
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskChunkError(
-            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
-        )
-
     # (Moved before chunk creation to pass correct projects to template)
     effective_projects = projects if projects else config.projects
 
-    # 4. Create chunk in external repo with task context for proper template examples
+    # 3. Create chunk in external repo with task context for proper template examples
     chunks = Chunks(external_repo_path)
     external_chunk_path = chunks.create_chunk(
         ticket_id,
@@ -423,7 +415,7 @@ def create_task_chunk(
     )
     external_artifact_id = external_chunk_path.name  # Now short_name format
 
-    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # 4-5. For each project: create external.yaml with causal ordering, build dependents
     dependents = []
     project_refs = {}
 
@@ -449,15 +441,14 @@ def create_task_chunk(
         except Exception:
             tips = []
 
-        # Create external.yaml with created_after
+        # Create external.yaml with created_after (no pinned SHA - always resolve to HEAD)
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=project_artifact_id,
             external_repo_ref=config.external_artifact_repo,
             external_artifact_id=external_artifact_id,
-            pinned_sha=pinned_sha,
-            created_after=tips,
             artifact_type=ArtifactType.CHUNK,
+            created_after=tips,
         )
 
         # Build dependent entry using ExternalArtifactRef format
@@ -687,20 +678,12 @@ def create_task_narrative(
             f"External narrative repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
-    # 3. Get current SHA from external repo
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskNarrativeError(
-            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
-        )
-
-    # 4. Create narrative in external repo
+    # 3. Create narrative in external repo
     narratives = Narratives(external_repo_path)
     external_narrative_path = narratives.create_narrative(short_name)
     external_artifact_id = external_narrative_path.name
 
-    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # 4-5. For each project: create external.yaml with causal ordering, build dependents
     effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
@@ -721,15 +704,14 @@ def create_task_narrative(
         except Exception:
             tips = []
 
-        # Create external.yaml with created_after
+        # Create external.yaml with created_after (no pinned SHA - always resolve to HEAD)
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=short_name,
             external_repo_ref=config.external_artifact_repo,
             external_artifact_id=external_artifact_id,
-            pinned_sha=pinned_sha,
-            created_after=tips,
             artifact_type=ArtifactType.NARRATIVE,
+            created_after=tips,
         )
 
         # Build dependent entry using ExternalArtifactRef format
@@ -852,20 +834,12 @@ def create_task_investigation(
             f"External investigation repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
-    # 3. Get current SHA from external repo
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskInvestigationError(
-            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
-        )
-
-    # 4. Create investigation in external repo
+    # 3. Create investigation in external repo
     investigations = Investigations(external_repo_path)
     external_investigation_path = investigations.create_investigation(short_name)
     external_artifact_id = external_investigation_path.name
 
-    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # 4-5. For each project: create external.yaml with causal ordering, build dependents
     effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
@@ -886,15 +860,14 @@ def create_task_investigation(
         except Exception:
             tips = []
 
-        # Create external.yaml with created_after
+        # Create external.yaml with created_after (no pinned SHA - always resolve to HEAD)
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=short_name,
             external_repo_ref=config.external_artifact_repo,
             external_artifact_id=external_artifact_id,
-            pinned_sha=pinned_sha,
-            created_after=tips,
             artifact_type=ArtifactType.INVESTIGATION,
+            created_after=tips,
         )
 
         # Build dependent entry using ExternalArtifactRef format
@@ -1017,20 +990,12 @@ def create_task_subsystem(
             f"External subsystem repository '{config.external_artifact_repo}' not found or not accessible"
         )
 
-    # 3. Get current SHA from external repo
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskSubsystemError(
-            f"Failed to resolve HEAD SHA in external repository '{config.external_artifact_repo}': {e}"
-        )
-
-    # 4. Create subsystem in external repo
+    # 3. Create subsystem in external repo
     subsystems = Subsystems(external_repo_path)
     external_subsystem_path = subsystems.create_subsystem(short_name)
     external_artifact_id = external_subsystem_path.name
 
-    # 5-6. For each project: create external.yaml with causal ordering, build dependents
+    # 4-5. For each project: create external.yaml with causal ordering, build dependents
     effective_projects = projects if projects else config.projects
     dependents = []
     project_refs = {}
@@ -1051,15 +1016,14 @@ def create_task_subsystem(
         except Exception:
             tips = []
 
-        # Create external.yaml with created_after
+        # Create external.yaml with created_after (no pinned SHA - always resolve to HEAD)
         external_yaml_path = create_external_yaml(
             project_path=project_path,
             short_name=short_name,
             external_repo_ref=config.external_artifact_repo,
             external_artifact_id=external_artifact_id,
-            pinned_sha=pinned_sha,
-            created_after=tips,
             artifact_type=ArtifactType.SUBSYSTEM,
+            created_after=tips,
         )
 
         # Build dependent entry using ExternalArtifactRef format
@@ -1440,21 +1404,13 @@ def promote_artifact(
             f"Use --name to specify a different name."
         )
 
-    # 6. Get current SHA from external repo for pinned
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskPromoteError(
-            f"Failed to resolve HEAD SHA in external repository: {e}"
-        )
-
     # Save original created_after before copying
     original_created_after = _get_artifact_created_after(artifact_path, artifact_type)
 
-    # 7. Copy artifact directory to external repo
+    # 6. Copy artifact directory to external repo
     shutil.copytree(artifact_path, dest_path)
 
-    # 8. Get external repo tips for the promoted artifact's created_after
+    # 7. Get external repo tips for the promoted artifact's created_after
     try:
         external_index = ArtifactIndex(external_repo_path)
         external_tips = external_index.find_tips(artifact_type)
@@ -1468,7 +1424,7 @@ def promote_artifact(
     if external_tips:
         update_frontmatter_field(dest_main_path, "created_after", external_tips)
 
-    # 9. Update promoted artifact's dependents with source project
+    # 8. Update promoted artifact's dependents with source project
     dependent_entry = {
         "artifact_type": artifact_type.value,
         "artifact_id": artifact_path.name,  # Original name in source project
@@ -1476,7 +1432,7 @@ def promote_artifact(
     }
     add_dependents_to_artifact(dest_path, artifact_type, [dependent_entry])
 
-    # 10. Clear source directory and create external.yaml
+    # 9. Clear source directory and create external.yaml
     # Remove all files from source directory
     for item in artifact_path.iterdir():
         if item.is_file():
@@ -1484,15 +1440,14 @@ def promote_artifact(
         elif item.is_dir():
             shutil.rmtree(item)
 
-    # Create external.yaml with original created_after
+    # Create external.yaml with original created_after (no pinned SHA - always resolve to HEAD)
     external_yaml_path = create_external_yaml(
         project_path=artifact_path.parent.parent.parent,  # Go up from artifact to project root
         short_name=artifact_path.name,
         external_repo_ref=config.external_artifact_repo,
         external_artifact_id=dest_name,
-        pinned_sha=pinned_sha,
-        created_after=original_created_after,
         artifact_type=artifact_type,
+        created_after=original_created_after,
     )
 
     return {
@@ -1849,38 +1804,28 @@ def copy_artifact_as_external(
             f"Use --name to specify a different name."
         )
 
-    # 8. Get current SHA from external repo for pinned
-    try:
-        pinned_sha = get_current_sha(external_repo_path)
-    except ValueError as e:
-        raise TaskCopyExternalError(
-            f"Failed to resolve HEAD SHA in external repository: {e}"
-        )
-
-    # 9. Get current tips for target project's causal ordering
+    # 8. Get current tips for target project's causal ordering
     try:
         index = ArtifactIndex(target_project_path)
         tips = index.find_tips(artifact_type)
     except Exception:
         tips = []
 
-    # 10. Create external.yaml with all parameters
+    # 9. Create external.yaml (no pinned SHA - always resolve to HEAD)
     external_yaml_path = create_external_yaml(
         project_path=target_project_path,
         short_name=dest_name,
         external_repo_ref=config.external_artifact_repo,
         external_artifact_id=artifact_id,
-        pinned_sha=pinned_sha,
-        created_after=tips,
         artifact_type=artifact_type,
+        created_after=tips,
     )
 
-    # 11. Update source artifact's dependents with back-reference
+    # 10. Update source artifact's dependents with back-reference
     dependent_entry = {
         "artifact_type": artifact_type.value,
         "artifact_id": dest_name,  # The name in the target project
         "repo": target_project,
-        "pinned": pinned_sha,
     }
     append_dependent_to_artifact(source_path, artifact_type, dependent_entry)
 

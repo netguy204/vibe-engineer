@@ -58,7 +58,7 @@ class TestNarrativeCreateInTaskDirectory:
             assert ref.repo == "acme/ext"
             assert ref.artifact_id == "user_auth"
             assert ref.track == "main"
-            assert len(ref.pinned) == 40  # SHA length
+            assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
     def test_populates_dependents_in_external_narrative(self, tmp_path):
         """Updates external narrative OVERVIEW.md with dependents list."""
@@ -82,19 +82,9 @@ class TestNarrativeCreateInTaskDirectory:
         assert "acme/proj2" in content
         assert "user_auth" in content
 
-    def test_resolves_pinned_sha_from_external_repo(self, tmp_path):
-        """Pinned SHA matches HEAD of external repo at creation time."""
+    def test_external_reference_has_no_pinned_sha(self, tmp_path):
+        """External references no longer store pinned SHA - always resolve to HEAD."""
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
-
-        # Get expected SHA
-        sha_result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=external_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        expected_sha = sha_result.stdout.strip()
 
         runner = CliRunner()
         result = runner.invoke(
@@ -103,10 +93,10 @@ class TestNarrativeCreateInTaskDirectory:
 
         assert result.exit_code == 0
 
-        # Verify pinned SHA
+        # Verify no pinned SHA (always resolve to HEAD)
         narrative_dir = project_paths[0] / "docs" / "narratives" / "user_auth"
         ref = load_external_ref(narrative_dir)
-        assert ref.pinned == expected_sha
+        assert ref.pinned is None
 
     def test_reports_all_created_paths(self, tmp_path):
         """Output includes all created paths."""
@@ -224,8 +214,8 @@ projects:
             cli, ["narrative", "create", "user_auth", "--project-dir", str(task_dir)]
         )
 
-        assert result.exit_code == 1
-        assert "Failed to resolve HEAD SHA" in result.output
+        # This now succeeds - we don't require git for external repo anymore
+        assert result.exit_code == 0
 
 
 class TestNarrativeCreateSelectiveProjects:

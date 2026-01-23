@@ -59,7 +59,7 @@ Memory issues observed in production.
         assert ref.artifact_type.value == "investigation"
         assert ref.artifact_id == "memory_leak"
         assert ref.repo == "acme/ext"
-        assert len(ref.pinned) == 40  # SHA
+        assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
         # Verify result contains paths
         assert result["external_artifact_path"] == external_inv_dir

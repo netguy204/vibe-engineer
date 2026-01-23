@@ -194,3 +194,42 @@ By staying silent on git operations, ve commands remain composable with any vers
 - Documentation may mention git as one recovery option among others, but should not present it as the assumed workflow
 
 **Revisit If**: If a compelling use case emerges where ve-managed commits provide significant value that cannot be achieved through external tooling.
+
+---
+
+### DEC-006: External references always resolve to HEAD
+
+**Date**: 2026-01-23
+
+**Status**: ACCEPTED
+
+**Decision**: External artifact references (external.yaml) always resolve to the current HEAD of the tracked branch. The `pinned` field is deprecated and ignored. The `ve sync` command and `--at-pinned` option are removed.
+
+**Context**: The original design included a `pinned` SHA field in external.yaml files and a `ve sync` command to update these SHAs. This was intended to provide point-in-time archaeology - the ability to see what an external artifact looked like when the reference was created.
+
+However, in practice:
+1. Archaeology via pinned SHA was never actually used
+2. The sync command added operational complexity
+3. The mental model was confusing (when to sync? what happens if you forget?)
+4. The simpler model ("external references point at latest") matches user expectations
+
+**Alternatives Considered**:
+- Keep pinned SHAs and sync: Original design, but adds complexity without demonstrated value
+- Remove pinned but keep sync for other purposes: No other purpose was identified
+- Make pinned optional per-reference: Adds complexity for marginal benefit
+
+**Rationale**: External references exist to share artifacts across repositories. The common use case is "I want to see the current state of this artifact in another repo." Point-in-time archaeology, while theoretically useful, was never used in practice and can be achieved through git history if needed.
+
+By always resolving to HEAD, we:
+- Simplify the mental model (references are always current)
+- Eliminate the sync ceremony
+- Remove dead code and reduce maintenance burden
+- Make the system more predictable
+
+**Consequences**:
+- External references always show current content
+- No sync step required when external content changes
+- Historical archaeology requires git checkout, not ve tooling
+- The `pinned` field in existing external.yaml files is parsed but ignored for backward compatibility
+
+**Revisit If**: A concrete use case emerges where point-in-time artifact snapshots are needed and git history is insufficient.

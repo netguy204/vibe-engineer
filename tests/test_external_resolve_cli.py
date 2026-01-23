@@ -168,34 +168,6 @@ class TestResolveTaskDirectoryMode:
         assert "External Goal" in result.output
         assert "External Plan" in result.output
 
-    def test_at_pinned_flag(self, task_directory):
-        """Shows content at pinned SHA when --at-pinned specified."""
-        task_dir = task_directory["task_dir"]
-        external_repo = task_directory["external_repo"]
-        original_sha = task_directory["external_sha"]
-
-        # Make a new commit to external repo
-        external_chunk_dir = external_repo / "docs" / "chunks" / "0001-shared_feature"
-        (external_chunk_dir / "GOAL.md").write_text("---\nstatus: IMPLEMENTING\n---\n# Updated Goal\n")
-        subprocess.run(["git", "add", "."], cwd=external_repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Update"],
-            cwd=external_repo,
-            check=True,
-            capture_output=True,
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["external", "resolve", "0001-shared_feature", "--at-pinned", "--project-dir", str(task_dir)],
-        )
-
-        assert result.exit_code == 0
-        assert f"SHA: {original_sha}" in result.output
-        assert "External Goal" in result.output
-        assert "Updated Goal" not in result.output
-
     def test_goal_only_flag(self, task_directory):
         """Shows only GOAL.md when --goal-only specified."""
         runner = CliRunner()
@@ -387,30 +359,6 @@ class TestResolveErrorCases:
 
         assert result.exit_code == 1
         assert "not an external reference" in result.output
-
-    def test_error_missing_pinned_with_at_pinned(self, task_directory):
-        """Error when --at-pinned but no pinned value."""
-        task_dir = task_directory["task_dir"]
-        project_dir = task_directory["project_dir"]
-
-        # Update external.yaml to have no pinned value
-        external_yaml = project_dir / "docs" / "chunks" / "0001-shared_feature" / "external.yaml"
-        external_yaml.write_text(
-            "artifact_type: chunk\n"
-            "artifact_id: 0001-shared_feature\n"
-            "repo: acme/chunks-repo\n"
-            "track: main\n"
-            "pinned: null\n"
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["external", "resolve", "0001-shared_feature", "--at-pinned", "--project-dir", str(task_dir)],
-        )
-
-        assert result.exit_code == 1
-        assert "no pinned SHA" in result.output
 
     def test_handles_missing_plan_md(self, task_directory):
         """Gracefully handles missing PLAN.md."""

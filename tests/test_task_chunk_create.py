@@ -57,7 +57,7 @@ class TestChunkCreateInTaskDirectory:
             assert ref.repo == "acme/ext"
             assert ref.artifact_id == "auth_token"
             assert ref.track == "main"
-            assert len(ref.pinned) == 40  # SHA length
+            assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
     def test_populates_dependents_in_external_chunk(self, tmp_path):
         """Updates external chunk GOAL.md with dependents list."""
@@ -103,19 +103,9 @@ class TestChunkCreateInTaskDirectory:
         assert (project_paths[0] / "docs" / "chunks" / "auth_token").exists()
         assert (project_paths[1] / "docs" / "chunks" / "auth_token").exists()
 
-    def test_resolves_pinned_sha_from_external_repo(self, tmp_path):
-        """Pinned SHA matches HEAD of external repo at creation time."""
+    def test_external_reference_has_no_pinned_sha(self, tmp_path):
+        """External references no longer store pinned SHA - always resolve to HEAD."""
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
-
-        # Get expected SHA
-        sha_result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=external_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        expected_sha = sha_result.stdout.strip()
 
         runner = CliRunner()
         result = runner.invoke(
@@ -124,10 +114,10 @@ class TestChunkCreateInTaskDirectory:
 
         assert result.exit_code == 0
 
-        # Verify pinned SHA
+        # Verify no pinned SHA (always resolve to HEAD)
         chunk_dir = project_paths[0] / "docs" / "chunks" / "auth_token"
         ref = load_external_ref(chunk_dir)
-        assert ref.pinned == expected_sha
+        assert ref.pinned is None
 
     def test_reports_all_created_paths(self, tmp_path):
         """Output includes all created paths."""
@@ -223,8 +213,13 @@ projects:
         assert "Project directory" in result.output
         assert "not found" in result.output
 
-    def test_error_when_external_repo_not_git(self, tmp_path):
-        """Reports clear error when external repo is not a git repository."""
+    def test_external_repo_not_git_succeeds(self, tmp_path):
+        """Chunk creation succeeds even when external repo is not a git repository.
+
+        Since we no longer resolve HEAD SHA during creation, the git repo requirement
+        for external artifact repos is relaxed. The chunk can be created, and git
+        operations (like commit) would be done separately.
+        """
         task_dir = tmp_path
 
         # Create external dir (not a git repo)
@@ -247,8 +242,8 @@ projects:
             cli, ["chunk", "start", "auth_token", "--project-dir", str(task_dir)]
         )
 
-        assert result.exit_code == 1
-        assert "Failed to resolve HEAD SHA" in result.output
+        # This now succeeds - we don't require git for external repo anymore
+        assert result.exit_code == 0
 
 
 class TestChunkCreateSelectiveProjects:

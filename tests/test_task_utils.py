@@ -281,7 +281,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
@@ -297,7 +296,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
@@ -306,7 +304,7 @@ class TestCreateExternalYaml:
         assert chunk_dir.is_dir()
 
     def test_yaml_contains_correct_content(self, tmp_path):
-        """Created YAML has all required fields."""
+        """Created YAML has all required fields (no pinned SHA)."""
         (tmp_path / "docs" / "chunks").mkdir(parents=True)
 
         result = create_external_yaml(
@@ -314,7 +312,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="abcd1234" * 5,
             artifact_type=ArtifactType.CHUNK,
             track="develop",
         )
@@ -326,7 +323,7 @@ class TestCreateExternalYaml:
         assert ref.artifact_id == "auth_token"
         assert ref.artifact_type == ArtifactType.CHUNK
         assert ref.track == "develop"
-        assert ref.pinned == "abcd1234" * 5
+        assert ref.pinned is None  # No pinned SHA in new format
 
     def test_defaults_track_to_main(self, tmp_path):
         """Track defaults to 'main' if not specified."""
@@ -337,7 +334,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
@@ -353,7 +349,6 @@ class TestCreateExternalYaml:
             short_name="user_auth_narrative",
             external_repo_ref="acme/narratives",
             external_artifact_id="user_auth_narrative",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.NARRATIVE,
         )
 
@@ -577,7 +572,6 @@ class TestCreateExternalYamlCreatedAfter:
             short_name="test_chunk",
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
             created_after=["previous_chunk"],
         )
@@ -594,7 +588,6 @@ class TestCreateExternalYamlCreatedAfter:
             short_name="test_chunk",
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
             created_after=["chunk_a", "chunk_b", "chunk_c"],
         )
@@ -613,7 +606,6 @@ class TestCreateExternalYamlCreatedAfter:
             short_name="test_chunk",
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
@@ -634,7 +626,6 @@ class TestCreateExternalYamlCreatedAfter:
             short_name="test_chunk",
             external_repo_ref="org/repo",
             external_artifact_id="ext_chunk",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
             created_after=[],
         )

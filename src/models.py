@@ -291,15 +291,9 @@ class ExternalArtifactRef(BaseModel):
         """Validate artifact_id is a valid directory name."""
         return _require_valid_dir_name(v, "artifact_id")
 
-    @field_validator("pinned")
-    @classmethod
-    def validate_pinned(cls, v: str | None) -> str | None:
-        """Validate pinned is a 40-character hex SHA if provided."""
-        if v is None:
-            return v
-        if not SHA_PATTERN.match(v):
-            raise ValueError("pinned must be a 40-character lowercase hex SHA")
-        return v
+    # Note: The `pinned` field is optional and ignored. It remains in the model
+    # for backward compatibility with existing external.yaml files that may still
+    # have it. External references now always resolve to HEAD (see DEC-002).
 
 
 class ChunkDependent(BaseModel):

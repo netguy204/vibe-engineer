@@ -265,19 +265,20 @@ def create_external_yaml(
     short_name: str,
     external_repo_ref: str,
     external_artifact_id: str,
-    pinned_sha: str,
     artifact_type: ArtifactType,
     track: str = "main",
     created_after: list[str] | None = None,
 ) -> Path:
     """Create external.yaml in project's artifact directory.
 
+    External references always resolve to HEAD of the tracked branch.
+    No pinned SHA is stored - the intent is always "point at latest".
+
     Args:
         project_path: Path to the project directory.
         short_name: Short name for the artifact directory.
         external_repo_ref: External repo identifier (org/repo format).
         external_artifact_id: Artifact ID in the external repo.
-        pinned_sha: 40-character SHA to pin.
         artifact_type: Type of artifact.
         track: Branch to track (default "main").
         created_after: List of local artifact names this external artifact depends on
@@ -298,7 +299,6 @@ def create_external_yaml(
         "artifact_id": external_artifact_id,
         "repo": external_repo_ref,
         "track": track,
-        "pinned": pinned_sha,
     }
     if created_after:
         data["created_after"] = created_after

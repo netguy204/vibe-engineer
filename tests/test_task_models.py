@@ -164,15 +164,16 @@ class TestExternalArtifactRef:
                 artifact_id="my_feature",
             )
 
-    def test_external_artifact_ref_rejects_invalid_pinned(self):
-        """Rejects pinned SHA that isn't 40 hex characters."""
-        with pytest.raises(ValidationError):
-            ExternalArtifactRef(
-                artifact_type=ArtifactType.CHUNK,
-                repo="acme/myproject",
-                artifact_id="my_feature",
-                pinned="abc123",  # Too short
-            )
+    def test_external_artifact_ref_pinned_is_optional_and_ignored(self):
+        """Pinned field is optional - kept for backward compat but ignored."""
+        # No validation on pinned anymore - it's kept for backward compatibility only
+        ref = ExternalArtifactRef(
+            artifact_type=ArtifactType.CHUNK,
+            repo="acme/myproject",
+            artifact_id="my_feature",
+            pinned="abc123",  # Any value is accepted (for backward compat)
+        )
+        assert ref.pinned == "abc123"  # Parsed but ignored
 
     def test_external_artifact_ref_with_all_fields(self):
         """Accepts reference with all optional fields."""
@@ -181,11 +182,11 @@ class TestExternalArtifactRef:
             repo="acme/myproject",
             artifact_id="my_feature",
             track="main",
-            pinned="a" * 40,
+            pinned="a" * 40,  # Optional, kept for backward compat
             created_after=["previous_chunk"],
         )
         assert ref.track == "main"
-        assert ref.pinned == "a" * 40
+        assert ref.pinned == "a" * 40  # Parsed but ignored during resolution
         assert ref.created_after == ["previous_chunk"]
 
     def test_external_artifact_ref_accepts_legacy_chunk_id_format(self):

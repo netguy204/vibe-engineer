@@ -62,7 +62,7 @@ A feature chunk.
         assert ref.artifact_id == "my_feature"
         assert ref.repo == "acme/ext"
         assert ref.track == "main"
-        assert len(ref.pinned) == 40  # SHA
+        assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
         # Verify result contains created path
         assert result["external_yaml_path"] == external_yaml_path
@@ -460,7 +460,8 @@ A feature chunk.
         assert dependent["artifact_type"] == "chunk"
         assert dependent["artifact_id"] == "my_feature"  # Dest name (same as source since no --name)
         assert dependent["repo"] == "acme/proj"  # Target project
-        assert len(dependent["pinned"]) == 40  # SHA
+        # No pinned SHA in back-reference anymore - always resolve to HEAD
+        assert "pinned" not in dependent
 
         # Verify result indicates source was updated
         assert result.get("source_updated") is True
@@ -550,31 +551,23 @@ A feature chunk.
             target_project="acme/proj",
         )
 
-        # Record the pinned SHA after first copy
+        # Check dependent was added
         first_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
-        first_pinned = first_frontmatter["dependents"][0]["pinned"]
+        assert len(first_frontmatter["dependents"]) == 1
 
         # Remove the external.yaml directory so we can copy again (simulating re-run scenario)
         import shutil
         external_yaml_dir = project_paths[0] / "docs" / "chunks" / "my_feature"
         shutil.rmtree(external_yaml_dir)
 
-        # Make a commit in external repo to change the SHA
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "Empty commit"],
-            cwd=external_path,
-            check=True,
-            capture_output=True,
-        )
-
-        # Copy again - this should update the pinned SHA, not create duplicate
+        # Copy again - this should not create duplicate dependent
         copy_artifact_as_external(
             task_dir=task_dir,
             artifact_path="docs/chunks/my_feature",
             target_project="acme/proj",
         )
 
-        # Verify only one dependent entry exists
+        # Verify only one dependent entry exists (no duplicates)
         source_frontmatter = self._parse_frontmatter(chunk_dir / "GOAL.md")
         proj_deps = [
             d for d in source_frontmatter["dependents"]
@@ -583,9 +576,6 @@ A feature chunk.
             and d["artifact_id"] == "my_feature"
         ]
         assert len(proj_deps) == 1
-
-        # The pinned SHA should be updated to the new SHA
-        assert proj_deps[0]["pinned"] != first_pinned
 
     def test_back_reference_all_artifact_types(self, tmp_path):
         """Back-reference works for all artifact types."""
@@ -628,7 +618,8 @@ dependents: []
             assert dependent["artifact_type"] == type_value, f"Failed for {dir_name}"
             assert dependent["artifact_id"] == artifact_name, f"Failed for {dir_name}"
             assert dependent["repo"] == "acme/proj", f"Failed for {dir_name}"
-            assert len(dependent["pinned"]) == 40, f"Failed for {dir_name}"
+            # No pinned SHA in back-reference anymore - always resolve to HEAD
+            assert "pinned" not in dependent, f"Failed for {dir_name}"
 
     def test_back_reference_with_new_name(self, tmp_path):
         """Back-reference uses destination name when --name is provided."""

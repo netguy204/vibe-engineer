@@ -58,7 +58,7 @@ class TestInvestigationCreateInTaskDirectory:
             assert ref.repo == "acme/ext"
             assert ref.artifact_id == "memory_leak"
             assert ref.track == "main"
-            assert len(ref.pinned) == 40  # SHA length
+            assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
     def test_populates_dependents_in_external_investigation(self, tmp_path):
         """Updates external investigation OVERVIEW.md with dependents list."""
@@ -82,8 +82,8 @@ class TestInvestigationCreateInTaskDirectory:
         assert "acme/proj2" in content
         assert "memory_leak" in content
 
-    def test_resolves_pinned_sha_from_external_repo(self, tmp_path):
-        """Pinned SHA matches HEAD of external repo at creation time."""
+    def test_external_reference_has_no_pinned_sha(self, tmp_path):
+        """External references no longer store pinned SHA - always resolve to HEAD."""
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
         # Get expected SHA
@@ -106,7 +106,7 @@ class TestInvestigationCreateInTaskDirectory:
         # Verify pinned SHA
         investigation_dir = project_paths[0] / "docs" / "investigations" / "memory_leak"
         ref = load_external_ref(investigation_dir)
-        assert ref.pinned == expected_sha
+        assert ref.pinned is None  # No pinned SHA - always resolve to HEAD
 
     def test_reports_all_created_paths(self, tmp_path):
         """Output includes all created paths."""
@@ -223,8 +223,8 @@ projects:
             cli, ["investigation", "create", "memory_leak", "--project-dir", str(task_dir)]
         )
 
-        assert result.exit_code == 1
-        assert "Failed to resolve HEAD SHA" in result.output
+        # This now succeeds - we dont require git for external repo anymore
+        assert result.exit_code == 0
 
 
 class TestInvestigationCreateSelectiveProjects:

@@ -41,11 +41,6 @@ from task_utils import (
     parse_projects_option,
     load_task_config,
 )
-from sync import (
-    sync_task_directory,
-    sync_single_repo,
-    find_external_refs,
-)
 from external_resolve import (
     resolve_artifact_task_directory,
     resolve_artifact_single_repo,
@@ -1666,132 +1661,6 @@ def status(investigation_id, new_status, project_dir):
         raise SystemExit(1)
 
 
-@cli.command()
-@click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
-@click.option("--project", "projects", multiple=True, help="Sync only specified project(s) (task directory only)")
-@click.option("--chunk", "chunks", multiple=True, help="Sync only specified chunk(s) (deprecated, use --artifact)")
-@click.option("--artifact", "artifacts", multiple=True, help="Sync only specified artifact(s)")
-@click.option(
-    "--type", "artifact_type",
-    type=click.Choice(["chunk", "narrative", "investigation", "subsystem"]),
-    help="Sync only specified artifact type"
-)
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def sync(dry_run, projects, chunks, artifacts, artifact_type, project_dir):
-    """Sync external artifact references to current repository state.
-
-    Searches for external.yaml files in docs/chunks/, docs/narratives/,
-    docs/investigations/, and docs/subsystems/ directories, then updates
-    their pinned SHA to match the current state of the external repository.
-    """
-    # Convert filter tuples to lists (or None if empty)
-    project_filter = list(projects) if projects else None
-
-    # Combine --chunk and --artifact filters for backward compatibility
-    artifact_filter = list(artifacts) if artifacts else []
-    if chunks:
-        artifact_filter.extend(chunks)
-    artifact_filter = artifact_filter if artifact_filter else None
-
-    # Convert artifact type string to ArtifactType
-    artifact_types = None
-    if artifact_type:
-        artifact_types = [ArtifactType(artifact_type)]
-
-    # Check if we're in a task directory
-    if is_task_directory(project_dir):
-        _sync_task_directory(project_dir, dry_run, project_filter, artifact_filter, artifact_types)
-    else:
-        # Single repo mode
-        if project_filter:
-            click.echo("Error: --project can only be used in task directory context", err=True)
-            raise SystemExit(1)
-        _sync_single_repo(project_dir, dry_run, artifact_filter, artifact_types)
-
-
-def _sync_task_directory(
-    task_dir: pathlib.Path,
-    dry_run: bool,
-    project_filter: list[str] | None,
-    artifact_filter: list[str] | None,
-    artifact_types: list[ArtifactType] | None,
-):
-    """Handle sync in task directory mode."""
-    try:
-        results = sync_task_directory(
-            task_dir,
-            dry_run=dry_run,
-            project_filter=project_filter,
-            artifact_filter=artifact_filter,
-            artifact_types=artifact_types,
-        )
-    except TaskChunkError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
-    if not results:
-        click.echo("No external references found")
-        return
-
-    _display_sync_results(results, dry_run)
-
-
-def _sync_single_repo(
-    repo_path: pathlib.Path,
-    dry_run: bool,
-    artifact_filter: list[str] | None,
-    artifact_types: list[ArtifactType] | None,
-):
-    """Handle sync in single repo mode."""
-    # Check if there are any external refs
-    external_refs = find_external_refs(repo_path, artifact_types=artifact_types)
-    if not external_refs:
-        click.echo("No external references found")
-        return
-
-    results = sync_single_repo(
-        repo_path,
-        dry_run=dry_run,
-        artifact_filter=artifact_filter,
-        artifact_types=artifact_types,
-    )
-
-    _display_sync_results(results, dry_run)
-
-
-def _display_sync_results(results: list, dry_run: bool):
-    """Display sync results to the user."""
-    updated_count = 0
-    error_count = 0
-    prefix = "[dry-run] " if dry_run else ""
-
-    for result in results:
-        # Format the display ID to include artifact type
-        display_id = f"{result.artifact_type.value}:{result.artifact_id}"
-
-        if result.error:
-            click.echo(f"{prefix}Error syncing {display_id}: {result.error}", err=True)
-            error_count += 1
-        elif result.updated:
-            old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
-            new_abbrev = result.new_sha[:7] if result.new_sha else "(none)"
-            verb = "Would update" if dry_run else "Updated"
-            click.echo(f"{prefix}{display_id}: {old_abbrev} -> {new_abbrev} ({verb})")
-            updated_count += 1
-        else:
-            old_abbrev = result.old_sha[:7] if result.old_sha else "(none)"
-            click.echo(f"{prefix}{display_id}: {old_abbrev} (already current)")
-
-    # Summary
-    total = len(results)
-    verb = "Would update" if dry_run else "Updated"
-    click.echo(f"\n{prefix}{verb} {updated_count} of {total} external reference(s)")
-
-    if error_count > 0:
-        click.echo(f"{error_count} error(s) occurred", err=True)
-        raise SystemExit(1)
-
-
 @cli.group()
 def external():
     """External artifact reference commands."""
@@ -1800,14 +1669,13 @@ def external():
 
 @external.command()
 @click.argument("local_artifact_id")
-@click.option("--at-pinned", is_flag=True, help="Show content at pinned SHA instead of current HEAD")
 @click.option("--main-only", is_flag=True, help="Show only main file content (GOAL.md for chunks, OVERVIEW.md for others)")
 @click.option("--secondary-only", is_flag=True, help="Show only secondary file content (PLAN.md for chunks only)")
 @click.option("--goal-only", is_flag=True, hidden=True, help="Alias for --main-only (backward compatibility)")
 @click.option("--plan-only", is_flag=True, hidden=True, help="Alias for --secondary-only (backward compatibility)")
 @click.option("--project", type=str, default=None, help="Specify project for disambiguation (task directory only)")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, plan_only, project, project_dir):
+def resolve(local_artifact_id, main_only, secondary_only, goal_only, plan_only, project, project_dir):
     """Display external artifact content.
 
     Resolves an external artifact reference and displays its content.
@@ -1817,7 +1685,7 @@ def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, 
     For other types: displays OVERVIEW.md
 
     Works in both task directory mode (using local worktrees) and single repo mode
-    (using the repo cache).
+    (using the repo cache). Always resolves to the current HEAD of the external repo.
     """
     # Handle backward-compatible aliases
     if goal_only:
@@ -1833,14 +1701,14 @@ def resolve(local_artifact_id, at_pinned, main_only, secondary_only, goal_only, 
     # Determine mode and resolve
     if is_task_directory(project_dir):
         _resolve_external_task_directory(
-            project_dir, local_artifact_id, at_pinned, main_only, secondary_only, project
+            project_dir, local_artifact_id, main_only, secondary_only, project
         )
     else:
         if project:
             click.echo("Error: --project can only be used in task directory context", err=True)
             raise SystemExit(1)
         _resolve_external_single_repo(
-            project_dir, local_artifact_id, at_pinned, main_only, secondary_only
+            project_dir, local_artifact_id, main_only, secondary_only
         )
 
 
@@ -1891,7 +1759,6 @@ def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id:
 def _resolve_external_task_directory(
     task_dir: pathlib.Path,
     local_artifact_id: str,
-    at_pinned: bool,
     main_only: bool,
     secondary_only: bool,
     project_filter: str | None,
@@ -1937,7 +1804,6 @@ def _resolve_external_task_directory(
             task_dir,
             resolved_artifact_id,
             artifact_type,
-            at_pinned=at_pinned,
             project_filter=project_filter,
         )
     except TaskChunkError as e:
@@ -1950,7 +1816,6 @@ def _resolve_external_task_directory(
 def _resolve_external_single_repo(
     repo_path: pathlib.Path,
     local_artifact_id: str,
-    at_pinned: bool,
     main_only: bool,
     secondary_only: bool,
 ):
@@ -1967,7 +1832,6 @@ def _resolve_external_single_repo(
             repo_path,
             resolved_artifact_id,
             artifact_type,
-            at_pinned=at_pinned,
         )
     except TaskChunkError as e:
         click.echo(f"Error: {e}", err=True)

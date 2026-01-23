@@ -217,30 +217,6 @@ class TestResolveTaskDirectory:
         assert "External Goal" in result.main_content
         assert "External Plan" in result.secondary_content
 
-    def test_at_pinned_reads_historical_state(self, task_directory):
-        """Uses pinned SHA when --at-pinned is specified."""
-        task_dir = task_directory["task_dir"]
-        external_repo = task_directory["external_repo"]
-        original_sha = task_directory["external_sha"]
-
-        # Make a new commit to external repo
-        external_chunk_dir = external_repo / "docs" / "chunks" / "0001-shared_feature"
-        (external_chunk_dir / "GOAL.md").write_text("---\nstatus: IMPLEMENTING\n---\n# Updated Goal\n")
-        subprocess.run(["git", "add", "."], cwd=external_repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Update"],
-            cwd=external_repo,
-            check=True,
-            capture_output=True,
-        )
-
-        # Resolve at pinned should show original content
-        result = resolve_task_directory(task_dir, "0001-shared_feature", at_pinned=True)
-
-        assert result.resolved_sha == original_sha
-        assert "External Goal" in result.main_content
-        assert "Updated Goal" not in result.main_content
-
     def test_project_filter_selects_correct_project(self, task_directory, tmp_path_factory):
         """Disambiguates when chunk exists in multiple projects."""
         task_dir = task_directory["task_dir"]
@@ -324,26 +300,6 @@ class TestResolveTaskDirectory:
 
         assert "not an external reference" in str(exc_info.value)
 
-    def test_error_when_pinned_null_with_at_pinned(self, task_directory):
-        """Raises error when --at-pinned used but pinned is null."""
-        task_dir = task_directory["task_dir"]
-        project_dir = task_directory["project_dir"]
-
-        # Update external.yaml to have no pinned value (using ExternalArtifactRef format)
-        external_yaml = project_dir / "docs" / "chunks" / "0001-shared_feature" / "external.yaml"
-        external_yaml.write_text(
-            "artifact_type: chunk\n"
-            "artifact_id: 0001-shared_feature\n"
-            "repo: acme/chunks-repo\n"
-            "track: main\n"
-            "pinned: null\n"
-        )
-
-        with pytest.raises(TaskChunkError) as exc_info:
-            resolve_task_directory(task_dir, "0001-shared_feature", at_pinned=True)
-
-        assert "no pinned SHA" in str(exc_info.value)
-
     def test_qualified_chunk_id_format(self, task_directory):
         """Accepts project:chunk format for disambiguation."""
         task_dir = task_directory["task_dir"]
@@ -394,61 +350,6 @@ class TestResolveSingleRepo:
         assert result.resolved_sha == mock_sha
         assert "Goal content" in result.main_content
         assert "Plan content" in result.secondary_content
-
-    def test_at_pinned_uses_pinned_sha(self, git_repo, monkeypatch):
-        """Uses pinned SHA when --at-pinned is specified."""
-        pinned_sha = "b" * 40
-
-        # Using ExternalArtifactRef format
-        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
-        chunks_dir.mkdir(parents=True)
-        (chunks_dir / "external.yaml").write_text(
-            f"artifact_type: chunk\n"
-            f"artifact_id: 0001-feature\n"
-            f"repo: acme/chunks\n"
-            f"track: main\n"
-            f"pinned: {pinned_sha}\n"
-        )
-
-        import external_resolve
-
-        monkeypatch.setattr(
-            external_resolve.repo_cache, "ensure_cached", lambda repo: git_repo
-        )
-        monkeypatch.setattr(
-            external_resolve.repo_cache,
-            "get_file_at_ref",
-            lambda repo, ref, path: f"content at {ref[:7]}" if "GOAL" in path else None,
-        )
-
-        result = resolve_single_repo(git_repo, "0001-external", at_pinned=True)
-
-        assert result.resolved_sha == pinned_sha
-        assert pinned_sha[:7] in result.main_content
-
-    def test_error_when_pinned_null_and_at_pinned(self, git_repo, monkeypatch):
-        """Raises error when --at-pinned but pinned is null."""
-        # Using ExternalArtifactRef format
-        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
-        chunks_dir.mkdir(parents=True)
-        (chunks_dir / "external.yaml").write_text(
-            "artifact_type: chunk\n"
-            "artifact_id: 0001-feature\n"
-            "repo: acme/chunks\n"
-            "track: main\n"
-            "pinned: null\n"
-        )
-
-        import external_resolve
-
-        monkeypatch.setattr(
-            external_resolve.repo_cache, "ensure_cached", lambda repo: git_repo
-        )
-
-        with pytest.raises(TaskChunkError) as exc_info:
-            resolve_single_repo(git_repo, "0001-external", at_pinned=True)
-
-        assert "no pinned SHA" in str(exc_info.value)
 
     def test_handles_missing_plan_md(self, git_repo, monkeypatch):
         """Gracefully handles missing PLAN.md."""

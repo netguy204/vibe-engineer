@@ -213,8 +213,12 @@ class TestLoadExternalRef:
         assert ref.artifact_id == "my_feature"
         assert ref.repo == "acme/other-project"
 
-    def test_loads_ref_with_track_and_pinned(self, tmp_path):
-        """Loads external ref with track and pinned fields."""
+    def test_loads_ref_with_track_and_pinned_for_backward_compat(self, tmp_path):
+        """Loads external ref with track and optional pinned fields.
+
+        The pinned field is still parsed for backward compatibility with
+        existing external.yaml files, but is now optional and ignored.
+        """
         from external_refs import load_external_ref
 
         ref_file = tmp_path / "external.yaml"
@@ -223,11 +227,12 @@ class TestLoadExternalRef:
             "artifact_id: user_journey\n"
             "repo: acme/docs\n"
             "track: main\n"
-            "pinned: " + "a" * 40 + "\n"
+            "pinned: " + "a" * 40 + "\n"  # Legacy field, still parsed
         )
 
         ref = load_external_ref(tmp_path)
         assert ref.track == "main"
+        # pinned is parsed but ignored - kept for backward compat
         assert ref.pinned == "a" * 40
         assert ref.artifact_type == ArtifactType.NARRATIVE
 
@@ -269,7 +274,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
@@ -281,6 +285,7 @@ class TestCreateExternalYaml:
         assert ref.artifact_type == ArtifactType.CHUNK
         assert ref.artifact_id == "auth_token"
         assert ref.repo == "acme/chunks"
+        assert ref.pinned is None  # No pinned SHA in new format
 
     def test_creates_narrative_external_yaml(self, tmp_path):
         """Creates external.yaml for narrative in correct location."""
@@ -293,7 +298,6 @@ class TestCreateExternalYaml:
             short_name="user_journey",
             external_repo_ref="acme/docs",
             external_artifact_id="user_journey",
-            pinned_sha="b" * 40,
             artifact_type=ArtifactType.NARRATIVE,
         )
 
@@ -314,7 +318,6 @@ class TestCreateExternalYaml:
             short_name="memory_leak",
             external_repo_ref="acme/research",
             external_artifact_id="memory_leak",
-            pinned_sha="c" * 40,
             artifact_type=ArtifactType.INVESTIGATION,
         )
 
@@ -335,7 +338,6 @@ class TestCreateExternalYaml:
             short_name="auth_system",
             external_repo_ref="acme/platform",
             external_artifact_id="auth_system",
-            pinned_sha="d" * 40,
             artifact_type=ArtifactType.SUBSYSTEM,
         )
 
@@ -356,7 +358,6 @@ class TestCreateExternalYaml:
             short_name="feature_b",
             external_repo_ref="acme/chunks",
             external_artifact_id="feature_b",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
             created_after=["feature_a"],
         )
@@ -375,7 +376,6 @@ class TestCreateExternalYaml:
             short_name="auth_token",
             external_repo_ref="acme/chunks",
             external_artifact_id="auth_token",
-            pinned_sha="a" * 40,
             artifact_type=ArtifactType.CHUNK,
         )
 
