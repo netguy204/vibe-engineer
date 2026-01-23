@@ -1,0 +1,225 @@
+---
+description: Migrate legacy CLAUDE.md to use magic markers for VE-managed content.
+---
+
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+This file is rendered from: src/templates/commands/migrate-managed-claude-md.md.jinja2
+Edit the source template, then run `ve init` to regenerate.
+-->
+
+
+## Tips
+
+- The ve command is an installed CLI tool, not a file in the repository. Do not
+search for it - run it directly via Bash.
+
+## Overview
+
+This migration adds magic markers to an existing CLAUDE.md file:
+- `<!-- VE:MANAGED:START -->` marks the beginning of VE-managed content
+- `<!-- VE:MANAGED:END -->` marks the end
+
+After migration, `ve init` will only update content between the markers, preserving
+any user customizations outside them.
+
+## Instructions
+
+### Phase 1: Prerequisites Check
+
+1. **Check if CLAUDE.md exists**:
+   - If CLAUDE.md does not exist, create it with empty markers and complete:
+     ```markdown
+     <!-- VE:MANAGED:START -->
+     <!-- VE:MANAGED:END -->
+     ```
+     Then run `ve init` to populate the managed section.
+
+2. **Check if already migrated**:
+   - Read CLAUDE.md and check for existing `<!-- VE:MANAGED:START -->` marker
+   - If markers already exist, report "Already migrated" and complete immediately
+   - Verify both START and END markers exist (warn if only one is present)
+
+3. **Create migration directory**:
+   ```
+   ve migration create managed_claude_md
+   ```
+   This creates `docs/migrations/managed_claude_md/MIGRATION.md` to track progress.
+
+---
+
+### Phase 2: Detection
+
+Read CLAUDE.md and analyze its content to identify VE-managed content boundaries.
+
+**Detection signals to look for:**
+
+| Signal | Strength | Description |
+|--------|----------|-------------|
+| `# Vibe Engineering Workflow` heading | Strong | Primary VE content indicator |
+| `docs/trunk/`, `docs/chunks/`, `docs/subsystems/` references | Strong | VE documentation structure |
+| `ve chunk`, `ve init`, `ve orch` commands | Strong | VE CLI references |
+| Available Commands section with VE slash commands | Strong | VE workflow commands |
+| Chunk Lifecycle, Narrative, Investigation sections | Medium | VE artifact documentation |
+| Working with the Orchestrator section | Medium | VE orchestrator docs |
+| Generic project setup (Python, testing) | Weak | Could be user or VE content |
+
+**Agent task**: Read CLAUDE.md and propose line number boundaries.
+
+1. Read the entire CLAUDE.md file, noting line numbers
+2. Identify where VE content begins (typically `# Vibe Engineering Workflow`)
+3. Identify where VE content ends (last VE-specific section before user content)
+4. Record your findings in MIGRATION.md:
+
+   Update the `detected_boundaries` frontmatter:
+   ```yaml
+   detected_boundaries:
+     start_line: <number>
+     end_line: <number>
+     confidence: high|medium|low
+     reasoning: "<explanation>"
+   ```
+
+   Also update the "Detection Results" section with your analysis.
+
+5. Update status to REFINING
+
+**Edge cases:**
+
+- **No VE content detected**: Set `start_line: null`, `end_line: null`, confidence: high,
+  reasoning: "No VE content signatures found". The wrapping phase will append empty markers.
+
+- **User content before VE section**: Start boundary should be after user content
+
+- **User content after VE section**: End boundary should be before user content
+
+- **User content interleaved within VE section**: Flag this in your reasoning and
+  ask operator for guidance during proposal phase
+
+---
+
+### Phase 3: Proposal
+
+Present the detected boundaries to the operator for confirmation.
+
+1. Display the proposed boundaries:
+   > "Based on my analysis of CLAUDE.md, I propose:
+   >
+   > **VE-managed content: Lines {start_line} - {end_line}**
+   >
+   > Confidence: {confidence}
+   > Reasoning: {reasoning}
+   >
+   > Preview of boundary lines:
+   > - Line {start_line}: `{content of start line}`
+   > - Line {end_line}: `{content of end line}`
+   >
+   > Please confirm:
+   > - **Accept**: Proceed with these boundaries
+   > - **Adjust**: Specify different line numbers (e.g., "use lines 5-120")
+   > - **No VE content**: Append empty markers to end of file"
+
+2. Record the operator's decision as a resolved question in MIGRATION.md
+
+3. If operator requests adjustment, update detected_boundaries accordingly
+
+4. Update status to EXECUTING
+
+---
+
+### Phase 4: Wrapping
+
+**Note:** Status is EXECUTING for both wrapping and validation phases.
+
+Insert the magic markers around the confirmed VE content.
+
+**Case A: VE content detected (start_line and end_line are set)**
+
+1. Insert `<!-- VE:MANAGED:START -->` on its own line BEFORE line {start_line}
+2. Insert `<!-- VE:MANAGED:END -->` on its own line AFTER line {end_line}
+
+**Important**: Preserve exact whitespace. Insert markers on their own lines without
+modifying surrounding content.
+
+**Case B: No VE content (start_line and end_line are null)**
+
+1. Append to the end of CLAUDE.md:
+   ```
+   <!-- VE:MANAGED:START -->
+   <!-- VE:MANAGED:END -->
+   ```
+
+2. Update MIGRATION.md progress log
+
+3. Proceed to validation (status remains EXECUTING)
+
+---
+
+### Phase 5: Validation
+
+Verify the migration was successful.
+
+**Validation checks:**
+
+1. **Markers exist**: Both `<!-- VE:MANAGED:START -->` and `<!-- VE:MANAGED:END -->`
+   are present in CLAUDE.md
+
+2. **Markers are well-formed**:
+   - START appears before END
+   - No duplicate markers
+   - Markers are on their own lines
+
+3. **Content preserved**:
+   - Content before START marker matches original content before VE section
+   - Content after END marker matches original content after VE section
+   - Total line count = original + 2 (for the two marker lines)
+
+4. **Future compatibility**:
+   - `ve init` would only modify content between markers (verify by reading the
+     template and comparing marker positions)
+
+Record results in MIGRATION.md "Validation Results" section.
+
+**If validation passes:**
+1. Update status to COMPLETED
+2. Update MIGRATION.md with completion timestamp
+3. Report success:
+   > "Migration complete. CLAUDE.md now has VE-managed markers.
+   >
+   > **Next step**: Run `ve init` to update the managed section with the latest
+   > VE content from the template."
+
+**If validation fails:**
+1. Document the failure in MIGRATION.md
+2. Ask operator how to proceed (retry, manual fix, abandon)
+
+---
+
+## Pause and Resume
+
+This migration supports pause/resume:
+
+- **To pause**: Update MIGRATION.md status to PAUSED, set pause_reason and resume_instructions
+- **To resume**: Read MIGRATION.md, check current_phase and phases_completed, continue from where you left off
+
+The MIGRATION.md frontmatter tracks all state needed to resume.
+
+---
+
+## Troubleshooting
+
+**Q: What if the operator made significant changes to VE sections?**
+A: The agent should note this in the detection reasoning. The operator can then
+   decide whether to include modified VE sections in the managed area or not.
+
+**Q: What if there's interleaved user/VE content?**
+A: The agent should flag this during detection. The operator must decide which
+   parts to include. In complex cases, the operator may need to manually reorganize
+   content before or after migration.
+
+**Q: What if `ve init` fails after migration?**
+A: Check that markers are well-formed. The `ve init` command expects exact marker
+   format: `<!-- VE:MANAGED:START -->` and `<!-- VE:MANAGED:END -->`.

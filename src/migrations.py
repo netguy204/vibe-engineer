@@ -224,7 +224,7 @@ class Migrations:
         Raises:
             ValueError: If a migration of this type already exists or type is unknown.
         """
-        supported_types = {"chunks_to_subsystems", "subsystem_discovery"}
+        supported_types = {"chunks_to_subsystems", "subsystem_discovery", "managed_claude_md"}
         if migration_type not in supported_types:
             raise ValueError(
                 f"Unknown migration type: '{migration_type}'. "
@@ -240,9 +240,12 @@ class Migrations:
         # Create migration directory structure
         migration_dir = self.get_migration_dir(migration_type)
         migration_dir.mkdir(parents=True, exist_ok=True)
-        (migration_dir / "analysis").mkdir(exist_ok=True)
-        (migration_dir / "proposals").mkdir(exist_ok=True)
-        (migration_dir / "questions").mkdir(exist_ok=True)
+
+        # Only create subdirectories for migrations that need them
+        if migration_type in {"chunks_to_subsystems", "subsystem_discovery"}:
+            (migration_dir / "analysis").mkdir(exist_ok=True)
+            (migration_dir / "proposals").mkdir(exist_ok=True)
+            (migration_dir / "questions").mkdir(exist_ok=True)
 
         # Get current timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -257,6 +260,13 @@ class Migrations:
             migration = ActiveMigration(
                 migration_type=migration_type,
                 source_type=source_type.value,
+                _project_dir=self.project_dir,
+            )
+        elif migration_type == "managed_claude_md":
+            # managed_claude_md is a simpler migration - no source_type needed
+            migration = ActiveMigration(
+                migration_type=migration_type,
+                source_type=None,
                 _project_dir=self.project_dir,
             )
         else:

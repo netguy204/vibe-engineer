@@ -1217,3 +1217,144 @@ class TestVeConfigInTemplates:
             "CLAUDE.md.jinja2",
         )
         assert "## Template Editing Workflow" not in result
+
+
+class TestManagedClaudeMdMigrationTemplate:
+    """Tests for managed_claude_md migration template."""
+
+    def test_migration_template_renders_correctly(self):
+        """managed_claude_md migration template renders with required fields."""
+        from template_system import render_template
+
+        result = render_template(
+            "migrations/managed_claude_md",
+            "MIGRATION.md.jinja2",
+            timestamp="2024-01-01T00:00:00Z",
+        )
+
+        # Check frontmatter structure
+        assert "status: ANALYZING" in result
+        assert "target_file: CLAUDE.md" in result
+        assert "current_phase: 1" in result
+        assert "started: 2024-01-01T00:00:00Z" in result
+
+        # Check main sections
+        assert "# Managed CLAUDE.md Migration" in result
+        assert "## Purpose" in result
+        assert "## Current State" in result
+        assert "## Detection Results" in result
+        assert "## Pending Questions" in result
+        assert "## Progress Log" in result
+        assert "## Validation Results" in result
+
+        # Check for magic marker documentation
+        assert "VE:MANAGED:START" in result
+        assert "VE:MANAGED:END" in result
+
+    def test_migration_template_has_detected_boundaries_structure(self):
+        """Migration template includes detected_boundaries frontmatter structure."""
+        from template_system import render_template
+
+        result = render_template(
+            "migrations/managed_claude_md",
+            "MIGRATION.md.jinja2",
+            timestamp="2024-01-01T00:00:00Z",
+        )
+
+        assert "detected_boundaries:" in result
+        assert "start_line: null" in result
+        assert "end_line: null" in result
+        assert "confidence: null" in result
+        assert "reasoning: null" in result
+
+    def test_migration_template_documents_status_values(self):
+        """Migration template documents valid status values."""
+        from template_system import render_template
+
+        result = render_template(
+            "migrations/managed_claude_md",
+            "MIGRATION.md.jinja2",
+            timestamp="2024-01-01T00:00:00Z",
+        )
+
+        # Uses standard migration status values
+        assert "ANALYZING" in result
+        assert "REFINING" in result
+        assert "EXECUTING" in result
+        assert "COMPLETED" in result
+        assert "PAUSED" in result
+        assert "ABANDONED" in result
+
+
+class TestMigrateManagedClaudeMdSlashCommand:
+    """Tests for migrate-managed-claude-md slash command template."""
+
+    def test_slash_command_template_renders_correctly(self):
+        """migrate-managed-claude-md slash command renders with all phases."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "migrate-managed-claude-md.md.jinja2",
+        )
+
+        # Check overview
+        assert "magic markers" in result.lower()
+        assert "VE:MANAGED:START" in result
+        assert "VE:MANAGED:END" in result
+
+        # Check phases
+        assert "Phase 1: Prerequisites Check" in result
+        assert "Phase 2: Detection" in result
+        assert "Phase 3: Proposal" in result
+        assert "Phase 4: Wrapping" in result
+        assert "Phase 5: Validation" in result
+
+        # Check pause/resume support
+        assert "Pause and Resume" in result
+
+    def test_slash_command_includes_detection_signals(self):
+        """Slash command includes signals for detecting VE content."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "migrate-managed-claude-md.md.jinja2",
+        )
+
+        # Detection signals from the plan
+        assert "Vibe Engineering Workflow" in result
+        assert "docs/trunk/" in result
+        assert "docs/chunks/" in result
+        assert "ve chunk" in result or "ve init" in result
+
+    def test_slash_command_handles_edge_cases(self):
+        """Slash command documents edge cases."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "migrate-managed-claude-md.md.jinja2",
+        )
+
+        # Should document what happens if CLAUDE.md doesn't exist
+        assert "CLAUDE.md" in result
+        # Should document what happens if already migrated
+        assert "already" in result.lower()
+
+    def test_slash_command_no_jinja_remnants(self):
+        """Slash command renders without Jinja2 syntax in output."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "migrate-managed-claude-md.md.jinja2",
+        )
+
+        # No unrendered Jinja tags
+        assert "{%" not in result
+        # Check {{ }} - should be escaped code examples only
+        raw_braces = result.count("{{")
+        if raw_braces > 0:
+            # Should be in code blocks
+            assert "```" in result

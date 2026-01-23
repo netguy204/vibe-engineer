@@ -1,0 +1,176 @@
+---
+# Migration Status
+status: ANALYZING
+target_file: CLAUDE.md
+
+# Progress Tracking
+current_phase: 1
+phases_completed: []
+last_activity: {{ timestamp }}
+
+# Timing
+started: {{ timestamp }}
+completed: null
+
+# Detection Results
+detected_boundaries:
+  start_line: null
+  end_line: null
+  confidence: null
+  reasoning: null
+markers_already_present: false
+
+# Pending Questions
+questions_pending: 0
+questions_resolved: 0
+
+# Pause Context
+pause_reason: null
+paused_by: null
+paused_at: null
+resume_instructions: null
+---
+
+<!--
+DO NOT DELETE THIS COMMENT BLOCK until migration reaches COMPLETED status.
+This documents the frontmatter schema and guides migration workflow.
+
+STATUS VALUES (using standard migration statuses):
+- ANALYZING: Agent is analyzing CLAUDE.md to identify VE-managed content (Phases 1-2)
+- REFINING: Presenting detected boundaries to operator for confirmation (Phase 3)
+- EXECUTING: Wrapping content with magic markers and validating (Phases 4-5)
+- COMPLETED: Migration finished, markers present in CLAUDE.md
+- PAUSED: Explicitly paused for operator review
+- ABANDONED: Migration cancelled (can restart fresh)
+
+STATUS TRANSITIONS:
+  ANALYZING → REFINING      (when boundaries detected and ready for review)
+  REFINING → EXECUTING      (when operator approves boundaries)
+  EXECUTING → COMPLETED     (when markers inserted and validated)
+  Any → PAUSED              (operator requests pause)
+  PAUSED → previous         (operator resumes)
+  Any → ABANDONED           (operator cancels)
+
+DETECTED_BOUNDARIES:
+- start_line: First line of VE-managed content (1-indexed)
+- end_line: Last line of VE-managed content (1-indexed, inclusive)
+- confidence: high, medium, low
+- reasoning: Agent's explanation of why these boundaries were chosen
+- markers_already_present: true if VE:MANAGED markers already exist
+
+PHASES:
+- 1: Prerequisites - Check if CLAUDE.md exists and if already migrated
+- 2: Detection - Agent analyzes CLAUDE.md, proposes boundaries
+- 3: Proposal - Present boundaries to operator for confirmation
+- 4: Wrapping - Insert markers around VE content (or append empty markers)
+- 5: Validation - Verify markers exist and are well-formed
+-->
+
+# Managed CLAUDE.md Migration
+
+## Purpose
+
+This migration adds magic markers (`<!-- VE:MANAGED:START -->` / `<!-- VE:MANAGED:END -->`)
+to an existing CLAUDE.md file, enabling `ve init` to update VE-managed content while
+preserving user customizations outside the markers.
+
+## Current State
+
+<!--
+GUIDANCE: Update this section after each significant action.
+This is the first thing an agent reads when resuming.
+
+Include:
+- What phase we're in
+- What was last accomplished
+- What needs to happen next
+- Any blockers or questions
+-->
+
+Migration initialized. Beginning detection phase.
+
+## Detection Results
+
+<!--
+GUIDANCE: Populated during Phase 1 (Detection).
+Agent reads CLAUDE.md and proposes line number boundaries for VE content.
+-->
+
+### Analysis
+
+(Agent will document their analysis here)
+
+### Proposed Boundaries
+
+| Field | Value |
+|-------|-------|
+| Start line | (to be detected) |
+| End line | (to be detected) |
+| Confidence | (to be assessed) |
+
+### Reasoning
+
+(Agent will explain why these boundaries were chosen)
+
+## Pending Questions
+
+<!--
+GUIDANCE: Track questions that need operator input.
+
+For this migration, the main question is boundary confirmation:
+- Q1: Are the detected boundaries correct?
+  - Options: Accept, Adjust (specify new range), No VE content (append empty markers)
+-->
+
+(None yet - questions will appear during proposal phase)
+
+## Resolved Questions
+
+<!--
+GUIDANCE: Move questions here once resolved. Preserves decision history.
+-->
+
+(None yet)
+
+## Progress Log
+
+<!--
+GUIDANCE: Append entries as phases complete. Never delete entries.
+This provides archaeology for understanding how the migration progressed.
+
+Format:
+### Phase N: [Name] ([STATUS])
+- Started: [timestamp]
+- Completed: [timestamp] (if applicable)
+- Action taken: [brief summary]
+-->
+
+### Initialization
+- Started: {{ timestamp }}
+- Target file: CLAUDE.md
+
+## Validation Results
+
+<!--
+GUIDANCE: Populated during Phase 4 (Validation).
+
+Checks:
+- [ ] Markers exist in CLAUDE.md
+- [ ] Markers are well-formed (START before END, both present)
+- [ ] Content outside markers is preserved
+- [ ] No duplicate markers
+-->
+
+(Populated during validation)
+
+## Post-Migration Notes
+
+<!--
+GUIDANCE: Record any notes for after migration completes.
+
+Include:
+- Any content that was adjusted
+- Recommendations for next steps (e.g., run `ve init`)
+-->
+
+(Populated at completion)

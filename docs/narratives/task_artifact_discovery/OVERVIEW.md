@@ -9,7 +9,7 @@ proposed_chunks:
   - prompt: "Add magic marker syntax (`<!-- VE:MANAGED:START -->` / `<!-- VE:MANAGED:END -->`) to CLAUDE.md template. Content between markers is owned by VE and can be rewritten on `ve init`."
     chunk_directory: claudemd_magic_markers
   - prompt: "Create `/migrate-managed-claude-md` slash command following the migration pattern from docs/investigations/bidirectional_doc_code_sync. Creates docs/migrations/managed_claude_md/ with MIGRATION.md tracking progress, phases for detection/wrapping/validation, and questions for operator input."
-    chunk_directory: null
+    chunk_directory: claudemd_migrate_managed
   - prompt: "Update CLAUDE.md template to prompt agents to use `ve external resolve` when they encounter external.yaml references."
     chunk_directory: null
 created_after: []
@@ -185,3 +185,6 @@ operators to understand what the migration did months later.
   creating named directory with MIGRATION.md for audit trail.
 - 2026-01-22: Added `external_artifact_unpin` chunk to remove pinning concept.
   External artifacts always resolve to HEAD; `ve sync` removed. Five chunks total.
+- 2026-01-23: Completed `claudemd_migrate_managed` chunk. The `/migrate-managed-claude-md`
+  slash command now exists, enabling migration of legacy CLAUDE.md files to use magic
+  markers. One chunk remaining: `claudemd_external_prompt`.

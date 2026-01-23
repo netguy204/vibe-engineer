@@ -3070,16 +3070,22 @@ def create_migration(migration_type, project_dir):
 
     try:
         migration_dir = migrations.create_migration(migration_type)
-        source_type = migrations.detect_source_type()
-        chunk_count = migrations.count_chunks()
 
         click.echo(f"Created migration: {migration_type}")
         click.echo(f"  Location: {migration_dir}")
-        click.echo(f"  Source type: {source_type.value}")
-        if source_type.value == "chunks":
-            click.echo(f"  Chunks found: {chunk_count}")
-        click.echo()
-        click.echo("Run /migrate-to-subsystems to begin the migration workflow.")
+
+        # Show migration-type-specific information
+        if migration_type == "managed_claude_md":
+            click.echo()
+            click.echo("Run /migrate-managed-claude-md to begin the migration workflow.")
+        else:
+            source_type = migrations.detect_source_type()
+            chunk_count = migrations.count_chunks()
+            click.echo(f"  Source type: {source_type.value}")
+            if source_type.value == "chunks":
+                click.echo(f"  Chunks found: {chunk_count}")
+            click.echo()
+            click.echo("Run /migrate-to-subsystems to begin the migration workflow.")
 
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
