@@ -37,7 +37,7 @@ $ARGUMENTS
 First, check if a discovery is already in progress:
 
 ```bash
-uv run ve migration status subsystem_discovery
+ve migration status subsystem_discovery
 ```
 
 **If discovery exists**: The command shows the current status. Go to **Resuming Discovery** section below.
@@ -89,7 +89,7 @@ The `ve migration status` command from Step 1 shows the current status. Handle b
 Create the discovery using the CLI:
 
 ```bash
-uv run ve migration create subsystem_discovery
+ve migration create subsystem_discovery
 ```
 
 This command will:

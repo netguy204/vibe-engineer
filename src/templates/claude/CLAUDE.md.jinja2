@@ -262,7 +262,7 @@ When the operator asks you to create work for later (or when an IMPLEMENTING chu
 
 ```bash
 # Create a FUTURE chunk
-uv run ve chunk create my_chunk --future
+ve chunk create my_chunk --future
 
 # Refine GOAL.md, then STOP and present to operator for review
 # DO NOT proceed until operator approves
@@ -271,7 +271,7 @@ uv run ve chunk create my_chunk --future
 git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): create my_chunk"
 
 # Submit to orchestrator
-uv run ve orch inject my_chunk
+ve orch inject my_chunk
 ```
 
 **Important**: Always commit chunks before injecting them. The orchestrator works from the git state, not your working directory.
@@ -285,8 +285,8 @@ If you update a chunk's GOAL.md or PLAN.md after it's been injected, the orchest
 git add docs/chunks/my_chunk/ && git commit -m "docs: update my_chunk goal"
 
 # Delete and re-inject
-uv run ve orch work-unit delete my_chunk
-uv run ve orch inject my_chunk
+ve orch work-unit delete my_chunk
+ve orch inject my_chunk
 ```
 
 ### Handling Attention Items
@@ -294,19 +294,19 @@ uv run ve orch inject my_chunk
 Work units enter NEEDS_ATTENTION status when they require operator input (questions, conflicts, failures). Check the attention queue:
 
 ```bash
-uv run ve orch attention
+ve orch attention
 ```
 
 For questions, you can answer on behalf of the operator if you have sufficient context:
 
 ```bash
-uv run ve orch answer my_chunk "The answer to the question"
+ve orch answer my_chunk "The answer to the question"
 ```
 
 For conflicts between chunks, resolve them:
 
 ```bash
-uv run ve orch resolve my_chunk --verdict INDEPENDENT  # or SERIALIZE
+ve orch resolve my_chunk --verdict INDEPENDENT  # or SERIALIZE
 ```
 
 ### Batch Operations
@@ -352,8 +352,8 @@ Do NOT change the chunk status to IMPLEMENTING - the orchestrator manages that.
 ```bash
 # Example workflow
 git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): add my_chunk"
-uv run ve orch start  # if not running
-uv run ve orch inject my_chunk
+ve orch start  # if not running
+ve orch inject my_chunk
 ```
 
 #### 2. Create a new chunk for background execution
