@@ -1,6 +1,12 @@
-"""Tests for the 'chunk validate' CLI command."""
+"""Tests for the 'chunk validate' CLI command.
+
+Note: chunk validate uses code_references which is an in-repo chunk feature.
+Tests that need to modify chunk frontmatter use task directory mode (not scratchpad).
+"""
 
 import pathlib
+
+from conftest import setup_task_directory
 
 from ve import cli
 
@@ -93,14 +99,15 @@ class TestValidateCommandInterface:
         assert result.exit_code == 0
         assert "--project-dir" in result.output
 
-    def test_chunk_id_argument_is_optional(self, runner, temp_project):
+    def test_chunk_id_argument_is_optional(self, runner, tmp_path):
         """chunk_id argument is optional."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         # Create a chunk with valid state
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
@@ -108,24 +115,25 @@ class TestValidateCommandInterface:
         # Invoke without chunk_id - should default to latest
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_project_dir_option_works(self, runner, temp_project):
+    def test_project_dir_option_works(self, runner, tmp_path):
         """--project-dir option works correctly."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
@@ -133,89 +141,95 @@ class TestValidateCommandInterface:
 class TestStatusValidation:
     """Tests for status validation in 've chunk validate'."""
 
-    def test_fails_when_status_not_implementing_or_active(self, runner, temp_project):
+    def test_fails_when_status_not_implementing_or_active(self, runner, tmp_path):
         """Command fails if chunk status is not IMPLEMENTING or ACTIVE."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
 
-    def test_active_status_passes(self, runner, temp_project):
+    def test_active_status_passes(self, runner, tmp_path):
         """Command succeeds when chunk status is ACTIVE."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "ACTIVE", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_error_states_current_status(self, runner, temp_project):
+    def test_error_states_current_status(self, runner, tmp_path):
         """Error message states the current status."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert "HISTORICAL" in result.output
 
-    def test_error_explains_why_blocked(self, runner, temp_project):
+    def test_error_explains_why_blocked(self, runner, tmp_path):
         """Error message explains why completion is blocked."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         # Should explain that status must be IMPLEMENTING or ACTIVE
         assert "IMPLEMENTING" in result.output or "ACTIVE" in result.output
 
-    def test_nonexistent_chunk_exits_with_error(self, runner, temp_project):
+    def test_nonexistent_chunk_exits_with_error(self, runner, tmp_path):
         """Non-existent chunk ID exits non-zero with error message."""
+        task_dir, _, _ = setup_task_directory(tmp_path)
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "9999", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "9999", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
-    def test_no_chunks_exits_with_error(self, runner, temp_project):
+    def test_no_chunks_exits_with_error(self, runner, tmp_path):
         """No chunks available exits non-zero with error message."""
+        task_dir, _, _ = setup_task_directory(tmp_path)
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
 
@@ -223,30 +237,32 @@ class TestStatusValidation:
 class TestCodeReferencesValidation:
     """Tests for code_references validation in 've chunk validate'."""
 
-    def test_valid_code_references_passes(self, runner, temp_project):
+    def test_valid_code_references_passes(self, runner, tmp_path):
         """Valid code_references passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_missing_ref_field_produces_error(self, runner, temp_project):
+    def test_missing_ref_field_produces_error(self, runner, tmp_path):
         """Missing 'ref' field produces error (frontmatter can't be parsed)."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         # Write malformed frontmatter directly
         goal_path = chunk_path / "GOAL.md"
@@ -261,18 +277,19 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
 
-    def test_missing_implements_field_produces_error(self, runner, temp_project):
+    def test_missing_implements_field_produces_error(self, runner, tmp_path):
         """Missing 'implements' field produces error (frontmatter can't be parsed)."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("""---
@@ -286,18 +303,19 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "frontmatter" in result.output.lower() or "parse" in result.output.lower()
 
-    def test_wrong_status_type_produces_error(self, runner, temp_project):
+    def test_wrong_status_type_produces_error(self, runner, tmp_path):
         """Wrong type for status produces error (frontmatter can't be parsed)."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         goal_path = chunk_path / "GOAL.md"
         goal_path.write_text("""---
@@ -312,22 +330,23 @@ code_references:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
 
-    def test_empty_code_references_fails(self, runner, temp_project):
+    def test_empty_code_references_fails(self, runner, tmp_path):
         """Empty code_references list fails with error."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         # Should explain that at least one reference is required
@@ -337,39 +356,41 @@ code_references:
 class TestSuccessOutput:
     """Tests for success output in 've chunk validate'."""
 
-    def test_success_prints_confirmation(self, runner, temp_project):
+    def test_success_prints_confirmation(self, runner, tmp_path):
         """Successful validation prints confirmation message."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
         # Should output some confirmation
         assert len(result.output.strip()) > 0
 
-    def test_success_exits_zero(self, runner, temp_project):
+    def test_success_exits_zero(self, runner, tmp_path):
         """Exit code 0 on success."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py#Main", "implements": "req1"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
@@ -377,85 +398,90 @@ class TestSuccessOutput:
 class TestSymbolicReferenceValidation:
     """Tests for symbolic code_references validation with warnings."""
 
-    def test_valid_symbolic_reference_passes(self, runner, temp_project):
+    def test_valid_symbolic_reference_passes(self, runner, tmp_path):
         """Valid symbolic reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#SymbolicReference", "implements": "Model definition"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_file_only_reference_passes(self, runner, temp_project):
+    def test_file_only_reference_passes(self, runner, tmp_path):
         """File-only reference (no symbol) passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py", "implements": "Full module"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_nonexistent_symbol_produces_warning(self, runner, temp_project):
+    def test_nonexistent_symbol_produces_warning(self, runner, tmp_path):
         """Reference to non-existent symbol produces warning but succeeds."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#NonExistentClass", "implements": "Missing class"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
         assert "warning" in result.output.lower() or "not found" in result.output.lower()
 
-    def test_nonexistent_file_produces_warning(self, runner, temp_project):
+    def test_nonexistent_file_produces_warning(self, runner, tmp_path):
         """Reference to non-existent file produces warning but succeeds."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/nonexistent.py#SomeClass", "implements": "Missing file"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         # Should succeed (exit 0) but show warning
         assert result.exit_code == 0
         assert "warning" in result.output.lower() or "not found" in result.output.lower()
 
-    def test_multiple_warnings_collected(self, runner, temp_project):
+    def test_multiple_warnings_collected(self, runner, tmp_path):
         """Multiple invalid references produce multiple warnings."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/models.py#NonExistent1", "implements": "First missing"},
             {"ref": "src/models.py#NonExistent2", "implements": "Second missing"},
@@ -463,23 +489,24 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         # Should succeed but show warnings for both
         assert result.exit_code == 0
         # Both symbols should be mentioned
         assert "NonExistent1" in result.output or "warning" in result.output.lower()
 
-    def test_no_warnings_when_all_symbols_valid(self, runner, temp_project):
+    def test_no_warnings_when_all_symbols_valid(self, runner, tmp_path):
         """No warnings shown when all symbols are valid."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
-        # Create a real Python file with a symbol
-        src_dir = temp_project / "src"
+        # Create a real Python file with a symbol in external repo
+        src_dir = external_path / "src"
         src_dir.mkdir(exist_ok=True)
         (src_dir / "test_module.py").write_text("class MyClass:\n    pass\n")
 
@@ -489,7 +516,7 @@ class TestSymbolicReferenceValidation:
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
         assert "warning" not in result.output.lower()
@@ -540,9 +567,9 @@ Test chunk content.
 """
         goal_path.write_text(frontmatter)
 
-    def _create_subsystem(self, temp_project, subsystem_name):
+    def _create_subsystem(self, external_path, subsystem_name):
         """Helper to create a subsystem directory with OVERVIEW.md."""
-        subsystem_path = temp_project / "docs" / "subsystems" / subsystem_name
+        subsystem_path = external_path / "docs" / "subsystems" / subsystem_name
         subsystem_path.mkdir(parents=True, exist_ok=True)
         overview_path = subsystem_path / "OVERVIEW.md"
         overview_path.write_text("""---
@@ -554,16 +581,17 @@ code_references: []
 # Subsystem
 """)
 
-    def test_chunk_with_valid_subsystem_ref_passes(self, runner, temp_project):
+    def test_chunk_with_valid_subsystem_ref_passes(self, runner, tmp_path):
         """Chunk with valid subsystem reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
-        # Create the subsystem
-        self._create_subsystem(temp_project, "validation")
+        # Create the subsystem in external repo
+        self._create_subsystem(external_path, "validation")
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
@@ -574,17 +602,18 @@ code_references: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_invalid_subsystem_ref_fails(self, runner, temp_project):
+    def test_chunk_with_invalid_subsystem_ref_fails(self, runner, tmp_path):
         """Chunk with invalid subsystem reference fails validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
@@ -595,18 +624,19 @@ code_references: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "nonexistent" in result.output
 
-    def test_chunk_with_invalid_subsystem_id_format_fails(self, runner, temp_project):
+    def test_chunk_with_invalid_subsystem_id_format_fails(self, runner, tmp_path):
         """Chunk with invalid subsystem_id format fails validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_subsystems(
             chunk_path,
@@ -617,26 +647,27 @@ code_references: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         # Subsystem doesn't exist
         assert result.exit_code != 0
         assert "invalid-format" in result.output.lower() or "does not exist" in result.output.lower()
 
-    def test_chunk_with_no_subsystems_passes(self, runner, temp_project):
+    def test_chunk_with_no_subsystems_passes(self, runner, tmp_path):
         """Chunk without subsystems field still passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
         write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
             {"ref": "src/main.py", "implements": "Main module"}
         ])
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
@@ -682,9 +713,9 @@ Test chunk content.
 """
         goal_path.write_text(frontmatter)
 
-    def _create_investigation(self, temp_project, investigation_name):
+    def _create_investigation(self, external_path, investigation_name):
         """Helper to create an investigation directory with OVERVIEW.md."""
-        investigation_path = temp_project / "docs" / "investigations" / investigation_name
+        investigation_path = external_path / "docs" / "investigations" / investigation_name
         investigation_path.mkdir(parents=True, exist_ok=True)
         overview_path = investigation_path / "OVERVIEW.md"
         overview_path.write_text("""---
@@ -696,16 +727,17 @@ proposed_chunks: []
 # Investigation
 """)
 
-    def test_chunk_with_valid_investigation_ref_passes(self, runner, temp_project):
+    def test_chunk_with_valid_investigation_ref_passes(self, runner, tmp_path):
         """Chunk with valid investigation reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
-        # Create the investigation
-        self._create_investigation(temp_project, "memory_leak")
+        # Create the investigation in external repo
+        self._create_investigation(external_path, "memory_leak")
 
         self._write_frontmatter_with_investigation(
             chunk_path,
@@ -716,17 +748,18 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_invalid_investigation_ref_fails(self, runner, temp_project):
+    def test_chunk_with_invalid_investigation_ref_fails(self, runner, tmp_path):
         """Chunk with invalid investigation reference fails validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_investigation(
             chunk_path,
@@ -737,18 +770,19 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "nonexistent_investigation" in result.output
 
-    def test_chunk_with_no_investigation_ref_passes(self, runner, temp_project):
+    def test_chunk_with_no_investigation_ref_passes(self, runner, tmp_path):
         """Chunk without investigation reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_investigation(
             chunk_path,
@@ -759,7 +793,7 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
@@ -1211,9 +1245,9 @@ Test chunk content.
 """
         goal_path.write_text(frontmatter)
 
-    def _create_narrative(self, temp_project, narrative_name):
+    def _create_narrative(self, external_path, narrative_name):
         """Helper to create a narrative directory with OVERVIEW.md."""
-        narrative_path = temp_project / "docs" / "narratives" / narrative_name
+        narrative_path = external_path / "docs" / "narratives" / narrative_name
         narrative_path.mkdir(parents=True, exist_ok=True)
         overview_path = narrative_path / "OVERVIEW.md"
         overview_path.write_text("""---
@@ -1224,16 +1258,17 @@ proposed_chunks: []
 # Narrative
 """)
 
-    def test_chunk_with_valid_narrative_ref_passes(self, runner, temp_project):
+    def test_chunk_with_valid_narrative_ref_passes(self, runner, tmp_path):
         """Chunk with valid narrative reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
-        # Create the narrative
-        self._create_narrative(temp_project, "chunk_lifecycle_management")
+        # Create the narrative in external repo
+        self._create_narrative(external_path, "chunk_lifecycle_management")
 
         self._write_frontmatter_with_narrative(
             chunk_path,
@@ -1244,17 +1279,18 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_invalid_narrative_ref_fails(self, runner, temp_project):
+    def test_chunk_with_invalid_narrative_ref_fails(self, runner, tmp_path):
         """Chunk with invalid narrative reference fails validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_narrative(
             chunk_path,
@@ -1265,18 +1301,19 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "nonexistent_narrative" in result.output
 
-    def test_chunk_with_no_narrative_ref_passes(self, runner, temp_project):
+    def test_chunk_with_no_narrative_ref_passes(self, runner, tmp_path):
         """Chunk without narrative reference passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_narrative(
             chunk_path,
@@ -1287,7 +1324,7 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
@@ -1342,14 +1379,14 @@ Test chunk content.
 """
         goal_path.write_text(frontmatter)
 
-    def _create_friction_log(self, temp_project, entries: list[str] | None = None):
+    def _create_friction_log(self, external_path, entries: list[str] | None = None):
         """Helper to create FRICTION.md with optional entries.
 
         Args:
-            temp_project: Path to the temp project directory
+            external_path: Path to the external repo directory
             entries: List of entry IDs to create (e.g., ["F001", "F002"])
         """
-        friction_path = temp_project / "docs" / "trunk" / "FRICTION.md"
+        friction_path = external_path / "docs" / "trunk" / "FRICTION.md"
         friction_path.parent.mkdir(parents=True, exist_ok=True)
 
         if entries is None:
@@ -1377,16 +1414,17 @@ proposed_chunks: []
 """
         friction_path.write_text(friction_content)
 
-    def test_chunk_with_valid_friction_entries_passes(self, runner, temp_project):
+    def test_chunk_with_valid_friction_entries_passes(self, runner, tmp_path):
         """Chunk with valid friction entry references passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
-        # Create friction log with entries
-        self._create_friction_log(temp_project, ["F001", "F002"])
+        # Create friction log with entries in external repo
+        self._create_friction_log(external_path, ["F001", "F002"])
 
         self._write_frontmatter_with_friction_entries(
             chunk_path,
@@ -1397,20 +1435,21 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_invalid_friction_entry_fails(self, runner, temp_project):
+    def test_chunk_with_invalid_friction_entry_fails(self, runner, tmp_path):
         """Chunk with invalid friction entry reference fails validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         # Create friction log with only F001
-        self._create_friction_log(temp_project, ["F001"])
+        self._create_friction_log(external_path, ["F001"])
 
         # Reference F999 which doesn't exist
         self._write_frontmatter_with_friction_entries(
@@ -1422,18 +1461,19 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "F999" in result.output
 
-    def test_chunk_with_no_friction_entries_passes(self, runner, temp_project):
+    def test_chunk_with_no_friction_entries_passes(self, runner, tmp_path):
         """Chunk without friction_entries field passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         self._write_frontmatter_with_friction_entries(
             chunk_path,
@@ -1444,20 +1484,21 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_partial_scope_passes(self, runner, temp_project):
+    def test_chunk_with_partial_scope_passes(self, runner, tmp_path):
         """Chunk with scope: partial passes validation."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         # Create friction log with entries
-        self._create_friction_log(temp_project, ["F001"])
+        self._create_friction_log(external_path, ["F001"])
 
         self._write_frontmatter_with_friction_entries(
             chunk_path,
@@ -1468,20 +1509,21 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
 
-    def test_chunk_with_multiple_friction_entries_validates_all(self, runner, temp_project):
+    def test_chunk_with_multiple_friction_entries_validates_all(self, runner, tmp_path):
         """Chunk with multiple friction entries validates all of them."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         # Create friction log with F001 and F002 but NOT F003
-        self._create_friction_log(temp_project, ["F001", "F002"])
+        self._create_friction_log(external_path, ["F001", "F002"])
 
         # Reference F001, F002, and F003 (last one doesn't exist)
         self._write_frontmatter_with_friction_entries(
@@ -1497,18 +1539,19 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "F003" in result.output
 
-    def test_chunk_with_friction_entries_but_no_friction_log_fails(self, runner, temp_project):
+    def test_chunk_with_friction_entries_but_no_friction_log_fails(self, runner, tmp_path):
         """Chunk referencing friction entries when FRICTION.md doesn't exist fails."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "feature"
+        chunk_path = external_path / "docs" / "chunks" / "feature"
 
         # Don't create friction log
 
@@ -1521,7 +1564,7 @@ proposed_chunks: []
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         # Should mention friction log doesn't exist or entry not found

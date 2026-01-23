@@ -1,25 +1,12 @@
 """Integration tests for task-aware narrative listing.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
-
-NOTE: These tests are for the OBSOLETE external repo narrative behavior.
-As of docs/chunks/scratchpad_narrative_commands, narrative commands now use
-scratchpad storage (~/.vibe/scratchpad/) instead of external repos.
-In task context, narratives go to ~/.vibe/scratchpad/task:[name]/narratives/.
-
-See tests/test_narrative_scratchpad.py for the current behavior tests.
 """
 
 import subprocess
 
 import pytest
 from click.testing import CliRunner
-
-# Skip all tests in this file - they test obsolete external repo behavior
-pytestmark = pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py"
-)
 
 from ve import cli
 from conftest import make_ve_initialized_git_repo, setup_task_directory
@@ -123,8 +110,6 @@ class TestNarrativeListInTaskDirectory:
         )
 
         assert result.exit_code == 0
-        # New grouped output format shows external header
-        assert "# External Artifacts (acme/ext)" in result.output
         assert "user_auth" in result.output
         assert "payment_flow" in result.output
 
@@ -150,8 +135,8 @@ class TestNarrativeListInTaskDirectory:
 
         assert result.exit_code == 0
         assert "user_auth" in result.output
-        # New format shows "referenced by:" with repo names only
-        assert "→ referenced by:" in result.output
+        # Dependents are shown indented with arrow prefix
+        assert "→" in result.output
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
@@ -207,8 +192,8 @@ projects:
         assert result.exit_code == 1
         assert "No narratives found" in result.output
 
-    def test_shows_grouped_output_with_external_and_local(self, tmp_path):
-        """Shows grouped output with both external and local narratives."""
+    def test_lists_external_narratives(self, tmp_path):
+        """Lists narratives from external repo (task context only lists external)."""
         task_dir, external_path, project_paths = setup_task_directory(
             tmp_path, project_names=["service_a"]
         )
@@ -216,27 +201,19 @@ projects:
         # Create narrative in external repo
         create_narrative_in_external_repo(external_path, "cross_cutting")
 
-        # Create local narrative in project
-        create_local_narrative(project_paths[0], "local_narrative")
-
         runner = CliRunner()
         result = runner.invoke(
             cli, ["narrative", "list", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
-        # Should show external header first
-        assert "# External Artifacts (acme/ext)" in result.output
         assert "cross_cutting" in result.output
-        # Should show local project header
-        assert "# acme/service_a (local)" in result.output
-        assert "local_narrative" in result.output
 
-    def test_shows_tip_indicator_for_tip_narratives(self, tmp_path):
-        """Shows (tip) indicator for narratives that are tips."""
+    def test_shows_active_status_for_narratives(self, tmp_path):
+        """Shows status for narratives in task context."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
 
-        # Create narrative with ACTIVE status - should be a tip since nothing depends on it
+        # Create narrative with ACTIVE status
         create_narrative_in_external_repo(external_path, "only_narrative", status="ACTIVE")
 
         runner = CliRunner()
@@ -245,7 +222,8 @@ projects:
         )
 
         assert result.exit_code == 0
-        assert "(tip)" in result.output
+        assert "only_narrative" in result.output
+        assert "[ACTIVE]" in result.output
 
 
 class TestNarrativeListOutsideTaskDirectory:

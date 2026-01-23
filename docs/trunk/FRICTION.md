@@ -227,3 +227,15 @@ When running 've subsystem status savings_accounting STABLE' from a task directo
 Agents can't reliably dereference external.yml files. They don't think to use CLI tools to resolve the target of these files. Need additional prompting in CLAUDE.md and generic CLI tools for dereferencing. Help text in the external files themselves would also help agents realize they need to dereference.
 
 **Impact**: Medium
+
+### F013: 2026-01-20 [template-evolution] Narrative frontmatter non-standard after subsystem migration
+
+When creating a narrative inside a project that was recently migrated from chunks to subsystems, the narrative OVERVIEW.md frontmatter does not follow the standard format. The migration process doesn't update narrative templates or existing narratives to use the current frontmatter conventions.
+
+**Impact**: Medium
+
+### F014: 2026-01-20 [context-resolution] Unclear if chunk list-proposed searches global user area
+
+When running 've chunk list-proposed', it's unclear whether the command searches only the current project's docs/ directory or also looks in the global user area (e.g., ~/.config/vibe-engineer/ or similar). The command output and help text don't clarify the search scope, creating uncertainty about whether all proposed chunks are being shown.
+
+**Impact**: Low

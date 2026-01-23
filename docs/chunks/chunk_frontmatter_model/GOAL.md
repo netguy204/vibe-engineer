@@ -19,8 +19,8 @@ code_references:
     HISTORICAL values
 - ref: src/models.py#ChunkFrontmatter
   implements: Pydantic model for chunk GOAL.md frontmatter validation with fields for
-    status, code_paths, code_references, investigation (added by investigation_chunk_refs),
-    and friction_entries (added by friction_chunk_linking)
+    status, ticket, parent_chunk, code_paths, code_references, narrative, investigation,
+    subsystems, proposed_chunks, dependents, created_after, friction_entries, and bug_type
 - ref: src/chunks.py#Chunks::parse_chunk_frontmatter
   implements: Returns typed ChunkFrontmatter | None instead of dict | None
 - ref: src/chunks.py#Chunks::get_current_chunk

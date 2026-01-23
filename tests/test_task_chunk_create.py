@@ -147,10 +147,13 @@ class TestChunkCreateInTaskDirectory:
 
 
 class TestChunkCreateOutsideTaskDirectory:
-    """Tests for ve chunk start outside task directory context."""
+    """Tests for ve chunk start outside task directory context (uses in-repo storage).
 
-    def test_behavior_unchanged(self, tmp_path):
-        """Single-repo behavior unchanged when not in task directory."""
+    Note: Single-repo mode creates chunks in docs/chunks/.
+    """
+
+    def test_creates_chunk_in_docs(self, tmp_path):
+        """Single-repo mode creates chunk in docs/chunks/ storage."""
         # Create a regular VE project (no .ve-task.yaml)
         project_path = tmp_path / "regular_project"
         make_ve_initialized_git_repo(project_path)
@@ -161,12 +164,12 @@ class TestChunkCreateOutsideTaskDirectory:
         )
 
         assert result.exit_code == 0
-        assert "Created docs/chunks/my_feature" in result.output
+        # In-repo path is docs/chunks/my_feature
+        assert "docs/chunks/my_feature" in result.output
 
-        # Verify regular chunk was created (with GOAL.md, not external.yaml)
-        chunk_dir = project_path / "docs" / "chunks" / "my_feature"
-        assert (chunk_dir / "GOAL.md").exists()
-        assert not (chunk_dir / "external.yaml").exists()
+        # Verify chunk was created in docs/chunks/ (with GOAL.md)
+        in_repo_chunk = project_path / "docs" / "chunks" / "my_feature" / "GOAL.md"
+        assert in_repo_chunk.exists()
 
 
 class TestChunkCreateErrorHandling:

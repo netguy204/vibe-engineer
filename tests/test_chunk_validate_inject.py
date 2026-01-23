@@ -1,11 +1,15 @@
 """Tests for chunk injection validation.
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+
+Note: chunk injection uses FUTURE/IMPLEMENTING workflow which is an in-repo feature.
+Tests use task directory mode (not scratchpad).
 """
 
 import pathlib
 
 import pytest
+from conftest import setup_task_directory
 
 from ve import cli
 
@@ -100,19 +104,20 @@ Ordered steps to implement this chunk.
 class TestValidateChunkInjectableFunction:
     """Tests for the validate_chunk_injectable function in chunks.py."""
 
-    def test_future_status_with_empty_plan_succeeds(self, runner, temp_project):
+    def test_future_status_with_empty_plan_succeeds(self, runner, tmp_path):
         """FUTURE chunks are allowed to have empty PLAN.md."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--future", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "FUTURE")
         write_plan_with_content(chunk_path, has_content=False)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is True
@@ -120,137 +125,145 @@ class TestValidateChunkInjectableFunction:
         # Should have warning about starting with PLAN phase
         assert any("FUTURE" in w for w in result.warnings)
 
-    def test_implementing_status_with_empty_plan_fails(self, runner, temp_project):
+    def test_implementing_status_with_empty_plan_fails(self, runner, tmp_path):
         """IMPLEMENTING chunks must have populated PLAN.md."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=False)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is False
         assert any("IMPLEMENTING" in e for e in result.errors)
         assert any("no content" in e or "only template" in e for e in result.errors)
 
-    def test_implementing_status_with_populated_plan_succeeds(self, runner, temp_project):
+    def test_implementing_status_with_populated_plan_succeeds(self, runner, tmp_path):
         """IMPLEMENTING chunks with populated PLAN.md pass validation."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=True)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is True
         assert len(result.errors) == 0
 
-    def test_active_status_with_empty_plan_fails(self, runner, temp_project):
+    def test_active_status_with_empty_plan_fails(self, runner, tmp_path):
         """ACTIVE chunks must have populated PLAN.md."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "ACTIVE")
         write_plan_with_content(chunk_path, has_content=False)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is False
         assert any("ACTIVE" in e for e in result.errors)
 
-    def test_active_status_with_populated_plan_succeeds(self, runner, temp_project):
+    def test_active_status_with_populated_plan_succeeds(self, runner, tmp_path):
         """ACTIVE chunks with populated PLAN.md pass validation."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "ACTIVE")
         write_plan_with_content(chunk_path, has_content=True)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is True
 
-    def test_superseded_status_cannot_be_injected(self, runner, temp_project):
+    def test_superseded_status_cannot_be_injected(self, runner, tmp_path):
         """SUPERSEDED chunks cannot be injected."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "SUPERSEDED")
         write_plan_with_content(chunk_path, has_content=True)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is False
         assert any("terminal status" in e or "SUPERSEDED" in e for e in result.errors)
 
-    def test_historical_status_cannot_be_injected(self, runner, temp_project):
+    def test_historical_status_cannot_be_injected(self, runner, tmp_path):
         """HISTORICAL chunks cannot be injected."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "HISTORICAL")
         write_plan_with_content(chunk_path, has_content=True)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is False
         assert any("terminal status" in e or "HISTORICAL" in e for e in result.errors)
 
-    def test_nonexistent_chunk_fails(self, temp_project):
+    def test_nonexistent_chunk_fails(self, tmp_path):
         """Non-existent chunk fails validation."""
         from chunks import Chunks
 
-        chunks = Chunks(temp_project)
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("nonexistent")
 
         assert result.success is False
         assert any("not found" in e for e in result.errors)
 
-    def test_error_suggests_remediation(self, runner, temp_project):
+    def test_error_suggests_remediation(self, runner, tmp_path):
         """Validation error messages suggest remediation steps."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=False)
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
 
         assert result.success is False
@@ -267,70 +280,74 @@ class TestValidateInjectableCLI:
         assert result.exit_code == 0
         assert "--injectable" in result.output
 
-    def test_injectable_validation_passes_for_future_chunk(self, runner, temp_project):
+    def test_injectable_validation_passes_for_future_chunk(self, runner, tmp_path):
         """--injectable passes for FUTURE chunk."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--future", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "FUTURE")
         write_plan_with_content(chunk_path, has_content=False)
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
         assert "ready for injection" in result.output.lower()
 
-    def test_injectable_validation_fails_for_implementing_without_plan(self, runner, temp_project):
+    def test_injectable_validation_fails_for_implementing_without_plan(self, runner, tmp_path):
         """--injectable fails for IMPLEMENTING chunk without populated plan."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=False)
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code != 0
         assert "implementing" in result.output.lower() or "no content" in result.output.lower()
 
-    def test_injectable_validation_passes_for_implementing_with_plan(self, runner, temp_project):
+    def test_injectable_validation_passes_for_implementing_with_plan(self, runner, tmp_path):
         """--injectable passes for IMPLEMENTING chunk with populated plan."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=True)
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
         assert "ready for injection" in result.output.lower()
 
-    def test_injectable_shows_warnings(self, runner, temp_project):
+    def test_injectable_shows_warnings(self, runner, tmp_path):
         """--injectable shows warnings for FUTURE chunks."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--future", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "FUTURE")
         write_plan_with_content(chunk_path, has_content=False)
 
         result = runner.invoke(
             cli,
-            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "validate", "--injectable", "my_feature", "--project-dir", str(task_dir)]
         )
         assert result.exit_code == 0
         # Should show warning about FUTURE status
@@ -429,7 +446,7 @@ Do some steps.
 class TestChunkActivationOnInject:
     """Integration tests for chunk activation during injection workflow."""
 
-    def test_future_chunk_injected_stays_future_in_mainline(self, runner, temp_project):
+    def test_future_chunk_injected_stays_future_in_mainline(self, runner, tmp_path):
         """When injecting a FUTURE chunk, the mainline chunk should stay FUTURE.
 
         The chunk is only activated to IMPLEMENTING in the worktree, not in mainline.
@@ -437,37 +454,39 @@ class TestChunkActivationOnInject:
         """
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         # Create a FUTURE chunk
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--future", "--project-dir", str(task_dir)]
         )
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         frontmatter = chunks.parse_chunk_frontmatter("my_feature")
 
         # Should be FUTURE in mainline
         assert frontmatter.status.value == "FUTURE"
 
-    def test_implementing_chunk_can_be_injected(self, runner, temp_project):
+    def test_implementing_chunk_can_be_injected(self, runner, tmp_path):
         """IMPLEMENTING chunks with populated plans can be injected."""
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         # Create an IMPLEMENTING chunk with a populated plan
         runner.invoke(
             cli,
-            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "my_feature"
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=True)
 
         # Validate it's injectable
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         result = chunks.validate_chunk_injectable("my_feature")
         assert result.success is True
 
-    def test_cli_enforces_single_implementing_chunk_guard(self, runner, temp_project):
+    def test_cli_enforces_single_implementing_chunk_guard(self, runner, tmp_path):
         """CLI enforces that only one IMPLEMENTING chunk exists at a time.
 
         The chunk_create_guard prevents creating a second IMPLEMENTING chunk
@@ -475,42 +494,50 @@ class TestChunkActivationOnInject:
         """
         from chunks import Chunks
 
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
         # Create first chunk (will be IMPLEMENTING)
         result1 = runner.invoke(
             cli,
-            ["chunk", "start", "first_chunk", "--project-dir", str(temp_project)]
+            ["chunk", "start", "first_chunk", "--project-dir", str(task_dir)]
         )
         assert result1.exit_code == 0
 
-        chunks = Chunks(temp_project)
+        chunks = Chunks(external_path)
         first_frontmatter = chunks.parse_chunk_frontmatter("first_chunk")
         assert first_frontmatter.status.value == "IMPLEMENTING"
 
         # Creating a second IMPLEMENTING chunk is now blocked by the guard
         result2 = runner.invoke(
             cli,
-            ["chunk", "start", "second_chunk", "--project-dir", str(temp_project)]
+            ["chunk", "start", "second_chunk", "--project-dir", str(task_dir)]
         )
         assert result2.exit_code == 1
-        assert "already IMPLEMENTING" in result2.output
+        # Error message may be in output or exception depending on CLI error handling
+        error_text = result2.output or str(result2.exception)
+        assert "already IMPLEMENTING" in error_text
 
         # Creating a FUTURE chunk is still allowed
         result3 = runner.invoke(
             cli,
-            ["chunk", "start", "third_chunk", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "third_chunk", "--future", "--project-dir", str(task_dir)]
         )
         assert result3.exit_code == 0
 
         third_frontmatter = chunks.parse_chunk_frontmatter("third_chunk")
         assert third_frontmatter.status.value == "FUTURE"
 
-    def test_activate_chunk_in_worktree_helper(self, temp_project):
+    def test_activate_chunk_in_worktree_helper(self, tmp_path):
         """Test the activate_chunk_in_worktree helper function directly."""
+        from conftest import make_ve_initialized_git_repo
         from orchestrator.scheduler import activate_chunk_in_worktree
         from chunks import Chunks
 
+        # Create a VE-initialized repo for this test
+        project_path = tmp_path / "repo"
+        make_ve_initialized_git_repo(project_path)
+
         # Create two chunks: one IMPLEMENTING, one FUTURE
-        chunks_dir = temp_project / "docs" / "chunks"
+        chunks_dir = project_path / "docs" / "chunks"
         chunks_dir.mkdir(parents=True, exist_ok=True)
 
         # Create existing IMPLEMENTING chunk
@@ -524,13 +551,13 @@ class TestChunkActivationOnInject:
         write_goal_frontmatter(target_chunk_dir, "FUTURE")
 
         # Activate target chunk
-        displaced = activate_chunk_in_worktree(temp_project, "target_chunk")
+        displaced = activate_chunk_in_worktree(project_path, "target_chunk")
 
         # Should return displaced chunk name
         assert displaced == "existing_chunk"
 
         # Verify status changes
-        chunks = Chunks(temp_project)
+        chunks = Chunks(project_path)
 
         existing_frontmatter = chunks.parse_chunk_frontmatter("existing_chunk")
         assert existing_frontmatter.status.value == "FUTURE"
@@ -538,13 +565,18 @@ class TestChunkActivationOnInject:
         target_frontmatter = chunks.parse_chunk_frontmatter("target_chunk")
         assert target_frontmatter.status.value == "IMPLEMENTING"
 
-    def test_restore_displaced_chunk_helper(self, temp_project):
+    def test_restore_displaced_chunk_helper(self, tmp_path):
         """Test the restore_displaced_chunk helper function directly."""
+        from conftest import make_ve_initialized_git_repo
         from orchestrator.scheduler import restore_displaced_chunk
         from chunks import Chunks
 
+        # Create a VE-initialized repo for this test
+        project_path = tmp_path / "repo"
+        make_ve_initialized_git_repo(project_path)
+
         # Create a FUTURE chunk (simulating displaced chunk)
-        chunks_dir = temp_project / "docs" / "chunks"
+        chunks_dir = project_path / "docs" / "chunks"
         chunks_dir.mkdir(parents=True, exist_ok=True)
 
         chunk_dir = chunks_dir / "displaced_chunk"
@@ -552,10 +584,10 @@ class TestChunkActivationOnInject:
         write_goal_frontmatter(chunk_dir, "FUTURE")
 
         # Restore it
-        restore_displaced_chunk(temp_project, "displaced_chunk")
+        restore_displaced_chunk(project_path, "displaced_chunk")
 
         # Should now be IMPLEMENTING
-        chunks = Chunks(temp_project)
+        chunks = Chunks(project_path)
         frontmatter = chunks.parse_chunk_frontmatter("displaced_chunk")
         assert frontmatter.status.value == "IMPLEMENTING"
 
@@ -607,21 +639,21 @@ class TestOrchInjectPathNormalization:
         result = strip_artifact_path_prefix("docs/chunks/my_feature///", ArtifactType.CHUNK)
         assert result == "my_feature"
 
-    def test_orch_inject_cli_normalizes_full_path(self, runner, temp_project):
+    def test_orch_inject_cli_normalizes_full_path(self, runner, tmp_path):
         """CLI command with full path fails with 'daemon not running', not 'chunk not found'.
 
         This verifies that path normalization happens before validation,
         so the error message indicates the chunk was found but the daemon
         isn't available.
         """
-        from chunks import Chunks
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
 
         # Create a valid IMPLEMENTING chunk
         runner.invoke(
             cli,
-            ["chunk", "start", "test_chunk", "--project-dir", str(temp_project)]
+            ["chunk", "start", "test_chunk", "--project-dir", str(task_dir)]
         )
-        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path = external_path / "docs" / "chunks" / "test_chunk"
         write_goal_frontmatter(chunk_path, "IMPLEMENTING")
         write_plan_with_content(chunk_path, has_content=True)
 
@@ -629,7 +661,7 @@ class TestOrchInjectPathNormalization:
         # rather than "chunk not found" (proving normalization worked)
         result = runner.invoke(
             cli,
-            ["orch", "inject", "docs/chunks/test_chunk/", "--project-dir", str(temp_project)]
+            ["orch", "inject", "docs/chunks/test_chunk/", "--project-dir", str(task_dir)]
         )
 
         # Should fail because daemon isn't running, not because chunk not found

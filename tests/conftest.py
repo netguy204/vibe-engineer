@@ -10,14 +10,6 @@ import pytest
 from click.testing import CliRunner
 
 
-# Register custom pytest markers
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers",
-        "no_isolated_scratchpad: opt out of the isolated_scratchpad fixture"
-    )
-
 # Add src to path for imports
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
@@ -44,27 +36,6 @@ def temp_project():
     """Create a temporary project directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield pathlib.Path(tmpdir)
-
-
-@pytest.fixture(autouse=True)
-def isolated_scratchpad(tmp_path, monkeypatch, request):
-    """Isolate scratchpad storage to a temp directory for all tests.
-
-    This fixture runs automatically for all tests to ensure scratchpad
-    operations don't pollute the real ~/.vibe/scratchpad/ directory.
-
-    Tests that need to check the default root behavior can mark themselves
-    with @pytest.mark.no_isolated_scratchpad to opt out.
-    """
-    # Allow tests to opt out of the isolated scratchpad
-    if request.node.get_closest_marker("no_isolated_scratchpad"):
-        return
-
-    from scratchpad import Scratchpad
-
-    scratchpad_root = tmp_path / "scratchpad"
-    scratchpad_root.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(Scratchpad, "DEFAULT_ROOT", scratchpad_root)
 
 
 @pytest.fixture

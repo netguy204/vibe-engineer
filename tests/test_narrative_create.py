@@ -1,21 +1,11 @@
 """Tests for the 've narrative create' CLI command.
 
-NOTE: These tests are for the OBSOLETE in-repo narrative behavior.
-As of docs/chunks/scratchpad_narrative_commands, narrative commands now use
-scratchpad storage (~/.vibe/scratchpad/) instead of in-repo docs/narratives/.
-
-See tests/test_narrative_scratchpad.py for the current behavior tests.
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 """
 
 import pytest
 
 from ve import cli
-
-# Skip all tests in this file - they test obsolete in-repo behavior
-pytestmark = pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py"
-)
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle

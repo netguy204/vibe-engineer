@@ -48,9 +48,9 @@ completely in order:
    ticket number is referenced, pass no argument to the command below in the
    <ticket number> placeholder.
 
-3. Run `ve chunk create <shortname> <ticket number>` and note the scratchpad path
+3. Run `ve chunk create <shortname> <ticket number>` and note the path
    that is returned by the command. The chunk will be created at:
-   `~/.vibe/scratchpad/[project-name]/chunks/<shortname>/GOAL.md`
+   `docs/chunks/<shortname>/GOAL.md`
 
    Substitute this path below for the <chunk directory> placeholder.
 
@@ -58,10 +58,6 @@ completely in order:
    the user has described, ask them any questions required to complete the
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
-
-   **Note:** Scratchpad chunks have a simpler schema than in-repo chunks. They
-   include: `status`, `ticket`, `success_criteria`, and `created_at`. You don't
-   need to set code_paths, code_references, or subsystem references.
 
 5. **Check if this is a bug fix.** Look for these signals that indicate bug fix
    work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
@@ -75,10 +71,5 @@ completely in order:
 
    If there IS an existing IMPLEMENTING chunk, inform the user:
    "Note: Chunk <existing_chunk> is currently being implemented. You can work
-   on this new chunk by completing or archiving the current one first, or
-   continue working on both concurrently in the scratchpad."
-
-**Note on scratchpad workflow:** Chunks are created in `~/.vibe/scratchpad/`
-which is outside the git repository. This keeps personal work notes separate
-from the codebase. When you're done with a chunk, use `ve chunk complete` to
-archive it.
+   on this new chunk by completing the current one first with `ve chunk complete`,
+   or create this one with `--future` to work on it later."

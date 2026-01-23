@@ -283,7 +283,7 @@ class TestSubsystemStatusFrontmatterPreservation:
     """Tests for frontmatter preservation during updates."""
 
     def test_update_preserves_other_frontmatter_fields(self, runner, temp_project):
-        """chunks and code_references remain intact."""
+        """code_references remain intact after status update."""
         import yaml
 
         runner.invoke(
@@ -291,14 +291,14 @@ class TestSubsystemStatusFrontmatterPreservation:
             ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
         )
 
-        # Manually add some fields to frontmatter
+        # Manually add code_references to frontmatter (template has empty code_references: [])
         overview_path = temp_project / "docs" / "subsystems" / "validation" / "OVERVIEW.md"
         content = overview_path.read_text()
 
-        # Add a chunk reference to the frontmatter (be specific to avoid matching proposed_chunks)
+        # Replace empty code_references with populated one
         new_content = content.replace(
-            "\nchunks: []\n",
-            "\nchunks:\n  - chunk_id: '0001-test'\n    relationship: implements\n"
+            "\ncode_references: []\n",
+            "\ncode_references:\n  - ref: src/validator.py#validate\n    implements: 'Core validation'\n    compliance: COMPLIANT\n"
         )
         overview_path.write_text(new_content)
 
@@ -309,10 +309,10 @@ class TestSubsystemStatusFrontmatterPreservation:
         )
         assert result.exit_code == 0
 
-        # Verify chunks field is preserved
+        # Verify code_references field is preserved
         updated_content = overview_path.read_text()
-        assert "0001-test" in updated_content
-        assert "implements" in updated_content
+        assert "src/validator.py#validate" in updated_content
+        assert "Core validation" in updated_content
 
     def test_update_preserves_document_content(self, runner, temp_project):
         """Body content remains unchanged."""

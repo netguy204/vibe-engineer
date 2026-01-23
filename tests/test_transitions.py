@@ -115,98 +115,125 @@ class TestInvestigationTransitionValues:
 
 
 class TestChunkStatusDisplay:
-    """Tests for 've chunk status <id>' (display mode)."""
+    """Tests for 've chunk status <id>' (display mode).
 
-    def test_status_display_shows_current_status(self, runner, temp_project):
+    Note: Full status lifecycle requires in-repo chunks.
+    These tests use the external repo directly for status operations.
+    """
+
+    def test_status_display_shows_current_status(self, runner, tmp_path):
         """Show current status for an existing chunk."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create chunk via CLI (routes to external repo)
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
+        # Use external repo path for status command
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 0
         assert "validation: IMPLEMENTING" in result.output
 
 
 class TestChunkStatusTransitions:
-    """Tests for valid and invalid chunk status transitions."""
+    """Tests for valid and invalid chunk status transitions.
 
-    def test_valid_transition_implementing_to_active(self, runner, temp_project):
+    Note: Full status lifecycle requires in-repo chunks.
+    """
+
+    def test_valid_transition_implementing_to_active(self, runner, tmp_path):
         """IMPLEMENTING -> ACTIVE works."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 0
         assert "validation: IMPLEMENTING" in result.output
         assert "ACTIVE" in result.output
 
-    def test_valid_transition_future_to_implementing(self, runner, temp_project):
+    def test_valid_transition_future_to_implementing(self, runner, tmp_path):
         """FUTURE -> IMPLEMENTING works."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--future", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--future", "--project-dir", str(task_dir)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "IMPLEMENTING", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "IMPLEMENTING", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 0
         assert "validation: FUTURE" in result.output
         assert "IMPLEMENTING" in result.output
 
-    def test_valid_transition_active_to_superseded(self, runner, temp_project):
+    def test_valid_transition_active_to_superseded(self, runner, tmp_path):
         """ACTIVE -> SUPERSEDED works."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
         runner.invoke(
             cli,
-            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(external_path)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "SUPERSEDED", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "SUPERSEDED", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 0
         assert "ACTIVE" in result.output
         assert "SUPERSEDED" in result.output
 
-    def test_invalid_transition_implementing_to_superseded(self, runner, temp_project):
+    def test_invalid_transition_implementing_to_superseded(self, runner, tmp_path):
         """Cannot skip steps: IMPLEMENTING -> SUPERSEDED fails."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "SUPERSEDED", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "SUPERSEDED", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 1
         assert "Cannot transition from IMPLEMENTING to SUPERSEDED" in result.output
         assert "Valid transitions:" in result.output
 
-    def test_invalid_transition_historical_to_any(self, runner, temp_project):
+    def test_invalid_transition_historical_to_any(self, runner, tmp_path):
         """Terminal state enforced: HISTORICAL -> any fails."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
         runner.invoke(
             cli,
-            ["chunk", "status", "validation", "HISTORICAL", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "HISTORICAL", "--project-dir", str(external_path)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "ACTIVE", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 1
         assert "Cannot transition from HISTORICAL" in result.output
@@ -216,24 +243,30 @@ class TestChunkStatusTransitions:
 class TestChunkStatusErrors:
     """Tests for chunk status error handling."""
 
-    def test_chunk_not_found_error(self, runner, temp_project):
+    def test_chunk_not_found_error(self, runner, tmp_path):
         """Clear error message when chunk doesn't exist."""
+        from conftest import setup_task_directory
+        _, external_path, _ = setup_task_directory(tmp_path)
+
         result = runner.invoke(
             cli,
-            ["chunk", "status", "nonexistent", "--project-dir", str(temp_project)]
+            ["chunk", "status", "nonexistent", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 1
         assert "Chunk 'nonexistent' not found" in result.output
 
-    def test_invalid_status_value_error(self, runner, temp_project):
+    def test_invalid_status_value_error(self, runner, tmp_path):
         """Lists valid statuses when invalid status provided."""
+        from conftest import setup_task_directory
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
         runner.invoke(
             cli,
-            ["chunk", "start", "validation", "--project-dir", str(temp_project)]
+            ["chunk", "start", "validation", "--project-dir", str(task_dir)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "status", "validation", "FOO", "--project-dir", str(temp_project)]
+            ["chunk", "status", "validation", "FOO", "--project-dir", str(external_path)]
         )
         assert result.exit_code == 1
         assert "Invalid status 'FOO'" in result.output
@@ -244,16 +277,8 @@ class TestChunkStatusErrors:
 # =============================================================================
 # Narrative Status CLI Tests
 # =============================================================================
-# NOTE: These narrative tests are for the OBSOLETE in-repo narrative behavior.
-# As of docs/chunks/scratchpad_narrative_commands, narrative commands now use
-# scratchpad storage (~/.vibe/scratchpad/) instead of in-repo docs/narratives/.
-# See tests/test_narrative_scratchpad.py for the current behavior tests.
 
 
-@pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
-)
 class TestNarrativeStatusDisplay:
     """Tests for 've narrative status <id>' (display mode)."""
 
@@ -271,10 +296,6 @@ class TestNarrativeStatusDisplay:
         assert "migration: DRAFTING" in result.output
 
 
-@pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
-)
 class TestNarrativeStatusTransitions:
     """Tests for valid and invalid narrative status transitions."""
 
@@ -347,10 +368,6 @@ class TestNarrativeStatusTransitions:
         assert "terminal state" in result.output
 
 
-@pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py::TestNarrativeStatusScratchpad"
-)
 class TestNarrativeStatusErrors:
     """Tests for narrative status error handling."""
 

@@ -249,13 +249,6 @@ class TestInvestigationStatusFlexiblePath:
         assert "ONGOING" in result.output
 
 
-# NOTE: Narrative tests are skipped because narrative commands now use
-# scratchpad storage (~/.vibe/scratchpad/) instead of in-repo docs/narratives/.
-# See tests/test_narrative_scratchpad.py for the current behavior tests.
-@pytest.mark.skip(
-    reason="Obsolete: narrative commands now use scratchpad storage. "
-    "See tests/test_narrative_scratchpad.py"
-)
 class TestNarrativeStatusFlexiblePath:
     """Tests for ve narrative status with flexible paths."""
 

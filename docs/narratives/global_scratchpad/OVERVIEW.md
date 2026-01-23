@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: COMPLETED
 advances_trunk_goal: "Required Properties: It must be possible to perform the workflow outside the context of a Git repository"
 investigation: bidirectional_doc_code_sync
 proposed_chunks:
@@ -115,3 +115,11 @@ The following are valuable but not required for this narrative:
 - **Scratchpad → ticket promotion**: `ve scratchpad promote <entry>` creates a Linear ticket
 - **Archive management**: `ve scratchpad archive <entry>` moves completed entries
 - **Scratchpad sync**: Optional sync to cloud storage for cross-machine access
+
+## Retrospective Note
+
+**This narrative was implemented and then reverted.** All chunks reached ACTIVE status, but the scratchpad approach was later superseded by the `revert_scratchpad_chunks` narrative which restored in-repo chunk/narrative storage.
+
+**Why reverted**: The scratchpad approach moved chunks outside the repository, which broke agent context - agents couldn't see recent work history when starting new sessions. The tradeoff between "documentation clutter" and "agent context" favored keeping chunks in-repo where they're visible to agents via git status and file reads.
+
+**Chunks status**: All chunks from this narrative (`scratchpad_storage`, `scratchpad_chunk_commands`, `scratchpad_narrative_commands`, `scratchpad_cross_project`) are now SUPERSEDED. The code they implemented remains in the codebase but is no longer used for single-repo workflows.

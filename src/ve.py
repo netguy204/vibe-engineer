@@ -25,6 +25,9 @@ from task_utils import (
     create_task_investigation,
     list_task_investigations,
     TaskInvestigationError,
+    create_task_narrative,
+    list_task_narratives,
+    TaskNarrativeError,
     create_task_subsystem,
     list_task_subsystems,
     TaskSubsystemError,
@@ -52,12 +55,9 @@ from external_resolve import (
 )
 from external_refs import ARTIFACT_MAIN_FILE, detect_artifact_type_from_path
 from validation import validate_identifier
-from scratchpad_commands import (
-    detect_scratchpad_context,
-    scratchpad_create_chunk,
-    scratchpad_list_chunks,
-    scratchpad_complete_chunk,
-)
+from cluster_analysis import check_cluster_size, format_cluster_warning
+from chunks import get_chunk_prefix
+from artifact_ordering import ArtifactIndex, ArtifactType
 
 
 def validate_short_name(short_name: str) -> list[str]:
@@ -104,13 +104,12 @@ def chunk():
 @click.argument("ticket_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
-@click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING (ignored for scratchpad)")
+@click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 def create(short_name, ticket_id, project_dir, yes, future, projects):
     """Create a new chunk.
 
-    Creates chunks in the scratchpad storage (~/.vibe/scratchpad/) instead of
-    in-repo docs/chunks/. Task context routes to task-scoped scratchpad.
+    Creates chunks in docs/chunks/. Task context routes to task-scoped storage.
     """
     errors = validate_short_name(short_name)
     if ticket_id:
@@ -126,7 +125,7 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     if ticket_id:
         ticket_id = ticket_id.lower()
 
-    # Determine status based on --future flag (for task context only)
+    # Determine status based on --future flag
     status = "FUTURE" if future else "IMPLEMENTING"
 
     # Check if we're in a task directory (cross-repo mode)
@@ -134,22 +133,23 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
         _start_task_chunk(project_dir, short_name, ticket_id, status, projects)
         return
 
-    # Single-repo mode - route to scratchpad storage
-    # Scratchpad chunks don't have FUTURE status (personal work notes)
+    # Single-repo mode - create in docs/chunks/
+    chunks = Chunks(project_dir)
+
     try:
-        project_path, task_name = detect_scratchpad_context(project_dir)
-        chunk_path = scratchpad_create_chunk(
-            project_path=project_path,
-            task_name=task_name,
-            short_name=short_name,
-            ticket=ticket_id,
-        )
+        chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    # Show the scratchpad path
-    click.echo(f"Created {chunk_path}")
+    relative_path = chunk_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
+
+    # Check cluster size warning
+    prefix = get_chunk_prefix(chunk_path.name)
+    warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
+    if warning.should_warn:
+        click.echo(f"Note: {format_cluster_warning(warning)}")
 
 
 chunk.add_command(create, name="start")
@@ -194,71 +194,75 @@ def _start_task_chunk(
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_chunks(latest, project_dir):
-    """List all chunks from scratchpad storage.
+    """List all chunks.
 
-    Lists chunks from ~/.vibe/scratchpad/[project]/ or task-scoped scratchpad.
+    Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
     """
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
         _list_task_chunks(latest, project_dir)
         return
 
-    # Single-repo mode - route to scratchpad storage
-    try:
-        project_path, task_name = detect_scratchpad_context(project_dir)
-        result = scratchpad_list_chunks(
-            project_path=project_path,
-            task_name=task_name,
-            latest=latest,
-        )
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    # Single-repo mode - list from docs/chunks/
+    chunks = Chunks(project_dir)
 
     if latest:
-        if result is None:
+        current_chunk = chunks.get_current_chunk()
+        if current_chunk is None:
             click.echo("No implementing chunk found", err=True)
             raise SystemExit(1)
-        click.echo(result)
+        click.echo(f"docs/chunks/{current_chunk}")
     else:
-        if not result:
+        chunk_list = chunks.list_chunks()
+        if not chunk_list:
             click.echo("No chunks found", err=True)
             raise SystemExit(1)
 
-        for chunk_info in result:
-            name = chunk_info["name"]
-            status = chunk_info["status"]
-            path = chunk_info["path"]
-            click.echo(f"{path} [{status}]")
+        artifact_index = ArtifactIndex(project_dir)
+        tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
+
+        for chunk_name in chunk_list:
+            frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+            if frontmatter:
+                status = frontmatter.status.value
+            else:
+                status = "UNKNOWN"
+            tip_indicator = " *" if chunk_name in tips else ""
+            click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
 
 @chunk.command("complete")
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def complete_chunk(chunk_id, project_dir):
-    """Complete (archive) a chunk in the scratchpad.
+    """Complete a chunk by updating its status to ACTIVE.
 
-    Archives the specified chunk by updating its status to ARCHIVED.
     If no CHUNK_ID is provided, completes the current IMPLEMENTING chunk.
     """
+    from task_utils import update_frontmatter_field
+
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
         click.echo("Error: complete command not supported in task context", err=True)
         raise SystemExit(1)
 
-    # Single-repo mode - route to scratchpad storage
-    try:
-        project_path, task_name = detect_scratchpad_context(project_dir)
-        completed_id = scratchpad_complete_chunk(
-            project_path=project_path,
-            task_name=task_name,
-            chunk_id=chunk_id,
-        )
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
+    # Single-repo mode - complete in docs/chunks/
+    chunks = Chunks(project_dir)
+
+    if chunk_id is None:
+        chunk_id = chunks.get_current_chunk()
+        if chunk_id is None:
+            click.echo("No implementing chunk found", err=True)
+            raise SystemExit(1)
+
+    chunk_name = chunks.resolve_chunk_id(chunk_id)
+    if chunk_name is None:
+        click.echo(f"Chunk '{chunk_id}' not found", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Completed {completed_id}")
+    goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
+    update_frontmatter_field(goal_path, "status", "ACTIVE")
+    click.echo(f"Completed docs/chunks/{chunk_name}")
 
 
 def _format_grouped_artifact_list(
@@ -898,15 +902,17 @@ def narrative():
     pass
 
 
-# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
+# Subsystem: docs/subsystems/workflow_artifacts - Narrative commands
 @narrative.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 def create_narrative(short_name, project_dir, projects):
-    """Create a new narrative in scratchpad storage."""
-    from scratchpad import Scratchpad, ScratchpadNarratives
+    """Create a new narrative.
 
+    In task directory mode, creates narrative in the external artifact repo.
+    In single-repo mode, creates narrative in docs/narratives/.
+    """
     errors = validate_short_name(short_name)
 
     if errors:
@@ -917,95 +923,128 @@ def create_narrative(short_name, project_dir, projects):
     # Normalize to lowercase
     short_name = short_name.lower()
 
-    # Resolve scratchpad context
-    scratchpad = Scratchpad()
-    scratchpad.ensure_initialized()
-
-    # Detect task context from .ve-task.yaml
+    # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        # Task context: use task directory name as context identifier
-        task_name = project_dir.resolve().name
-        context_path = scratchpad.resolve_context(task_name=task_name)
-    else:
-        # Project context: use project directory
-        context_path = scratchpad.resolve_context(project_path=project_dir)
+        _start_task_narrative(project_dir, short_name, projects)
+        return
 
-    # Create narrative in scratchpad
-    narratives_manager = ScratchpadNarratives(scratchpad, context_path)
+    # Single-repo mode - create in docs/narratives/
+    narratives = Narratives(project_dir)
 
     try:
-        narrative_path = narratives_manager.create_narrative(short_name)
+        narrative_path = narratives.create_narrative(short_name)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    # Show the created path
-    click.echo(f"Created {narrative_path}")
+    relative_path = narrative_path.relative_to(project_dir)
+    click.echo(f"Created {relative_path}")
 
 
-# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
+def _start_task_narrative(
+    task_dir: pathlib.Path,
+    short_name: str,
+    projects_input: str | None = None,
+):
+    """Handle narrative creation in task directory (cross-repo mode)."""
+    # Parse projects option
+    try:
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    try:
+        result = create_task_narrative(task_dir, short_name, projects=projects)
+    except TaskNarrativeError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Report created paths
+    external_path = result["external_narrative_path"]
+    click.echo(f"Created narrative in external repo: {external_path.relative_to(task_dir)}/")
+
+    for project_ref, yaml_path in result["project_refs"].items():
+        # Show the narrative directory, not the yaml file
+        narrative_dir = yaml_path.parent
+        click.echo(f"  {project_ref}: {narrative_dir.relative_to(task_dir)}/")
+
+
+# Subsystem: docs/subsystems/workflow_artifacts - Narrative commands
 @narrative.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def list_narratives(project_dir):
-    """List all narratives from scratchpad storage."""
-    from scratchpad import Scratchpad, ScratchpadNarratives
+    """List all narratives.
 
-    # Resolve scratchpad context
-    scratchpad = Scratchpad()
-
-    # Detect task context from .ve-task.yaml
+    In task directory mode, lists narratives from the external artifact repo.
+    In single-repo mode, lists narratives from docs/narratives/.
+    """
+    # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        # Task context: use task directory name as context identifier
-        task_name = project_dir.resolve().name
-        context_path = scratchpad.resolve_context(task_name=task_name)
-    else:
-        # Project context: use project directory
-        context_path = scratchpad.resolve_context(project_path=project_dir)
+        _list_task_narratives_cmd(project_dir)
+        return
 
-    # Get narratives from scratchpad
-    narratives_manager = ScratchpadNarratives(scratchpad, context_path)
-    narrative_list = narratives_manager.list_narratives()
+    # Single-repo mode - list from docs/narratives/
+    narratives = Narratives(project_dir)
+    narrative_list = narratives.enumerate_narratives()
 
     if not narrative_list:
         click.echo("No narratives found", err=True)
         raise SystemExit(1)
 
-    for narrative_name in narrative_list:
-        frontmatter = narratives_manager.parse_narrative_frontmatter(narrative_name)
+    # Use ArtifactIndex for causal ordering and tip detection
+    artifact_index = ArtifactIndex(project_dir)
+    ordered = artifact_index.get_ordered(ArtifactType.NARRATIVE)
+    tips = set(artifact_index.find_tips(ArtifactType.NARRATIVE))
+
+    # Reverse for newest first (ArtifactIndex returns oldest first)
+    for narrative_name in reversed(ordered):
+        frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
         status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        narrative_path = context_path / "narratives" / narrative_name
-        click.echo(f"{narrative_path} [{status}]")
+        tip_indicator = " *" if narrative_name in tips else ""
+        click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
 
 
-# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
+def _list_task_narratives_cmd(task_dir: pathlib.Path):
+    """Handle narrative listing in task directory (cross-repo mode)."""
+    try:
+        narratives = list_task_narratives(task_dir)
+    except TaskNarrativeError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    if not narratives:
+        click.echo("No narratives found", err=True)
+        raise SystemExit(1)
+
+    for narrative in narratives:
+        click.echo(f"{narrative['name']} [{narrative['status']}]")
+        if narrative.get("dependents"):
+            for dep in narrative["dependents"]:
+                click.echo(f"  → {dep}")
+
+
+# Subsystem: docs/subsystems/workflow_artifacts - Narrative commands
 @narrative.command()
 @click.argument("narrative_id")
 @click.argument("new_status", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(narrative_id, new_status, project_dir):
-    """Show or update narrative status in scratchpad."""
-    from models import ScratchpadNarrativeStatus
-    from scratchpad import Scratchpad, ScratchpadNarratives
-
+    """Show or update narrative status."""
     # Normalize narrative_id to strip path prefixes
     if "/" in narrative_id:
         narrative_id = narrative_id.rsplit("/", 1)[-1]
 
-    # Resolve scratchpad context
-    scratchpad = Scratchpad()
-
-    # Detect task context from .ve-task.yaml
-    if is_task_directory(project_dir):
-        task_name = project_dir.resolve().name
-        context_path = scratchpad.resolve_context(task_name=task_name)
-    else:
-        context_path = scratchpad.resolve_context(project_path=project_dir)
-
-    narratives_manager = ScratchpadNarratives(scratchpad, context_path)
+    # Use in-repo Narratives class
+    narratives = Narratives(project_dir)
 
     # Display mode: just show current status
     if new_status is None:
-        fm = narratives_manager.parse_narrative_frontmatter(narrative_id)
+        fm = narratives.parse_narrative_frontmatter(narrative_id)
         if fm is None:
             click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
             raise SystemExit(1)
@@ -1013,11 +1052,10 @@ def status(narrative_id, new_status, project_dir):
         return
 
     # Transition mode: validate and update status
-    # First validate new_status is a valid ScratchpadNarrativeStatus value
     try:
-        new_status_enum = ScratchpadNarrativeStatus(new_status)
+        new_status_enum = NarrativeStatus(new_status)
     except ValueError:
-        valid_statuses = ", ".join(s.value for s in ScratchpadNarrativeStatus)
+        valid_statuses = ", ".join(s.value for s in NarrativeStatus)
         click.echo(
             f"Error: Invalid status '{new_status}'. Valid statuses: {valid_statuses}",
             err=True
@@ -1026,14 +1064,14 @@ def status(narrative_id, new_status, project_dir):
 
     # Attempt the update
     try:
-        old_status, updated_status = narratives_manager.update_status(narrative_id, new_status_enum)
+        old_status, updated_status = narratives.update_status(narrative_id, new_status_enum)
         click.echo(f"{narrative_id}: {old_status.value} -> {updated_status.value}")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
 
-# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
+# Subsystem: docs/subsystems/workflow_artifacts - Narrative commands
 @narrative.command("compact")
 @click.argument("chunk_ids", nargs=-1, required=True)
 @click.option("--name", required=True, help="Short name for the consolidated narrative")
@@ -1042,48 +1080,38 @@ def status(narrative_id, new_status, project_dir):
 def compact(chunk_ids, name, description, project_dir):
     """Consolidate multiple chunks into a single narrative.
 
-    Creates a scratchpad narrative that references the given chunks.
-    The narrative is stored in scratchpad storage and serves as a
+    Creates a narrative that references the given chunks.
+    The narrative is stored in docs/narratives/ and serves as a
     grouping mechanism for related work.
 
     Example:
         ve narrative compact chunk_a chunk_b chunk_c --name my_narrative
     """
-    from scratchpad import Scratchpad, ScratchpadNarratives, ScratchpadChunks
+    import re
+    import yaml
 
     if len(chunk_ids) < 2:
         click.echo("Error: Need at least 2 chunks to consolidate", err=True)
         raise SystemExit(1)
 
-    # Resolve scratchpad context
-    scratchpad = Scratchpad()
-    scratchpad.ensure_initialized()
-
-    # Detect task context from .ve-task.yaml
-    if is_task_directory(project_dir):
-        task_name = project_dir.resolve().name
-        context_path = scratchpad.resolve_context(task_name=task_name)
-    else:
-        context_path = scratchpad.resolve_context(project_path=project_dir)
-
-    # Validate chunk IDs exist in scratchpad
-    chunks_manager = ScratchpadChunks(scratchpad, context_path)
-    available_chunks = set(chunks_manager.enumerate_chunks())
+    # Validate chunk IDs exist
+    chunks = Chunks(project_dir)
+    available_chunks = set(chunks.enumerate_chunks())
     normalized_ids = []
 
     for chunk_id in chunk_ids:
         # Strip any path prefixes the user might have included
         normalized = chunk_id.rsplit("/", 1)[-1] if "/" in chunk_id else chunk_id
         if normalized not in available_chunks:
-            click.echo(f"Error: Chunk '{normalized}' not found in scratchpad", err=True)
+            click.echo(f"Error: Chunk '{normalized}' not found in docs/chunks/", err=True)
             raise SystemExit(1)
         normalized_ids.append(normalized)
 
     # Create the narrative
-    narratives_manager = ScratchpadNarratives(scratchpad, context_path)
+    narratives = Narratives(project_dir)
 
     try:
-        narrative_path = narratives_manager.create_narrative(name)
+        narrative_path = narratives.create_narrative(name)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -1092,10 +1120,6 @@ def compact(chunk_ids, name, description, project_dir):
     overview_path = narrative_path / "OVERVIEW.md"
     content = overview_path.read_text()
 
-    # Add chunk prompts to frontmatter (in the format expected by scratchpad narratives)
-    import re
-    import yaml
-
     # Parse existing frontmatter
     match = re.match(r"^(---\s*\n)(.*?)(\n---)", content, re.DOTALL)
     if match:
@@ -1103,22 +1127,26 @@ def compact(chunk_ids, name, description, project_dir):
         if not isinstance(frontmatter, dict):
             frontmatter = {}
 
-        # Add chunk prompts listing the consolidated chunks
-        frontmatter["chunk_prompts"] = [f"Consolidated from {chunk_id}" for chunk_id in normalized_ids]
-        frontmatter["ambition"] = description
+        # Add proposed_chunks listing the consolidated chunks
+        frontmatter["proposed_chunks"] = [
+            {"prompt": f"Consolidated from {chunk_id}", "chunk_directory": chunk_id}
+            for chunk_id in normalized_ids
+        ]
+        frontmatter["advances_trunk_goal"] = description
 
         new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
         rest_of_file = content[match.end():]
         overview_path.write_text(f"---\n{new_frontmatter}---{rest_of_file}")
 
-    click.echo(f"Created narrative: {narrative_path}")
+    relative_path = narrative_path.relative_to(project_dir)
+    click.echo(f"Created narrative: {relative_path}")
     click.echo("")
     click.echo(f"Consolidated {len(normalized_ids)} chunks:")
     for chunk_name in normalized_ids:
         click.echo(f"  - {chunk_name}")
 
 
-# Subsystem: docs/subsystems/workflow_artifacts - Scratchpad narrative commands
+# Subsystem: docs/subsystems/workflow_artifacts - Narrative commands
 @narrative.command("update-refs")
 @click.argument("narrative_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1127,21 +1155,78 @@ def compact(chunk_ids, name, description, project_dir):
 def update_refs(narrative_id, project_dir, dry_run, file_path):
     """Update code backreferences to point to a narrative.
 
-    NOTE: This command is not applicable for scratchpad narratives.
-    Scratchpad narratives are personal flow notes and do not have
-    code backreferences. This command only works with in-repo narratives
-    stored in docs/narratives/.
+    Finds files containing chunk backreferences for chunks consolidated into
+    the specified narrative and replaces them with a single narrative reference.
 
     Example:
         ve narrative update-refs my_narrative
         ve narrative update-refs my_narrative --dry-run
     """
-    click.echo(
-        "Error: update-refs is not applicable for scratchpad narratives.\n"
-        "Scratchpad narratives are personal flow notes without code backreferences.",
-        err=True
-    )
-    raise SystemExit(1)
+    from chunks import update_backreferences, count_backreferences
+
+    # Normalize narrative_id
+    narrative_id = strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)
+
+    narratives = Narratives(project_dir)
+
+    # Parse narrative frontmatter to get consolidated chunk IDs
+    frontmatter = narratives.parse_narrative_frontmatter(narrative_id)
+    if frontmatter is None:
+        click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+        raise SystemExit(1)
+
+    # Get chunk IDs from proposed_chunks
+    chunk_ids = []
+    for proposed in frontmatter.proposed_chunks:
+        if proposed.chunk_directory:
+            chunk_ids.append(proposed.chunk_directory)
+
+    if not chunk_ids:
+        click.echo(f"Narrative '{narrative_id}' has no consolidated chunks")
+        return
+
+    # Find files with backreferences to these chunks
+    backref_results = count_backreferences(project_dir)
+    files_to_process = []
+
+    for info in backref_results:
+        # Check if this file has any of our target chunk refs
+        matching_refs = [ref for ref in set(info.chunk_refs) if ref in chunk_ids]
+        if matching_refs:
+            if file_path is None or info.file_path == file_path:
+                files_to_process.append((info.file_path, matching_refs))
+
+    if not files_to_process:
+        click.echo("No files found with backreferences to update")
+        return
+
+    total_replaced = 0
+    files_updated = []
+
+    for fpath, refs in files_to_process:
+        count = update_backreferences(
+            project_dir,
+            file_path=fpath,
+            chunk_ids_to_replace=refs,
+            narrative_id=narrative_id,
+            narrative_description=frontmatter.advances_trunk_goal or "Consolidated narrative",
+            dry_run=dry_run,
+        )
+        if count > 0:
+            total_replaced += count
+            rel_path = fpath.relative_to(project_dir)
+            files_updated.append((rel_path, count))
+
+    if dry_run:
+        click.echo("Dry run - no files modified")
+        click.echo("")
+        click.echo(f"Would update {len(files_updated)} file(s):")
+        for rel_path, count in files_updated:
+            click.echo(f"  - {rel_path}: {count} chunk refs -> 1 narrative ref")
+    else:
+        click.echo(f"Updated backreferences in {len(files_updated)} file(s):")
+        for rel_path, count in files_updated:
+            click.echo(f"  - {rel_path}: replaced {count} chunk refs with 1 narrative ref")
 
 
 @cli.group()
@@ -3101,80 +3186,6 @@ def analyze(project_dir, tags):
             click.echo("\nConsider creating a chunk or investigation to address this pattern.\n")
         else:
             click.echo()
-
-
-# Scratchpad commands
-# Subsystem: docs/subsystems/workflow_artifacts - Cross-project scratchpad queries
-@cli.group()
-def scratchpad():
-    """Scratchpad commands - user-global work notes."""
-    pass
-
-
-@scratchpad.command("list")
-@click.option("--all", "-a", "list_all", is_flag=True,
-              help="List entries across all projects and tasks")
-@click.option("--tasks", is_flag=True,
-              help="List only task entries (task:*)")
-@click.option("--projects", is_flag=True,
-              help="List only project entries (non-task)")
-@click.option("--status", type=str, default=None,
-              help="Filter by status (e.g., IMPLEMENTING, DRAFTING)")
-@click.option("--project-dir", type=click.Path(path_type=pathlib.Path),
-              default=".", help="Project directory (for single-project mode)")
-@click.option("--scratchpad-root", type=click.Path(path_type=pathlib.Path),
-              default=None, help="Override scratchpad root (for testing)")
-def scratchpad_list(list_all, tasks, projects, status, project_dir, scratchpad_root):
-    """List scratchpad entries."""
-    from scratchpad import Scratchpad
-
-    # Create scratchpad instance (custom root for testing, default otherwise)
-    sp = Scratchpad(scratchpad_root=scratchpad_root)
-
-    # Determine context type filter
-    context_type = None
-    if tasks:
-        context_type = "task"
-    elif projects:
-        context_type = "project"
-
-    if list_all:
-        # List all contexts
-        result = sp.list_all(
-            context_type=context_type,
-            status=status,
-        )
-    else:
-        # List current project context only
-        project_dir = project_dir.resolve()
-        context_name = sp.derive_project_name(project_dir)
-        result = sp.list_context(
-            context_name,
-            status=status,
-        )
-
-    if result.total_count == 0:
-        click.echo("No scratchpad entries found")
-        return
-
-    # Format output with grouped display
-    for context_name in sorted(result.entries_by_context.keys()):
-        entries = result.entries_by_context[context_name]
-        click.echo(f"\n{context_name}/")
-
-        # Group entries by artifact type
-        chunks = [e for e in entries if e.artifact_type == "chunk"]
-        narratives = [e for e in entries if e.artifact_type == "narrative"]
-
-        if chunks:
-            click.echo("  chunks:")
-            for entry in chunks:
-                click.echo(f"    - {entry.name} ({entry.status})")
-
-        if narratives:
-            click.echo("  narratives:")
-            for entry in narratives:
-                click.echo(f"    - {entry.name} ({entry.status})")
 
 
 # Migration commands
