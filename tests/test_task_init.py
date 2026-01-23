@@ -309,6 +309,39 @@ class TestTaskInitClaudeMd:
         # Should contain rendered content
         assert "Multi-Project Task" in content
 
+    def test_claude_md_contains_project_references_section(self, tmp_path):
+        """CLAUDE.md contains Project References section with key files."""
+        external = tmp_path / "ext"
+        make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
+        proj1 = tmp_path / "proj1"
+        make_ve_initialized_git_repo(proj1, remote_url="https://github.com/acme/proj1.git")
+        proj2 = tmp_path / "proj2"
+        make_ve_initialized_git_repo(proj2, remote_url="https://github.com/acme/proj2.git")
+
+        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
+        init.validate()
+        init.execute()
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+
+        # Should have Project References section
+        assert "## Project References" in content
+
+        # Should have rule precedence guidance
+        assert "project's internal rules take precedence" in content
+
+        # Should have subheadings for each project (repo name extracted from org/repo)
+        assert "### proj1" in content
+        assert "### proj2" in content
+
+        # Should list three key files for each project
+        assert "./proj1/CLAUDE.md" in content
+        assert "./proj1/docs/trunk/GOAL.md" in content
+        assert "./proj1/docs/trunk/TESTING_PHILOSOPHY.md" in content
+        assert "./proj2/CLAUDE.md" in content
+        assert "./proj2/docs/trunk/GOAL.md" in content
+        assert "./proj2/docs/trunk/TESTING_PHILOSOPHY.md" in content
+
 
 class TestTaskInitCommands:
     """Tests for command template rendering in task init."""

@@ -13,6 +13,21 @@ You're in a **task directory** coordinating work across multiple repositories.
 
 Workflow artifacts (chunks, narratives, subsystems, investigations) live in the external repo. Implementation happens in participating projects.
 
+## Project References
+
+Each project has its own constraints and conventions. **When working within a project, that project's internal rules take precedence over any conflicting rules from other projects.**
+
+Read these files to understand each project's requirements:
+
+{% for project in projects %}
+{%- set repo_name = project.split('/')[-1] %}
+### {{ repo_name }}
+
+- `./{{ repo_name }}/CLAUDE.md` - Project-specific agent instructions
+- `./{{ repo_name }}/docs/trunk/GOAL.md` - Project goals and constraints
+- `./{{ repo_name }}/docs/trunk/TESTING_PHILOSOPHY.md` - Testing approach
+
+{% endfor %}
 ## Commands
 
 All commands work from task root. You can also `cd` into a project for project-specific work.
