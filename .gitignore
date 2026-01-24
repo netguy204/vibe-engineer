@@ -1,5 +1,5 @@
 __pycache__/
-articles.md
+
 .pytest_cache/
 .venv/
 .artifact-order.json
