@@ -7,320 +7,120 @@
 | Article Number | 1 |
 | Working Title | The Uncomfortable Truth About AI Coding |
 | Target Audience | Engineering leaders helping organizations adopt agentic workflows, and senior developers skeptical of VibeCoding's tendency to produce slop |
-| Core Thesis | AI agents are very fast junior engineers. We already know how to manage junior engineers - through documentation, constraints, and review. VIBE engineering is that playbook, adapted. |
+| Core Thesis | Vibe coding fails because it's an onboarding problem we're ignoring. Every new agent session is a new junior to onboard—and we already know how to do that. |
 | Source Material | articles.md outline, Bryan Cantrill's "Sharpening the Axe" talk |
 
 ---
 
 ## Current Phase
 
-**Phase:** 1-Decomposition
+**Phase:** 4-Voice Check
 
-**Status:** In Progress
+**Status:** Full draft complete; all sections have voice capture and assembly
 
-**Next Action:** Agent creates granular outline, human reviews and approves
-
----
-
-## Phase 1: Decomposition
-
-**Owner:** Agent
-**Goal:** Break the article into granular beats—specific points each section must hit.
-
-### Outline
-
-## 1. The Seduction
-
-> My goal in this article is to convince my graybeard engineer friends that your current impressions about the long-term viability of software development with AI may have been biased by improper usage or improper tools. 
-
-### Beat 1.1: The intoxicating first experience
-The moment you first prompt and code appears. The feeling of power and speed.
-> We all remember the first time we vibed. It was probably something cliché like a snake game or flappy bird or a todo app, but the magic stayed with us.
-
-### Beat 1.2: The "it mostly works" trap
-Code that runs but you don't fully understand. Ship it anyway because momentum feels good.
-> If the result of this first attempt to build something was a total failure, it's likely either you were either way too ambitious or chose the wrong tools. But most likely your outcome was a 95% success scenario, and you didn't really start to hit pain until it was time to try to find that remaining 5% that was blocking completion.
-> If you were vibing something fundamentally interactive, then the remaining 5% probably took the form of back-and-forth prompts to fix the interactions and tweak the flow. These were successful the first few times, but eventually overwhelmed the model context window. And the sensation was: "wow, my brilliant collaborator feels really stupid now."
-> If your build was something more data oriented or back-end, this probably took the form of going off and testing the artifact, discovering some deficiency, and then realizing you needed to create a new agent session to fix the deficiency. Of course, this new agent is a brand new idiot savant with no memory of all that beautiful insight you rained upon the first agent... and so it did ridiculous things.
-
-### Beat 1.3: The productivity illusion
-Metrics look great. Lines of code. Features shipped. Everything seems fine.
-> Both of these failure modes come down to lack of context and mismanaged attention. And they always happen. Maybe you started in a legacy project and the model made your changes but utterly disrespecting the patterns existing tools in your project. Here the agent didn't know what was important so it guessed from what it happened to find.
-
-## 2. The Hangover
-
-### Beat 2.1: Recognition of a familiar pattern
-This isn't new. You've seen this code before—from undertrained juniors.
-> Those of us who have done time in management probably recognize the pattern because we'd seen it in junior engineers that we were bringing into the team, and it was our job to fix it. These are all symptoms of lack of appropriate context.
-> Eventually, as the junior matures, they will learn how to find the information they need to be successful, and they'll have a refining view of what success looks like, so they'll know when they need to look for information. But the initial state of a junior is a lot like the initial state of the Ai agent: blank eyes and a burning desire to please.
-
-### Beat 2.2: The 3-month codebase problem
-No one understands the codebase anymore. Onboarding is painful. Context is lost.
-> The junior stands a chance at success at onboarding because, as a human, they have episodic memory. They can remember the lesson that you taught them last week. And the code base that they're working in probably wasn't also exclusively built by other juniors. So there are discoverable patterns and opinions there that they can learn from and embrace.
-> The agent doesn't have these advantages. Generally it's a brand new idiot savant every morning. And if the codebase it's working in was built by previous idiot savants, then there's probably no patterns to grow from and discover. 
-
-### Beat 2.3: Unexpected breakage
-Changes break things in ways no one predicted. The system has become fragile.
-
-### Beat 2.4: The speed paradox
-You went faster, but now you're slower. Technical debt accumulated at AI speed.
-> So this would appear to mean that all agentic roads lead to a world where the guiding patterns of the codebase are lost, buried in muck, and there is no path for anyone, agent or junior, to onboard to a codebase successfully. 
-
-## 3. The Reframe
-
-### Beat 3.1: We already solved this problem
-Every mature organization developed practices for this exact situation—just with humans.
-> But having said it that way, I think we've just identified the real problem. This is an onboarding exercise. Unlike the one that we do once every couple months or years to bring on a junior, it's an onboarding exercise that we do multiple times a day.
-
-
-### Beat 3.2: The purpose of documentation practices
-Not to slow people down, but to let them go fast safely. Guardrails, not barriers.
-> The organizations that do a lot of onboarding have learned the things that new engineers need on day one to be successful rapidly. For example, they make onboarding a team sport because if only the team lead or the tech lead can onboard newcomers, then bringing in newcomers destroys the capacity of the team. 
-
-> Also, as they mature their onboarding, they outsource more and more of the onboarding to documentation. They learn the places in the codebase that juniors need to explore first, guide them there, and they learn what big concepts exist in the codebase that need to be explained elsewhere. 
-
-### Beat 3.3: Code review, architectural guardrails, documentation
-The specific mechanisms that work. What they actually accomplish.
-
-### Beat 3.4: The pattern recognition
-AI agents need the same constraints that inexperienced contributors need.
-
-## 4. The Thesis
-
-> So the puzzle for us graybeard engineers who would like the acceleration of agents over the long period is discovering ways to onboard our agents every time we open the terminal.
-
-### Beat 4.1: The core reframe—fast junior engineer
-Treat AI as a very fast junior engineer. Not a replacement, not magic—a resource to manage.
-
-### Beat 4.2: Investment required
-Constraints, documentation, workflow investment. The implementation becomes mechanical once constraints are clear.
-
-### Beat 4.3: Leverage, not replacement
-The goal is amplification of human capability, not elimination of human judgment.
-
-## 5. The Nuance: Superhuman Context, Missing Memory
-
-### Beat 5.1: The "fast junior" framing is incomplete
-Useful but not the whole story. Agents are profoundly different in two key ways.
-
-### Beat 5.2: Superhuman context windows
-An agent can read 41 chunks, 3 narratives, 2 investigations and synthesize coherently in seconds. No human holds that much in working memory.
-
-### Beat 5.3: Missing episodic memory
-Unlike juniors who accumulate institutional knowledge, agents start fresh each session. No recollection of yesterday's decisions.
-
-### Beat 5.4: Documentation serves two purposes
-Guardrails (constrain like a junior) AND Fuel (feed superhuman synthesis capability).
-
-### Beat 5.5: Documentation as external memory
-Compensating for what agents lack while amplifying what they excel at.
-
-## 6. The Primacy of Toolmaking
-
-### Beat 6.1: Cantrill's insight
-Better tools yield better artifacts. Tools are invisible to the user and often not present in the end product.
-
-### Beat 6.2: Documentation artifacts as tools
-Chunks, narratives, subsystems, investigations—these are toolmaking for agent-driven development.
-
-### Beat 6.3: The "stealing time" feeling
-Toolmaking has immediate cost but delayed payoff. Explains why documentation feels like overhead.
-
-### Beat 6.4: The payoff moment
-When you see an agent traverse your entire project history and synthesize insights no human could hold in working memory.
-
-### Beat 6.5: The CLI embodiment
-The `ve` CLI is toolmaking that makes documentation-driven development sustainable.
-
-## 7. What's Coming
-
-### Beat 7.1: This series as field notes
-Honest about struggles, showing evolution of discoveries over time.
-
-### Beat 7.2: The journey ahead
-What the remaining articles will explore. The practical discoveries.
-
-### Phase 1 Completion Criteria
-- [ ] Every section from the article plan is represented
-- [ ] Beats are specific enough to prompt focused voice capture
-- [ ] Human has reviewed and approved the outline structure
-
-### Phase 1 Notes
-
-Decomposed the 5-section outline from articles.md into 7 sections (split "The Nuance" and "Primacy of Toolmaking" from the Key Points into their own sections since they're substantial). Each section has 2-5 beats representing specific points to hit.
-
-The beats are designed to be specific enough that you can write 1-3 sentences of raw thoughts against each one without needing to figure out "what am I supposed to say here?"
+**Next Action:** Human reviews full draft for voice; resolve remaining uncertainties
 
 ---
 
-## Phase 2: Voice Capture
+## Restructured Outline
 
-**Owner:** Human
-**Goal:** Annotate each beat with freeform thoughts in your authentic voice.
+Based on your voice capture, here's the natural shape that emerged:
 
-### Instructions for Human
+### 1-3. The Setup → Recognition → Reframe (tightened)
+- Opening: Goal is to convince graybeard friends their skepticism may be misplaced
+- The first vibe: Magic stays with us
+- **Early recognition**: Those of us in management recognized what came next—it's undertrained juniors
+- Junior vs agent initial state: Blank eyes and a burning desire to please
+- Failure modes as *illustration*: 95% success, then context overflow or new-session amnesia
+- Root cause: Lack of context and mismanaged attention
+- Why juniors succeed: Episodic memory + discoverable patterns
+- Why agents fail: Brand new idiot savant every morning + no patterns to discover
+- **The insight**: This is an onboarding exercise we do multiple times a day
+- What mature orgs learned: Team sport, outsource to documentation
+- The requirement: Produce code AND artifacts to onboard the next generation
 
-For each beat in the outline above, write your raw thoughts:
-- Stream of consciousness is fine
-- Don't worry about polish or transitions
-- Capture the *feeling* and *insight*, not just the information
-- If a beat doesn't resonate, note that—we can restructure
+### 4. The Thesis (The puzzle and the payoff)
+- The puzzle: How to onboard agents every time we open the terminal
+- The metaphor: CLAUDE.md is what HR handed them on the way in
+- The payoff: Day 2 can feel as magical as day 1
+- The leverage: Clarifying documentation = every future agent understands your refined vision
+- The value proposition: Your judgment (not your typing) is exactly what you're bringing to the vibes
 
-### Voice Capture Content
+### 5. The Nuance (Agents aren't just fast juniors)
+- Superhuman working memory and synthesis
+- Once onboarded properly: Incredible leverage for thinking at larger scales
+- "What would it mean if we changed X?" → brilliant insight, better designs
 
-<!--
-Human: Copy each beat header and write your thoughts beneath it.
-Keep your annotations clearly separated from the outline.
+### 6. The Primacy of Toolmaking [NEEDS VOICE CAPTURE]
+- Cantrill's insight on toolmaking
+- Documentation as toolmaking for agent development
+- Why it feels like overhead (immediate cost, delayed payoff)
 
-Format:
-### Beat 1.1: The intoxicating first experience
-**Voice notes:** [your freeform thoughts here]
--->
-
-(voice capture goes here)
-
-### Phase 2 Completion Criteria
-- [ ] Every beat has voice notes (or explicit "skip/restructure" note)
-- [ ] Human feels the raw material captures their perspective
-- [ ] Any structural concerns have been flagged
-
-### Phase 2 Notes
-
-(human notes on what felt natural vs forced, structural concerns)
+### 7. What's Coming [NEEDS VOICE CAPTURE]
+- This series as field notes
+- The journey ahead
 
 ---
 
-## Phase 3: Assembly
+## Current Draft (Sections 1-5)
 
-**Owner:** Agent
-**Goal:** Stitch voice notes into coherent paragraphs without adding ideas.
+**Note:** Sections 1-3 restructured to get to onboarding faster. Ready for your voice edit pass.
 
-### Assembly Guidelines
+---
 
-The agent will:
-1. Organize voice notes into flowing paragraphs
-2. Add transitions between ideas
-3. Smooth rough edges in phrasing
-4. Flag uncertainties with `[UNCERTAIN: reason]` markers
-5. NOT add new ideas, arguments, or examples
-6. NOT remove ideas even if they seem tangential
+My goal here is to convince my graybeard engineer friends that their current impressions about the long-term viability of software development with AI may have been biased by improper usage.
 
-### Assembled Draft
+We all remember the first time we vibed. It was probably something cliché—a snake game or a todo app—but the magic was real. You went from an idea to functional and pretty decent code in 1% of the usual time.
 
-<!--
-Agent: Write the assembled draft here. Use [UNCERTAIN: ...] markers
-where you've inferred connections or where notes were ambiguous.
--->
+Most likely that first vibe was a 95% success scenario. You didn't really start to hit pain until you tried to tackle that remaining 5% blocking completion. The back-and-forth prompts eventually overwhelmed the model context window. You started a new session, and this new agent has no memory of all that you had tought the first one. It was still smart it became like a world-class surgeon who can't remember which leg you discussed. Brilliance without context is a specific kind of dangerous.
 
-(assembled draft goes here)
+Those of us in management have seen this before—sort of. Juniors start safely incompetent; they learn context before they're dangerous. They have episodic memory. They get a few weeks to figure things out. They can remember the lesson you taught them last week. And the codebase they're working in probably wasn't built exclusively by other juniors, so there are discoverable patterns to learn from.
 
-### Uncertainty Log
+Agents don't get that grace period. They arrive ready to operate, with no idea which leg is which. Every session is a world-class surgeon with amnesia. And if the codebase was built by previous amnesiac surgeons, there are no higher intents to learn from the code.
+
+We've identified the problem: Vibe Engineering (multi-day vibe coding) is an onboarding exercise. But, unlike the one we do once every couple months to bring on a junior, it's an onboarding exercise we do multiple times a day. Fortunately, we already know what works—a growth plan, documentation, guardrails, and process.
+
+- Onboarding is progressive discovery: All you need to know right now is what's necessary to find or do the next thing. Being told more than that is overwhelming.
+- Onboarding captures intent, not just mechanics: Knowing *how* to do something isn't enough. "We use PostgreSQL" is mechanics. "Because we need ACID transactions" is intent. "We learned this migrating off distributed Mongo when eventual consistency broke us" is wisdom. Juniors can ask for all three. Agents only get what you wrote down.
+- Onboarding is a team sport: If only the team lead can onboard newcomers, then bringing in newcomers destroys the capacity of the team by saturating its leadership.
+- Onboarding is eventually carried by documentation: The junior has more free time than anyone else on the team. If they can apply that time to self-directed learning then onboarding scales. Documentation also survives the onboarder. Good documentation is institutional memory that doesn't walk out the door.
+- Onboarding has guardrails: Code review, PR templates, linters. The newcomer can't easily make catastrophic mistakes while they're still learning. The constraints protect the codebase *and* the newcomer.
+- Onboarding is testable: You know it worked when the newcomer's output respects the patterns without hand-holding. If you're still correcting the same mistakes, then you've discovered an area for improving your onboarding.
+
+Now, getting back to vibe coding. The reason it falls apart when applied to a legacy codebase or on day 2 of a greenfield vibe project is this problem of onboarding. If you're patient, you can give the day 2 agent a robust enough prompt to get the job done. But writing prompts that rich doesn't feel like magic anymore-it feels like documenting. And most of us didn't become engineers to write documentation.
+
+So the puzzle is: how do we onboard agents every session without it feeling like a career change?
+
+And here's the thing graybeards know but rarely say out loud: our value was never typing speed. It was knowing what to build and recognizing whether it was built right. The good news is that the value of judgment doesn't disappear when agents do the typing—it becomes the whole game.
+
+---
+
+If every new session is like a new junior to onboard then the CLAUDE.md file is what HR handed them on the way in. But HR doesn't hand the junior the entire company wiki on day one—they'd drown. Agents have the same problem with a different name: the context window. The answer isn't a bigger wiki or a longer CLAUDE.md. It's documentation that can be discovered from wherever you start—code that links to the intent behind it, explorable on demand. And here's the leverage: every clarification you make to that documentation means every future agent understands your refined vision. Judgment applied to docs compounds in a way judgment applied to code never did.
+
+---
+
+Toolmaking has always been one of the highest leverage activities an engineer can engage in. Bryan Cantrill makes this case beautifully in his P99 talk "Sharpening the Axe"—better tools yield better artifacts, even when the tools themselves are invisible in the final product.
+
+This is what I'm building: tools that create a rich onboarding environment where agents and humans can both become productive in a codebase. Documentation that grows with the code. Intent that stays linked to implementation. The wiki we always wanted but could never afford to maintain—made sustainable because agents help write it as they work.
+
+I'm doing this because I want my judgment to have more impact, not less. In this series, I'll take you through what I've learned—and what I'm still learning—as I design the tools my organization uses for what I'm calling "vibe engineering."
+
+---
+
+## Uncertainty Log
 
 | Location | Uncertainty | Resolution |
 |----------|-------------|------------|
-
-### Phase 3 Completion Criteria
-- [ ] All voice notes have been incorporated
-- [ ] Uncertainties are flagged, not papered over
-- [ ] Draft flows as a coherent piece
-- [ ] No new ideas have been introduced
-
-### Phase 3 Notes
-
-(agent notes on assembly decisions, inferences made)
+| Section 3 para 4 | Changed "bluesky" to "greenfield" - verify this is what you meant | |
 
 ---
 
-## Phase 4: Voice Check
+## What's Missing
 
-**Owner:** Human
-**Goal:** Revise anything that doesn't sound like you.
-
-### Instructions for Human
-
-Read the assembled draft and:
-1. Mark passages that don't sound like your voice
-2. Rewrite those passages in your words
-3. Resolve any `[UNCERTAIN]` markers
-4. Note patterns for future workflow improvement
-
-### Voice Check Edits
-
-<!--
-Human: Either edit the assembled draft directly (above) or note edits here.
-If editing directly, use ~~strikethrough~~ for removed text and **bold** for additions.
--->
-
-(edits and revisions go here)
-
-### Phase 4 Completion Criteria
-- [ ] Human has read the full draft
-- [ ] All `[UNCERTAIN]` markers are resolved
-- [ ] Human confirms the draft sounds like them
-- [ ] Patterns noted for workflow improvement (if any)
-
-### Phase 4 Notes
-
-(human notes on voice drift patterns, workflow improvements needed)
-
----
-
-## Phase 5: Polish
-
-**Owner:** Agent
-**Goal:** Final pass for clarity, grammar, and flow.
-
-### Polish Guidelines
-
-The agent will:
-1. Fix grammar and punctuation
-2. Improve sentence clarity where possible
-3. Smooth any remaining rough transitions
-4. Check for consistency in terminology
-5. NOT change voice or tone
-6. Flag any remaining concerns for human decision
-
-### Polished Draft
-
-<!--
-Agent: Write the final polished version here.
-This becomes the publication-ready draft pending human approval.
--->
-
-(polished draft goes here)
-
-### Polish Log
-
-| Change | Rationale |
-|--------|-----------|
-
-### Phase 5 Completion Criteria
-- [ ] Grammar and punctuation are correct
-- [ ] Transitions flow smoothly
-- [ ] No voice/tone changes introduced
-- [ ] Human has approved final draft
-
-### Phase 5 Notes
-
-(agent notes on polish decisions)
-
----
-
-## Workflow Retrospective
-
-**Complete this after the article is finished.**
-
-### What Worked Well
-
-(note aspects of the workflow that felt smooth)
-
-### What Felt Friction
-
-(note aspects that were awkward or slow)
-
-### Proposed Workflow Changes
-
-(specific changes to the template for future articles)
+**Beats I dropped because you covered them elsewhere or skipped:**
+- Beat 2.3 "Unexpected breakage" - not captured, may not be needed
+- Beat 4.2 "Investment required" - implied but not explicit
+- Beat 5.3-5.5 (missing episodic memory, documentation as dual-purpose) - partially covered but could be expanded
 
 ---
 
@@ -329,3 +129,10 @@ This becomes the publication-ready draft pending human approval.
 | Date | Phase | Change |
 |------|-------|--------|
 | 2026-01-21 | 1-Decomposition | Initial outline created with 7 sections, 24 beats |
+| 2026-01-23 | 1→2 | Restructured outline to match voice capture; "onboarding" becomes central metaphor |
+| 2026-01-23 | 2→3 | Initial flow draft for sections 1-5 |
+| 2026-01-24 | 3→4 | Restructured sections 1-3: moved junior recognition earlier, failure modes now illustrate the pattern |
+| 2026-01-24 | 4 | Replaced "idiot savant" with surgeon/amnesia metaphor + "brilliance without context is dangerous" |
+| 2026-01-24 | 4 | Expanded onboarding principles list (6 bullets after cutting "layered") |
+| 2026-01-24 | 4 | Added closing section: toolmaking + series tease merged into one |
+| 2026-01-24 | 4 | Folded superhuman synthesis into leverage section; cut standalone section |
