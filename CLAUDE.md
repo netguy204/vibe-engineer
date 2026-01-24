@@ -385,22 +385,30 @@ ve orch inject my_chunk
 
 ## Code Backreferences
 
-Source code may contain backreference comments that link code back to the subsystem documentation that governs it:
+Source code may contain backreference comments that link code back to documentation:
 
 ```python
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/auth_refactor - Authentication system redesign
 ```
 
-**What backreferences mean:**
-- `# Subsystem: ...` - This code is part of a documented subsystem. Read the subsystem's OVERVIEW.md for patterns and invariants.
+**Valid backreference types:**
 
-Subsystems are the only valid code backreference type. They represent enduring architectural documentation that lives in the repository.
+- `# Subsystem: docs/subsystems/<name>` - Links to enduring architectural patterns. Use when code implements or extends a documented subsystem.
+- `# Chunk: docs/chunks/<name>` - Links to implementation work. Use when code was created or significantly modified by a chunk.
 
-**When implementing code:** Add `# Subsystem:` backreference comments when code implements or extends a documented subsystem. This links code to its governing patterns and invariants.
+**When to use each type:**
 
-**When you encounter other backreference types:** Remove them.
-- `# Chunk: ...` - Chunks are legacy backreferences that are no longer valid. Remove these references.
-- `# Narrative: ...` - Narratives are legacy backreferences that are no longer valid. Remove these references.
+| Type | Purpose | Lifespan | When to add |
+|------|---------|----------|-------------|
+| Subsystem | Architectural pattern | Enduring | Code follows a documented subsystem's patterns |
+| Chunk | Implementation work | Until SUPERSEDED/HISTORICAL | Code created or significantly modified by the chunk |
+
+**Chunk backreferences and task context:**
+
+When adding chunk backreferences in a multi-project task, always use the local path within the current repository (e.g., `docs/chunks/chunk_name`), not cross-repository paths. Each participating project has `external.yaml` pointers for chunks that live in the external artifacts repo. The local path is universally resolvable from within the project.
+
+**Narrative backreferences:** Do NOT add `# Narrative:` backreferences. Narratives decompose into chunks; reference the implementing chunk instead.
 
 ## Development
 

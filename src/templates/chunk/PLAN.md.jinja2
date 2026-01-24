@@ -105,22 +105,31 @@ Use little-endian encoding per SPEC.md Section 3.1.
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code that relates to a documented subsystem, add backreference
-comments to help future agents trace code back to its governing documentation.
-Subsystems are the only valid code backreference type.
+When implementing code, add backreference comments to help future agents trace
+code back to its governing documentation.
+
+**Valid backreference types:**
+- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
+- `# Chunk: docs/chunks/<name>` - For implementation work
 
 Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem's core functionality
-- **Class-level**: If this class is part of the subsystem pattern
-- **Method-level**: If this method implements a specific subsystem behavior
+- **Module-level**: If this code implements the subsystem/chunk's core functionality
+- **Class-level**: If this class is part of the pattern
+- **Method-level**: If this method implements a specific behavior
 
 Format (place immediately before the symbol):
 ```
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
+# Chunk: docs/chunks/auth_refactor - Authentication system redesign
 ```
 
-Do NOT add chunk or narrative backreferences. Only subsystems represent enduring
-architectural patterns that warrant code backreferences.
+Do NOT add narrative backreferences. Narratives decompose into chunks; reference
+the implementing chunk instead.
+
+**Task context note**: In multi-project tasks, always use local paths (e.g.,
+`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
+artifact repo. Each project has `external.yaml` pointers that resolve to the
+actual chunk content.
 -->
 
 ## Dependencies
