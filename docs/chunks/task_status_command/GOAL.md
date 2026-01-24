@@ -21,7 +21,7 @@ code_references:
   implements: Output formatter for grouped artifact listing display
 - ref: src/ve.py#_list_task_chunks
   implements: Updated CLI handler for task-aware chunk listing with grouped output
-- ref: src/ve.py#_list_task_narratives
+- ref: src/ve.py#_list_task_narratives_cmd
   implements: Updated CLI handler for task-aware narrative listing with grouped output
 - ref: src/ve.py#_list_task_investigations
   implements: Updated CLI handler for task-aware investigation listing with grouped output

@@ -1,7 +1,6 @@
 """Integration tests for task-aware chunk listing.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
-# Chunk: docs/chunks/task_status_command - Grouped listing output
 """
 
 import subprocess

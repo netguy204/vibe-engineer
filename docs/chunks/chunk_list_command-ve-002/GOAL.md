@@ -8,11 +8,11 @@ code_paths:
 - tests/test_ve.py
 code_references:
 - ref: src/chunks.py#Chunks::list_chunks
-  implements: Lists chunks sorted by numeric prefix descending
+  implements: Lists chunks in causal order (newest first) using ArtifactIndex
 - ref: src/chunks.py#Chunks::get_latest_chunk
-  implements: Returns highest-numbered chunk
+  implements: Returns first chunk in causal order (newest)
 - ref: src/ve.py#list_chunks
-  implements: CLI command ve chunk list with --latest and --project-dir options
+  implements: CLI command ve chunk list with --latest, --last-active, and --project-dir options
 - ref: tests/test_chunks.py
   implements: Unit tests for list_chunks() and get_latest_chunk() methods
 - ref: tests/test_chunk_list.py
