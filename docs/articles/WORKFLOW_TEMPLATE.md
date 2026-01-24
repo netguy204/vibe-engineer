@@ -2,10 +2,10 @@
 
 <!--
 TEMPLATE INSTRUCTIONS:
-1. Copy this file to: docs/articles/drafts/article_N_title/WORKFLOW.md
+1. Copy this file to the articles area: docs/articles/{name}_workflow.md
 2. Fill in the Article Metadata section
-3. Progress through phases sequentially, updating Current Phase as you go
-4. Each phase has completion criteria - don't advance until met
+3. Work iteratively through the activities - this is not a waterfall process
+4. The agent and human collaborate throughout; ownership shifts by activity
 -->
 
 ## Article Metadata
@@ -16,225 +16,117 @@ TEMPLATE INSTRUCTIONS:
 | Working Title | |
 | Target Audience | |
 | Core Thesis | |
-| Source Material | (chunks, narratives, investigations referenced) |
+| Source Material | (articles.md outline, other references) |
 
 ---
 
-## Current Phase
+## Current Status
 
-**Phase:** (1-Decomposition | 2-Voice Capture | 3-Assembly | 4-Voice Check | 5-Polish | COMPLETE)
+**Activity:** (Outlining | Drafting | Restructuring | Polishing | COMPLETE)
 
-**Status:**
+**What's happening:**
 
-**Next Action:**
+**Next action:**
 
 ---
 
-## Phase 1: Decomposition
+## How This Workflow Works
 
-**Owner:** Agent
-**Goal:** Break the article into granular beats—specific points each section must hit.
+This is an **iterative** process, not sequential phases. Expect to loop through these activities multiple times:
 
-### Outline
+1. **Outlining** - Agent proposes structure, human adds voice inline
+2. **Drafting** - Agent assembles prose, human edits for voice
+3. **Restructuring** - Either party identifies flow problems; agent presents options, human chooses
+4. **Polishing** - Final pass for grammar and clarity
+
+**The collaboration pattern:** When the agent needs to make structural decisions (reordering, cutting, merging), present 2-3 options with trade-offs. Let the human choose. Do not make unilateral changes to structure or voice.
+
+---
+
+## Outline with Voice Notes
 
 <!--
-Agent: Create a hierarchical outline here. Each beat should be specific enough
-that the human can write 1-3 sentences of raw thoughts against it.
+Agent: Create the initial outline with beats. Each beat should be specific enough
+to prompt 1-3 sentences of voice capture.
+Human: Add your voice notes as blockquotes (>) directly under each beat.
+Do not copy beats elsewhere - write inline where you see them.
 
 Format:
 ## Section Name
-### Beat 1: [specific point]
-### Beat 2: [specific point]
+### Beat: [specific point]
+> Your raw thoughts here. Stream of consciousness is fine.
+> Capture the feeling and insight, not just information.
 -->
 
-(outline goes here)
-
-### Phase 1 Completion Criteria
-- [ ] Every section from the article plan is represented
-- [ ] Beats are specific enough to prompt focused voice capture
-- [ ] Human has reviewed and approved the outline structure
-
-### Phase 1 Notes
-
-(agent notes on outline decisions, human feedback on structure)
+(Agent creates outline; human adds voice notes inline as blockquotes)
 
 ---
 
-## Phase 2: Voice Capture
-
-**Owner:** Human
-**Goal:** Annotate each beat with freeform thoughts in your authentic voice.
-
-### Instructions for Human
-
-For each beat in the outline above, write your raw thoughts:
-- Stream of consciousness is fine
-- Don't worry about polish or transitions
-- Capture the *feeling* and *insight*, not just the information
-- If a beat doesn't resonate, note that—we can restructure
-
-### Voice Capture Content
+## Current Draft
 
 <!--
-Human: Copy each beat header and write your thoughts beneath it.
-Keep your annotations clearly separated from the outline.
-
-Format:
-### Beat 1: [specific point]
-**Voice notes:** [your freeform thoughts here]
--->
-
-(voice capture goes here)
-
-### Phase 2 Completion Criteria
-- [ ] Every beat has voice notes (or explicit "skip/restructure" note)
-- [ ] Human feels the raw material captures their perspective
-- [ ] Any structural concerns have been flagged
-
-### Phase 2 Notes
-
-(human notes on what felt natural vs forced, structural concerns)
-
----
-
-## Phase 3: Assembly
-
-**Owner:** Agent
-**Goal:** Stitch voice notes into coherent paragraphs without adding ideas.
-
-### Assembly Guidelines
-
-The agent will:
-1. Organize voice notes into flowing paragraphs
-2. Add transitions between ideas
-3. Smooth rough edges in phrasing
-4. Flag uncertainties with `[UNCERTAIN: reason]` markers
-5. NOT add new ideas, arguments, or examples
-6. NOT remove ideas even if they seem tangential
-
-### Assembled Draft
-
-<!--
-Agent: Write the assembled draft here. Use [UNCERTAIN: ...] markers
-where you've inferred connections or where notes were ambiguous.
+Agent: Assemble voice notes into flowing prose here.
+- Organize into paragraphs
+- Add transitions
+- Smooth phrasing
+- Mark uncertainties with [?] inline
+- Do NOT add new ideas
+- Do NOT remove ideas even if tangential
 -->
 
 (assembled draft goes here)
 
-### Uncertainty Log
-
-| Location | Uncertainty | Resolution |
-|----------|-------------|------------|
-| | | |
-
-### Phase 3 Completion Criteria
-- [ ] All voice notes have been incorporated
-- [ ] Uncertainties are flagged, not papered over
-- [ ] Draft flows as a coherent piece
-- [ ] No new ideas have been introduced
-
-### Phase 3 Notes
-
-(agent notes on assembly decisions, inferences made)
-
 ---
 
-## Phase 4: Voice Check
-
-**Owner:** Human
-**Goal:** Revise anything that doesn't sound like you.
-
-### Instructions for Human
-
-Read the assembled draft and:
-1. Mark passages that don't sound like your voice
-2. Rewrite those passages in your words
-3. Resolve any `[UNCERTAIN]` markers
-4. Note patterns for future workflow improvement
-
-### Voice Check Edits
+## Open Questions
 
 <!--
-Human: Either edit the assembled draft directly (above) or note edits here.
-If editing directly, use ~~strikethrough~~ for removed text and **bold** for additions.
+Track uncertainties here instead of a formal table.
+These are things to resolve with the human.
 -->
 
-(edits and revisions go here)
-
-### Phase 4 Completion Criteria
-- [ ] Human has read the full draft
-- [ ] All `[UNCERTAIN]` markers are resolved
-- [ ] Human confirms the draft sounds like them
-- [ ] Patterns noted for workflow improvement (if any)
-
-### Phase 4 Notes
-
-(human notes on voice drift patterns, workflow improvements needed)
+- 
 
 ---
 
-## Phase 5: Polish
-
-**Owner:** Agent
-**Goal:** Final pass for clarity, grammar, and flow.
-
-### Polish Guidelines
-
-The agent will:
-1. Fix grammar and punctuation
-2. Improve sentence clarity where possible
-3. Smooth any remaining rough transitions
-4. Check for consistency in terminology
-5. NOT change voice or tone
-6. Flag any remaining concerns for human decision
-
-### Polished Draft
+## Parking Lot
 
 <!--
-Agent: Write the final polished version here.
-This becomes the publication-ready draft pending human approval.
+Good ideas that were cut for flow but might fit later articles.
+Include the original text and a note about where it might belong.
 -->
 
-(polished draft goes here)
-
-### Polish Log
-
-| Change | Rationale |
-|--------|-----------|
-| | |
-
-### Phase 5 Completion Criteria
-- [ ] Grammar and punctuation are correct
-- [ ] Transitions flow smoothly
-- [ ] No voice/tone changes introduced
-- [ ] Human has approved final draft
-
-### Phase 5 Notes
-
-(agent notes on polish decisions)
+(cut ideas go here)
 
 ---
 
-## Workflow Retrospective
+## Agent Guidelines
 
-**Complete this after the article is finished.**
+### When Outlining
+- Create beats specific enough to prompt focused voice capture
+- Expect the outline to evolve as voice notes reveal the actual shape
 
-### What Worked Well
+### When Drafting
+- Preserve the human's word choices where possible
+- Add transitions, do not add arguments
+- Mark uncertainties with [?] inline rather than logging them formally
 
-(note aspects of the workflow that felt smooth)
+### When Restructuring
+- Always present 2-3 options with trade-offs
+- Explain what each option gains and loses
+- Let the human choose - do not make unilateral structural decisions
+- Common restructures: reorder paragraphs, cut sections, merge ideas, move content earlier/later
 
-### What Felt Friction
-
-(note aspects that were awkward or slow)
-
-### Proposed Workflow Changes
-
-(specific changes to the template for future articles)
+### When Polishing
+- Fix grammar and punctuation
+- Improve clarity where possible
+- Do NOT change voice or tone
+- Flag concerns for human decision rather than resolving them yourself
 
 ---
 
 ## Revision History
 
-| Date | Phase | Change |
-|------|-------|--------|
-| | | |
+| Date | Change |
+|------|--------|
+| | |
