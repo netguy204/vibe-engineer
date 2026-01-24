@@ -58,6 +58,12 @@ code_references:
 - ref: src/repo_cache.py#RepoCache
   implements: Clone/fetch cache for external repos
   compliance: COMPLIANT
+- ref: src/repo_cache.py#get_repo_path
+  implements: Get filesystem path to cached repo working tree
+  compliance: COMPLIANT
+- ref: src/repo_cache.py#list_directory_at_ref
+  implements: List directory contents at a specific git ref
+  compliance: COMPLIANT
 - ref: src/models.py#TaskConfig
   implements: .ve-task.yaml configuration model
   compliance: COMPLIANT
@@ -91,7 +97,7 @@ This subsystem formalizes cross-repo work:
 - **External artifact references**: `external.yaml` pattern for cross-repo artifacts
 - **Bidirectional references**: Dependents list in artifacts, external.yaml in projects
 - **Sync operations**: Update pinned SHAs to capture point-in-time state
-- **External resolution**: View content from external repos
+- **External resolution**: View content, local path, and directory listing from external repos
 - **Task-aware commands**: All artifact commands (create, list) in task context
 - **Git utilities**: Local worktree operations (SHA, validation)
 - **Repo cache**: Clone/fetch cache for external repos in single-repo mode

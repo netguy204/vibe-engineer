@@ -700,6 +700,139 @@ def narrative_task_directory(tmp_path, tmp_path_factory):
     }
 
 
+class TestResolveResultNewFields:
+    """Tests for new ResolveResult fields: local_path, directory_contents, context_mode."""
+
+    def test_resolve_result_includes_local_path_task_mode(self, task_directory):
+        """Verify local_path is populated in task directory mode."""
+        task_dir = task_directory["task_dir"]
+
+        result = resolve_task_directory(task_dir, "0001-shared_feature")
+
+        assert result.local_path is not None
+        assert result.local_path.exists()
+        # Should end with the expected path structure (may be via symlink)
+        assert str(result.local_path).endswith("docs/chunks/0001-shared_feature")
+
+    def test_resolve_result_includes_directory_contents(self, task_directory):
+        """Verify directory_contents is populated with sorted file list."""
+        task_dir = task_directory["task_dir"]
+
+        result = resolve_task_directory(task_dir, "0001-shared_feature")
+
+        assert result.directory_contents is not None
+        assert "GOAL.md" in result.directory_contents
+        assert "PLAN.md" in result.directory_contents
+        # Should be sorted
+        assert result.directory_contents == sorted(result.directory_contents)
+
+    def test_resolve_result_context_mode_task_directory(self, task_directory):
+        """Verify context_mode is 'task_directory' in task mode."""
+        task_dir = task_directory["task_dir"]
+
+        result = resolve_task_directory(task_dir, "0001-shared_feature")
+
+        assert result.context_mode == "task_directory"
+
+    def test_resolve_result_includes_local_path_single_repo(self, git_repo, monkeypatch):
+        """Verify local_path is populated in single repo mode."""
+        # Create external chunk reference
+        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
+            "repo: acme/chunks\n"
+            "track: main\n"
+            "pinned: null\n"
+        )
+
+        mock_sha = "a" * 40
+        mock_cache_path = git_repo
+
+        import external_resolve
+
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "ensure_cached", lambda repo: mock_cache_path
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "resolve_ref", lambda repo, ref: mock_sha
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_file_at_ref",
+            lambda repo, ref, path: "# Goal content" if "GOAL" in path else "# Plan content",
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_repo_path",
+            lambda repo: mock_cache_path,
+        )
+
+        result = resolve_single_repo(git_repo, "0001-external")
+
+        assert result.local_path is not None
+        # Should point to expected cache path structure
+        assert "acme" not in str(result.local_path) or str(mock_cache_path) in str(result.local_path)
+
+    def test_resolve_result_context_mode_single_repo(self, git_repo, monkeypatch):
+        """Verify context_mode is 'single_repo (via cache)' in single repo mode."""
+        # Create external chunk reference
+        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
+            "repo: acme/chunks\n"
+            "track: main\n"
+            "pinned: null\n"
+        )
+
+        mock_sha = "a" * 40
+        mock_cache_path = git_repo
+
+        import external_resolve
+
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "ensure_cached", lambda repo: mock_cache_path
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "resolve_ref", lambda repo, ref: mock_sha
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_file_at_ref",
+            lambda repo, ref, path: "# Goal content" if "GOAL" in path else "# Plan content",
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_repo_path",
+            lambda repo: mock_cache_path,
+        )
+
+        result = resolve_single_repo(git_repo, "0001-external")
+
+        assert result.context_mode == "single_repo (via cache)"
+
+    def test_task_mode_shows_uncommitted_changes(self, task_directory):
+        """Critical: Verify uncommitted files in worktree appear in directory_contents."""
+        task_dir = task_directory["task_dir"]
+        external_repo = task_directory["external_repo"]
+
+        # Add an uncommitted file to the external repo's chunk directory
+        chunk_dir = external_repo / "docs" / "chunks" / "0001-shared_feature"
+        uncommitted_file = chunk_dir / "SCRATCH.md"
+        uncommitted_file.write_text("# Uncommitted notes\n")
+
+        result = resolve_task_directory(task_dir, "0001-shared_feature")
+
+        # The uncommitted file should appear in directory_contents
+        assert "SCRATCH.md" in result.directory_contents
+        # Should still have the committed files too
+        assert "GOAL.md" in result.directory_contents
+        assert "PLAN.md" in result.directory_contents
+
+
 class TestResolveArtifactTaskDirectory:
     """Tests for resolve_artifact_task_directory with different artifact types."""
 

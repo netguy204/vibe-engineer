@@ -161,10 +161,13 @@ class TestResolveTaskDirectoryMode:
         )
 
         assert result.exit_code == 0
-        assert "External Chunk Reference" in result.output
-        assert "Repository: acme/chunks-repo" in result.output
-        assert "Chunk: 0001-shared_feature" in result.output
-        assert "Track: main" in result.output
+        # New output format
+        assert "Artifact: 0001-shared_feature (chunk)" in result.output
+        assert "Context: task_directory" in result.output
+        assert "Path:" in result.output
+        assert "Contents:" in result.output
+        assert "  GOAL.md" in result.output
+        assert "  PLAN.md" in result.output
         assert "External Goal" in result.output
         assert "External Plan" in result.output
 
@@ -302,6 +305,12 @@ class TestResolveSingleRepoMode:
             "get_file_at_ref",
             lambda repo, ref, path: "# Goal content" if "GOAL" in path else "# Plan content",
         )
+        # Mock get_repo_path to return a path
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_repo_path",
+            lambda repo: git_repo,
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -310,8 +319,10 @@ class TestResolveSingleRepoMode:
         )
 
         assert result.exit_code == 0
-        assert "External Chunk Reference" in result.output
-        assert "Repository: acme/chunks" in result.output
+        # New output format
+        assert "Artifact: 0001-feature (chunk)" in result.output
+        assert "Context: single_repo (via cache)" in result.output
+        assert "Path:" in result.output
         assert "Goal content" in result.output
         assert "Plan content" in result.output
 
@@ -325,6 +336,92 @@ class TestResolveSingleRepoMode:
 
         assert result.exit_code == 1
         assert "--project can only be used in task directory context" in result.output
+
+
+class TestResolveOutputFormat:
+    """Tests for new output format with path and directory listing."""
+
+    def test_output_includes_path(self, task_directory):
+        """Verify 'Path:' appears in CLI output."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["external", "resolve", "0001-shared_feature", "--project-dir", str(task_directory["task_dir"])],
+        )
+
+        assert result.exit_code == 0
+        assert "Path:" in result.output
+        # Path should be a real filesystem path
+        assert "docs/chunks/0001-shared_feature" in result.output
+
+    def test_output_includes_directory_listing(self, task_directory):
+        """Verify 'Contents:' and file list appear in CLI output."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["external", "resolve", "0001-shared_feature", "--project-dir", str(task_directory["task_dir"])],
+        )
+
+        assert result.exit_code == 0
+        assert "Contents:" in result.output
+        assert "  GOAL.md" in result.output
+        assert "  PLAN.md" in result.output
+
+    def test_output_includes_context_indicator(self, task_directory):
+        """Verify 'Context:' appears in CLI output."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["external", "resolve", "0001-shared_feature", "--project-dir", str(task_directory["task_dir"])],
+        )
+
+        assert result.exit_code == 0
+        assert "Context:" in result.output
+        assert "task_directory" in result.output
+
+    def test_single_repo_mode_context_indicator(self, git_repo, monkeypatch):
+        """Verify context indicator shows 'single_repo' in single repo mode."""
+        # Create external chunk reference
+        chunks_dir = git_repo / "docs" / "chunks" / "0001-external"
+        chunks_dir.mkdir(parents=True)
+        (chunks_dir / "external.yaml").write_text(
+            "artifact_type: chunk\n"
+            "artifact_id: 0001-feature\n"
+            "repo: acme/chunks\n"
+            "track: main\n"
+            "pinned: null\n"
+        )
+
+        mock_sha = "a" * 40
+
+        import external_resolve
+
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "ensure_cached", lambda repo: git_repo
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache, "resolve_ref", lambda repo, ref: mock_sha
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_file_at_ref",
+            lambda repo, ref, path: "# Goal content" if "GOAL" in path else "# Plan content",
+        )
+        monkeypatch.setattr(
+            external_resolve.repo_cache,
+            "get_repo_path",
+            lambda repo: git_repo,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["external", "resolve", "0001-external", "--project-dir", str(git_repo)],
+        )
+
+        assert result.exit_code == 0
+        assert "Context:" in result.output
+        assert "single_repo (via cache)" in result.output
 
 
 class TestResolveErrorCases:

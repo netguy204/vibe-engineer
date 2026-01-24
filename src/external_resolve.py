@@ -1,6 +1,7 @@
 """Resolve external artifact references and retrieve their content.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/external_resolve_enhance - Enhanced resolve output
 
 This module provides functions to resolve external artifact references and
 read their content, supporting both task directory mode (using local worktrees)
@@ -41,6 +42,9 @@ class ResolveResult:
     resolved_sha: str
     main_content: str | None  # GOAL.md for chunks, OVERVIEW.md for others
     secondary_content: str | None  # PLAN.md for chunks, None for others
+    local_path: Path | None = None  # Filesystem path to artifact directory
+    directory_contents: list[str] | None = None  # Files in the artifact directory
+    context_mode: str = "unknown"  # "task_directory" or "single_repo (via cache)"
 
 
 def find_artifact_in_project(
@@ -198,6 +202,12 @@ def resolve_artifact_task_directory(
     else:
         secondary_content = None
 
+    # Get local path and directory contents from the worktree
+    # Note: We read directly from the worktree, which may have uncommitted changes
+    # This is intentional - the worktree is the user's source of truth in task mode
+    local_path = external_artifact_dir
+    directory_contents = sorted([f.name for f in external_artifact_dir.iterdir() if f.is_file()])
+
     return ResolveResult(
         repo=ref.repo,
         artifact_type=artifact_type,
@@ -206,6 +216,9 @@ def resolve_artifact_task_directory(
         resolved_sha=resolved_sha,
         main_content=main_content,
         secondary_content=secondary_content,
+        local_path=local_path,
+        directory_contents=directory_contents,
+        context_mode="task_directory",
     )
 
 
@@ -311,6 +324,18 @@ def resolve_artifact_single_repo(
     else:
         secondary_content = None
 
+    # Get local path from cache and list directory contents from working tree
+    # Note: ensure_cached() already did fetch+reset, so working tree reflects origin/HEAD
+    cache_path = repo_cache.get_repo_path(ref.repo)
+    local_path = cache_path / "docs" / dir_name / ref.artifact_id
+
+    # List directory contents from the working tree
+    # Since ensure_cached() already reset to origin/HEAD, this is guaranteed to be current
+    if local_path.exists():
+        directory_contents = sorted([f.name for f in local_path.iterdir() if f.is_file()])
+    else:
+        directory_contents = []
+
     return ResolveResult(
         repo=ref.repo,
         artifact_type=artifact_type,
@@ -319,6 +344,9 @@ def resolve_artifact_single_repo(
         resolved_sha=resolved_sha,
         main_content=main_content,
         secondary_content=secondary_content,
+        local_path=local_path,
+        directory_contents=directory_contents,
+        context_mode="single_repo (via cache)",
     )
 
 

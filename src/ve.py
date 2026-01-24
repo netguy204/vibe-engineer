@@ -1842,19 +1842,24 @@ def _resolve_external_single_repo(
 
 def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_only: bool):
     """Display the resolve result to the user."""
-    # Header with metadata
-    artifact_type_display = result.artifact_type.value.capitalize()
-    click.echo(f"External {artifact_type_display} Reference")
-    click.echo("=" * (len(f"External {artifact_type_display} Reference")))
-    click.echo(f"Repository: {result.repo}")
-    click.echo(f"{artifact_type_display}: {result.artifact_id}")
-    click.echo(f"Track: {result.track}")
-    click.echo(f"SHA: {result.resolved_sha}")
-    click.echo("")
-
     # Determine file names based on artifact type
     main_file = ARTIFACT_MAIN_FILE[result.artifact_type]
     secondary_file = "PLAN.md" if result.artifact_type == ArtifactType.CHUNK else None
+
+    # Header with metadata (new format)
+    artifact_type_display = result.artifact_type.value
+    click.echo(f"Artifact: {result.artifact_id} ({artifact_type_display})")
+    click.echo(f"Context: {result.context_mode}")
+    if result.local_path:
+        click.echo(f"Path: {result.local_path}")
+
+    # Directory contents
+    if result.directory_contents:
+        click.echo("Contents:")
+        for filename in result.directory_contents:
+            click.echo(f"  {filename}")
+
+    click.echo("")
 
     # Content
     if not secondary_only:
