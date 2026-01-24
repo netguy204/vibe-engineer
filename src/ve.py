@@ -187,15 +187,21 @@ def _start_task_chunk(
 
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
+@click.option("--last-active", is_flag=True, help="Output only the most recently completed ACTIVE chunk")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_chunks(latest, project_dir):
+def list_chunks(latest, last_active, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
     """
+    # Check mutual exclusivity
+    if latest and last_active:
+        click.echo("Error: --latest and --last-active are mutually exclusive. Cannot use both.", err=True)
+        raise SystemExit(1)
+
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_chunks(latest, project_dir)
+        _list_task_chunks(latest, last_active, project_dir)
         return
 
     # Single-repo mode - list from docs/chunks/
@@ -207,6 +213,12 @@ def list_chunks(latest, project_dir):
             click.echo("No implementing chunk found", err=True)
             raise SystemExit(1)
         click.echo(f"docs/chunks/{current_chunk}")
+    elif last_active:
+        active_chunk = chunks.get_last_active_chunk()
+        if active_chunk is None:
+            click.echo("No active tip chunk found", err=True)
+            raise SystemExit(1)
+        click.echo(f"docs/chunks/{active_chunk}")
     else:
         chunk_list = chunks.list_chunks()
         if not chunk_list:
@@ -313,7 +325,7 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
-def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
+def _list_task_chunks(latest: bool, last_active: bool, task_dir: pathlib.Path):
     """Handle chunk listing in task directory (cross-repo mode)."""
     try:
         if latest:
@@ -322,6 +334,18 @@ def _list_task_chunks(latest: bool, task_dir: pathlib.Path):
                 click.echo("No implementing chunk found", err=True)
                 raise SystemExit(1)
             click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
+        elif last_active:
+            # For task context, get the last active chunk from the external artifacts repo
+            from task_utils import resolve_repo_directory, load_task_config
+
+            config = load_task_config(task_dir)
+            external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+            external_chunks = Chunks(external_path)
+            active_chunk = external_chunks.get_last_active_chunk()
+            if active_chunk is None:
+                click.echo("No active tip chunk found", err=True)
+                raise SystemExit(1)
+            click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
             _format_grouped_artifact_list(grouped_data, "chunks")

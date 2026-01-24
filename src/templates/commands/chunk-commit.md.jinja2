@@ -9,7 +9,7 @@ description: Create a git commit
 - Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
 - Recent commits: !`git log --oneline -10`
-- Current chunk: !`ve chunk list --latest`
+- Current chunk: !`ve chunk list --latest 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"`
 
 ## Your task
 

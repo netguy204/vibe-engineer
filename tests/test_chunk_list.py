@@ -179,3 +179,111 @@ class TestLatestFlagWithStatus:
         lines = result.output.strip().split("\n")
         assert len(lines) == 1
         assert "implementing" in lines[0]
+
+
+# Chunk: docs/chunks/chunk_last_active - Last active chunk lookup
+class TestLastActiveFlag:
+    """Tests for --last-active flag in 've chunk list'."""
+
+    def test_help_shows_last_active_flag(self, runner):
+        """--help shows the --last-active flag."""
+        result = runner.invoke(cli, ["chunk", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--last-active" in result.output
+
+    def test_last_active_returns_active_tip(self, runner, temp_project):
+        """--last-active returns an ACTIVE tip chunk."""
+        # Create and complete a chunk (IMPLEMENTING -> ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "feature" in result.output
+        assert "docs/chunks/" in result.output
+
+    def test_last_active_fails_when_no_active_tips(self, runner, temp_project):
+        """--last-active fails when no ACTIVE tip chunks exist."""
+        # Create only IMPLEMENTING and FUTURE chunks
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert "active" in result.output.lower() or "found" in result.output.lower()
+
+    def test_last_active_fails_when_empty_project(self, runner, temp_project):
+        """--last-active fails when no chunks exist."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+
+    def test_last_active_and_latest_mutually_exclusive(self, runner, temp_project):
+        """--last-active and --latest cannot be used together."""
+        # Create a chunk for valid state
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--latest", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Error message should mention mutual exclusivity or that both can't be used
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+    def test_last_active_ignores_implementing_chunks(self, runner, temp_project):
+        """--last-active returns ACTIVE, not IMPLEMENTING chunks."""
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        # --last-active should fail because no ACTIVE chunks exist
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+
+    def test_last_active_outputs_docs_chunks_path(self, runner, temp_project):
+        """--last-active outputs path in docs/chunks/ format."""
+        # Create and complete a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "docs/chunks/my_feature" in result.output
