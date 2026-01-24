@@ -1,6 +1,7 @@
 """Integration tests for task-aware narrative creation.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_aware_narrative_cmds - Task-aware narrative create
 """
 
 import subprocess

@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Worktree manager tests
+# Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit tests
 """Tests for the orchestrator worktree manager."""
 
 import subprocess

@@ -1,5 +1,6 @@
 """Integration tests for task-aware chunk commands (activate, overlap)."""
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/taskdir_context_cmds - Task context support tests
 
 import pytest
 from click.testing import CliRunner

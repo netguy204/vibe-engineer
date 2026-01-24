@@ -1,6 +1,7 @@
 """Integration tests for task-aware investigation listing.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_aware_investigations - Task-aware investigation list
 """
 
 import subprocess

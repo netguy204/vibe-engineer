@@ -1,5 +1,6 @@
 """Tests for narrative consolidation workflow."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/narrative_consolidation - Chunk-to-narrative consolidation
 
 import pathlib
 import pytest

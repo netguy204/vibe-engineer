@@ -1,6 +1,7 @@
 """Integration tests for task-aware friction logging.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/selective_artifact_friction - Task-aware friction log tests
 """
 
 import subprocess

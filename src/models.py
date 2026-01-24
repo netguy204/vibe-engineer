@@ -1,6 +1,9 @@
 """Pydantic models for chunk validation."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/symbolic_code_refs - SymbolicReference model for code locations
+# Chunk: docs/chunks/bug_type_field - BugType enum for semantic vs implementation bugs
+# Chunk: docs/chunks/friction_template_and_cli - Friction log data models
 
 import re
 from enum import StrEnum

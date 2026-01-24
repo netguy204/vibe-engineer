@@ -1,4 +1,9 @@
 """Tests for Pydantic models."""
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/chunk_frontmatter_model - ChunkFrontmatter schema
+# Chunk: docs/chunks/bug_type_field - BugType enum for bug classification
+# Chunk: docs/chunks/symbolic_code_refs - SymbolicReference model
+# Chunk: docs/chunks/friction_template_and_cli - Friction models
 
 import pytest
 from pydantic import ValidationError

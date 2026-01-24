@@ -1,6 +1,7 @@
 """Integration tests for task-aware subsystem discovery.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_aware_subsystem_cmds - Task-aware subsystem discover
 """
 
 import subprocess

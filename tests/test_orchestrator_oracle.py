@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict oracle tests
 """Tests for the orchestrator conflict oracle."""
 
 import pytest

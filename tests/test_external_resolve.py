@@ -1,5 +1,6 @@
 """Tests for external_resolve module."""
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/external_resolve_all_types - Multi-artifact-type resolution
 
 import subprocess
 from pathlib import Path

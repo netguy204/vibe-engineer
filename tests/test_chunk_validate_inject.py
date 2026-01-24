@@ -1,6 +1,8 @@
 """Tests for chunk injection validation.
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_inject_validate - Injection-time validation
+# Chunk: docs/chunks/orch_activate_on_inject - Chunk activation on inject
 
 Note: chunk injection uses FUTURE/IMPLEMENTING workflow which is an in-repo feature.
 Tests use task directory mode (not scratchpad).

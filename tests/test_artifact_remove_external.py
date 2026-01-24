@@ -1,6 +1,7 @@
 """Tests for removing external artifact references.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/remove_external_ref - Remove artifact from external project
 """
 
 import re

@@ -1,5 +1,6 @@
 """Tests for friction module business logic."""
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
+# Chunk: docs/chunks/friction_template_and_cli - Friction log business logic
 
 import pytest
 

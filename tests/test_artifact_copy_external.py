@@ -2,6 +2,8 @@
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/copy_as_external - Copy artifact as external reference
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference creation on copy
 """
 
 import re

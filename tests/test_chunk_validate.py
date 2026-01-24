@@ -1,5 +1,10 @@
 """Tests for the 'chunk validate' CLI command.
 
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/chunk_validate - Chunk completion validation framework
+# Chunk: docs/chunks/task_chunk_validation - Task context validation
+# Chunk: docs/chunks/friction_chunk_linking - Friction entry reference validation
+
 Note: chunk validate uses code_references which is an in-repo chunk feature.
 Tests that need to modify chunk frontmatter use task directory mode (not scratchpad).
 """

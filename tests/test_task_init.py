@@ -1,4 +1,6 @@
 """Tests for TaskInit business logic."""
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_init_scaffolding - Task init scaffolding tests
 
 import subprocess
 

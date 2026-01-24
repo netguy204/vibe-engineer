@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_attention_queue - Attention queue tests
 """Tests for the orchestrator attention queue functionality."""
 
 import pytest

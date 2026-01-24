@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_attention_queue - Attention reasons and queue models
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.

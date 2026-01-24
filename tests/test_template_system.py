@@ -1,4 +1,6 @@
 """Tests for the template_system module."""
+# Subsystem: docs/subsystems/template_system - Template rendering system
+# Chunk: docs/chunks/task_init_scaffolding - TaskContext tests
 
 import pathlib
 import pytest

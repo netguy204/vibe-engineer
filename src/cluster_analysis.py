@@ -5,6 +5,7 @@ clusters, identifying singletons (no navigational benefit) and superclusters
 (too many members, noise rather than navigation aid).
 """
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warnings for naming guidance
 
 from __future__ import annotations
 

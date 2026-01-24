@@ -1,6 +1,9 @@
 """Chunks module - business logic for chunk management."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/symbolic_code_refs - Symbolic reference format and overlap detection
+# Chunk: docs/chunks/narrative_consolidation - Chunk-to-narrative consolidation workflow
+# Chunk: docs/chunks/cluster_prefix_suggest - Prefix suggestion using TF-IDF similarity
 
 from __future__ import annotations
 

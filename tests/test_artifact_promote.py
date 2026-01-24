@@ -1,6 +1,7 @@
 """Tests for artifact promotion to external repository.
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/artifact_promote - Artifact promotion to external repos
 """
 
 import subprocess

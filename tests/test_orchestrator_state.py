@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - State store tests
+# Chunk: docs/chunks/orch_attention_reason - Attention reason persistence tests
 """Tests for the orchestrator SQLite state store."""
 
 import pytest

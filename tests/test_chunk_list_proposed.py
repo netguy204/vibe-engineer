@@ -1,6 +1,7 @@
 """Tests for ve chunk list-proposed command."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
 
 import pathlib
 

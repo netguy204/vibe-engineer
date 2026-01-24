@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Orchestrator CLI tests
+# Chunk: docs/chunks/orch_tcp_port - TCP port CLI tests
 """Tests for the orchestrator CLI commands.
 
 Tests the CLI layer using Click's test runner. These tests mock the daemon

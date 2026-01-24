@@ -1,5 +1,7 @@
 """Tests for friction CLI commands."""
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
+# Chunk: docs/chunks/friction_template_and_cli - Friction CLI commands
+# Chunk: docs/chunks/friction_noninteractive - Non-interactive mode
 
 import pytest
 from click.testing import CliRunner

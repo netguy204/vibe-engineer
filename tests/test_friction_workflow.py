@@ -1,6 +1,7 @@
 """Integration tests for friction-to-resolution workflow.
 
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
+# Chunk: docs/chunks/friction_chunk_workflow - Friction-to-chunk workflow
 
 These tests verify the bidirectional linking between friction entries and chunks:
 - /chunk-create adds friction_entries to chunk frontmatter and updates FRICTION.md

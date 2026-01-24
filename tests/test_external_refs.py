@@ -1,6 +1,7 @@
 """Tests for external artifact reference utilities.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path normalization
 """
 
 import pytest

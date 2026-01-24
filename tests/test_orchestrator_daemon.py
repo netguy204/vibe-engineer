@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Daemon foundation tests
+# Chunk: docs/chunks/orch_tcp_port - TCP port tests
 """Tests for orchestrator daemon helper functions.
 
 NOTE: Full end-to-end daemon tests involving actual process spawning

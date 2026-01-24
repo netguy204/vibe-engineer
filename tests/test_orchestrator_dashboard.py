@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_dashboard - Dashboard integration tests
 """Tests for the orchestrator web dashboard and WebSocket support."""
 
 import pytest

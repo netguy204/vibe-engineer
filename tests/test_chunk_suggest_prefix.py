@@ -1,5 +1,6 @@
 """Tests for chunk suggest-prefix feature."""
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/cluster_prefix_suggest - TF-IDF prefix suggestion
 
 import pathlib
 import pytest

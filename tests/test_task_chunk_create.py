@@ -1,4 +1,7 @@
 """Integration tests for task-aware chunk creation."""
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/chunk_create_task_aware - Task-aware chunk creation
+# Chunk: docs/chunks/selective_project_linking - Selective project linking
 
 import subprocess
 

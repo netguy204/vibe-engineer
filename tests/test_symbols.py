@@ -1,4 +1,7 @@
 """Tests for symbol extraction and reference parsing utilities."""
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/symbolic_code_refs - Symbol extraction and reference tests
+# Chunk: docs/chunks/task_qualified_refs - Project-qualified reference tests
 
 from pathlib import Path
 

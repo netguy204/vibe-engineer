@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_dashboard - Web dashboard and WebSocket status updates
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict detection and resolution endpoints
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.

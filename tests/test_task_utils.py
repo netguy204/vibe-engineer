@@ -1,4 +1,7 @@
 """Tests for task utility functions."""
+# Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible project resolution tests
+# Chunk: docs/chunks/external_chunk_causal - created_after in external.yaml tests
 
 import pytest
 from pydantic import ValidationError
