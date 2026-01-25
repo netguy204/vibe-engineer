@@ -1,12 +1,3 @@
-
-<!--
-AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
-
-This file is rendered from: src/templates/claude/CLAUDE.md.jinja2
-Edit the source template, then run `ve init` to regenerate.
--->
-
-
 <!-- VE:MANAGED:START -->
 # Vibe Engineering Workflow
 
@@ -410,10 +401,11 @@ When adding chunk backreferences in a multi-project task, always use the local p
 
 **Narrative backreferences:** Do NOT add `# Narrative:` backreferences. Narratives decompose into chunks; reference the implementing chunk instead.
 
+<!-- VE:MANAGED:END -->
+
 ## Development
 
 This project uses UV for package management. Run tests with `uv run pytest tests/`.
-
 
 **IMPORTANT**: When working on the vibe-engineer codebase, always run the `ve` command under UV to use the development version:
 
@@ -428,8 +420,6 @@ ve chunk list
 ```
 
 This ensures you're testing your changes with the local development code, not a previously installed version.
-
-
 
 ## Template Editing Workflow
 
@@ -453,5 +443,3 @@ This is the vibe-engineer source repository. Many files are **rendered from Jinj
 Edits to rendered files will be **lost** when templates are re-rendered. Always modify the source template instead.
 
 If you see a rendered file with an `AUTO-GENERATED` header, that file is managed by the template system and should not be edited directly.
-
-<!-- VE:MANAGED:END -->

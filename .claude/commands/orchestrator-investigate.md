@@ -2,15 +2,12 @@
 description: Investigate and resolve a stuck orchestrator work unit.
 ---
 
-
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
 This file is rendered from: src/templates/commands/orchestrator-investigate.md.jinja2
 Edit the source template, then run `ve init` to regenerate.
 -->
-
 
 ## Tips
 

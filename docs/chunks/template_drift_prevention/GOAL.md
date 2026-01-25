@@ -1,5 +1,6 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
+superseded_by: template_lang_agnostic
 ticket: null
 parent_chunk: null
 code_paths:

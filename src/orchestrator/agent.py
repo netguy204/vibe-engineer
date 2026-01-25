@@ -1,6 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_question_forward - AskUserQuestion forwarding to attention queue
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement via hooks
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.

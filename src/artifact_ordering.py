@@ -2,9 +2,6 @@
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
-# Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
-# Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering for created_after
-# Chunk: docs/chunks/external_chunk_causal - External chunk causal ordering support
 
 This module provides the ArtifactIndex class which maintains ordered artifact
 listings using directory enumeration for staleness detection and topological sorting.

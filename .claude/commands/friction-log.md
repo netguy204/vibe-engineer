@@ -2,15 +2,12 @@
 description: Capture a friction point for later pattern analysis
 ---
 
-
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
 This file is rendered from: src/templates/commands/friction-log.md.jinja2
 Edit the source template, then run `ve init` to regenerate.
 -->
-
 
 
 ## Instructions
