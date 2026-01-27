@@ -170,3 +170,52 @@ class TestActivateWithTicketId:
         assert len(chunks) > 0
         frontmatter = chunk_mgr.parse_chunk_frontmatter(chunks[0])
         assert frontmatter.status == ChunkStatus.IMPLEMENTING
+
+
+# Chunk: docs/chunks/validation_chunk_name - Frontmatter parse error surfacing
+class TestActivateParseErrors:
+    """Tests for surfacing Pydantic validation errors during activation."""
+
+    def test_activate_shows_parse_error_details(self, runner, tmp_path):
+        """When frontmatter parsing fails, error includes validation details."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Manually create a chunk with invalid frontmatter
+        invalid_chunk_dir = external_path / "docs" / "chunks" / "invalid"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+status: NOT_A_REAL_STATUS
+---
+# Invalid Chunk
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "activate", "invalid", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code != 0
+        # Should show parse error details, not just "Could not parse"
+        assert "status" in result.output.lower() or "parse" in result.output.lower()
+
+    def test_activate_error_includes_field_name(self, runner, tmp_path):
+        """Error message includes the problematic field name."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+
+        # Create a chunk with missing required field
+        invalid_chunk_dir = external_path / "docs" / "chunks" / "missing_status"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+ticket: null
+---
+# Missing Status
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "activate", "missing_status", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code != 0
+        # Error should be informative
+        assert "error" in result.output.lower() or "status" in result.output.lower()

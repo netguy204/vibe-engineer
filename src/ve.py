@@ -65,6 +65,33 @@ def validate_ticket_id(ticket_id: str) -> list[str]:
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
 
 
+# Chunk: docs/chunks/validation_chunk_name - Combined chunk name validation
+def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list[str]:
+    """Validate the combined chunk directory name length.
+
+    The final directory name ({short_name} or {short_name}-{ticket_id}) must not
+    exceed 31 characters to match the ExternalArtifactRef.artifact_id limit.
+
+    Args:
+        short_name: The short name of the chunk.
+        ticket_id: Optional ticket ID appended with a hyphen.
+
+    Returns:
+        List of error messages (empty if valid).
+    """
+    if ticket_id:
+        combined_name = f"{short_name}-{ticket_id}"
+    else:
+        combined_name = short_name
+
+    if len(combined_name) > 31:
+        return [
+            f"Combined chunk name '{combined_name}' is {len(combined_name)} characters, "
+            f"exceeds limit of 31 characters"
+        ]
+    return []
+
+
 @click.group()
 def cli():
     """Vibe Engineer"""
@@ -109,6 +136,10 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
     errors = validate_short_name(short_name)
     if ticket_id:
         errors.extend(validate_ticket_id(ticket_id))
+
+    # Validate combined name length (short_name + optional ticket_id)
+    # Chunk: docs/chunks/validation_chunk_name - Combined chunk name validation
+    errors.extend(validate_combined_chunk_name(short_name.lower(), ticket_id.lower() if ticket_id else None))
 
     if errors:
         for error in errors:
@@ -217,9 +248,13 @@ def list_chunks(latest, project_dir):
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
 
         for chunk_name in chunk_list:
-            frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+            frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
             if frontmatter:
                 status = frontmatter.status.value
+            elif errors:
+                # Show first error for brevity
+                first_error = errors[0]
+                status = f"PARSE ERROR: {first_error}"
             else:
                 status = "UNKNOWN"
             tip_indicator = " *" if chunk_name in tips else ""

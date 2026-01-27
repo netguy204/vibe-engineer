@@ -179,3 +179,117 @@ class TestLatestFlagWithStatus:
         lines = result.output.strip().split("\n")
         assert len(lines) == 1
         assert "implementing" in lines[0]
+
+
+class TestFrontmatterParseErrors:
+    """Tests for surfacing Pydantic validation errors in frontmatter parsing.
+
+    When a chunk has invalid frontmatter, `ve chunk list` should show a helpful
+    error message instead of just `[UNKNOWN]`.
+    """
+
+    def test_list_shows_parse_error_for_invalid_frontmatter(self, runner, temp_project):
+        """When frontmatter parsing fails, shows [PARSE ERROR: ...] not [UNKNOWN]."""
+        # Create a chunk with valid structure first
+        runner.invoke(
+            cli,
+            ["chunk", "start", "valid_chunk", "--project-dir", str(temp_project)]
+        )
+        # Complete it so we can create another
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        # Manually create a chunk with invalid frontmatter (invalid status value)
+        invalid_chunk_dir = temp_project / "docs" / "chunks" / "invalid_chunk"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+status: NOT_A_VALID_STATUS
+---
+# Invalid Chunk
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Should show PARSE ERROR instead of UNKNOWN
+        assert "[PARSE ERROR:" in result.output
+        # Should NOT just say UNKNOWN
+        assert "[UNKNOWN]" not in result.output
+
+    def test_list_shows_specific_validation_error(self, runner, temp_project):
+        """Error message includes specific Pydantic validation info."""
+        # Manually create a chunk with frontmatter that fails Pydantic validation
+        invalid_chunk_dir = temp_project / "docs" / "chunks" / "bad_status"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+status: BANANA
+---
+# Invalid Chunk
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Error should mention the field (status)
+        assert "status" in result.output.lower() or "PARSE ERROR" in result.output
+
+    def test_list_shows_error_for_missing_required_field(self, runner, temp_project):
+        """Missing required fields in frontmatter show parse error."""
+        # Manually create a chunk without required 'status' field
+        invalid_chunk_dir = temp_project / "docs" / "chunks" / "missing_status"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+ticket: null
+---
+# Missing Status
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Should show PARSE ERROR
+        assert "[PARSE ERROR:" in result.output or "PARSE ERROR" in result.output
+
+    def test_valid_chunks_still_show_correctly(self, runner, temp_project):
+        """Valid chunks display their status correctly alongside error chunks."""
+        # Create a valid chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "valid", "--project-dir", str(temp_project)]
+        )
+        # Complete it
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        # Create an invalid chunk manually
+        invalid_chunk_dir = temp_project / "docs" / "chunks" / "invalid"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+status: BAD
+---
+# Invalid
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Valid chunk should show ACTIVE
+        assert "[ACTIVE]" in result.output
+        # Invalid chunk should show PARSE ERROR
+        assert "[PARSE ERROR:" in result.output or "PARSE ERROR" in result.output

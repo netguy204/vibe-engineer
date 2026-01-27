@@ -372,3 +372,89 @@ class TestImplementingGuard:
         assert len(chunk_list) == 2
         assert "first_chunk" in chunk_list
         assert "second_chunk" in chunk_list
+
+
+class TestCombinedNameLengthValidation:
+    """Tests for combined chunk name length validation.
+
+    The final directory name (short_name or short_name-ticket_id) must not
+    exceed 31 characters, matching the ExternalArtifactRef.artifact_id limit.
+    This prevents chunks from being created locally that fail when used in
+    cross-repo workflows.
+    """
+
+    def test_rejects_combined_name_exceeding_31_chars(self, runner, temp_project):
+        """Combined name (short_name-ticket_id) > 31 chars is rejected."""
+        # short_name (20 chars) + "-" (1 char) + ticket_id (15 chars) = 36 chars
+        short_name = "a" * 20  # 20 chars
+        ticket_id = "b" * 15   # 15 chars
+        # Combined would be: aaaaa...aaaa-bbbb...bbbb = 36 chars (> 31)
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "31" in result.output or "character" in result.output.lower()
+        # Error should mention the actual length
+        assert "36" in result.output or "exceed" in result.output.lower()
+
+    def test_accepts_combined_name_at_31_chars(self, runner, temp_project):
+        """Combined name exactly 31 chars is accepted."""
+        # short_name (20 chars) + "-" (1 char) + ticket_id (10 chars) = 31 chars
+        short_name = "a" * 20  # 20 chars
+        ticket_id = "b" * 10   # 10 chars
+        # Combined: 31 chars exactly
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    def test_error_message_shows_limit_and_actual_length(self, runner, temp_project):
+        """Error message explains limit and shows actual length."""
+        # Create a combined name that's 40 chars
+        short_name = "a" * 25  # 25 chars
+        ticket_id = "b" * 14   # 14 chars
+        # Combined would be: aaa...aaa-bbb...bbb = 40 chars
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Should mention the limit (31) and actual length (40)
+        assert "31" in result.output
+        assert "40" in result.output
+
+    def test_validates_short_name_before_combined(self, runner, temp_project):
+        """Short name alone > 31 chars fails on short_name validation."""
+        # A short_name that alone exceeds 31 chars should fail
+        long_name = "a" * 35  # 35 chars - exceeds 31 limit
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", long_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Should still report the short_name validation error
+        assert "32" in result.output or "character" in result.output.lower()
+
+    def test_short_name_at_30_with_ticket_fails(self, runner, temp_project):
+        """Short name at 30 chars + any ticket_id exceeds limit."""
+        # short_name (30 chars) + "-" + ticket_id (any) = 32+ chars
+        short_name = "a" * 30  # 30 chars
+        ticket_id = "x"        # 1 char - combined = 32 chars
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Combined would be 32 chars (exceeds 31)
+        assert "31" in result.output or "32" in result.output
+
+    def test_short_name_only_at_31_chars_accepted(self, runner, temp_project):
+        """Short name only at 31 chars is accepted (no ticket_id)."""
+        short_name = "a" * 31  # 31 chars exactly
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", short_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"

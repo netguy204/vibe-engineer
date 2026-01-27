@@ -1,9 +1,6 @@
 """Chunks module - business logic for chunk management."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic reference format and overlap detection
-# Chunk: docs/chunks/narrative_consolidation - Chunk-to-narrative consolidation workflow
-# Chunk: docs/chunks/cluster_prefix_suggest - Prefix suggestion using TF-IDF similarity
 
 from __future__ import annotations
 
@@ -189,10 +186,12 @@ class Chunks:
                 f"Complete or mark it as ACTIVE first."
             )
 
+        # Chunk: docs/chunks/validation_chunk_name - Frontmatter parse error surfacing
         # Check if target chunk is FUTURE
-        frontmatter = self.parse_chunk_frontmatter(chunk_name)
+        frontmatter, errors = self.parse_chunk_frontmatter_with_errors(chunk_name)
         if frontmatter is None:
-            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}'")
+            error_detail = "; ".join(errors) if errors else "unknown error"
+            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}': {error_detail}")
 
         if frontmatter.status != ChunkStatus.FUTURE:
             raise ValueError(
