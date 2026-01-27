@@ -65,28 +65,29 @@ def validate_ticket_id(ticket_id: str) -> list[str]:
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
 
 
-# Chunk: docs/chunks/validation_chunk_name - Combined chunk name validation
+# Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
 def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list[str]:
-    """Validate the combined chunk directory name length.
+    """Validate the chunk directory name length.
 
-    The final directory name ({short_name} or {short_name}-{ticket_id}) must not
-    exceed 31 characters to match the ExternalArtifactRef.artifact_id limit.
+    Since ticket_id no longer affects the directory name (it's stored only in
+    frontmatter), we only validate the short_name length. The directory name
+    is just {short_name} and must not exceed 31 characters to match the
+    ExternalArtifactRef.artifact_id limit.
 
     Args:
         short_name: The short name of the chunk.
-        ticket_id: Optional ticket ID appended with a hyphen.
+        ticket_id: Optional ticket ID (kept for backward compatibility but
+                   not used - ticket_id no longer affects directory names).
 
     Returns:
         List of error messages (empty if valid).
     """
-    if ticket_id:
-        combined_name = f"{short_name}-{ticket_id}"
-    else:
-        combined_name = short_name
+    # ticket_id no longer affects directory name, so only validate short_name
+    combined_name = short_name
 
     if len(combined_name) > 31:
         return [
-            f"Combined chunk name '{combined_name}' is {len(combined_name)} characters, "
+            f"Chunk name '{combined_name}' is {len(combined_name)} characters, "
             f"exceeds limit of 31 characters"
         ]
     return []
@@ -138,7 +139,6 @@ def create(short_name, ticket_id, project_dir, yes, future, projects):
         errors.extend(validate_ticket_id(ticket_id))
 
     # Validate combined name length (short_name + optional ticket_id)
-    # Chunk: docs/chunks/validation_chunk_name - Combined chunk name validation
     errors.extend(validate_combined_chunk_name(short_name.lower(), ticket_id.lower() if ticket_id else None))
 
     if errors:

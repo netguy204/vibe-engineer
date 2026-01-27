@@ -132,19 +132,22 @@ class TestLowercaseNormalization:
         assert "My_Feature" not in chunk_list[0]
 
     def test_ticket_id_normalized_to_lowercase(self, runner, temp_project):
-        """ticket_id is normalized to lowercase."""
+        """ticket_id is normalized to lowercase in frontmatter."""
         result = runner.invoke(
             cli,
             ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0, f"Failed with: {result.output}"
-        # Check the output shows lowercase - in-repo chunks include ticket in directory name
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         assert "feature" in result.output
         chunks = Chunks(temp_project)
         chunk_list = chunks.enumerate_chunks()
         assert len(chunk_list) == 1
-        # In-repo format: short_name-ticket_id
-        assert "feature-ve-001" in chunk_list[0]
+        # Directory format: short_name only (ticket in frontmatter)
+        assert chunk_list[0] == "feature"
+        # Verify ticket_id is lowercase in frontmatter
+        fm = chunks.parse_chunk_frontmatter("feature")
+        assert fm.ticket == "ve-001"
 
 
 class TestDuplicateDetection:
@@ -208,11 +211,12 @@ class TestDuplicateDetection:
 class TestPathFormat:
     """Tests for chunk path format.
 
-    In-repo chunks use short_name-ticket_id format in directory name.
+    # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+    In-repo chunks use short_name only in directory name (ticket in frontmatter).
     """
 
     def test_path_format_with_ticket_id(self, runner, temp_project):
-        """In-repo chunk uses short_name-ticket_id for directory."""
+        """In-repo chunk uses short_name only for directory (ticket in frontmatter)."""
         result = runner.invoke(
             cli,
             ["chunk", "start", "feature", "ve-001", "--project-dir", str(temp_project)]
@@ -222,9 +226,10 @@ class TestPathFormat:
         chunks = Chunks(temp_project)
         chunk_list = chunks.enumerate_chunks()
         assert len(chunk_list) == 1
-        assert chunk_list[0] == "feature-ve-001"
-        # Ticket should also be in frontmatter
-        fm = chunks.parse_chunk_frontmatter("feature-ve-001")
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        assert chunk_list[0] == "feature"
+        # Ticket should be in frontmatter
+        fm = chunks.parse_chunk_frontmatter("feature")
         assert fm.ticket == "ve-001"
 
     def test_path_format_without_ticket_id(self, runner, temp_project):
@@ -252,8 +257,8 @@ class TestSuccessOutput:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        # In-repo path is docs/chunks/
-        assert "docs/chunks/feature-ve-001" in result.output
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        assert "docs/chunks/feature" in result.output
 
     def test_prints_created_path_without_ticket_id(self, runner, temp_project):
         """Success message shows the created path when ticket_id omitted."""
@@ -315,7 +320,8 @@ class TestFutureFlag:
         assert result.exit_code == 0
 
         chunks = Chunks(temp_project)
-        fm = chunks.parse_chunk_frontmatter("feature-ve-001")
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        fm = chunks.parse_chunk_frontmatter("feature")
         assert fm.status.value == "FUTURE"
         assert fm.ticket == "ve-001"
 
@@ -375,57 +381,54 @@ class TestImplementingGuard:
 
 
 class TestCombinedNameLengthValidation:
-    """Tests for combined chunk name length validation.
+    """Tests for chunk name length validation.
 
-    The final directory name (short_name or short_name-ticket_id) must not
-    exceed 31 characters, matching the ExternalArtifactRef.artifact_id limit.
-    This prevents chunks from being created locally that fail when used in
-    cross-repo workflows.
+    # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+    Since ticket_id no longer affects the directory name (it's stored only in
+    frontmatter), we only validate the short_name length. The directory name
+    is just {short_name} and must not exceed 31 characters.
     """
 
-    def test_rejects_combined_name_exceeding_31_chars(self, runner, temp_project):
-        """Combined name (short_name-ticket_id) > 31 chars is rejected."""
-        # short_name (20 chars) + "-" (1 char) + ticket_id (15 chars) = 36 chars
-        short_name = "a" * 20  # 20 chars
-        ticket_id = "b" * 15   # 15 chars
-        # Combined would be: aaaaa...aaaa-bbbb...bbbb = 36 chars (> 31)
+    def test_long_short_name_with_ticket_only_validates_short_name(self, runner, temp_project):
+        """Long short_name is rejected regardless of ticket_id (ticket doesn't affect directory)."""
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
+        # short_name (33 chars) exceeds the 31 char limit for directory names
+        short_name = "a" * 33  # 33 chars - exceeds 31 limit
+        ticket_id = "b" * 15   # 15 chars (doesn't affect directory name)
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "31" in result.output or "character" in result.output.lower()
-        # Error should mention the actual length
-        assert "36" in result.output or "exceed" in result.output.lower()
+        # Should report short_name validation error (exceeds 32 char limit for identifiers)
+        assert "32" in result.output or "character" in result.output.lower()
 
-    def test_accepts_combined_name_at_31_chars(self, runner, temp_project):
-        """Combined name exactly 31 chars is accepted."""
-        # short_name (20 chars) + "-" (1 char) + ticket_id (10 chars) = 31 chars
-        short_name = "a" * 20  # 20 chars
-        ticket_id = "b" * 10   # 10 chars
-        # Combined: 31 chars exactly
+    def test_accepts_short_name_at_31_chars_with_ticket(self, runner, temp_project):
+        """Short name at 31 chars is accepted (ticket_id doesn't affect directory)."""
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
+        short_name = "a" * 31  # 31 chars
+        ticket_id = "b" * 10   # Any ticket - doesn't affect directory name
+        # Directory will be just short_name (31 chars) - accepted
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0, f"Failed with: {result.output}"
 
-    def test_error_message_shows_limit_and_actual_length(self, runner, temp_project):
-        """Error message explains limit and shows actual length."""
-        # Create a combined name that's 40 chars
-        short_name = "a" * 25  # 25 chars
-        ticket_id = "b" * 14   # 14 chars
-        # Combined would be: aaa...aaa-bbb...bbb = 40 chars
+    def test_error_message_shows_limit_for_long_short_name(self, runner, temp_project):
+        """Error message explains limit when short_name exceeds limit."""
+        # Create a short_name that's 40 chars
+        short_name = "a" * 40  # 40 chars - exceeds 31 limit
+        ticket_id = "b" * 14   # Ticket doesn't affect validation
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        # Should mention the limit (31) and actual length (40)
-        assert "31" in result.output
-        assert "40" in result.output
+        # Should mention the limit (32 for identifier) and actual length
+        assert "32" in result.output or "character" in result.output.lower()
 
-    def test_validates_short_name_before_combined(self, runner, temp_project):
+    def test_validates_short_name_alone(self, runner, temp_project):
         """Short name alone > 31 chars fails on short_name validation."""
         # A short_name that alone exceeds 31 chars should fail
         long_name = "a" * 35  # 35 chars - exceeds 31 limit
@@ -434,21 +437,20 @@ class TestCombinedNameLengthValidation:
             ["chunk", "start", long_name, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        # Should still report the short_name validation error
+        # Should report the short_name validation error
         assert "32" in result.output or "character" in result.output.lower()
 
-    def test_short_name_at_30_with_ticket_fails(self, runner, temp_project):
-        """Short name at 30 chars + any ticket_id exceeds limit."""
-        # short_name (30 chars) + "-" + ticket_id (any) = 32+ chars
-        short_name = "a" * 30  # 30 chars
-        ticket_id = "x"        # 1 char - combined = 32 chars
+    def test_short_name_at_31_with_ticket_accepted(self, runner, temp_project):
+        """Short name at 31 chars with ticket_id is accepted (ticket in frontmatter only)."""
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
+        short_name = "a" * 31  # 31 chars
+        ticket_id = "x"        # Any ticket - doesn't affect directory name
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
-        assert result.exit_code != 0
-        # Combined would be 32 chars (exceeds 31)
-        assert "31" in result.output or "32" in result.output
+        # Since ticket_id no longer affects directory name, 31-char short_name is fine
+        assert result.exit_code == 0, f"Failed with: {result.output}"
 
     def test_short_name_only_at_31_chars_accepted(self, runner, temp_project):
         """Short name only at 31 chars is accepted (no ticket_id)."""

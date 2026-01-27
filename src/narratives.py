@@ -52,6 +52,7 @@ class Narratives:
                 f"Narrative with short_name '{short_name}' already exists: {duplicates[0]}"
             )
 
+        # Chunk: docs/chunks/populate_created_after - Populate created_after field on creation
         # Get current narrative tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.NARRATIVE)

@@ -40,7 +40,7 @@ class TestChunkCreateCLI:
         assert (chunk_path / "GOAL.md").exists()
 
     def test_creates_chunk_with_ticket(self, cli_runner, temp_project):
-        """Creates chunk with ticket reference."""
+        """Creates chunk with ticket reference (ticket in frontmatter only)."""
         result = cli_runner.invoke(
             cli,
             ["chunk", "create", "my-chunk", "lin-123", "--project-dir", str(temp_project)],
@@ -48,9 +48,10 @@ class TestChunkCreateCLI:
 
         assert result.exit_code == 0
 
-        # Verify ticket in frontmatter
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        # Verify ticket in frontmatter (directory is my-chunk, not my-chunk-lin-123)
         goal_content = (
-            temp_project / "docs" / "chunks" / "my-chunk-lin-123" / "GOAL.md"
+            temp_project / "docs" / "chunks" / "my-chunk" / "GOAL.md"
         ).read_text()
         assert "ticket: lin-123" in goal_content
 

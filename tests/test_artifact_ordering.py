@@ -2,7 +2,6 @@
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/ordering_active_only - Status-aware tip filtering
-# Chunk: docs/chunks/external_chunk_causal - External chunk ordering
 """
 
 from pathlib import Path

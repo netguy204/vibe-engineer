@@ -20,7 +20,7 @@ code_references:
   - ref: src/chunks.py#Chunks::num_chunks
     implements: "Count of existing chunks"
   - ref: src/chunks.py#Chunks::find_duplicates
-    implements: "Detects existing chunks with same short_name+ticket_id"
+    implements: "Detects existing chunks with same short_name only (ticket_id no longer affects directory names)"
   - ref: src/chunks.py#Chunks::create_chunk
     implements: "Directory creation with correct path format, template rendering"
   - ref: tests/test_chunk_start.py

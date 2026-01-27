@@ -26,7 +26,7 @@ code_references:
     implements: "Task directory chunk creation with selective project linking"
   - ref: src/ve.py#create_narrative
     implements: "--projects CLI option for ve narrative create"
-  - ref: src/ve.py#_create_task_narrative
+  - ref: src/ve.py#_start_task_narrative
     implements: "Task directory narrative creation with selective project linking"
   - ref: src/ve.py#create_investigation
     implements: "--projects CLI option for ve investigation create"

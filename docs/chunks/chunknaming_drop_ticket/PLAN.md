@@ -8,153 +8,146 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a targeted refactoring that removes ticket ID embedding from chunk directory names while preserving ticket association in frontmatter. The change is surgical:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Remove ticket ID from directory naming** - Modify `Chunks.create_chunk()` to ignore `ticket_id` when building the directory path (while still passing it to the template for frontmatter).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Update collision detection** - Modify `Chunks.find_duplicates()` to only check `short_name` since ticket IDs will no longer be in directory names.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunknaming_drop_ticket/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Update combined name validation** - The `validate_combined_chunk_name()` function in `ve.py` needs to validate just the short_name since ticket IDs won't add to directory length.
+
+4. **Update slash command template** - Modify `/chunk-create` template to reflect that ticket IDs only affect frontmatter, not directory names.
+
+5. **Preserve backward compatibility** - Existing chunks with ticket suffixes (e.g., `my_feature-VE-001`) continue to work through `extract_short_name()` and `resolve_chunk_id()`.
+
+The approach follows DEC-002 (git not assumed) and the workflow_artifacts subsystem patterns.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk modifies the chunk creation workflow, which is core to this subsystem. Changes should preserve existing lifecycle semantics (FUTURE → IMPLEMENTING → ACTIVE).
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cluster_analysis** (DOCUMENTED): This chunk USES the cluster analysis subsystem patterns. The chunk naming change aligns with the subsystem's guidance that prefixes should be domain concepts (not ticket IDs).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for new directory naming behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write tests that verify:
+- `ve chunk create my_chunk PROJ-123` creates `docs/chunks/my_chunk/` (not `my_chunk-PROJ-123/`)
+- The `ticket` field in GOAL.md frontmatter is still populated with `PROJ-123`
+- `find_duplicates()` detects collision when creating `my_chunk` twice (ignoring ticket differences)
 
-Example:
+Location: tests/test_chunks.py
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Modify Chunks.create_chunk() to not use ticket_id in directory name
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Change the directory name construction in `create_chunk()` to use only `short_name`:
 
-Location: src/segment/format.rs
+```python
+# Before (lines 251-254):
+if ticket_id:
+    chunk_path = self.chunk_dir / f"{short_name}-{ticket_id}"
+else:
+    chunk_path = self.chunk_dir / short_name
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+# After:
+chunk_path = self.chunk_dir / short_name
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Keep passing `ticket_id` to `render_to_directory()` so the `ticket:` frontmatter field is still populated.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: src/chunks.py#Chunks::create_chunk
+
+### Step 3: Modify Chunks.find_duplicates() to ignore ticket_id
+
+Change `find_duplicates()` to only match on `short_name`, ignoring the `ticket_id` parameter:
+
+```python
+# Before (lines 105-116):
+if ticket_id:
+    target_short = f"{short_name}-{ticket_id}"
+else:
+    target_short = short_name
+
+# After:
+target_short = short_name
+```
+
+Keep the `ticket_id` parameter in the function signature for backward compatibility but don't use it.
+
+Location: src/chunks.py#Chunks::find_duplicates
+
+### Step 4: Update validate_combined_chunk_name() in ve.py
+
+Since ticket IDs no longer affect directory names, validation should only check `short_name` length:
+
+```python
+# Before (lines 82-91):
+if ticket_id:
+    combined_name = f"{short_name}-{ticket_id}"
+else:
+    combined_name = short_name
+
+# After:
+combined_name = short_name  # ticket_id no longer affects directory name
+```
+
+Consider: Should this function be removed entirely since it's now redundant with `validate_short_name()`? Keep it for clarity but simplify.
+
+Location: src/ve.py#validate_combined_chunk_name
+
+### Step 5: Update /chunk-create command template
+
+Modify the template to reflect that ticket IDs affect only frontmatter, not directory names:
+
+- Step 2: Remove the `<ticket number>` placeholder from the `ve chunk create` command example
+- Update step 3 to clarify the directory is created at `docs/chunks/<shortname>/` regardless of ticket
+
+Location: src/templates/commands/chunk-create.md.jinja2
+
+### Step 6: Update test assertions to expect new directory naming
+
+Update existing tests in `tests/test_chunks.py` to expect the new naming:
+- `test_create_chunk_creates_directory`: `"my_feature"` not `"my_feature-VE-001"`
+- `test_num_chunks_increments`: Similar updates
+- `test_single_chunk_returns_list_with_one_item`: `"feature"` not `"feature-VE-001"`
+- All other tests that assert on directory names with ticket IDs
+
+Location: tests/test_chunks.py
+
+### Step 7: Run full test suite and fix any remaining assertions
+
+```bash
+uv run pytest tests/
+```
+
+Fix any remaining test failures related to ticket ID in directory names.
+
+### Step 8: Verify backward compatibility
+
+Ensure existing chunks with ticket suffixes (e.g., `my_feature-VE-001`) continue to work:
+- `extract_short_name("my_feature-VE-001")` should still return `"my_feature-VE-001"` (full name for non-legacy format)
+- `resolve_chunk_id("my_feature-VE-001")` should still resolve correctly
+
+Write a test confirming legacy chunks are readable.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **validation_chunk_name** (ACTIVE): This chunk created the combined name validation logic that we're simplifying.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Backward compatibility scope**: The `extract_short_name()` function handles legacy `{NNNN}-{name}` format but not `{name}-{TICKET}` format. Existing chunks with ticket suffixes might be treated differently after this change.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Mitigation**: Test that existing chunks like `my_feature-VE-001` continue to resolve correctly. The current `extract_short_name()` will return the full name for non-legacy patterns, which is correct behavior.
+
+2. **Task context (cross-repo) mode**: `create_task_chunk()` in `task_utils.py` also uses `ticket_id` in the chunk name. This needs to be updated too.
+
+   **Mitigation**: Include `task_utils.py` in the implementation scope and ensure tests cover task context mode.
+
+3. **Collision behavior change**: Currently `create_chunk("VE-001", "foo")` and `create_chunk("VE-002", "foo")` would create two different directories. After this change, the second call would fail as a duplicate.
+
+   **Impact**: This is the **intended behavior** - the ticket ID should not be a uniqueness factor for chunk naming. Operators wanting to create multiple chunks for different tickets should use distinct short names.
 
 ## Deviations
 

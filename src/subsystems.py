@@ -147,6 +147,7 @@ class Subsystems:
                 f"Subsystem with short_name '{shortname}' already exists: {duplicates[0]}"
             )
 
+        # Chunk: docs/chunks/populate_created_after - Populate created_after field on creation
         # Get current subsystem tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.SUBSYSTEM)
