@@ -165,6 +165,34 @@ def is_daemon_running(project_dir: Path) -> bool:
     return is_process_running(pid)
 
 
+# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
+def get_daemon_url(project_dir: Path, host: str = "127.0.0.1") -> Optional[str]:
+    """Get the daemon URL for a project.
+
+    Reads the port from the port file and constructs the full HTTP URL.
+
+    Args:
+        project_dir: The project directory
+        host: The host to use in the URL (default: 127.0.0.1)
+
+    Returns:
+        Full URL string (e.g., "http://127.0.0.1:8080") if port file exists,
+        None otherwise
+    """
+    project_dir = project_dir.resolve()
+    port_path = get_port_path(project_dir)
+
+    if not port_path.exists():
+        return None
+
+    try:
+        port_str = port_path.read_text().strip()
+        port = int(port_str)
+        return f"http://{host}:{port}"
+    except (ValueError, IOError):
+        return None
+
+
 def get_daemon_status(project_dir: Path) -> OrchestratorState:
     """Get the status of the daemon for a project.
 

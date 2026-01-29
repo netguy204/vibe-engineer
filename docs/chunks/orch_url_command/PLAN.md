@@ -8,153 +8,112 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The `ve orch url` command will be a simple CLI command that reads the port file (`.ve/orchestrator.port`) and prints the HTTP URL. This follows the existing pattern of thin CLI wrappers (soft convention from the orchestrator subsystem).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key Implementation Points:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Read from port file**: The orchestrator daemon already writes its TCP port to `.ve/orchestrator.port` via `get_port_path()` in `src/orchestrator/daemon.py`. This is the same source used by `start_daemon()` to report the port to the parent process.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_url_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Pattern matching**: Follow the same structure as `ve orch status` - a simple command that reads local state and formats output. Unlike `ve orch ps` which needs to communicate with the running daemon, `ve orch url` only needs the port file.
+
+3. **Error handling**: If the daemon is not running or the port file doesn't exist, provide a helpful error message directing users to `ve orch start`.
+
+4. **Output format**: Print just the URL for easy scripting (e.g., `http://localhost:8080`), matching the format shown in `start`'s output. Support `--json` flag for consistency with other commands.
+
+**Testing Strategy (per TESTING_PHILOSOPHY.md):**
+
+- Test the happy path: port file exists, URL is printed
+- Test error case: port file doesn't exist (daemon not running)
+- Test JSON output format
+- Test with custom host (stored in port file or derived from default)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS a new CLI command following the subsystem's patterns. Per the soft convention, "CLI commands are thin wrappers around HTTP calls" - however, `ve orch url` is an exception since it reads local state (port file) rather than calling the daemon. This is appropriate because:
+  1. The port file is specifically designed for this purpose (communicating the port)
+  2. Reading local state doesn't require the daemon to be running to tell you its URL
+  3. Matches the pattern of `ve orch status` which also reads local state
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for ve orch url command
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests in `tests/test_orchestrator_cli.py` that define the expected behavior:
 
-Example:
+1. `test_url_prints_url_when_running` - When port file exists, prints `http://<host>:<port>`
+2. `test_url_error_when_not_running` - When port file doesn't exist, exits with error and helpful message
+3. `test_url_json_output` - When `--json` flag provided, outputs `{"url": "http://..."}`
 
-### Step 1: Define the SegmentHeader struct
+Tests will mock `get_port_path` and `is_daemon_running` to control behavior.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_cli.py`
 
-Location: src/segment/format.rs
+### Step 2: Add helper function to read daemon URL
 
-### Step 2: Implement header serialization
+Add a `get_daemon_url()` function in `src/orchestrator/daemon.py` that:
+1. Reads the port from the port file
+2. Returns the full URL string (e.g., `http://127.0.0.1:8080`)
+3. Returns `None` if port file doesn't exist
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+This function follows the pattern of `get_daemon_status()` - reading local state files.
 
-### Step 3: ...
+Location: `src/orchestrator/daemon.py`
+
+### Step 3: Implement ve orch url CLI command
+
+Add the `url` command to the `orch` group in `src/ve.py`:
+
+```python
+@orch.command("url")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_url(json_output, project_dir):
+    """Print the orchestrator dashboard URL."""
+    ...
+```
+
+The command will:
+1. Check if daemon is running using `is_daemon_running()`
+2. Read port using `get_daemon_url()` or `get_port_path()` + read
+3. Print URL or JSON output
+4. Exit with error if daemon not running
+
+Location: `src/ve.py`
+
+### Step 4: Verify tests pass and command works
+
+Run the tests to confirm implementation is correct:
+```bash
+uv run pytest tests/test_orchestrator_cli.py -k "test_url" -v
+```
+
+Manual verification:
+```bash
+uv run ve orch start  # Start daemon
+uv run ve orch url    # Should print URL
+uv run ve orch url --json  # Should print JSON
+uv run ve orch stop   # Stop daemon
+uv run ve orch url    # Should show error
+```
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+Add chunk backreference to the new CLI command:
+```python
+# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **orch_tcp_port (ACTIVE)**: This chunk established the port file mechanism (`get_port_path()`) and the dual-listener architecture. The URL command depends on this existing infrastructure.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Host binding ambiguity**: The port file only stores the port number, not the host. The daemon can be started with `--host 0.0.0.0` but we currently have no way to know this from the port file. For now, we'll default to `127.0.0.1` which is the daemon's default. If users need to access from a different host, they can use `--json` and construct the URL themselves.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Resolution**: Accept this limitation for V1. Could extend the port file format to include host in the future if needed (e.g., store `host:port` instead of just `port`).
 
 ## Deviations
 

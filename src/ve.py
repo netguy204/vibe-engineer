@@ -2103,6 +2103,34 @@ def orch_status(json_output, project_dir):
             click.echo("Status: Stopped")
 
 
+# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
+@orch.command("url")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_url(json_output, project_dir):
+    """Print the orchestrator dashboard URL."""
+    from orchestrator.daemon import is_daemon_running, get_daemon_url
+    import json
+
+    # Check if daemon is running
+    if not is_daemon_running(project_dir):
+        click.echo("Error: Orchestrator is not running.")
+        click.echo("Start it with: ve orch start")
+        raise SystemExit(1)
+
+    # Get the URL
+    url = get_daemon_url(project_dir)
+    if url is None:
+        click.echo("Error: Could not read daemon port file.")
+        click.echo("The daemon may be running but the port file is missing.")
+        raise SystemExit(1)
+
+    if json_output:
+        click.echo(json.dumps({"url": url}))
+    else:
+        click.echo(url)
+
+
 @orch.command("ps")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
