@@ -121,60 +121,151 @@ def chunk():
     pass
 
 
+# Chunk: docs/chunks/chunk_batch_create - Batch creation of multiple chunks
 @chunk.command("create")
-@click.argument("short_name")
-@click.argument("ticket_id", required=False, default=None)
+@click.argument("short_names", nargs=-1, required=True)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
+@click.option("--ticket", default=None, help="Ticket ID to apply to all chunks")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
-def create(short_name, ticket_id, project_dir, yes, future, projects):
-    """Create a new chunk.
+def create(short_names, project_dir, yes, future, ticket, projects):
+    """Create a new chunk (or multiple chunks).
 
     Creates chunks in docs/chunks/. Task context routes to task-scoped storage.
+
+    Single chunk: ve chunk create my_feature [TICKET_ID]
+    Multiple chunks: ve chunk create chunk_a chunk_b chunk_c --future [--ticket TICKET_ID]
+
+    When creating multiple chunks, use --ticket flag for ticket ID.
     """
-    errors = validate_short_name(short_name)
-    if ticket_id:
-        errors.extend(validate_ticket_id(ticket_id))
+    # Chunk: docs/chunks/chunk_batch_create - Handle backward compat for single name + positional ticket_id
+    # Legacy mode: "ve chunk create my_feature VE-001" (single chunk with positional ticket)
+    # Batch mode: "ve chunk create chunk_a chunk_b chunk_c --future" (multiple chunks)
+    #
+    # Heuristic for backward compatibility:
+    # - If --ticket flag is provided: batch mode (all args are chunk names)
+    # - If exactly 2 args without --ticket AND second arg looks like a ticket (contains '-'):
+    #   legacy mode (first is short_name, second is ticket_id)
+    # - Otherwise: batch mode (all args are chunk names)
+    #
+    # The '-' heuristic works because:
+    # - Ticket IDs commonly use dashes (e.g., "VE-001", "JIRA-123")
+    # - Chunk names typically use underscores (e.g., "my_feature", "chunk_a")
+    # - Users who want 2-chunk batch with dashed names can use: --ticket "" or 3+ chunks
+    ticket_id = ticket  # Start with flag value
+    names_to_create = list(short_names)
 
-    # Validate combined name length (short_name + optional ticket_id)
-    errors.extend(validate_combined_chunk_name(short_name.lower(), ticket_id.lower() if ticket_id else None))
+    if len(short_names) == 2 and ticket_id is None:
+        second_arg = short_names[1]
+        # Treat as legacy mode only if second arg looks like a ticket (contains dash)
+        if "-" in second_arg:
+            ticket_errors = validate_ticket_id(second_arg)
+            if not ticket_errors:
+                ticket_id = second_arg.lower()
+                names_to_create = [short_names[0]]
 
-    if errors:
-        for error in errors:
-            click.echo(f"Error: {error}", err=True)
+    # Check for duplicate names in the input
+    seen_names = set()
+    duplicate_names = []
+    for name in names_to_create:
+        lower_name = name.lower()
+        if lower_name in seen_names:
+            duplicate_names.append(name)
+        seen_names.add(lower_name)
+
+    if duplicate_names:
+        click.echo(f"Error: Duplicate chunk names provided: {', '.join(duplicate_names)}", err=True)
         raise SystemExit(1)
 
-    # Normalize to lowercase
-    short_name = short_name.lower()
+    # Validate all names upfront and collect errors per name
+    validation_errors = {}  # name -> list of errors
+    valid_names = []
+
+    for name in names_to_create:
+        errors = validate_short_name(name)
+        errors.extend(validate_combined_chunk_name(name.lower(), ticket_id))
+        if errors:
+            validation_errors[name] = errors
+        else:
+            valid_names.append(name.lower())
+
+    # Validate ticket_id if provided
     if ticket_id:
+        ticket_errors = validate_ticket_id(ticket_id)
+        if ticket_errors:
+            for error in ticket_errors:
+                click.echo(f"Error: {error}", err=True)
+            raise SystemExit(1)
         ticket_id = ticket_id.lower()
+
+    # Report validation errors
+    for name, errors in validation_errors.items():
+        for error in errors:
+            click.echo(f"Error ({name}): {error}", err=True)
+
+    # If no valid names, exit early
+    if not valid_names:
+        raise SystemExit(1)
 
     # Determine status based on --future flag
     status = "FUTURE" if future else "IMPLEMENTING"
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _start_task_chunk(project_dir, short_name, ticket_id, status, projects)
+        _start_task_chunks(project_dir, valid_names, ticket_id, status, projects)
+        # If there were validation errors, exit with error code
+        if validation_errors:
+            raise SystemExit(1)
         return
 
     # Single-repo mode - create in docs/chunks/
-    chunks = Chunks(project_dir)
+    chunks_manager = Chunks(project_dir)
 
-    try:
-        chunk_path = chunks.create_chunk(ticket_id, short_name, status=status)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
+    # For non-FUTURE status, check the IMPLEMENTING guard once upfront
+    if status != "FUTURE":
+        current = chunks_manager.get_current_chunk()
+        if current is not None:
+            click.echo(
+                f"Error: Cannot create: chunk '{current}' is already IMPLEMENTING. "
+                f"Run 've chunk complete' first.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    # Create each chunk, collecting results
+    created_paths = []
+    creation_errors = {}  # name -> error message
+
+    for name in valid_names:
+        try:
+            chunk_path = chunks_manager.create_chunk(ticket_id, name, status=status)
+            created_paths.append(chunk_path)
+        except ValueError as e:
+            creation_errors[name] = str(e)
+
+    # Report results
+    for chunk_path in created_paths:
+        relative_path = chunk_path.relative_to(project_dir)
+        click.echo(f"Created {relative_path}")
+
+    for name, error in creation_errors.items():
+        click.echo(f"Error ({name}): {error}", err=True)
+
+    # Check cluster size warnings (once at end, for all created chunks)
+    if created_paths:
+        prefixes_seen = set()
+        for chunk_path in created_paths:
+            prefix = get_chunk_prefix(chunk_path.name)
+            if prefix and prefix not in prefixes_seen:
+                prefixes_seen.add(prefix)
+                warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
+                if warning.should_warn:
+                    click.echo(f"Note: {format_cluster_warning(warning)}")
+
+    # Exit with error if there were any validation or creation errors
+    if validation_errors or creation_errors:
         raise SystemExit(1)
-
-    relative_path = chunk_path.relative_to(project_dir)
-    click.echo(f"Created {relative_path}")
-
-    # Check cluster size warning
-    prefix = get_chunk_prefix(chunk_path.name)
-    warning = check_cluster_size(prefix, project_dir, include_new_chunk=False)
-    if warning.should_warn:
-        click.echo(f"Note: {format_cluster_warning(warning)}")
 
 
 chunk.add_command(create, name="start")
@@ -213,6 +304,50 @@ def _start_task_chunk(
         # Show the chunk directory, not the yaml file
         chunk_dir = yaml_path.parent
         click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
+
+
+# Chunk: docs/chunks/chunk_batch_create - Batch creation of multiple chunks
+def _start_task_chunks(
+    task_dir: pathlib.Path,
+    short_names: list[str],
+    ticket_id: str | None,
+    status: str = "IMPLEMENTING",
+    projects_input: str | None = None,
+):
+    """Handle batch chunk creation in task directory (cross-repo mode)."""
+    # Parse and validate projects option once
+    try:
+        config = load_task_config(task_dir)
+        projects = parse_projects_option(projects_input, config.projects)
+    except FileNotFoundError:
+        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
+        raise SystemExit(1)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    # Create each chunk, collecting results and errors
+    creation_errors = {}
+
+    for short_name in short_names:
+        try:
+            result = create_task_chunk(task_dir, short_name, ticket_id, status=status, projects=projects)
+            # Report created paths for this chunk
+            external_path = result["external_chunk_path"]
+            click.echo(f"Created chunk in external repo: {external_path.relative_to(task_dir)}/")
+
+            for project_ref, yaml_path in result["project_refs"].items():
+                chunk_dir = yaml_path.parent
+                click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
+        except TaskChunkError as e:
+            creation_errors[short_name] = str(e)
+
+    # Report any creation errors
+    for name, error in creation_errors.items():
+        click.echo(f"Error ({name}): {error}", err=True)
+
+    if creation_errors:
+        raise SystemExit(1)
 
 
 @chunk.command("list")

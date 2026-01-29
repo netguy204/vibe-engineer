@@ -47,14 +47,16 @@ completely in order:
    the initiative name. For example, work from `docs/narratives/causal_ordering/`
    might use the `ordering_` prefix.
 
-2. And if the operator has referenced a ticket number, extract it and supply it to
+2. If the operator has referenced a ticket number, extract it and supply it to
    the command below where the placeholder <ticket number> is referenced. If no
-   ticket number is referenced, pass no argument to the command below in the
-   <ticket number> placeholder.
+   ticket number is referenced, omit that argument entirely.
+
+   **Note:** The ticket ID affects only the `ticket:` field in GOAL.md frontmatter,
+   not the directory name. The directory will always be `docs/chunks/<shortname>/`.
 
 3. Run `ve chunk create <shortname> <ticket number>` and note the path
    that is returned by the command. The chunk will be created at:
-   `docs/chunks/<shortname>/GOAL.md`
+   `docs/chunks/<shortname>/GOAL.md` (regardless of whether a ticket was provided)
 
    Substitute this path below for the <chunk directory> placeholder.
 

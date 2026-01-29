@@ -89,7 +89,6 @@ class Chunks:
     def num_chunks(self):
         return len(self.enumerate_chunks())
 
-    # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name.
 
@@ -104,7 +103,6 @@ class Chunks:
         Returns:
             List of existing chunk directory names that would collide.
         """
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID no longer affects collision
         # Match on short_name only - ticket_id is stored in frontmatter, not directory name
         target_short = short_name
 
@@ -233,7 +231,6 @@ class Chunks:
                 f"Chunk with short_name '{short_name}' already exists: {duplicates[0]}"
             )
 
-        # Chunk: docs/chunks/chunk_create_guard - Prevent multiple IMPLEMENTING chunks
         # Only guard non-FUTURE chunk creation
         if status != "FUTURE":
             current = self.get_current_chunk()
@@ -243,12 +240,10 @@ class Chunks:
                     f"Run 've chunk complete' first."
                 )
 
-        # Chunk: docs/chunks/populate_created_after - Populate created_after field on creation
         # Get current chunk tips for created_after field
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.CHUNK)
 
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
         # Build directory name using short_name only (ticket_id goes in frontmatter, not directory)
         chunk_path = self.chunk_dir / short_name
         chunk = ActiveChunk(

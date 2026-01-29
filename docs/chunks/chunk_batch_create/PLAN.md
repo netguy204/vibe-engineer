@@ -8,153 +8,127 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extend the `ve chunk create` CLI command to accept multiple chunk names as variadic arguments. The implementation will:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Modify the CLI layer** (`src/ve.py`): Change `short_name` from a single `@click.argument` to a variadic argument accepting multiple values.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Loop over names**: For each chunk name, apply the existing validation and creation logic. Flags like `--future` and `--ticket` apply uniformly to all chunks in the batch.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunk_batch_create/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Preserve single-chunk behavior**: When a single name is provided, behavior is unchanged. The guard preventing multiple IMPLEMENTING chunks is respected (batch creation of IMPLEMENTING chunks is blocked if any IMPLEMENTING chunk exists).
+
+4. **Error handling**: If creation fails for any chunk, report the error and continue with remaining chunks (partial success allowed). Report all created paths at the end.
+
+5. **CLAUDE.md template update**: Document the batch creation capability and add guidance for agents to use Task tool (sub-agents) to refine goals in parallel after batch creation.
+
+**Testing approach** (per `docs/trunk/TESTING_PHILOSOPHY.md`):
+- Test batch creation creates all requested chunks
+- Test `--future` flag applies to all chunks
+- Test error on batch IMPLEMENTING when one already exists
+- Test partial success when some names are invalid
+- Test output lists all created chunk paths
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk USES the workflow_artifacts
+  subsystem's Chunks manager class for chunk creation. The `Chunks.create_chunk()` method
+  will be called in a loop for batch creation. No changes to the subsystem patterns needed.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for batch creation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests in `tests/test_chunk_start.py` (or new file `tests/test_chunk_batch_create.py`) that verify:
 
-Example:
+1. `ve chunk create name1 name2 name3` creates three chunks
+2. `--future` flag applies to all chunks in batch
+3. `--ticket` flag applies to all chunks in batch
+4. Output lists all created paths
+5. Batch IMPLEMENTING creation fails when IMPLEMENTING chunk exists
+6. Partial success: if one name is invalid, others still created
+7. Single name still works (backward compatibility)
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_chunk_start.py` (add new `TestBatchCreation` class)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Modify CLI argument to accept multiple names
 
-Location: src/segment/format.rs
+Change the `create` command in `src/ve.py`:
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Current:
+```python
+@click.argument("short_name")
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+New:
+```python
+@click.argument("short_names", nargs=-1, required=True)
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Update the function signature to accept `short_names: tuple[str, ...]` and loop over each name.
+
+Location: `src/ve.py#create` (around line 131)
+
+### Step 3: Implement batch creation logic
+
+In the `create` function:
+
+1. Validate all names upfront before creating any chunks
+2. For IMPLEMENTING status (no `--future`), check guard once at the start
+3. Loop through validated names and create each chunk
+4. Collect created paths and any errors
+5. Report all results at end
+
+Preserve the existing task-context detection and routing to `_start_task_chunk`.
+
+Location: `src/ve.py#create`
+
+### Step 4: Update `_start_task_chunk` for batch creation
+
+Extend `_start_task_chunk` to handle multiple chunk names in task directory mode.
+The function should loop over each name and call `create_task_chunk` for each.
+
+Location: `src/ve.py#_start_task_chunk`
+
+### Step 5: Update CLAUDE.md template with batch creation guidance
+
+Add to `src/templates/claude/CLAUDE.md.jinja2`:
+
+1. Document the batch creation syntax in the "Creating and Submitting FUTURE Chunks" section
+2. Add guidance for agents to use Task tool sub-agents to refine goals in parallel after batch creation
+3. Example: "After creating multiple chunks with `ve chunk create a b c --future`, spawn sub-agents to refine each GOAL.md in parallel"
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 6: Run tests and verify all pass
+
+Run `uv run pytest tests/test_chunk_start.py -v` to verify:
+- New batch creation tests pass
+- Existing single-creation tests still pass
+
+### Step 7: Re-render CLAUDE.md and verify
+
+Run `uv run ve init` to re-render the CLAUDE.md from the updated template.
+Verify the batch creation documentation appears correctly.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None - this extends existing functionality with no new dependencies.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Ticket ID with batch creation**: Currently `ticket_id` is a second positional argument. With variadic `short_names`, we need to decide how to handle tickets. Options:
+   - Make `--ticket` a flag-based option only (simplest, recommended)
+   - Apply the same ticket to all chunks (current design assumption)
+   - This is a minor breaking change if anyone uses positional ticket_id with batch creation
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Decision**: Keep `ticket_id` as optional second positional for single-chunk (backward compat), but when multiple names are provided, `--ticket` flag must be used. Alternatively, simplify by making ticket flag-only.
+
+2. **Error handling strategy**: If creating chunk 2 of 3 fails, should we:
+   - Stop and report (fail-fast)
+   - Continue and report all results at end (partial success)
+
+   **Decision**: Partial success - create all possible chunks and report errors alongside successes.
+
+3. **Cluster size warnings**: Currently emitted after single chunk creation. For batch creation, emit once at end summarizing any clusters that grew large.
 
 ## Deviations
 

@@ -67,17 +67,18 @@ class TestChunkCreateCLI:
 
     def test_rejects_duplicate_names(self, cli_runner, temp_project):
         """Rejects duplicate chunk names."""
-        # Create first chunk
+        # Create first chunk as FUTURE so we can test duplicate detection
+        # (without IMPLEMENTING guard interfering)
         result1 = cli_runner.invoke(
             cli,
-            ["chunk", "create", "my-chunk", "--project-dir", str(temp_project)],
+            ["chunk", "create", "my-chunk", "--future", "--project-dir", str(temp_project)],
         )
         assert result1.exit_code == 0
 
         # Try to create duplicate
         result2 = cli_runner.invoke(
             cli,
-            ["chunk", "create", "my-chunk", "--project-dir", str(temp_project)],
+            ["chunk", "create", "my-chunk", "--future", "--project-dir", str(temp_project)],
         )
 
         assert result2.exit_code != 0
