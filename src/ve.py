@@ -9,7 +9,7 @@ import pathlib
 import click
 
 from chunks import Chunks
-from external_refs import strip_artifact_path_prefix, is_external_artifact
+from external_refs import strip_artifact_path_prefix, is_external_artifact, load_external_ref
 from investigations import Investigations
 from narratives import Narratives
 from project import Project
@@ -65,7 +65,6 @@ def validate_ticket_id(ticket_id: str) -> list[str]:
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
 
 
-# Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
 def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list[str]:
     """Validate the chunk directory name length.
 
@@ -248,15 +247,21 @@ def list_chunks(latest, project_dir):
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
 
         for chunk_name in chunk_list:
-            frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
-            if frontmatter:
-                status = frontmatter.status.value
-            elif errors:
-                # Show first error for brevity
-                first_error = errors[0]
-                status = f"PARSE ERROR: {first_error}"
+            chunk_path = project_dir / "docs" / "chunks" / chunk_name
+            # Check for external artifact reference before parsing frontmatter
+            if is_external_artifact(chunk_path, ArtifactType.CHUNK):
+                external_ref = load_external_ref(chunk_path)
+                status = f"EXTERNAL: {external_ref.repo}"
             else:
-                status = "UNKNOWN"
+                frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
+                if frontmatter:
+                    status = frontmatter.status.value
+                elif errors:
+                    # Show first error for brevity
+                    first_error = errors[0]
+                    status = f"PARSE ERROR: {first_error}"
+                else:
+                    status = "UNKNOWN"
             tip_indicator = " *" if chunk_name in tips else ""
             click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 

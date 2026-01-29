@@ -8,153 +8,100 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The fix requires modifying the `list_chunks` function in `src/ve.py` to detect external
+chunk references before attempting to parse frontmatter. The current code flow is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. `chunks.list_chunks()` returns chunk directory names (already works - includes external)
+2. `chunks.parse_chunk_frontmatter_with_errors()` tries to read GOAL.md (fails for external)
+3. Output shows `[PARSE ERROR: Chunk 'X' not found]`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The solution is to check `is_external_artifact()` before attempting frontmatter parsing.
+For external chunks, we'll display `[EXTERNAL: org/repo]` status instead.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunklist_external_status/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Patterns used:**
+- The `is_external_artifact()` function from `external_refs.py` detects external chunks
+- The `load_external_ref()` function from `external_refs.py` loads the `external.yaml` content
+- The `artifact_ordering.py` module already uses "EXTERNAL" as a pseudo-status for tip detection
+
+**Test approach (TDD):**
+Following docs/trunk/TESTING_PHILOSOPHY.md, write the failing test first that creates an
+external chunk reference and expects `[EXTERNAL:` in the output instead of `[PARSE ERROR:`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk USES the workflow artifact
+  lifecycle subsystem. The `is_external_artifact()` and `load_external_ref()` functions are
+  part of this subsystem's external reference utilities.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): This chunk USES the cross-repo
+  operations subsystem. The `external_refs.py` module is a core part of this subsystem.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing test for external chunk listing
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a test in `tests/test_chunk_list.py` that:
+1. Creates a chunk directory with only `external.yaml` (no GOAL.md)
+2. Runs `ve chunk list`
+3. Asserts that the output shows `[EXTERNAL:` instead of `[PARSE ERROR:`
+4. Verifies the external repo is shown in the status
 
-Example:
+Location: `tests/test_chunk_list.py`
 
-### Step 1: Define the SegmentHeader struct
+Test will fail initially because the code doesn't handle external chunks.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Implement external chunk detection in list_chunks
 
-Location: src/segment/format.rs
+Modify the `list_chunks` function in `src/ve.py` to:
+1. Import `is_external_artifact`, `load_external_ref` from `external_refs`
+2. Before calling `parse_chunk_frontmatter_with_errors()`, check if the chunk
+   is an external reference using `is_external_artifact()`
+3. If external, load the `external.yaml` and display `[EXTERNAL: {repo}]` status
+4. Skip the frontmatter parsing for external chunks
 
-### Step 2: Implement header serialization
+Location: `src/ve.py` lines ~250-261
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Verify test passes and add edge case tests
 
-### Step 3: ...
+Run the test from Step 1 to verify it passes. Add additional tests:
+1. Test mixed local and external chunks display correctly
+2. Test external chunks participate in causal ordering (already works per `artifact_ordering.py`)
+3. Test `--latest` flag behavior with external chunks
+
+Location: `tests/test_chunk_list.py`
+
+### Step 4: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the actual files modified:
+- `src/ve.py`
+- `tests/test_chunk_list.py`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add the following backreference to the modified code in `src/ve.py`:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+```python
+# Chunk: docs/chunks/chunklist_external_status - External chunk list handling
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. All required utilities already exist:
+- `external_refs.is_external_artifact()` - detects external artifacts
+- `external_refs.load_external_ref()` - loads external.yaml content
+- `models.ArtifactType.CHUNK` - artifact type enum
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Tip indicator for external chunks**: The `artifact_ordering.py` module already handles
+  external chunks for tip detection (assigns "EXTERNAL" pseudo-status which is always tip-eligible).
+  Need to verify the tip indicator (`*`) still displays correctly for external chunks.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **--latest flag with external chunks**: The `--latest` flag looks for IMPLEMENTING status.
+  External chunks don't have GOAL.md, so they can't be IMPLEMENTING. This is probably
+  correct behavior (external references are typically to ACTIVE chunks), but worth verifying.
 
 ## Deviations
 

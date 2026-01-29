@@ -172,7 +172,6 @@ class TestActivateWithTicketId:
         assert frontmatter.status == ChunkStatus.IMPLEMENTING
 
 
-# Chunk: docs/chunks/validation_chunk_name - Frontmatter parse error surfacing
 class TestActivateParseErrors:
     """Tests for surfacing Pydantic validation errors during activation."""
 
