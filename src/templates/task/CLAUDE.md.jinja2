@@ -38,6 +38,32 @@ All commands work from task root. You can also `cd` into a project for project-s
 
 Run `ve chunk list` to see task-level chunks. Use `/help` for detailed command guidance.
 
+## Artifact Creation Context (Important!)
+
+**Always run artifact creation commands from the task directory, not from individual project directories.**
+
+When you run artifact creation commands (`ve chunk create`, `ve narrative create`, `ve investigation create`, `ve subsystem discover`), the location matters:
+
+| Run from... | Creates... |
+|-------------|------------|
+| Task directory (here) | **Cross-repo artifact** in the external repo with `external.yaml` pointers in each project |
+| Inside a project directory | **Local artifact** only in that project (no cross-repo visibility) |
+
+**Why this matters:** When working on cross-repo tasks, artifacts should be visible to all participating projects. Running commands from inside a project creates project-local artifacts that other projects cannot see.
+
+**Avoid this mistake:** Do NOT `cd` into a project directory and then run `ve chunk create` for task-level work. Always navigate back to the task root first:
+
+```bash
+# Correct - creates cross-repo artifact
+ve chunk create my_feature
+
+# Incorrect - creates local artifact only in that project
+cd project_name
+ve chunk create my_feature  # Warning: this creates a local chunk!
+```
+
+If you accidentally run from a project directory, the CLI will emit a warning to remind you.
+
 ## Backreferences
 
 When implementing code that relates to a documented subsystem, add backreference

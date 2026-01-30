@@ -8,153 +8,147 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk implements two complementary safeguards to prevent agents from accidentally
+creating project-level artifacts when operating in a task context:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **CLAUDE.md guidance** - Add explicit instructions in the task CLAUDE.md template
+   that artifact creation commands should run from the task directory.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **CLI warning** - Add detection logic to artifact creation commands that emits
+   a non-blocking warning when running from inside a project that is part of a task.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/taskdir_cli_guidance/GOAL.md)
-with references to the files that you expect to touch.
--->
+The implementation builds on existing infrastructure:
+- `find_task_directory()` in `task_utils.py` already walks up to find `.ve-task.yaml`
+- `load_task_config()` provides the list of participating projects
+- The task CLAUDE.md template (`src/templates/task/CLAUDE.md.jinja2`) is where guidance lives
+- The template_system subsystem governs template rendering
+
+Tests will follow TDD: write failing tests first, then implement the detection logic.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): This chunk IMPLEMENTS
+  additional task context detection functionality within the cross-repo operations
+  pattern. The existing `find_task_directory()` provides the foundation for the
+  warning mechanism.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (DOCUMENTED): This chunk USES the template
+  system to add guidance content to the task CLAUDE.md template.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add Task CLAUDE.md Template Guidance
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new section to `src/templates/task/CLAUDE.md.jinja2` that explicitly instructs
+agents to run artifact creation commands from the task directory, not from individual
+project directories.
 
-Example:
+The section should:
+- Explain what happens when commands are run from task vs project context
+- List the affected commands: `ve chunk create`, `ve narrative create`,
+  `ve investigation create`, `ve subsystem discover`
+- Explain the consequence: task-level creates cross-repo artifacts, project-level
+  creates local artifacts
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/templates/task/CLAUDE.md.jinja2`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write Failing Tests for CLI Context Warning
 
-Location: src/segment/format.rs
+Create tests in `tests/test_task_cli_context.py` (new file) that verify:
+1. Warning appears when `ve chunk create` is run from inside a project that is
+   part of a task
+2. Warning does NOT appear when running from the task root
+3. Warning does NOT appear for standalone projects (no task context above)
+4. Same pattern for other artifact commands: `narrative create`, `investigation create`,
+   `subsystem discover`
+5. Warning is non-blocking (command still executes)
 
-### Step 2: Implement header serialization
+Use the existing `setup_task_directory()` helper from `conftest.py`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_task_cli_context.py`
 
-### Step 3: ...
+### Step 3: Implement `check_task_project_context()` Detection Function
 
----
+Add a function to `task_utils.py` that:
+1. Walks up from cwd looking for `.ve-task.yaml` using `find_task_directory()`
+2. If found, loads the task config
+3. Checks if cwd is within one of the task's project directories
+4. Returns context info: `(task_dir, project_ref)` or `None` if not in a project
 
-**BACKREFERENCE COMMENTS**
+This function provides the detection logic that CLI commands will use.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/task_utils.py#check_task_project_context`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Create Shared Warning Helper
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+Add a helper function that emits the standardized warning message:
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Warning: You are running this command from within project {project} which is
+part of task {task_dir}. To create a cross-repo artifact, run from the task
+directory instead.
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The helper should:
+- Accept the context tuple from `check_task_project_context()`
+- Emit warning to stderr via `click.echo(..., err=True)`
+- Return immediately if context is None
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/ve.py` (near top, with other helpers) or potentially `task_utils.py`
+
+### Step 5: Add Warning to `ve chunk create`
+
+Modify the `create()` command in `ve.py` to:
+1. Before entering the single-repo mode branch, call `check_task_project_context()`
+2. If a task project context is detected, emit the warning
+3. Continue with normal execution (non-blocking)
+
+The check should happen when `is_task_directory(project_dir)` returns False,
+because that's when we're about to create a project-level chunk.
+
+Location: `src/ve.py#create`
+
+### Step 6: Add Warning to Other Artifact Commands
+
+Apply the same pattern to:
+- `ve narrative create` (in `narrative_create()` command)
+- `ve investigation create` (in `investigation_create()` command)
+- `ve subsystem discover` (in `subsystem_discover()` command)
+
+Each command should call `check_task_project_context()` and emit the warning
+when creating local artifacts while inside a task's project.
+
+Location: `src/ve.py` (multiple command functions)
+
+### Step 7: Verify All Tests Pass
+
+Run the full test suite to ensure:
+- New tests pass (warning behavior)
+- Existing tests still pass (no regressions)
+- The warning is correctly formatted
+
+```bash
+uv run pytest tests/
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. All required infrastructure exists:
+- `find_task_directory()` and `load_task_config()` in `task_utils.py`
+- `resolve_repo_directory()` for checking project membership
+- Jinja2 template system for CLAUDE.md rendering
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Warning message wording**: The exact phrasing should be helpful but not
+   overly verbose. The proposed text is actionable and concise.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Performance of upward directory walk**: The `find_task_directory()` function
+   walks up the filesystem tree. For deeply nested directories, this could be
+   slow, but in practice task directories are near the project root.
+
+3. **Edge case: symlinked project directories**: If a project is symlinked into
+   the task directory, the path comparison logic might fail. The implementation
+   should use `Path.resolve()` to handle symlinks properly.
 
 ## Deviations
 
