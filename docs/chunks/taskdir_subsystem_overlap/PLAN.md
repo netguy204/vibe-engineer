@@ -8,153 +8,109 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The goal is to make `ve subsystem overlap <chunk_name>` work correctly in task contexts where the chunk exists in the external artifacts repo.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Currently, the `subsystem overlap` command (ve.py lines 1706-1722) only looks for chunks locally using `Chunks(project_dir)`, without any task context awareness. When run from a task directory, it fails to find chunks that exist in the external artifacts repo.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Strategy**: Follow the same pattern used by `chunk overlap` (ve.py lines 759-804), which:
+1. Detects task context using `find_task_directory()`
+2. Resolves chunks through the external artifacts repo when in task context
+3. Falls back to local resolution for non-task contexts
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/taskdir_subsystem_overlap/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Key insight from code review**: The `Chunks.resolve_chunk_location()` method already handles external chunk resolution when given a `task_dir` parameter. We can leverage this existing infrastructure.
+
+**Implementation options**:
+
+**Option A: Direct task resolution in CLI**
+Add task context detection to the `subsystem overlap` CLI command, resolve the chunk's actual location, then create appropriate `Chunks` and `Subsystems` instances for the resolved location. Similar to `chunk overlap`.
+
+**Option B: Extend Subsystems.find_overlapping_subsystems()**
+Modify `find_overlapping_subsystems()` to accept an optional `task_dir` parameter and use `Chunks.resolve_chunk_location()` internally.
+
+**Chosen approach: Option A** - This keeps the task resolution logic in the CLI layer (where it's handled for other commands) and keeps the business logic classes simpler. This matches the existing pattern used by `chunk overlap`.
+
+**Test strategy** (per docs/trunk/TESTING_PHILOSOPHY.md):
+- Write failing tests first for task context behavior
+- Tests will verify: external chunk resolution works, local chunks continue to work, error messages are helpful
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): This chunk USES the cross-repo operations subsystem to resolve chunks in task contexts. The existing patterns (`is_task_directory`, `find_task_directory`, `load_task_config`, `resolve_repo_directory`) will be reused.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for task context behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests in `tests/test_subsystem_overlap_cli.py` that verify:
 
-Example:
+1. **External chunk resolution in task context**: When running `ve subsystem overlap <chunk>` from a task directory where the chunk exists in the external artifacts repo, the command should find the chunk and check for subsystem overlaps.
 
-### Step 1: Define the SegmentHeader struct
+2. **Subsystem resolution in task context**: When the chunk references code that overlaps with subsystems in the external repo, those subsystems should be reported.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **Local chunks still work**: Ensure existing non-task behavior remains unchanged (regression test).
 
-Location: src/segment/format.rs
+4. **Helpful error messages**: When a chunk genuinely doesn't exist anywhere, the error message should be clear.
 
-### Step 2: Implement header serialization
+These tests will use the existing `setup_task_directory()` helper from `conftest.py` to create the task context setup.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_subsystem_overlap_cli.py`
 
-### Step 3: ...
+### Step 2: Update CLI command to detect task context
 
----
+Modify the `subsystem overlap` CLI command in `src/ve.py` to:
 
-**BACKREFERENCE COMMENTS**
+1. Import task-related utilities: `is_task_directory`, `find_task_directory`, `load_task_config`, `resolve_repo_directory`
+2. After normalizing `chunk_id`, detect task context (same pattern as `chunk overlap`):
+   - Check if `project_dir` is a task directory
+   - If not, check if we're inside a task project via `find_task_directory()`
+3. Store the task directory for later use in resolution
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/ve.py` - `overlap` command under `@subsystem.command`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 3: Implement task-aware chunk resolution
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+When task context is detected:
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+1. Load task config to get the external artifacts repo reference
+2. Resolve the external repo path using `resolve_repo_directory()`
+3. Try to resolve the chunk in the external repo first using `Chunks(external_repo_path).resolve_chunk_id()`
+4. If not found in external, search in each project repo
+5. If found, create `Chunks` and `Subsystems` instances against the resolved project path
+6. If not found anywhere, emit helpful error message with search locations
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+When no task context:
+- Continue with existing local-only behavior (no change)
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/ve.py` - `overlap` command under `@subsystem.command`
 
-## Dependencies
+### Step 4: Handle cross-project subsystem matching
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+The current `find_overlapping_subsystems()` uses the same project for both chunk and subsystem resolution. In task context, we need to:
 
-If there are no dependencies, delete this section.
--->
+1. Get the chunk's code references from the resolved location (external repo)
+2. Check against subsystems in the same location (external repo for external chunks)
+
+Since the chunk and subsystems are in the same repo (the external artifacts repo), the existing `find_overlapping_subsystems()` should work once we pass it the correct `Chunks` and `Subsystems` instances from the external repo.
+
+The key insight is that we don't need to modify `Subsystems.find_overlapping_subsystems()` - we just need to call it with the correctly resolved instances.
+
+Location: `src/ve.py` - `overlap` command under `@subsystem.command`
+
+### Step 5: Run tests and verify
+
+1. Run the new task context tests - they should now pass
+2. Run existing `test_subsystem_overlap_cli.py` tests to confirm no regression
+3. Run `test_subsystem_overlap_logic.py` to confirm business logic unchanged
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Cross-project subsystem matching**: The current implementation assumes chunks and subsystems are in the same project. In task context, if a chunk in the external repo references code in a project repo, should we check for subsystem overlaps in both the external repo AND the project repos?
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Resolution**: For this chunk, we follow the existing behavior where subsystems are checked in the same repo as the chunk. This is consistent with how subsystems work - they document patterns within a single codebase. If cross-project subsystem checking is needed, that would be a separate enhancement.
+
+2. **Error message clarity**: When chunk not found, should we list all searched locations?
+
+   **Resolution**: Yes, we should provide helpful error messages that indicate where we looked. This matches the success criteria: "Error messages are helpful when a chunk genuinely doesn't exist (vs. resolution failure)".
 
 ## Deviations
 

@@ -1704,21 +1704,106 @@ def status(subsystem_id, new_status, project_dir):
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def overlap(chunk_id, project_dir):
-    """Find subsystems with code references overlapping a chunk's changes."""
+    """Find subsystems with code references overlapping a chunk's changes.
+
+    When run in task context (directory with .ve-task.yaml), searches for
+    the chunk across the external repo and all project repos, then checks
+    for overlapping subsystems in the same repo where the chunk was found.
+    """
+    # Chunk: docs/chunks/taskdir_subsystem_overlap - Task context support for subsystem overlap
+    from task_utils import (
+        is_task_directory,
+        find_task_directory,
+        load_task_config,
+        resolve_repo_directory,
+    )
+
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
-    subsystems = Subsystems(project_dir)
-    chunks = Chunks(project_dir)
+    # Detect task context
+    task_dir = None
+    if is_task_directory(project_dir):
+        task_dir = project_dir
+    else:
+        task_dir = find_task_directory(project_dir)
 
-    try:
-        overlapping = subsystems.find_overlapping_subsystems(chunk_id, chunks)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    if task_dir is not None:
+        # Task context: resolve chunk across external and project repos
+        try:
+            config = load_task_config(task_dir)
+        except FileNotFoundError:
+            click.echo(
+                f"Error: Task configuration not found. Expected .ve-task.yaml in {task_dir}",
+                err=True
+            )
+            raise SystemExit(1)
 
-    for item in overlapping:
-        click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
+        # Resolve external repo path
+        try:
+            external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+        except FileNotFoundError:
+            click.echo(
+                f"Error: External repository '{config.external_artifact_repo}' not found or not accessible",
+                err=True
+            )
+            raise SystemExit(1)
+
+        # Find the target chunk (could be in external repo or a project)
+        target_chunks = None
+        target_chunk_name = None
+        target_project_path = None
+
+        # First try external repo
+        external_chunks = Chunks(external_repo_path)
+        resolved = external_chunks.resolve_chunk_id(chunk_id)
+        if resolved is not None:
+            target_chunks = external_chunks
+            target_chunk_name = resolved
+            target_project_path = external_repo_path
+        else:
+            # Try project repos
+            for project_ref in config.projects:
+                try:
+                    project_path = resolve_repo_directory(task_dir, project_ref)
+                    project_chunks = Chunks(project_path)
+                    resolved = project_chunks.resolve_chunk_id(chunk_id)
+                    if resolved is not None:
+                        target_chunks = project_chunks
+                        target_chunk_name = resolved
+                        target_project_path = project_path
+                        break
+                except FileNotFoundError:
+                    continue
+
+        if target_chunks is None:
+            click.echo(f"Error: Chunk '{chunk_id}' not found in any task repository", err=True)
+            raise SystemExit(1)
+
+        # Create subsystems instance for the same repo where chunk was found
+        target_subsystems = Subsystems(target_project_path)
+
+        try:
+            overlapping = target_subsystems.find_overlapping_subsystems(target_chunk_name, target_chunks)
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+        for item in overlapping:
+            click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
+    else:
+        # Single repo context - existing behavior
+        subsystems = Subsystems(project_dir)
+        chunks = Chunks(project_dir)
+
+        try:
+            overlapping = subsystems.find_overlapping_subsystems(chunk_id, chunks)
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+        for item in overlapping:
+            click.echo(f"docs/subsystems/{item['subsystem_id']} [{item['status']}]")
 
 
 @cli.group()

@@ -6,7 +6,7 @@ code_paths:
 - src/chunks.py
 - src/task_utils.py
 - src/ve.py
-- tests/test_taskdir_context_cmds.py
+- tests/test_task_context_cmds.py
 - docs/subsystems/workflow_artifacts/OVERVIEW.md
 code_references:
 - ref: src/task_utils.py#resolve_project_qualified_ref
