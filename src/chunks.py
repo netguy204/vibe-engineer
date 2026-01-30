@@ -157,6 +157,49 @@ class Chunks:
                 return chunk_name
         return None
 
+    def get_last_active_chunk(self) -> str | None:
+        """Return the most recently completed ACTIVE tip chunk.
+
+        This finds the ACTIVE chunk that:
+        1. Has ACTIVE status
+        2. Is a "tip" in the causal ordering (not in any other chunk's created_after)
+        3. Has the most recent GOAL.md mtime among qualifying chunks
+
+        This is useful for identifying the just-completed chunk after running
+        chunk-complete, when the chunk status has changed from IMPLEMENTING to ACTIVE.
+
+        Returns:
+            The chunk directory name if an ACTIVE tip exists, None otherwise.
+        """
+        # Get all tips from the artifact index
+        artifact_index = ArtifactIndex(self.project_dir)
+        tips = artifact_index.find_tips(ArtifactType.CHUNK)
+
+        # Filter to only ACTIVE status
+        active_tips = []
+        for tip in tips:
+            frontmatter = self.parse_chunk_frontmatter(tip)
+            if frontmatter and frontmatter.status == ChunkStatus.ACTIVE:
+                active_tips.append(tip)
+
+        if not active_tips:
+            return None
+
+        # If only one ACTIVE tip, return it
+        if len(active_tips) == 1:
+            return active_tips[0]
+
+        # Multiple ACTIVE tips: select by most recent GOAL.md mtime
+        def get_goal_mtime(chunk_name: str) -> float:
+            goal_path = self.chunk_dir / chunk_name / "GOAL.md"
+            if goal_path.exists():
+                return goal_path.stat().st_mtime
+            return 0.0
+
+        # Sort by mtime descending, return the most recent
+        active_tips.sort(key=get_goal_mtime, reverse=True)
+        return active_tips[0]
+
     def activate_chunk(self, chunk_id: str) -> str:
         """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
 

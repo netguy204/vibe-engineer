@@ -9,7 +9,7 @@ code_references:
   - ref: src/templates/commands/chunk-plan.md.jinja2
     implements: "Cluster prefix suggestion step (Step 2) for semantic chunk naming"
   - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Investigation frontmatter reference, Proposed Chunks section, Investigation lifecycle details, and Development section"
+    implements: "Investigation frontmatter reference, Proposed Chunks section, and Investigation lifecycle details"
 narrative: null
 investigation: template_drift
 subsystems: []

@@ -1,7 +1,5 @@
 """Tests for cross-repository chunk management models."""
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
-# Chunk: docs/chunks/cross_repo_schemas - TaskConfig, ChunkDependent tests
-# Chunk: docs/chunks/consolidate_ext_refs - ExternalArtifactRef tests
 
 import pytest
 from pydantic import ValidationError

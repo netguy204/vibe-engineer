@@ -868,3 +868,136 @@ class TestChunkTemplateWithTaskContext:
         goal_content = (result_path / "GOAL.md").read_text()
         # Should have fallback guidance to check .ve-task.yaml
         assert ".ve-task.yaml" in goal_content
+
+
+# Chunk: docs/chunks/chunk_last_active - Last active chunk lookup
+class TestGetLastActiveChunk:
+    """Tests for Chunks.get_last_active_chunk() method."""
+
+    def test_empty_project_returns_none(self, temp_project):
+        """Empty project returns None."""
+        chunk_mgr = Chunks(temp_project)
+        assert chunk_mgr.get_last_active_chunk() is None
+
+    def test_single_active_tip_returns_that_chunk(self, temp_project):
+        """Single ACTIVE tip chunk returns that chunk's name."""
+        import time
+
+        chunk_mgr = Chunks(temp_project)
+        chunk_mgr.create_chunk(None, "feature", status="IMPLEMENTING")
+        # Transition to ACTIVE (make it a tip)
+        chunk_mgr.update_status("feature", ChunkStatus.ACTIVE)
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result == "feature"
+
+    def test_returns_most_recent_active_tip_by_mtime(self, temp_project):
+        """Among multiple ACTIVE tips, returns the one with most recent GOAL.md mtime."""
+        import time
+
+        chunk_mgr = Chunks(temp_project)
+
+        # Create first chunk and mark ACTIVE
+        chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
+        chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
+
+        # Create second chunk: FUTURE -> IMPLEMENTING -> ACTIVE
+        # It will reference 'first' in created_after, making first NOT a tip
+        chunk_mgr.create_chunk(None, "second", status="FUTURE")
+        chunk_mgr.update_status("second", ChunkStatus.IMPLEMENTING)
+        chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
+
+        # Now: first is ACTIVE but NOT a tip (second references it)
+        # second is ACTIVE and IS a tip
+        # Even if we touch first to make it newer, second should be returned
+        # because first is not a tip
+
+        first_goal = chunk_mgr.get_chunk_goal_path("first")
+        time.sleep(0.1)  # Ensure mtime difference
+        first_goal.touch()
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result == "second"  # It's the only tip
+
+    def test_active_non_tip_excluded(self, temp_project):
+        """ACTIVE chunk that is NOT a tip (referenced by another chunk) is excluded."""
+        chunk_mgr = Chunks(temp_project)
+
+        # Create first chunk and mark ACTIVE
+        chunk_mgr.create_chunk(None, "first", status="IMPLEMENTING")
+        chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
+
+        # Create second chunk - it will reference first in created_after, making first NOT a tip
+        # FUTURE -> IMPLEMENTING -> ACTIVE (valid state transitions)
+        chunk_mgr.create_chunk(None, "second", status="FUTURE")
+        chunk_mgr.update_status("second", ChunkStatus.IMPLEMENTING)
+        chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
+
+        # first is ACTIVE but not a tip (second references it)
+        # second is ACTIVE and IS a tip
+        result = chunk_mgr.get_last_active_chunk()
+        assert result == "second"  # Only tip
+
+    def test_returns_none_when_no_active_chunks(self, temp_project):
+        """Returns None when no ACTIVE chunks exist."""
+        chunk_mgr = Chunks(temp_project)
+
+        # Create IMPLEMENTING and FUTURE chunks, but no ACTIVE
+        chunk_mgr.create_chunk(None, "implementing", status="IMPLEMENTING")
+        chunk_mgr.create_chunk(None, "future", status="FUTURE")
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result is None
+
+    def test_ignores_implementing_chunks(self, temp_project):
+        """IMPLEMENTING chunks are ignored, only returns ACTIVE tips."""
+        chunk_mgr = Chunks(temp_project)
+
+        # Create an IMPLEMENTING chunk (it's a tip but not ACTIVE)
+        chunk_mgr.create_chunk(None, "implementing", status="IMPLEMENTING")
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result is None
+
+    def test_returns_none_when_only_future_and_implementing(self, temp_project):
+        """Returns None when only FUTURE and IMPLEMENTING chunks exist."""
+        chunk_mgr = Chunks(temp_project)
+
+        chunk_mgr.create_chunk(None, "implementing", status="IMPLEMENTING")
+        chunk_mgr.create_chunk(None, "future1", status="FUTURE")
+        chunk_mgr.create_chunk(None, "future2", status="FUTURE")
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result is None
+
+    def test_multiple_active_tips_returns_most_recent_mtime(self, temp_project):
+        """When multiple ACTIVE tips exist, returns the one with most recent GOAL.md mtime."""
+        import time
+
+        chunk_mgr = Chunks(temp_project)
+
+        # Create two independent ACTIVE chunks by manipulating created_after
+        # First, create and mark ACTIVE
+        chunk_mgr.create_chunk(None, "alpha", status="IMPLEMENTING")
+        chunk_mgr.update_status("alpha", ChunkStatus.ACTIVE)
+
+        # Create beta as FUTURE (doesn't block IMPLEMENTING guard)
+        # Then edit its GOAL.md to have empty created_after (making it independent)
+        chunk_mgr.create_chunk(None, "beta", status="FUTURE")
+        beta_goal = chunk_mgr.get_chunk_goal_path("beta")
+        content = beta_goal.read_text()
+        # Replace created_after: ["alpha"] with created_after: []
+        content = content.replace('created_after: ["alpha"]', 'created_after: []')
+        beta_goal.write_text(content)
+        # Now transition: FUTURE -> IMPLEMENTING -> ACTIVE (valid transitions)
+        chunk_mgr.update_status("beta", ChunkStatus.IMPLEMENTING)
+        chunk_mgr.update_status("beta", ChunkStatus.ACTIVE)
+
+        # Now both are ACTIVE tips (neither references the other)
+        # Touch alpha to make it newer
+        time.sleep(0.1)
+        alpha_goal = chunk_mgr.get_chunk_goal_path("alpha")
+        alpha_goal.touch()
+
+        result = chunk_mgr.get_last_active_chunk()
+        assert result == "alpha"  # Has most recent mtime

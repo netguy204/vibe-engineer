@@ -8,15 +8,15 @@ code_paths:
 - tests/test_chunks.py
 code_references:
 - ref: src/models.py#TaskConfig
-  implements: Schema with external_chunk_repo and projects fields
-- ref: src/models.py#ExternalChunkRef
-  implements: Schema for chunk references between repos
+  implements: Schema with external_artifact_repo and projects fields
+- ref: src/models.py#ExternalArtifactRef
+  implements: Schema for artifact references between repos (replaces ExternalChunkRef)
 - ref: src/models.py#ChunkDependent
   implements: Schema for chunk GOAL.md dependents list
 - ref: src/models.py#_require_valid_dir_name
   implements: Directory name validation wrapper using validate_identifier
 - ref: tests/test_task_models.py
-  implements: Validation tests for TaskConfig, ExternalChunkRef, ChunkDependent
+  implements: Validation tests for TaskConfig, ExternalArtifactRef, ChunkDependent
 - ref: tests/test_chunks.py
   implements: Frontmatter dependents parsing tests
 narrative: cross_repo_chunks

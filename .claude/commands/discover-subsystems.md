@@ -2,15 +2,12 @@
 description: Discover and document subsystems from code analysis
 ---
 
-
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
 This file is rendered from: src/templates/commands/discover-subsystems.md.jinja2
 Edit the source template, then run `ve init` to regenerate.
 -->
-
 
 ## Tips
 

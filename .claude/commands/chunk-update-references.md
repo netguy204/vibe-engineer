@@ -2,15 +2,12 @@
 description: Update the code references in the goal file of a chunk.
 ---
 
-
-
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
 This file is rendered from: src/templates/commands/chunk-update-references.md.jinja2
 Edit the source template, then run `ve init` to regenerate.
 -->
-
 
 The operator has requested that the following chunk have its code references refreshed:
 

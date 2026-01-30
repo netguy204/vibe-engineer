@@ -1,132 +1,60 @@
-# Article Writing Workflow
+# Article Workflow Template
 
-<!--
-TEMPLATE INSTRUCTIONS:
-1. Copy this file to the articles area: docs/articles/{name}_workflow.md
-2. Fill in the Article Metadata section
-3. Work iteratively through the activities - this is not a waterfall process
-4. The agent and human collaborate throughout; ownership shifts by activity
--->
+Template for creating new articles.
 
-## Article Metadata
+## Directory Structure
 
-| Field | Value |
-|-------|-------|
-| Article Number | |
-| Working Title | |
-| Target Audience | |
-| Core Thesis | |
-| Source Material | (articles.md outline, other references) |
+```
+docs/articles/
+  articles.md                           # index of all series
+  {series_name}/
+    SERIES.md                           # series overview, themes, article sequence
+    {article_name}/
+      ARTICLE.md                        # single file for entire article lifecycle
+```
 
----
+## Creating a New Article
 
-## Current Status
+1. Create the article directory: `docs/articles/{series_name}/{article_name}/`
+2. Create ARTICLE.md with the sections below
+3. Fill in metadata
+4. Work through the stages: outlining, drafting, published
 
-**Activity:** (Outlining | Drafting | Restructuring | Polishing | COMPLETE)
+## After Publishing
 
-**What's happening:**
+Run the series refinement workflow:
 
-**Next action:**
-
----
-
-## How This Workflow Works
-
-This is an **iterative** process, not sequential phases. Expect to loop through these activities multiple times:
-
-1. **Outlining** - Agent proposes structure, human adds voice inline
-2. **Drafting** - Agent assembles prose, human edits for voice
-3. **Restructuring** - Either party identifies flow problems; agent presents options, human chooses
-4. **Polishing** - Final pass for grammar and clarity
-
-**The collaboration pattern:** When the agent needs to make structural decisions (reordering, cutting, merging), present 2-3 options with trade-offs. Let the human choose. Do not make unilateral changes to structure or voice.
+1. **Plan vs Outcome Diff** - Compare original outline against what got written
+2. **Update Themes Ledger** - Add new framings to SERIES.md
+3. **Update Subsequent Outlines** - Revise planned articles based on learnings
+4. **Migrate Parking Lot Items** - Move cut ideas to appropriate future articles
 
 ---
 
-## Outline with Voice Notes
+## ARTICLE.md Sections
 
-<!--
-Agent: Create the initial outline with beats. Each beat should be specific enough
-to prompt 1-3 sentences of voice capture.
-Human: Add your voice notes as blockquotes (>) directly under each beat.
-Do not copy beats elsewhere - write inline where you see them.
+### Metadata (YAML frontmatter)
 
-Format:
-## Section Name
-### Beat: [specific point]
-> Your raw thoughts here. Stream of consciousness is fine.
-> Capture the feeling and insight, not just information.
--->
+- title: Working title
+- status: OUTLINING | DRAFTING | PUBLISHED
 
-(Agent creates outline; human adds voice notes inline as blockquotes)
+### Beat Outline
 
----
+Agent creates beats based on series outline. Human adds voice capture as blockquotes directly under each beat. Mark beats as done when incorporated into draft.
 
-## Current Draft
+### Draft
 
-<!--
-Agent: Assemble voice notes into flowing prose here.
-- Organize into paragraphs
-- Add transitions
-- Smooth phrasing
-- Mark uncertainties with [?] inline
-- Do NOT add new ideas
-- Do NOT remove ideas even if tangential
--->
+Agent assembles voice captures into prose. Human edits directly. Continuous iteration until published. No separate "final" section.
 
-(assembled draft goes here)
+### Parking Lot
+
+Ideas cut for flow. Note where they might fit (other articles, future series).
 
 ---
 
-## Open Questions
+## Collaboration Pattern
 
-<!--
-Track uncertainties here instead of a formal table.
-These are things to resolve with the human.
--->
-
-- 
-
----
-
-## Parking Lot
-
-<!--
-Good ideas that were cut for flow but might fit later articles.
-Include the original text and a note about where it might belong.
--->
-
-(cut ideas go here)
-
----
-
-## Agent Guidelines
-
-### When Outlining
-- Create beats specific enough to prompt focused voice capture
-- Expect the outline to evolve as voice notes reveal the actual shape
-
-### When Drafting
-- Preserve the human's word choices where possible
-- Add transitions, do not add arguments
-- Mark uncertainties with [?] inline rather than logging them formally
-
-### When Restructuring
-- Always present 2-3 options with trade-offs
-- Explain what each option gains and loses
-- Let the human choose - do not make unilateral structural decisions
-- Common restructures: reorder paragraphs, cut sections, merge ideas, move content earlier/later
-
-### When Polishing
-- Fix grammar and punctuation
-- Improve clarity where possible
-- Do NOT change voice or tone
-- Flag concerns for human decision rather than resolving them yourself
-
----
-
-## Revision History
-
-| Date | Change |
-|------|--------|
-| | |
+- Agent presents 2-3 options for structural decisions (reordering, cutting, merging)
+- Human chooses; agent does not make unilateral structural changes
+- Human edits draft directly for voice
+- Uncertainties marked inline with [?]
