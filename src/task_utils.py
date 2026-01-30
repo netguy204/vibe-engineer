@@ -428,11 +428,8 @@ def create_task_chunk(
                 f"Project directory '{project_ref}' not found or not accessible"
             )
 
-        # Build project artifact ID (short_name only, with ticket if provided)
-        if ticket_id:
-            project_artifact_id = f"{short_name}-{ticket_id}"
-        else:
-            project_artifact_id = short_name
+        # Build project artifact ID (short_name only, ticket stored in frontmatter)
+        project_artifact_id = short_name
 
         # Get current tips for this project's causal ordering
         try:

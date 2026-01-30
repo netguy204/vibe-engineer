@@ -17,7 +17,8 @@ class TestChunksClass:
 
         assert result_path.exists()
         assert result_path.is_dir()
-        assert result_path.name == "my_feature-VE-001"
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        assert result_path.name == "my_feature"
 
     def test_create_chunk_default_status_implementing(self, temp_project):
         """Default status is IMPLEMENTING when no status param provided."""
@@ -60,7 +61,8 @@ class TestChunksClass:
         assert chunk_mgr.num_chunks == 1
 
         # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
-        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
         assert chunk_mgr.num_chunks == 2
 
@@ -81,35 +83,39 @@ class TestListChunks:
         chunk_mgr.create_chunk("VE-001", "feature")
         result = chunk_mgr.list_chunks()
         assert len(result) == 1
-        assert result[0] == "feature-VE-001"
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        assert result[0] == "feature"
 
     def test_multiple_chunks_descending_order(self, temp_project):
         """Multiple chunks returned in causal order (newest first)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
-        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
-        chunk_mgr.update_status("second-VE-002", ChunkStatus.ACTIVE)
+        chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-003", "third")
         result = chunk_mgr.list_chunks()
         assert len(result) == 3
         # Newest first (each depends on previous via created_after)
-        assert result[0] == "third-VE-003"
-        assert result[1] == "second-VE-002"
-        assert result[2] == "first-VE-001"
+        assert result[0] == "third"
+        assert result[1] == "second"
+        assert result[2] == "first"
 
     def test_chunks_with_and_without_ticket_id(self, temp_project):
         """Chunks with different name formats all parsed correctly."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "with_ticket")
         # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
-        chunk_mgr.update_status("with_ticket-VE-001", ChunkStatus.ACTIVE)
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        chunk_mgr.update_status("with_ticket", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk(None, "without_ticket")
         result = chunk_mgr.list_chunks()
         assert len(result) == 2
+        # Both use short_name only for directory (ticket only in frontmatter)
         assert result[0] == "without_ticket"
-        assert result[1] == "with_ticket-VE-001"
+        assert result[1] == "with_ticket"
 
 
 class TestGetLatestChunk:
@@ -126,18 +132,20 @@ class TestGetLatestChunk:
         """Single chunk returns that chunk's name."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "feature")
-        assert chunk_mgr.get_latest_chunk() == "feature-VE-001"
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        assert chunk_mgr.get_latest_chunk() == "feature"
 
     def test_multiple_chunks_returns_highest(self, temp_project):
         """Multiple chunks returns latest chunk (newest in causal order)."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
-        chunk_mgr.update_status("first-VE-001", ChunkStatus.ACTIVE)
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
-        chunk_mgr.update_status("second-VE-002", ChunkStatus.ACTIVE)
+        chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-003", "third")
-        assert chunk_mgr.get_latest_chunk() == "third-VE-003"
+        assert chunk_mgr.get_latest_chunk() == "third"
 
 
 class TestGetCurrentChunk:
@@ -297,15 +305,16 @@ class TestChunkDirectoryInTemplates:
         assert "NNNN-name" not in plan_content
 
     def test_plan_md_contains_chunk_directory_with_ticket(self, temp_project):
-        """Rendered PLAN.md includes ticket ID in chunk directory reference."""
+        """Rendered PLAN.md uses short_name only in chunk directory reference (ticket in frontmatter only)."""
         chunk_mgr = Chunks(temp_project)
         result_path = chunk_mgr.create_chunk("VE-001", "feature")
 
         plan_path = result_path / "PLAN.md"
         plan_content = plan_path.read_text()
 
-        # Should contain the full chunk directory with ticket
-        assert "docs/chunks/feature-VE-001/GOAL.md" in plan_content
+        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
+        # Should contain the chunk directory without ticket suffix
+        assert "docs/chunks/feature/GOAL.md" in plan_content
         assert "NNNN-name" not in plan_content
 
 
@@ -727,6 +736,78 @@ code_references:
 
         frontmatter = chunk_mgr.parse_chunk_frontmatter("test_chunk")
         assert frontmatter is None
+
+
+class TestChunkNamingWithoutTicketSuffix:
+    """Tests for chunk naming that excludes ticket ID from directory name.
+
+    Chunk: docs/chunks/chunknaming_drop_ticket - Ticket ID only in frontmatter
+    """
+
+    def test_create_chunk_with_ticket_uses_short_name_only(self, temp_project):
+        """ve chunk create my_chunk PROJ-123 creates docs/chunks/my_chunk/ (not my_chunk-PROJ-123/)."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk("PROJ-123", "my_chunk")
+
+        assert result_path.exists()
+        assert result_path.is_dir()
+        # Directory should be short_name only, not short_name-ticket_id
+        assert result_path.name == "my_chunk"
+        # Verify the full path
+        expected_path = temp_project / "docs" / "chunks" / "my_chunk"
+        assert result_path == expected_path
+
+    def test_ticket_id_in_frontmatter_when_provided(self, temp_project):
+        """The ticket field in GOAL.md frontmatter is still populated with the ticket ID."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk("PROJ-123", "my_chunk")
+
+        goal_path = result_path / "GOAL.md"
+        content = goal_path.read_text()
+
+        # Ticket should be in frontmatter
+        assert "ticket: PROJ-123" in content
+
+    def test_find_duplicates_ignores_ticket_id(self, temp_project):
+        """find_duplicates() detects collision when creating my_chunk twice, ignoring ticket differences."""
+        chunk_mgr = Chunks(temp_project)
+
+        # Create first chunk with ticket PROJ-001
+        chunk_mgr.create_chunk("PROJ-001", "my_chunk")
+        chunk_mgr.update_status("my_chunk", ChunkStatus.ACTIVE)
+
+        # Attempting to create another chunk with same short_name but different ticket should be detected
+        duplicates = chunk_mgr.find_duplicates("my_chunk", "PROJ-002")
+        assert len(duplicates) == 1
+        assert duplicates[0] == "my_chunk"
+
+    def test_create_chunk_no_ticket_unchanged(self, temp_project):
+        """Creating chunk without ticket ID still works as before."""
+        chunk_mgr = Chunks(temp_project)
+        result_path = chunk_mgr.create_chunk(None, "my_feature")
+
+        assert result_path.exists()
+        assert result_path.name == "my_feature"
+
+    def test_resolve_chunk_id_with_existing_ticket_suffix(self, temp_project):
+        """Backward compat: existing chunks with ticket suffixes still resolve correctly."""
+        # Manually create a chunk with old naming format (ticket in directory name)
+        old_style_chunk = temp_project / "docs" / "chunks" / "old_feature-VE-001"
+        old_style_chunk.mkdir(parents=True)
+        goal_md = old_style_chunk / "GOAL.md"
+        goal_md.write_text("""---
+status: ACTIVE
+ticket: VE-001
+code_references: []
+---
+
+# Old Chunk
+""")
+        chunk_mgr = Chunks(temp_project)
+
+        # Should resolve by exact match
+        resolved = chunk_mgr.resolve_chunk_id("old_feature-VE-001")
+        assert resolved == "old_feature-VE-001"
 
 
 class TestChunkTemplateWithTaskContext:

@@ -754,6 +754,82 @@ class TestWorkUnitShow:
 
 
 
+# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
+class TestOrchUrl:
+    """Tests for ve orch url command."""
+
+    def test_url_prints_url_when_running(self, runner, tmp_path):
+        """When daemon is running, prints the URL."""
+        # Create port file to simulate running daemon
+        ve_dir = tmp_path / ".ve"
+        ve_dir.mkdir()
+        port_file = ve_dir / "orchestrator.port"
+        port_file.write_text("8080\n")
+
+        with patch("orchestrator.daemon.is_daemon_running") as mock_running:
+            mock_running.return_value = True
+
+            result = runner.invoke(
+                cli,
+                ["orch", "url", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "http://127.0.0.1:8080" in result.output
+
+    def test_url_error_when_not_running(self, runner, tmp_path):
+        """When daemon is not running, exits with error and helpful message."""
+        with patch("orchestrator.daemon.is_daemon_running") as mock_running:
+            mock_running.return_value = False
+
+            result = runner.invoke(
+                cli,
+                ["orch", "url", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not running" in result.output.lower()
+            assert "ve orch start" in result.output
+
+    def test_url_json_output(self, runner, tmp_path):
+        """When --json flag provided, outputs JSON with url key."""
+        # Create port file to simulate running daemon
+        ve_dir = tmp_path / ".ve"
+        ve_dir.mkdir()
+        port_file = ve_dir / "orchestrator.port"
+        port_file.write_text("9090\n")
+
+        with patch("orchestrator.daemon.is_daemon_running") as mock_running:
+            mock_running.return_value = True
+
+            result = runner.invoke(
+                cli,
+                ["orch", "url", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data["url"] == "http://127.0.0.1:9090"
+
+    def test_url_port_file_missing_when_running(self, runner, tmp_path):
+        """Edge case: daemon appears running but port file is missing."""
+        # Don't create port file - simulates corruption
+        ve_dir = tmp_path / ".ve"
+        ve_dir.mkdir()
+
+        with patch("orchestrator.daemon.is_daemon_running") as mock_running:
+            mock_running.return_value = True
+
+            result = runner.invoke(
+                cli,
+                ["orch", "url", "--project-dir", str(tmp_path)],
+            )
+
+            # Should fail gracefully
+            assert result.exit_code == 1
+            assert "port" in result.output.lower() or "not found" in result.output.lower()
+
+
 class TestOrchPsAttentionReason:
     """Tests for ve orch ps command with attention_reason display."""
 

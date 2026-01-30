@@ -17,7 +17,7 @@ code_references:
   - ref: src/cluster_analysis.py
     implements: "Module-level chunk backref for cluster size warnings"
   - ref: src/external_resolve.py
-    implements: "Module-level chunk backref for multi-artifact-type resolution"
+    implements: "Module-level chunk backrefs for multi-artifact-type resolution and enhanced output"
   - ref: src/orchestrator/agent.py
     implements: "Module-level chunk backrefs for question forwarding and sandbox enforcement"
   - ref: src/orchestrator/api.py

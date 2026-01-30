@@ -1,58 +1,17 @@
 ---
-status: ACTIVE
+status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/task_utils.py
-- src/ve.py
-- tests/test_task_chunk_create.py
-- tests/test_task_narrative_create.py
-- tests/test_task_investigation_create.py
-- tests/test_task_subsystem_discover.py
-code_references:
-  - ref: src/task_utils.py#parse_projects_option
-    implements: "Parse --projects CLI option into resolved project refs"
-  - ref: src/task_utils.py#create_task_chunk
-    implements: "Optional project filtering for task chunk creation"
-  - ref: src/task_utils.py#create_task_narrative
-    implements: "Optional project filtering for task narrative creation"
-  - ref: src/task_utils.py#create_task_investigation
-    implements: "Optional project filtering for task investigation creation"
-  - ref: src/task_utils.py#create_task_subsystem
-    implements: "Optional project filtering for task subsystem creation"
-  - ref: src/ve.py#create
-    implements: "--projects CLI option for ve chunk create"
-  - ref: src/ve.py#_start_task_chunk
-    implements: "Task directory chunk creation with selective project linking"
-  - ref: src/ve.py#create_narrative
-    implements: "--projects CLI option for ve narrative create"
-  - ref: src/ve.py#_start_task_narrative
-    implements: "Task directory narrative creation with selective project linking"
-  - ref: src/ve.py#create_investigation
-    implements: "--projects CLI option for ve investigation create"
-  - ref: src/ve.py#_create_task_investigation
-    implements: "Task directory investigation creation with selective project linking"
-  - ref: src/ve.py#discover
-    implements: "--projects CLI option for ve subsystem discover"
-  - ref: src/ve.py#_create_task_subsystem
-    implements: "Task directory subsystem creation with selective project linking"
-  - ref: tests/test_task_chunk_create.py#TestChunkCreateSelectiveProjects
-    implements: "Tests for selective project linking in chunk creation"
-  - ref: tests/test_task_narrative_create.py#TestNarrativeCreateSelectiveProjects
-    implements: "Tests for selective project linking in narrative creation"
-  - ref: tests/test_task_investigation_create.py#TestInvestigationCreateSelectiveProjects
-    implements: "Tests for selective project linking in investigation creation"
-  - ref: tests/test_task_subsystem_discover.py#TestSubsystemDiscoverSelectiveProjects
-    implements: "Tests for selective project linking in subsystem discovery"
+code_paths: []
+code_references: []
 narrative: null
-investigation: selective_artifact_linking
+investigation: null
 subsystems: []
-created_after:
-- friction_template_and_cli
-- orch_conflict_template_fix
-- orch_sandbox_enforcement
-- orch_blocked_lifecycle
+friction_entries: []
+bug_type: null
+created_after: ["chunklist_external_status", "orch_url_command"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -72,6 +31,13 @@ STATUS VALUES:
 - ACTIVE: This chunk accurately describes current or recently-merged work
 - SUPERSEDED: Another chunk has modified the code this chunk governed
 - HISTORICAL: Significant drift; kept for archaeology only
+
+FUTURE CHUNK APPROVAL REQUIREMENT:
+ALL FUTURE chunks require operator approval before committing or injecting.
+After refining this GOAL.md, you MUST present it to the operator and wait for
+explicit approval. Do NOT commit or inject until the operator approves.
+This applies whether triggered by "in the background", "create a future chunk",
+or any other mechanism that creates a FUTURE chunk.
 
 PARENT_CHUNK:
 - null for new work
@@ -127,6 +93,35 @@ SUBSYSTEMS:
 - When a chunk that implements a subsystem is completed, a reference should be added to
   that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
 
+FRICTION_ENTRIES:
+- Optional list of friction entries that this chunk addresses
+- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
+- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
+  - "full": This chunk fully resolves the friction entry
+  - "partial": This chunk partially addresses the friction entry
+- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
+- Example:
+  friction_entries:
+    - entry_id: F001
+      scope: full
+    - entry_id: F003
+      scope: partial
+- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
+- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
+
+BUG_TYPE:
+- Optional field for bug fix chunks that guides agent behavior at completion
+- Values: semantic | implementation | null (for non-bug chunks)
+  - "semantic": The bug revealed new understanding of intended behavior
+    - Code backreferences REQUIRED (the fix adds to code understanding)
+    - On completion, search for other chunks that may need updating
+    - Status → ACTIVE (the chunk asserts ongoing understanding)
+  - "implementation": The bug corrected known-wrong code
+    - Code backreferences MAY BE SKIPPED (they don't add semantic value)
+    - Focus purely on the fix
+    - Status → HISTORICAL (point-in-time correction, not an ongoing anchor)
+- Leave null for feature chunks and other non-bug work
+
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk
   should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
@@ -161,31 +156,14 @@ WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
 
 ## Minor Goal
 
-Add optional `--projects` flag to task artifact creation commands (`ve chunk create`, `ve investigation create`, `ve narrative create`, `ve subsystem create`) that filters which projects receive `external.yaml` references.
+Add instructions to the CLAUDE.md Jinja2 template that remind agents they should never manually create GOAL.md or PLAN.md files. Instead, they must use the appropriate artifact creation commands (`ve chunk create`, `/chunk-create`, etc.) to instantiate templates properly.
 
-This enables operators to scope artifacts to relevant projects at creation time, reducing noise in project chunk histories while maintaining backward compatibility (omitting the flag links to all projects as before).
-
-See investigation `docs/investigations/selective_artifact_linking/OVERVIEW.md` for full context, UX design exploration, and scenario pressure testing.
+This prevents agents from bypassing the template system and creating malformed artifacts missing required frontmatter or structure.
 
 ## Success Criteria
 
-- `ve chunk create foo --projects svc-a,svc-b` creates external.yaml only in specified projects
-- `ve chunk create foo` (no flag) links to all projects (backward compatible)
-- Flag accepts flexible input: full `org/repo` or just `repo` name
-- All four artifact types support the flag: chunk, investigation, narrative, subsystem
-- Help text documents the flag behavior
-- Tests cover selective linking, all-projects default, and invalid project handling
+1. `src/templates/claude/CLAUDE.md.jinja2` includes clear instruction that agents must NOT manually create GOAL.md or PLAN.md files
+2. Instruction specifies to use `ve chunk create` or `/chunk-create` instead
+3. Instruction applies to all artifact types (chunks, investigations, narratives, subsystems)
+4. Run `ve init` to regenerate CLAUDE.md and verify the new guidance appears
 
-## Relationship to Parent
-
-<!--
-DELETE THIS SECTION if parent_chunk is null.
-
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
-
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->

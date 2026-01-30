@@ -97,16 +97,14 @@ class Chunks:
 
         Args:
             short_name: The short name to check for collisions.
-            ticket_id: Optional ticket ID (included in short_name matching).
+            ticket_id: Optional ticket ID (kept for backward compatibility but
+                       not used - ticket_id no longer affects directory names).
 
         Returns:
             List of existing chunk directory names that would collide.
         """
-        # Build the target short_name (with optional ticket suffix)
-        if ticket_id:
-            target_short = f"{short_name}-{ticket_id}"
-        else:
-            target_short = short_name
+        # Match on short_name only - ticket_id is stored in frontmatter, not directory name
+        target_short = short_name
 
         duplicates = []
         for name in self.enumerate_chunks():
@@ -230,9 +228,10 @@ class Chunks:
             )
 
         # Check if target chunk is FUTURE
-        frontmatter = self.parse_chunk_frontmatter(chunk_name)
+        frontmatter, errors = self.parse_chunk_frontmatter_with_errors(chunk_name)
         if frontmatter is None:
-            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}'")
+            error_detail = "; ".join(errors) if errors else "unknown error"
+            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}': {error_detail}")
 
         if frontmatter.status != ChunkStatus.FUTURE:
             raise ValueError(
@@ -288,11 +287,8 @@ class Chunks:
         artifact_index = ArtifactIndex(self.project_dir)
         tips = artifact_index.find_tips(ArtifactType.CHUNK)
 
-        # Build directory name using short_name only (no sequence prefix)
-        if ticket_id:
-            chunk_path = self.chunk_dir / f"{short_name}-{ticket_id}"
-        else:
-            chunk_path = self.chunk_dir / short_name
+        # Build directory name using short_name only (ticket_id goes in frontmatter, not directory)
+        chunk_path = self.chunk_dir / short_name
         chunk = ActiveChunk(
             short_name=short_name,
             id=chunk_path.name,

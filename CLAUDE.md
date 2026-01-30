@@ -267,6 +267,34 @@ ve orch inject my_chunk
 
 **Important**: Always commit chunks before injecting them. The orchestrator works from the git state, not your working directory.
 
+### Batch Creating Multiple Chunks
+
+When creating multiple chunks at once (e.g., from a narrative's proposed_chunks), use batch creation:
+
+```bash
+# Create multiple FUTURE chunks in one command
+ve chunk create auth_login auth_logout auth_refresh --future
+
+# With a shared ticket ID
+ve chunk create auth_login auth_logout auth_refresh --future --ticket AUTH-123
+```
+
+**After batch creation, refine each goal in parallel** using sub-agents:
+
+```python
+# Example: spawn Task tool sub-agents to refine each chunk's goal concurrently
+# This maximizes efficiency when multiple chunks need goal refinement
+```
+
+**Workflow for batch creation:**
+
+1. **Batch create** all chunks: `ve chunk create chunk_a chunk_b chunk_c --future`
+2. **Parallel refinement**: Spawn sub-agents (Task tool) to refine each GOAL.md simultaneously
+3. **Present all goals** to the operator for review
+4. **After approval**: Commit all chunks and inject into orchestrator
+
+**Note on backward compatibility**: When exactly 2 arguments are provided and the second contains a dash (e.g., `ve chunk create my_feature VE-001`), the second argument is treated as a ticket ID (legacy single-chunk mode). For batch creation with 2 chunks, use `--future` flag.
+
 ### Re-injecting After Updates
 
 If you update a chunk's GOAL.md or PLAN.md after it's been injected, the orchestrator won't see your changes automatically. To update:
