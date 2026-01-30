@@ -36,7 +36,7 @@ code_references:
   - ref: src/templates/commands/chunk-complete.md.jinja2
     implements: "Chunk complete command with task context conditional block"
   - ref: src/templates/commands/narrative-create.md.jinja2
-    implements: "Narrative create command with task context conditional block"
+    implements: "Narrative create command template (no task context block)"
   - ref: src/templates/commands/subsystem-discover.md.jinja2
     implements: "Subsystem discover command with task context conditional block"
   - ref: src/templates/commands/investigation-create.md.jinja2

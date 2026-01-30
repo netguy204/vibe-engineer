@@ -40,6 +40,8 @@ from task_utils import (
     TaskCopyExternalError,
     parse_projects_option,
     load_task_config,
+    check_task_project_context,
+    TaskProjectContext,
 )
 from external_resolve import (
     resolve_artifact_task_directory,
@@ -90,6 +92,28 @@ def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list
             f"exceeds limit of 31 characters"
         ]
     return []
+
+
+# Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+def warn_task_project_context(context: TaskProjectContext | None, artifact_type: str) -> None:
+    """Emit a warning if running an artifact command from within a task's project.
+
+    This warning helps prevent the common mistake of creating local artifacts
+    when cross-repo artifacts were intended.
+
+    Args:
+        context: TaskProjectContext from check_task_project_context(), or None.
+        artifact_type: Human-readable name of the artifact type (e.g., "chunk", "narrative").
+    """
+    if context is None:
+        return
+
+    click.echo(
+        f"Warning: You are creating a local {artifact_type} in project '{context.project_ref}', "
+        f"which is part of a task. To create a cross-repo {artifact_type}, run this command from "
+        f"the task directory instead.",
+        err=True,
+    )
 
 
 @click.group()
@@ -218,6 +242,11 @@ def create(short_names, project_dir, yes, future, ticket, projects):
         if validation_errors:
             raise SystemExit(1)
         return
+
+    # Single-repo mode - check if we're in a project that's part of a task
+    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+    task_context = check_task_project_context(project_dir)
+    warn_task_project_context(task_context, "chunk")
 
     # Single-repo mode - create in docs/chunks/
     chunks_manager = Chunks(project_dir)
@@ -1122,6 +1151,11 @@ def create_narrative(short_name, project_dir, projects):
         _start_task_narrative(project_dir, short_name, projects)
         return
 
+    # Single-repo mode - check if we're in a project that's part of a task
+    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+    task_context = check_task_project_context(project_dir)
+    warn_task_project_context(task_context, "narrative")
+
     # Single-repo mode - create in docs/narratives/
     narratives = Narratives(project_dir)
 
@@ -1531,6 +1565,11 @@ def discover(shortname, project_dir, projects):
         _create_task_subsystem(project_dir, shortname, projects)
         return
 
+    # Single-repo mode - check if we're in a project that's part of a task
+    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+    task_context = check_task_project_context(project_dir)
+    warn_task_project_context(task_context, "subsystem")
+
     # Single-repo mode
     subsystems = Subsystems(project_dir)
 
@@ -1708,6 +1747,11 @@ def create_investigation(short_name, project_dir, projects):
     if is_task_directory(project_dir):
         _create_task_investigation(project_dir, short_name, projects)
         return
+
+    # Single-repo mode - check if we're in a project that's part of a task
+    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+    task_context = check_task_project_context(project_dir)
+    warn_task_project_context(task_context, "investigation")
 
     # Single-repo mode
     investigations = Investigations(project_dir)

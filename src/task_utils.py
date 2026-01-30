@@ -1136,6 +1136,74 @@ def find_task_directory(start_path: Path) -> Path | None:
     return None
 
 
+# Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
+@dataclass
+class TaskProjectContext:
+    """Context information when running from within a task's project.
+
+    Attributes:
+        task_dir: Path to the task directory containing .ve-task.yaml.
+        project_ref: The project reference in org/repo format.
+    """
+    task_dir: Path
+    project_ref: str
+
+
+def check_task_project_context(project_dir: Path) -> TaskProjectContext | None:
+    """Check if project_dir is within a project that's part of a task.
+
+    This function detects when artifact creation commands are being run from
+    inside a project directory that participates in a task (as opposed to
+    from the task directory itself or from a standalone project).
+
+    Args:
+        project_dir: The directory from which the command is being run.
+
+    Returns:
+        TaskProjectContext if project_dir is within a task's project,
+        None otherwise (either not in a task context, or at the task root).
+    """
+    project_dir = project_dir.resolve()
+
+    # Walk up looking for .ve-task.yaml
+    task_dir = find_task_directory(project_dir)
+    if task_dir is None:
+        # Not in any task context
+        return None
+
+    # Check if we're at the task root itself (not in a project)
+    if project_dir == task_dir:
+        # Running from task directory - this is correct behavior
+        return None
+
+    # We're in a subdirectory of a task - check if it's within a configured project
+    try:
+        config = load_task_config(task_dir)
+    except FileNotFoundError:
+        return None
+
+    # Check each project to see if project_dir is within it
+    for project_ref in config.projects:
+        try:
+            project_path = resolve_repo_directory(task_dir, project_ref)
+            project_resolved = project_path.resolve()
+
+            # Check if project_dir is the same as or within this project
+            try:
+                project_dir.relative_to(project_resolved)
+                # Found! project_dir is within this project
+                return TaskProjectContext(task_dir=task_dir, project_ref=project_ref)
+            except ValueError:
+                # Not within this project, try next
+                continue
+        except FileNotFoundError:
+            # Project directory doesn't exist, skip
+            continue
+
+    # Not within any configured project (could be in external repo or other directory)
+    return None
+
+
 def identify_source_project(task_dir: Path, artifact_path: Path, config: TaskConfig) -> str:
     """Determine which project (org/repo format) contains the artifact.
 
