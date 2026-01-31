@@ -1250,10 +1250,14 @@ depends_on:
             assert "chunk_a" in chunk_b_call["blocked_by"]
 
     def test_inject_explicit_deps_flag_set(self, runner, tmp_path):
-        """Work units with non-empty depends_on have explicit_deps=True."""
+        """Work units with explicit depends_on declaration have explicit_deps=True.
+
+        Both empty list [] and populated list have explicit_deps=True (agent knows deps).
+        Only null/omitted has explicit_deps=False (agent doesn't know deps).
+        """
         chunks_dir = tmp_path / "docs" / "chunks"
 
-        # chunk_a has no dependencies
+        # chunk_a has explicit empty depends_on (explicitly no deps)
         chunk_a_dir = chunks_dir / "chunk_a"
         chunk_a_dir.mkdir(parents=True)
         (chunk_a_dir / "GOAL.md").write_text(
@@ -1266,7 +1270,7 @@ depends_on: []
 """
         )
 
-        # chunk_b depends on chunk_a
+        # chunk_b depends on chunk_a (explicit deps)
         chunk_b_dir = chunks_dir / "chunk_b"
         chunk_b_dir.mkdir(parents=True)
         (chunk_b_dir / "GOAL.md").write_text(
@@ -1309,11 +1313,11 @@ depends_on:
             )
 
             assert result.exit_code == 0
-            # chunk_a has no depends_on, so explicit_deps should be False
+            # chunk_a has depends_on: [] (explicit empty list), so explicit_deps should be True
             chunk_a_call = next(c for c in inject_calls if c["chunk"] == "chunk_a")
-            assert chunk_a_call.get("explicit_deps", False) is False
+            assert chunk_a_call.get("explicit_deps") is True
 
-            # chunk_b has depends_on, so explicit_deps should be True
+            # chunk_b has depends_on with items, so explicit_deps should be True
             chunk_b_call = next(c for c in inject_calls if c["chunk"] == "chunk_b")
             assert chunk_b_call.get("explicit_deps") is True
 
@@ -1468,3 +1472,171 @@ depends_on: []
             data = json.loads(result.output)
             assert "results" in data
             assert len(data["results"]) == 2
+
+    def test_inject_empty_depends_on_sets_explicit_deps_true(self, runner, tmp_path):
+        """A chunk with depends_on: [] should have explicit_deps=True when injected.
+
+        The empty list means the agent explicitly declares no dependencies,
+        which is different from null/omitted (unknown dependencies).
+        """
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # Create chunk with explicit empty depends_on
+        chunk_dir = chunks_dir / "independent_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: []
+---
+
+# independent_chunk
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "independent_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert len(inject_calls) == 1
+
+            # Empty depends_on means explicit declaration of no deps
+            # So explicit_deps should be True
+            call = inject_calls[0]
+            assert call.get("explicit_deps") is True, (
+                f"Expected explicit_deps=True for depends_on: [], got {call}"
+            )
+
+    def test_inject_null_depends_on_sets_explicit_deps_false(self, runner, tmp_path):
+        """A chunk with depends_on: null should have explicit_deps=False.
+
+        Null means the agent doesn't know dependencies, so oracle should be consulted.
+        """
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # Create chunk with null depends_on
+        chunk_dir = chunks_dir / "unknown_deps_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: null
+---
+
+# unknown_deps_chunk
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "unknown_deps_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert len(inject_calls) == 1
+
+            # null depends_on means unknown deps - consult oracle
+            # So explicit_deps should be False
+            call = inject_calls[0]
+            assert call.get("explicit_deps", False) is False, (
+                f"Expected explicit_deps=False for depends_on: null, got {call}"
+            )
+
+    def test_inject_omitted_depends_on_sets_explicit_deps_false(self, runner, tmp_path):
+        """A chunk with no depends_on field should have explicit_deps=False.
+
+        Omitted field means the agent doesn't know dependencies (same as null).
+        """
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # Create chunk with omitted depends_on
+        chunk_dir = chunks_dir / "no_depends_field_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+---
+
+# no_depends_field_chunk
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "no_depends_field_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert len(inject_calls) == 1
+
+            # omitted depends_on means unknown deps - consult oracle
+            # So explicit_deps should be False
+            call = inject_calls[0]
+            assert call.get("explicit_deps", False) is False, (
+                f"Expected explicit_deps=False for omitted depends_on, got {call}"
+            )

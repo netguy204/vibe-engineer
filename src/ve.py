@@ -2799,7 +2799,7 @@ def work_unit_delete(chunk, json_output, project_dir):
 
 def topological_sort_chunks(
     chunks: list[str],
-    dependencies: dict[str, list[str]],
+    dependencies: dict[str, list[str] | None],
 ) -> list[str]:
     """Sort chunks by dependency order (dependencies first).
 
@@ -2807,7 +2807,7 @@ def topological_sort_chunks(
 
     Args:
         chunks: List of chunk names to sort
-        dependencies: Maps chunk name -> list of chunk names it depends on
+        dependencies: Maps chunk name -> list of chunk names it depends on (or None if unknown)
 
     Returns:
         Chunks in topological order (dependencies before dependents)
@@ -2819,9 +2819,10 @@ def topological_sort_chunks(
     in_degree: dict[str, int] = {chunk: 0 for chunk in chunks}
     batch_set = set(chunks)
 
-    # Only count dependencies that are in the batch
+    # Only count dependencies that are in the batch (treat None as empty list for sorting)
     for chunk in chunks:
-        for dep in dependencies.get(chunk, []):
+        deps = dependencies.get(chunk) or []
+        for dep in deps:
             if dep in batch_set:
                 in_degree[chunk] += 1
 
@@ -2837,7 +2838,8 @@ def topological_sort_chunks(
 
         # Reduce in-degree for chunks that depend on current
         for chunk in chunks:
-            if current in dependencies.get(chunk, []):
+            deps = dependencies.get(chunk) or []
+            if current in deps:
                 in_degree[chunk] -= 1
                 if in_degree[chunk] == 0:
                     queue.append(chunk)
@@ -2854,7 +2856,8 @@ def topological_sort_chunks(
             visited.add(current)
             cycle_parts.append(current)
             # Find next node in cycle
-            for dep in dependencies.get(current, []):
+            deps = dependencies.get(current) or []
+            for dep in deps:
                 if dep in remaining:
                     current = dep
                     break
@@ -2865,7 +2868,7 @@ def topological_sort_chunks(
     return result
 
 
-def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -> dict[str, list[str]]:
+def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -> dict[str, list[str] | None]:
     """Read depends_on from chunk frontmatter for all specified chunks.
 
     Args:
@@ -2873,19 +2876,26 @@ def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -
         chunk_names: List of chunk names to read
 
     Returns:
-        Dict mapping chunk name -> list of depends_on chunk names
+        Dict mapping chunk name -> list of depends_on chunk names, or None if unknown.
+
+        The distinction between None and [] is semantically significant:
+        - None: Dependencies unknown (consult oracle)
+        - []: Explicitly no dependencies (bypass oracle)
+        - ["chunk_a", ...]: Explicit dependencies (bypass oracle)
     """
     from chunks import Chunks
 
     chunks_manager = Chunks(project_dir)
-    dependencies: dict[str, list[str]] = {}
+    dependencies: dict[str, list[str] | None] = {}
 
     for chunk_name in chunk_names:
         frontmatter = chunks_manager.parse_chunk_frontmatter(chunk_name)
         if frontmatter is not None:
-            dependencies[chunk_name] = frontmatter.depends_on or []
+            # Preserve None vs [] distinction from frontmatter
+            dependencies[chunk_name] = frontmatter.depends_on
         else:
-            dependencies[chunk_name] = []
+            # No frontmatter means unknown dependencies
+            dependencies[chunk_name] = None
 
     return dependencies
 
@@ -2893,24 +2903,25 @@ def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -
 def validate_external_dependencies(
     client,
     batch_chunks: set[str],
-    dependencies: dict[str, list[str]],
+    dependencies: dict[str, list[str] | None],
 ) -> list[str]:
     """Validate that dependencies outside the batch exist as work units.
 
     Args:
         client: Orchestrator client for querying existing work units
         batch_chunks: Set of chunk names in the current batch
-        dependencies: Maps chunk name -> list of depends_on chunk names
+        dependencies: Maps chunk name -> list of depends_on chunk names (or None if unknown)
 
     Returns:
         List of error messages (empty if all external deps exist)
     """
-    # Collect all external dependencies
+    # Collect all external dependencies (skip None values - those have unknown deps)
     external_deps: set[str] = set()
     for chunk, deps in dependencies.items():
-        for dep in deps:
-            if dep not in batch_chunks:
-                external_deps.add(dep)
+        if deps is not None:
+            for dep in deps:
+                if dep not in batch_chunks:
+                    external_deps.add(dep)
 
     if not external_deps:
         return []
@@ -2926,8 +2937,8 @@ def validate_external_dependencies(
     errors: list[str] = []
     for dep in external_deps:
         if dep not in existing_chunks:
-            # Find which chunk(s) depend on this missing dep
-            dependents = [c for c, d in dependencies.items() if dep in d]
+            # Find which chunk(s) depend on this missing dep (skip None values)
+            dependents = [c for c, d in dependencies.items() if d is not None and dep in d]
             for dependent in dependents:
                 errors.append(
                     f"Chunk '{dependent}' depends on '{dep}' which is not in this batch "
@@ -2985,23 +2996,29 @@ def orch_inject(chunks, phase, priority, json_output, project_dir):
         # Inject in order
         results: list[dict] = []
         for chunk in sorted_chunks:
-            chunk_deps = dependencies.get(chunk, [])
+            deps = dependencies.get(chunk)
             body = {"chunk": chunk, "priority": priority}
             if phase:
                 body["phase"] = phase
 
-            # Set blocked_by and explicit_deps for chunks with dependencies
-            if chunk_deps:
-                body["blocked_by"] = chunk_deps
+            # Set blocked_by and explicit_deps based on depends_on value
+            # - None: Dependencies unknown (consult oracle) -> explicit_deps omitted/False
+            # - []: Explicitly no dependencies (bypass oracle) -> explicit_deps=True
+            # - ["chunk_a", ...]: Explicit dependencies -> explicit_deps=True, blocked_by set
+            if deps is not None:
+                # deps is a list (empty or non-empty) - explicit declaration
                 body["explicit_deps"] = True
+                if deps:
+                    body["blocked_by"] = deps
+            # else: deps is None - unknown, oracle will be consulted (no explicit_deps)
 
             result = client._request("POST", "/work-units/inject", json=body)
             results.append(result)
 
             if not json_output:
                 blocked_info = ""
-                if chunk_deps:
-                    blocked_info = f" blocked_by={chunk_deps}"
+                if deps:
+                    blocked_info = f" blocked_by={deps}"
                 priority_info = f" priority={result.get('priority', priority)}"
                 click.echo(
                     f"Injected: {result['chunk']} [{result['phase']}]{priority_info}{blocked_info}"

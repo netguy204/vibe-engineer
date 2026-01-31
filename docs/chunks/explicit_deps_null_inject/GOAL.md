@@ -1,9 +1,15 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths: []
-code_references: []
+code_references:
+  - ref: src/models.py#ChunkFrontmatter
+    implements: "depends_on field type changed to list[str] | None = None to preserve null vs empty distinction"
+  - ref: src/ve.py#read_chunk_dependencies
+    implements: "Returns None vs [] to signal unknown vs explicit-no-deps"
+  - ref: src/ve.py#orch_inject
+    implements: "Sets explicit_deps=True when depends_on is a list (even empty), omits for None"
 narrative: explicit_deps_null_semantics
 investigation: null
 subsystems: []
@@ -14,7 +20,6 @@ created_after:
 - orch_unblock_transition
 - chunklist_status_filter
 ---
-
 # Chunk Goal
 
 ## Minor Goal

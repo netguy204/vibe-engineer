@@ -1,177 +1,115 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The core insight is that YAML distinguishes between `null`, omitted fields, and empty lists, but Pydantic's default behavior collapses them. We need to:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Preserve the null vs empty distinction in the model layer**: Change `ChunkFrontmatter.depends_on` from `list[str] = []` to `list[str] | None = None`. This lets us distinguish between:
+   - `depends_on: null` or omitted → `None` (unknown deps)
+   - `depends_on: []` → empty list `[]` (explicitly no deps)
+   - `depends_on: ["chunk_a"]` → populated list (explicit deps)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Update the injection logic**: Modify `read_chunk_dependencies` and the injection path to check whether `depends_on` is `None` vs an empty list. Set `explicit_deps=True` when `depends_on` is a list (even if empty).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/explicit_deps_null_inject/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Write tests first**: Following TDD per docs/trunk/TESTING_PHILOSOPHY.md, write failing tests that verify the null vs empty distinction before implementing the fix.
+
+This approach minimizes code changes—the semantic distinction already exists in YAML; we just need to stop collapsing it.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (status: DOCUMENTED): This chunk IMPLEMENTS part of the orchestrator's dependency management logic. We're modifying how `explicit_deps` is determined at injection time.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for null vs empty distinction
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests that verify the semantic distinction between `depends_on: null`/omitted and `depends_on: []`. Following TDD, these tests will fail initially.
 
-Example:
+**Tests to add** (in `tests/test_orchestrator_cli.py`):
 
-### Step 1: Define the SegmentHeader struct
+1. `test_inject_empty_depends_on_sets_explicit_deps_true` - A chunk with `depends_on: []` should have `explicit_deps=True` when injected
+2. `test_inject_null_depends_on_sets_explicit_deps_false` - A chunk with `depends_on: null` should have `explicit_deps=False`
+3. `test_inject_omitted_depends_on_sets_explicit_deps_false` - A chunk with no `depends_on` field should have `explicit_deps=False`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_cli.py`
 
-Location: src/segment/format.rs
+### Step 2: Update ChunkFrontmatter model
 
-### Step 2: Implement header serialization
+Change the `depends_on` field from `list[str] = []` to `list[str] | None = None`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+This preserves the null vs empty distinction from YAML parsing:
+- `depends_on: null` → `None`
+- `depends_on:` (empty) → `None`
+- `depends_on: []` → `[]`
+- `depends_on: ["x"]` → `["x"]`
 
-### Step 3: ...
+Location: `src/models.py#ChunkFrontmatter`
 
----
+### Step 3: Update read_chunk_dependencies function
 
-**BACKREFERENCE COMMENTS**
+Modify `read_chunk_dependencies` in `src/ve.py` to return `None` values when `depends_on` is `None` in the frontmatter (rather than converting to `[]`).
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+The function signature changes to:
+```python
+def read_chunk_dependencies(project_dir, chunk_names) -> dict[str, list[str] | None]:
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This lets callers distinguish unknown deps (`None`) from explicit no-deps (`[]`).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/ve.py#read_chunk_dependencies`
 
-## Dependencies
+### Step 4: Update orch_inject command logic
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Modify the injection loop in `orch_inject` to set `explicit_deps=True` when:
+- `depends_on` is an empty list `[]` (explicit no deps), OR
+- `depends_on` is a non-empty list (explicit deps)
 
-If there are no dependencies, delete this section.
--->
+And set `explicit_deps=False` when:
+- `depends_on` is `None` (unknown deps, consult oracle)
+
+The key change is from:
+```python
+if chunk_deps:
+    body["blocked_by"] = chunk_deps
+    body["explicit_deps"] = True
+```
+
+To:
+```python
+deps = dependencies.get(chunk)
+if deps is not None:
+    # deps is a list (empty or non-empty) - explicit declaration
+    body["explicit_deps"] = True
+    if deps:
+        body["blocked_by"] = deps
+# else: deps is None - unknown, oracle will be consulted
+```
+
+Location: `src/ve.py#orch_inject`
+
+### Step 5: Verify tests pass
+
+Run the tests from Step 1 to verify they now pass with the implementation changes.
+
+```bash
+uv run pytest tests/test_orchestrator_cli.py -k "depends_on" -v
+```
+
+### Step 6: Update existing test expectations
+
+Review existing tests that create chunks with `depends_on: []` and ensure they expect `explicit_deps=True`. The test `test_inject_explicit_deps_flag_set` currently expects `explicit_deps=False` for chunks with `depends_on: []`—this needs updating.
+
+Location: `tests/test_orchestrator_cli.py#TestOrchInjectBatch`
+
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Backward compatibility**: Existing chunks with `depends_on: []` currently get `explicit_deps=False`. After this change, they'll get `explicit_deps=True`. This is the intended behavior change, but existing tests may need updating.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Template default**: The chunk GOAL.md template currently has `depends_on: []`. Should this stay as-is (meaning new chunks explicitly declare no deps by default) or change to omitted/null (meaning new chunks are unknown)? The template currently matches the desired "explicit no deps" semantic, so no change needed.
+
+3. **Pydantic default handling**: Verify that Pydantic's YAML parsing actually distinguishes `null` from `[]`. The `yaml.safe_load` call should handle this correctly, but needs verification in tests.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populate during implementation -->
