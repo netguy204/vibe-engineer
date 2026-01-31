@@ -151,7 +151,7 @@ class TestInvestigationDependsOnSemantics:
 
         result = render_template("investigation", "OVERVIEW.md.jinja2")
         # Should have the semantic distinction documented
-        assert "NULL VS EMPTY SEMANTICS" in result
+        assert "SEMANTICS (null vs empty distinction)" in result
 
     def test_documents_oracle_behavior(self):
         """Template documents how orchestrator oracle handles different depends_on values."""

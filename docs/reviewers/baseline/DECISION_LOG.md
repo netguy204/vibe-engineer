@@ -24,7 +24,7 @@ Decisions are appended below. Each entry follows this format:
 ### Decision Rationale
 {why this decision}
 
-### Example Quality
+### Example Quality (agent creates the template. operatator checks the box)
 - [ ] Good example (incorporate into future reviews)
 - [ ] Bad example (avoid this pattern)
 - [ ] Feedback: _______________
