@@ -1,7 +1,27 @@
 ---
-status: ONGOING
+status: SOLVED
 trigger: Quality slippage and loss of visibility as orchestrator usage increased
-proposed_chunks: []
+proposed_chunks:
+  - prompt: |
+      Create the docs/reviewers/ directory structure with baseline reviewer.
+      Copy from prototypes/reviewers/baseline/. Establish METADATA.yaml schema
+      with pydantic model. Baseline starts at observation trust level.
+    chunk_directory: reviewer_infrastructure
+    depends_on: []
+  - prompt: |
+      Create /chunk-review skill that implements the review process. Reads
+      reviewer config, gathers GOAL/PLAN/linked artifact context, produces
+      APPROVE/FEEDBACK/ESCALATE decision, logs to DECISION_LOG.md. Use
+      prototypes/chunk-review.md as design spec. MVP: final review only.
+    chunk_directory: chunk_review_skill
+    depends_on: [0]
+  - prompt: |
+      Add REVIEW phase to orchestrator between IMPLEMENT and COMPLETE.
+      On APPROVE proceed to COMPLETE. On FEEDBACK return to IMPLEMENT with
+      feedback in REVIEW_FEEDBACK.md. On ESCALATE set NEEDS_ATTENTION.
+      Track iteration count, auto-escalate after max_iterations.
+    chunk_directory: orch_review_phase
+    depends_on: [1]
 created_after: ["selective_artifact_linking"]
 ---
 
@@ -386,62 +406,81 @@ with confidence. Hypotheses may need more investigation or carry accepted risk.
 
 ## Proposed Chunks
 
-<!--
-GUIDANCE:
+The following chunks implement an MVP reviewer agent. The MVP requirements are:
+- Decision log that operator can add feedback to
+- Reviews before every complete (gate between implement and complete)
+- If review fails, chunk returns to implementing with reviewer feedback
+- Feedback provided to implementer on retry
 
-If investigation reveals work that should be done, list chunk prompts here.
-These are candidates for `/chunk-create` - the investigation equivalent of a
-narrative's chunks section.
+### 0. reviewer_infrastructure
 
-Not every investigation produces chunks:
-- SOLVED investigations may produce implementation chunks
-- NOTED investigations typically don't produce chunks (that's why they're noted, not acted on)
-- DEFERRED investigations may produce chunks later when revisited
+Create the `docs/reviewers/` directory structure with the baseline reviewer. This establishes the persistent reviewer entity model from the prototypes.
 
-Format:
-1. **[Chunk title]**: Brief description of the work
-   - Priority: High/Medium/Low
-   - Dependencies: What must happen first (if any)
-   - Notes: Context that would help when creating the chunk
+**Deliverables:**
+- `docs/reviewers/baseline/METADATA.yaml` - Trust level, domain scope, loop detection config
+- `docs/reviewers/baseline/PROMPT.md` - Core reviewer instructions (from prototype)
+- `docs/reviewers/baseline/DECISION_LOG.md` - Empty, ready for first review
 
-Example:
-1. **Add LRU eviction to ImageCache**: Implement configurable cache eviction to prevent
-   memory leaks during batch processing.
-   - Priority: High
-   - Dependencies: None
-   - Notes: See Exploration Log 2024-01-16 for implementation approach
+**Notes:** Copy from `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/`. The baseline reviewer starts at `observation` trust level. Validate YAML schema with pydantic model.
 
-Update the frontmatter `proposed_chunks` array as prompts are defined here.
-When a chunk is created via `/chunk-create`, update the array entry with the
-chunk_directory.
--->
+---
+
+### 1. chunk_review_skill
+
+Create the `/chunk-review` skill that implements the review process.
+
+**Deliverables:**
+- Skill definition in `src/templates/commands/chunk-review.jinja2`
+- Skill reads reviewer config from `docs/reviewers/{reviewer}/`
+- Context gathering: GOAL.md, PLAN.md, linked artifacts (narrative, investigation, subsystem)
+- Three decision types: APPROVE, FEEDBACK, ESCALATE
+- Appends structured entry to reviewer's DECISION_LOG.md
+- Output format suitable for orchestrator consumption (YAML decision block)
+
+**Notes:** Use the prototype at `prototypes/chunk-review.md` as the design spec. For MVP, only implement final review mode (not incremental). The skill should accept `--reviewer` flag (default: baseline).
+
+---
+
+### 2. orch_review_phase
+
+Add a REVIEW phase to the orchestrator scheduler between IMPLEMENT and COMPLETE.
+
+**Deliverables:**
+- New `WorkUnitPhase.REVIEW` enum value
+- Phase transitions: IMPLEMENT → REVIEW → COMPLETE
+- On APPROVE: proceed to COMPLETE
+- On FEEDBACK: return to IMPLEMENT with feedback in worktree context file
+- On ESCALATE: set NEEDS_ATTENTION with escalation details
+- Track iteration count in work unit metadata
+- Loop detection: auto-escalate after max_iterations (from reviewer config)
+
+**Context file for feedback loop:**
+When returning to IMPLEMENT after FEEDBACK, create `docs/chunks/{chunk}/REVIEW_FEEDBACK.md` containing:
+- Reviewer's feedback
+- Iteration count
+- Issues to address
+
+The implementer skill should read this file if it exists and incorporate feedback.
+
+**Notes:** The scheduler already has phase advancement logic. The review phase invokes the chunk-review skill in the worktree and parses its YAML output.
 
 ## Resolution Rationale
 
-<!--
-GUIDANCE:
+The investigation answered all success criteria:
 
-When marking this investigation as SOLVED, NOTED, or DEFERRED, explain why.
-This captures the decision-making for future reference.
+1. **Reviewer agent defined**: A persistent entity that reviews chunk implementations for alignment with documented intent, with decision logging and trust graduation.
 
-Questions to answer:
-- What evidence supports this resolution?
-- If SOLVED: What was the answer or solution?
-- If NOTED: Why is no action warranted? What would change this assessment?
-- If DEFERRED: What conditions would trigger revisiting? What's the cost of delay?
+2. **Goal-to-implementation verification is tractable**: The existing artifact structure (GOAL.md + linked narratives/investigations + subsystem invariants) provides the context a reviewer needs. Sub-agent test on real chunks demonstrated this works.
 
-Example (SOLVED):
-Root cause was identified (unbounded ImageCache) and fix is straightforward (LRU eviction).
-Chunk created to implement the fix. Investigation complete.
+3. **"Taste" partially encoded via subsystem invariants**: Full taste encoding remains elusive, but subsystem invariants capture the "coherence" aspect. Reviewer personality emerges from accumulated good/bad example marking.
 
-Example (NOTED):
-GraphQL migration would require significant investment (estimated 3-4 weeks) with
-marginal benefits for our use case. Our REST API adequately serves current needs.
-Would revisit if: (1) we add mobile clients needing flexible queries, or
-(2) API versioning becomes unmanageable.
+4. **Quality gate integration designed**: REVIEW phase between IMPLEMENT and COMPLETE, with FEEDBACK → IMPLEMENT loop and automatic escalation on convergence failure.
 
-Example (DEFERRED):
-Investigation blocked pending vendor response on their API rate limits. Cannot
-determine feasibility of proposed integration without this information.
-Expected response by 2024-02-01; will revisit then.
--->
+5. **Prototype specified**: Complete prototype at `prototypes/chunk-review.md` with reviewer directory structure at `prototypes/reviewers/`.
+
+Three chunks proposed to implement the MVP:
+- `reviewer_infrastructure`: Establish docs/reviewers/ structure
+- `chunk_review_skill`: The review skill itself
+- `orch_review_phase`: Orchestrator integration
+
+The MVP focuses on the mandatory final review gate. Incremental review (`/request-review`) and trust graduation can be added later as the system is used and calibrated.
