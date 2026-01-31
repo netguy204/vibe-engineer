@@ -16,7 +16,7 @@ search for it - run it directly via Bash.
 
 ## Instructions
 
-1. Determine the currently active chunk by running `ve chunk list --latest`. We
+1. Determine the currently active chunk by running `ve chunk list --current`. We
    will refer to the directory returned by this command below as <chunk
    directory>
 

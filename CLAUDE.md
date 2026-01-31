@@ -21,7 +21,7 @@ Work is organized into "chunks" - discrete units of implementation stored in `do
 - **GOAL.md** - What this chunk accomplishes and its success criteria
 - **PLAN.md** - Technical breakdown of how the chunk will be implemented
 
-To understand recent work, use `ve chunk list --latest` to find the most recently created chunk.
+To understand recent work, use `ve chunk list --current` to find the currently IMPLEMENTING chunk, or `ve chunk list --recent` to see the 10 most recently completed chunks.
 
 ### Chunk Lifecycle
 
@@ -72,7 +72,7 @@ See: `docs/trunk/ARTIFACTS.md#friction-log`
 
 Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
 
-See: `docs/trunk/ARTIFACTS.md#external-artifacts`
+See: `docs/trunk/EXTERNAL.md`
 
 ## Orchestrator (`ve orch`)
 
