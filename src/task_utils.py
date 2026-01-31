@@ -221,6 +221,7 @@ def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     )
 
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Convenience wrapper using is_external_artifact for chunks
 def is_external_chunk(chunk_path: Path) -> bool:
     """Detect if chunk_path is an external chunk reference.
 
@@ -368,6 +369,9 @@ class TaskChunkError(Exception):
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Orchestrator for multi-repo chunk creation
+# Chunk: docs/chunks/chunknaming_drop_ticket - Task context chunk creation without ticket in directory name
+# Chunk: docs/chunks/coderef_format_prompting - Pass projects to chunk template in task context
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format for dependents
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -481,6 +485,7 @@ def create_task_chunk(
 
 
 # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to handle ExternalArtifactRef objects
 def list_task_chunks(task_dir: Path) -> list[dict]:
     """List chunks from external repo with their dependents.
 

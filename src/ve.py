@@ -79,6 +79,7 @@ def validate_ticket_id(ticket_id: str) -> list[str]:
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
 
 
+# Chunk: docs/chunks/chunknaming_drop_ticket - Validation simplified to check only short_name length
 def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list[str]:
     """Validate the chunk directory name length.
 
@@ -291,6 +292,7 @@ def create(short_names, project_dir, yes, future, ticket, projects):
         click.echo(f"Error ({name}): {error}", err=True)
 
     # Check cluster size warnings (once at end, for all created chunks)
+    # Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size warning after chunk creation
     if created_paths:
         prefixes_seen = set()
         for chunk_path in created_paths:
@@ -462,6 +464,8 @@ def _parse_status_filters(
 # Chunk: docs/chunks/chunk_list_command-ve-002 - CLI command ve chunk list with --latest, --last-active, and --project-dir options
 # Chunk: docs/chunks/chunk_list_flags - CLI command with renamed --current flag and new --recent flag
 # Chunk: docs/chunks/chunk_last_active - CLI handler with --last-active flag and mutual exclusivity check
+# Chunk: docs/chunks/chunklist_status_filter - Status filter parsing and handling
+# Chunk: docs/chunks/chunklist_external_status - External chunk status display in list output
 def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
     """List all chunks.
 
@@ -969,6 +973,7 @@ def status(chunk_id, new_status, project_dir):
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/chunk_overlap_command - CLI command for finding overlapping chunks
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1020,6 +1025,7 @@ def overlap(chunk_id, project_dir):
             click.echo(f"docs/chunks/{name}")
 
 
+# Chunk: docs/chunks/cluster_prefix_suggest - CLI command for prefix suggestion
 @chunk.command("suggest-prefix")
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1162,6 +1168,7 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
 
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/chunk_validate - CLI command for chunk validation
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1226,6 +1233,7 @@ def validate(chunk_id, project_dir, injectable):
     click.echo(success_message)
 
 
+# Chunk: docs/chunks/cluster_rename - CLI command for batch chunk renaming
 @chunk.command("cluster-rename")
 @click.argument("old_prefix")
 @click.argument("new_prefix")
@@ -1288,6 +1296,7 @@ def cluster_rename_cmd(old_prefix, new_prefix, execute, project_dir):
         click.echo("Run with --execute to apply these changes.")
 
 
+# Chunk: docs/chunks/cluster_list_command - CLI command for cluster analysis
 @chunk.command("cluster-list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--suggest-merges", is_flag=True, help="Suggest singleton merges based on semantic similarity")

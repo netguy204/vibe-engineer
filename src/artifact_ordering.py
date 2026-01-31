@@ -72,6 +72,7 @@ def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
 
 
 # Chunk: docs/chunks/artifact_index_no_git - Directory enumeration for staleness detection without git
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Updated to use is_external_artifact from external_refs
 def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
     """Enumerate artifact directory names.
 
