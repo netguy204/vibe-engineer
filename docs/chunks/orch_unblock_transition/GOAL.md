@@ -8,7 +8,7 @@ narrative: null
 investigation: null
 subsystems: []
 friction_entries:
-  - entry_id: "Over-eager conflict oracle causes unnecessary blocking"
+  - entry_id: F001
     scope: full
 created_after: ["artifact_copy_backref", "friction_claude_docs", "friction_template_and_cli", "orch_conflict_template_fix", "orch_sandbox_enforcement", "orch_blocked_lifecycle"]
 ---
