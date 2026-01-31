@@ -3,27 +3,28 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/ve.py
-  - src/models.py
-  - src/chunks.py
-  - src/orchestrator/
+  - tests/
 code_references:
-  - ref: src/chunks.py
-    implements: "Module-level chunk backrefs for symbolic refs, narrative consolidation, and cluster prefix"
-  - ref: src/models.py
-    implements: "Module-level chunk backrefs for symbolic refs, bug types, and friction models"
-  - ref: src/artifact_ordering.py
-    implements: "Module-level chunk backrefs for status-aware ordering and external chunk causal support"
-  - ref: src/cluster_analysis.py
-    implements: "Module-level chunk backref for cluster size warnings"
-  - ref: src/external_resolve.py
-    implements: "Module-level chunk backrefs for multi-artifact-type resolution and enhanced output"
-  - ref: src/orchestrator/agent.py
-    implements: "Module-level chunk backrefs for question forwarding and sandbox enforcement"
-  - ref: src/orchestrator/api.py
-    implements: "Module-level chunk backrefs for dashboard and conflict oracle"
-  - ref: src/orchestrator/models.py
-    implements: "Module-level chunk backref for attention queue models"
+  - ref: tests/test_symbols.py
+    implements: "Chunk backref for symbolic_code_refs - Symbol extraction tests"
+  - ref: tests/test_narrative_consolidation.py
+    implements: "Chunk backref for narrative_consolidation - Consolidation tests"
+  - ref: tests/test_chunk_suggest_prefix.py
+    implements: "Chunk backref for cluster_prefix_suggest - TF-IDF prefix tests"
+  - ref: tests/test_artifact_ordering.py
+    implements: "Chunk backref for ordering_active_only - Status-aware tip filtering tests"
+  - ref: tests/test_external_resolve.py
+    implements: "Chunk backref for external_resolve_all_types - Multi-artifact-type resolution tests"
+  - ref: tests/test_orchestrator_agent.py
+    implements: "Chunk backrefs for orch_question_forward and orch_sandbox_enforcement - Agent tests"
+  - ref: tests/test_orchestrator_dashboard.py
+    implements: "Chunk backref for orch_dashboard - Dashboard integration tests"
+  - ref: tests/test_orchestrator_oracle.py
+    implements: "Chunk backref for orch_conflict_oracle - Conflict oracle tests"
+  - ref: tests/test_orchestrator_attention.py
+    implements: "Chunk backref for orch_attention_queue - Attention queue tests"
+  - ref: tests/test_orchestrator_api.py
+    implements: "Chunk backref for orch_attention_queue - Attention queue API tests"
 narrative: null
 investigation: null
 subsystems:

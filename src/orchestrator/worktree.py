@@ -1,5 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_task_worktrees - Task context multi-repo worktree support
 """Git worktree manager for isolated chunk execution.
 
 Provides worktree lifecycle management for parallel agent execution.
@@ -13,7 +12,10 @@ Supports two modes:
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
+
+if TYPE_CHECKING:
+    from orchestrator.models import TaskContextInfo
 
 
 class WorktreeError(Exception):
@@ -29,18 +31,36 @@ class WorktreeManager:
     on branches named orch/<chunk>. Branches are created from the
     base branch (the branch active when the manager was initialized),
     and completed work is merged back to that base branch.
+
+    In task context mode (when task_info is provided):
+    - Uses resolve_affected_repos() to determine which project repos
+      to create worktrees for based on the chunk's dependents field
+    - Creates worktrees under .ve/chunks/<chunk>/work/<repo-name>/
     """
 
-    def __init__(self, project_dir: Path, base_branch: Optional[str] = None):
+    def __init__(
+        self,
+        project_dir: Path,
+        base_branch: Optional[str] = None,
+        task_info: Optional["TaskContextInfo"] = None,
+    ):
         """Initialize the worktree manager.
 
         Args:
-            project_dir: The root project directory (where .git lives)
+            project_dir: The root project directory (where .git lives),
+                         or task directory in task context mode
             base_branch: Branch to use as base for worktree branches.
-                         If None, uses the current branch.
+                         If None, uses the current branch (single-repo mode only).
+            task_info: Task context information (None for single-repo mode)
         """
         self.project_dir = project_dir.resolve()
-        self._base_branch = base_branch or self._get_current_branch()
+        self.task_info = task_info
+
+        # In task context mode, base_branch may be None (determined per-repo)
+        if task_info and task_info.is_task_context:
+            self._base_branch = base_branch  # Can be None in task context
+        else:
+            self._base_branch = base_branch or self._get_current_branch()
 
     def _get_current_branch(self) -> str:
         """Get the current git branch name.
@@ -266,13 +286,14 @@ class WorktreeManager:
     ) -> Path:
         """Create a git worktree for a chunk.
 
-        In single-repo mode (repo_paths=None):
+        In single-repo mode (repo_paths=None and no task_info):
             Creates a branch orch/<chunk> from the base branch if it doesn't exist,
             then creates a worktree at .ve/chunks/<chunk>/worktree/.
 
-        In task context mode (repo_paths provided):
+        In task context mode (repo_paths provided or task_info.is_task_context):
             Creates worktrees for each repo under .ve/chunks/<chunk>/work/<repo-name>/.
             Each repo gets its own orch/<chunk> branch.
+            If repo_paths not provided, uses resolve_affected_repos() to determine them.
 
         Args:
             chunk: Chunk name
@@ -288,8 +309,20 @@ class WorktreeManager:
         log_path = self.get_log_path(chunk)
         log_path.mkdir(parents=True, exist_ok=True)
 
+        # Determine if we should use task context mode
         if repo_paths is not None:
+            # Explicit repo_paths provided
             return self._create_task_context_worktrees(chunk, repo_paths)
+        elif self.task_info and self.task_info.is_task_context:
+            # Task context mode - resolve affected repos from chunk dependents
+            from orchestrator.models import resolve_affected_repos
+            affected_repos = resolve_affected_repos(self.task_info, chunk)
+            if affected_repos:
+                return self._create_task_context_worktrees(chunk, affected_repos)
+            else:
+                raise WorktreeError(
+                    f"No accessible repositories found for chunk {chunk} in task context"
+                )
         else:
             return self._create_single_repo_worktree(chunk)
 

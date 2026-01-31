@@ -1,7 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_scheduling - Scheduler tests
-# Chunk: docs/chunks/orch_conflict_oracle - Conflict integration tests
-# Chunk: docs/chunks/orch_attention_queue - Answer injection tests
 """Tests for the orchestrator scheduler."""
 
 import asyncio

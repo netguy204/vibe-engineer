@@ -27,6 +27,7 @@ from orchestrator.models import (
     AgentResult,
     ConflictVerdict,
     OrchestratorConfig,
+    TaskContextInfo,
     WorkUnit,
     WorkUnitPhase,
     WorkUnitStatus,
@@ -924,14 +925,16 @@ def create_scheduler(
     project_dir: Path,
     config: Optional[OrchestratorConfig] = None,
     base_branch: Optional[str] = None,
+    task_info: Optional[TaskContextInfo] = None,
 ) -> Scheduler:
     """Create a configured scheduler instance.
 
     Args:
         store: State store
-        project_dir: Project directory
+        project_dir: Project directory (or task directory in task context)
         config: Optional config (uses defaults if not provided)
         base_branch: Git branch to use as base for worktrees (uses current if None)
+        task_info: Task context information (None for single-repo mode)
 
     Returns:
         Configured Scheduler instance
@@ -939,7 +942,12 @@ def create_scheduler(
     if config is None:
         config = OrchestratorConfig()
 
-    worktree_manager = WorktreeManager(project_dir, base_branch=base_branch)
+    # Pass task_info to WorktreeManager for multi-repo support
+    worktree_manager = WorktreeManager(
+        project_dir,
+        base_branch=base_branch,
+        task_info=task_info,
+    )
     agent_runner = AgentRunner(project_dir)
 
     return Scheduler(

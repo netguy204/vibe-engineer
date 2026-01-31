@@ -20,7 +20,12 @@ from typing import Optional, Tuple
 
 import uvicorn
 
-from orchestrator.models import OrchestratorConfig, OrchestratorState
+from orchestrator.models import (
+    OrchestratorConfig,
+    OrchestratorState,
+    TaskContextInfo,
+    detect_task_context,
+)
 from orchestrator.state import StateStore, get_default_db_path
 
 
@@ -165,7 +170,6 @@ def is_daemon_running(project_dir: Path) -> bool:
     return is_process_running(pid)
 
 
-# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
 def get_daemon_url(project_dir: Path, host: str = "127.0.0.1") -> Optional[str]:
     """Get the daemon URL for a project.
 
@@ -337,8 +341,12 @@ def _daemonize() -> None:
 def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> Tuple[int, int]:
     """Start the orchestrator daemon.
 
+    Detects task context (.ve-task.yaml) and configures the daemon accordingly:
+    - Task context: .ve/ at task directory level, chunks from external repo
+    - Single-repo: .ve/ at project level, chunks from docs/chunks/
+
     Args:
-        project_dir: The project directory
+        project_dir: The project directory (or task directory in task context)
         port: TCP port for dashboard (0 = auto-select)
         host: Host to bind TCP server to
 
@@ -351,16 +359,20 @@ def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> T
     # Resolve to absolute path before forking (daemon changes cwd to /)
     project_dir = project_dir.resolve()
 
-    # Check if already running
-    if is_daemon_running(project_dir):
-        pid = read_pid_file(get_pid_path(project_dir))
+    # Detect task context to determine .ve/ location
+    task_info = detect_task_context(project_dir)
+    root_dir = task_info.root_dir  # Use task_dir or project_dir for .ve/
+
+    # Check if already running (check at root_dir level)
+    if is_daemon_running(root_dir):
+        pid = read_pid_file(get_pid_path(root_dir))
         raise DaemonError(f"Daemon already running with PID {pid}")
 
-    # Get paths (all absolute since project_dir is resolved)
-    pid_path = get_pid_path(project_dir)
-    socket_path = get_socket_path(project_dir)
-    log_path = get_log_path(project_dir)
-    port_path = get_port_path(project_dir)
+    # Get paths (all absolute since root_dir is resolved)
+    pid_path = get_pid_path(root_dir)
+    socket_path = get_socket_path(root_dir)
+    log_path = get_log_path(root_dir)
+    port_path = get_port_path(root_dir)
 
     # Ensure .ve directory exists
     pid_path.parent.mkdir(parents=True, exist_ok=True)
@@ -386,8 +398,8 @@ def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> T
                 break
             time.sleep(0.1)
 
-        # Verify daemon started
-        if not is_daemon_running(project_dir):
+        # Verify daemon started (check at root_dir level)
+        if not is_daemon_running(root_dir):
             raise DaemonError("Daemon failed to start - check logs")
 
         # Read the actual port from the port file
@@ -429,15 +441,32 @@ def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> T
         signal.signal(signal.SIGTERM, handle_term)
         signal.signal(signal.SIGINT, handle_term)
 
-        # Initialize state store
-        db_path = get_default_db_path(project_dir)
+        # Initialize state store at root_dir level
+        db_path = get_default_db_path(root_dir)
         store = StateStore(db_path)
         store.initialize()
 
-        # Capture base branch at startup
-        base_branch = _get_current_branch(project_dir)
-        store.set_config("base_branch", base_branch)
-        logger.info(f"Daemon started on branch: {base_branch}")
+        # Store task context info in config table for scheduler access
+        if task_info.is_task_context:
+            store.set_config("is_task_context", "true")
+            if task_info.external_repo:
+                store.set_config("external_repo", task_info.external_repo)
+            logger.info(f"Daemon started in task context mode at {root_dir}")
+        else:
+            store.set_config("is_task_context", "false")
+
+        # Capture base branch at startup (only for single-repo mode)
+        # In task context, each project repo may have a different base branch
+        base_branch = None
+        if not task_info.is_task_context:
+            try:
+                base_branch = _get_current_branch(project_dir)
+                store.set_config("base_branch", base_branch)
+                logger.info(f"Daemon started on branch: {base_branch}")
+            except DaemonError as e:
+                logger.warning(f"Could not determine base branch: {e}")
+        else:
+            logger.info("Task context mode - base branches determined per-repo during worktree creation")
 
         # Load config from database or use defaults
         orch_config = _load_config(store)
@@ -445,16 +474,17 @@ def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> T
         # Import and create the API app
         from orchestrator.api import create_app
 
-        app = create_app(project_dir)
+        app = create_app(root_dir)
 
-        # Run the server with scheduler
+        # Run the server with scheduler (pass task_info for multi-repo support)
         asyncio.run(_run_daemon_async(
             app=app,
             socket_path=socket_path,
             store=store,
-            project_dir=project_dir,
+            project_dir=root_dir,
             config=orch_config,
             base_branch=base_branch,
+            task_info=task_info,
             port=port,
             host=host,
             port_path=port_path,
@@ -542,7 +572,8 @@ async def _run_daemon_async(
     store: StateStore,
     project_dir: Path,
     config: OrchestratorConfig,
-    base_branch: str,
+    base_branch: Optional[str],
+    task_info: Optional[TaskContextInfo] = None,
     port: int = 0,
     host: str = "127.0.0.1",
     port_path: Optional[Path] = None,
@@ -556,17 +587,18 @@ async def _run_daemon_async(
         app: Starlette application
         socket_path: Unix socket path
         store: State store
-        project_dir: Project directory
+        project_dir: Project directory (or task directory in task context)
         config: Orchestrator config
-        base_branch: Git branch to use as base for worktrees
+        base_branch: Git branch to use as base for worktrees (None in task context)
+        task_info: Task context information (None for single-repo mode)
         port: TCP port for dashboard (0 = auto-select)
         host: Host to bind TCP server to
         port_path: Path to write the actual port for parent process communication
     """
     from orchestrator.scheduler import create_scheduler
 
-    # Create scheduler with base branch
-    scheduler = create_scheduler(store, project_dir, config, base_branch)
+    # Create scheduler with base branch and task context
+    scheduler = create_scheduler(store, project_dir, config, base_branch, task_info)
 
     # Resolve port if auto-selecting
     actual_port = port if port != 0 else find_available_port(host)
