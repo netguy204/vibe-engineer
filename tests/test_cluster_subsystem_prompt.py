@@ -6,7 +6,7 @@
 import pathlib
 import pytest
 
-from conftest import make_ve_initialized_git_repo, setup_task_directory
+from conftest import make_ve_initialized_git_repo
 
 
 class TestClusterSizeWarning:
@@ -227,22 +227,16 @@ class TestFormatClusterWarning:
         assert _ordinal(101) == "101st"
 
 
-@pytest.mark.skip(reason="Cluster warnings not wired into CLI chunk create - feature designed but not connected")
 class TestCLICreateEmitsWarning:
-    """Tests for ve chunk create emitting cluster warnings.
-
-    Note: The check_cluster_size() and format_cluster_warning() functions exist
-    in cluster_analysis.py but were never wired into the CLI's chunk create command.
-    These tests are for planned functionality that doesn't exist yet.
-    """
+    """Tests for ve chunk create emitting cluster warnings."""
 
     def test_create_emits_warning_at_threshold(self, tmp_path, runner):
         """ve chunk create shows warning when threshold exceeded."""
         from chunks import Chunks
         from ve import cli
 
-        task_dir, external_path, _ = setup_task_directory(tmp_path)
-        chunks = Chunks(external_path)
+        make_ve_initialized_git_repo(tmp_path)
+        chunks = Chunks(tmp_path)
 
         # Create 4 existing chunks with prefix "auth" (all as FUTURE to avoid guard)
         for name in ["auth_login", "auth_logout", "auth_refresh", "auth_verify"]:
@@ -250,7 +244,7 @@ class TestCLICreateEmitsWarning:
 
         # Create 5th "auth" chunk - should show warning
         result = runner.invoke(
-            cli, ["chunk", "create", "auth_reset", "--project-dir", str(task_dir)]
+            cli, ["chunk", "create", "auth_reset", "--project-dir", str(tmp_path)]
         )
 
         assert result.exit_code == 0
@@ -263,8 +257,8 @@ class TestCLICreateEmitsWarning:
         from chunks import Chunks
         from ve import cli
 
-        task_dir, external_path, _ = setup_task_directory(tmp_path)
-        chunks = Chunks(external_path)
+        make_ve_initialized_git_repo(tmp_path)
+        chunks = Chunks(tmp_path)
 
         # Create 3 existing chunks with prefix "auth" (all as FUTURE to avoid guard)
         for name in ["auth_login", "auth_logout", "auth_refresh"]:
@@ -272,7 +266,7 @@ class TestCLICreateEmitsWarning:
 
         # Create 4th "auth" chunk - should NOT show warning
         result = runner.invoke(
-            cli, ["chunk", "create", "auth_verify", "--project-dir", str(task_dir)]
+            cli, ["chunk", "create", "auth_verify", "--project-dir", str(tmp_path)]
         )
 
         assert result.exit_code == 0
@@ -285,9 +279,9 @@ class TestCLICreateEmitsWarning:
         from subsystems import Subsystems
         from ve import cli
 
-        task_dir, external_path, _ = setup_task_directory(tmp_path)
-        chunks = Chunks(external_path)
-        subsystems = Subsystems(external_path)
+        make_ve_initialized_git_repo(tmp_path)
+        chunks = Chunks(tmp_path)
+        subsystems = Subsystems(tmp_path)
 
         # Create subsystem for "auth"
         subsystems.create_subsystem("auth")
@@ -298,7 +292,7 @@ class TestCLICreateEmitsWarning:
 
         # Create 5th "auth" chunk - should NOT show warning (subsystem exists)
         result = runner.invoke(
-            cli, ["chunk", "create", "auth_reset", "--project-dir", str(task_dir)]
+            cli, ["chunk", "create", "auth_reset", "--project-dir", str(tmp_path)]
         )
 
         assert result.exit_code == 0
@@ -310,8 +304,8 @@ class TestCLICreateEmitsWarning:
         from chunks import Chunks
         from ve import cli
 
-        task_dir, external_path, _ = setup_task_directory(tmp_path)
-        chunks = Chunks(external_path)
+        make_ve_initialized_git_repo(tmp_path)
+        chunks = Chunks(tmp_path)
 
         # Create 4 existing chunks with prefix "auth"
         for name in ["auth_login", "auth_logout", "auth_refresh", "auth_verify"]:
@@ -319,7 +313,7 @@ class TestCLICreateEmitsWarning:
 
         # Create 5th "auth" chunk with --future flag
         result = runner.invoke(
-            cli, ["chunk", "create", "auth_reset", "--future", "--project-dir", str(task_dir)]
+            cli, ["chunk", "create", "auth_reset", "--future", "--project-dir", str(tmp_path)]
         )
 
         assert result.exit_code == 0

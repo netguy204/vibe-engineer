@@ -47,9 +47,19 @@ The `::` separator indicates nesting (class::method, outer::inner::method).
    - Search the codebase for code semantically capturing the original intent
    - Examine later chunks and git history to understand changes
 
-4. **Clean up stale chunk backreferences:** If you encounter `# Chunk:` comments in the
-   source code, remove them. Chunks are archived after completion and these references
-   are no longer useful. Subsystem backreferences (`# Subsystem:`) should be preserved.
+4. **Ensure bidirectional links:** Code and chunks should reference each other:
+   - The chunk's GOAL.md `code_references` field points to the code (maintained in steps above)
+   - The code should have `# Chunk:` backreference comments pointing to the chunk
+
+   For each code location in `code_references`, verify a backreference comment exists near
+   the referenced symbol. If missing, add one in the format:
+   ```
+   # Chunk: docs/chunks/<chunk_name> - <brief description of what this implements>
+   ```
+
+   Place backreferences at the module level for module references, or immediately above
+   the class/function definition for symbol references. Subsystem backreferences
+   (`# Subsystem:`) should also be preserved.
 
 5. If all referenced symbols either still exist or can be updated unambiguously
    to a new symbol that represents the same semantic concept, perform the update
