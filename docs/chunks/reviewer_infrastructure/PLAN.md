@@ -8,170 +8,157 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk establishes the reviewer infrastructure by:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Creating the docs/reviewers/ directory structure** with the baseline reviewer, copying files from the investigation prototype at `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Adding a Pydantic model** to `src/models.py` for validating reviewer METADATA.yaml files. This follows the established pattern of centralized Pydantic models in models.py (see existing models like `ChunkFrontmatter`, `SubsystemFrontmatter`, etc.).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_infrastructure/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Writing unit tests** in `tests/test_models.py` that verify schema validation, following the testing philosophy of testing meaningful behavior (validation rejection of invalid configs) rather than trivial assignments.
+
+The approach aligns with:
+- **DEC-004**: All references in documentation are relative to project root
+- Existing patterns in `src/models.py` for artifact frontmatter validation
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts**: This chunk USES the workflow_artifacts subsystem patterns for Pydantic model definitions. The `ReviewerMetadata` model will follow the same patterns as `ChunkFrontmatter`, `SubsystemFrontmatter`, etc.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No deviations discovered—adding a new model following existing patterns.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define the ReviewerMetadata Pydantic model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add Pydantic models to `src/models.py` for validating reviewer METADATA.yaml files:
 
-Example:
+```python
+class TrustLevel(StrEnum):
+    """Trust levels for reviewer agents."""
+    OBSERVATION = "observation"
+    CALIBRATION = "calibration"
+    DELEGATION = "delegation"
+    FULL = "full"
 
-### Step 1: Define the SegmentHeader struct
+class LoopDetectionConfig(BaseModel):
+    """Loop detection settings for reviewer."""
+    max_iterations: int = 3
+    escalation_threshold: int = 2
+    same_issue_threshold: int = 2
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    @field_validator("max_iterations", "escalation_threshold", "same_issue_threshold")
+    @classmethod
+    def validate_positive(cls, v: int, info) -> int:
+        if v < 1:
+            raise ValueError(f"{info.field_name} must be at least 1")
+        return v
 
-Location: src/segment/format.rs
+class ReviewerStats(BaseModel):
+    """Review statistics for a reviewer."""
+    reviews_completed: int = 0
+    approvals: int = 0
+    feedbacks: int = 0
+    escalations: int = 0
+    examples_marked_good: int = 0
+    examples_marked_bad: int = 0
 
-### Step 2: Implement header serialization
+    @field_validator("reviews_completed", "approvals", "feedbacks", "escalations",
+                     "examples_marked_good", "examples_marked_bad")
+    @classmethod
+    def validate_non_negative(cls, v: int, info) -> int:
+        if v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative")
+        return v
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+class ReviewerMetadata(BaseModel):
+    """Frontmatter schema for reviewer METADATA.yaml files."""
+    name: str
+    description: str | None = None
+    trust_level: TrustLevel = TrustLevel.OBSERVATION
+    domain_scope: list[str] = []  # Glob patterns, empty = all domains
+    delegated_categories: list[str] = []
+    loop_detection: LoopDetectionConfig = LoopDetectionConfig()
+    forked_from: str | None = None
+    forked_at: str | None = None  # ISO date string
+    created_at: str | None = None  # ISO date string
+    stats: ReviewerStats = ReviewerStats()
 
-### Step 3: ...
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name cannot be empty")
+        return v
+```
+
+Location: `src/models.py`
+
+### Step 2: Write unit tests for ReviewerMetadata model
+
+Add tests to `tests/test_models.py` that verify meaningful behavior:
+
+**Tests to write:**
+- `test_reviewer_metadata_rejects_empty_name` - Name validation
+- `test_reviewer_metadata_rejects_invalid_trust_level` - Enum validation
+- `test_reviewer_metadata_rejects_negative_stats` - Stats bounds checking
+- `test_reviewer_metadata_rejects_zero_loop_detection` - Loop detection bounds
+- `test_reviewer_metadata_valid_minimal` - Minimal valid config parses
+- `test_reviewer_metadata_valid_full` - Full config with all fields parses
+
+Following TESTING_PHILOSOPHY.md: These test validation behavior (rejection of invalid inputs), not trivial storage.
+
+Location: `tests/test_models.py`
+
+### Step 3: Create docs/reviewers/baseline/ directory structure
+
+Create the directory structure with three files copied from the investigation prototype:
+
+1. `docs/reviewers/baseline/METADATA.yaml` - Copy from `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/METADATA.yaml`
+2. `docs/reviewers/baseline/PROMPT.md` - Copy from `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/PROMPT.md`
+3. `docs/reviewers/baseline/DECISION_LOG.md` - Copy from `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/DECISION_LOG.md`
+
+The DECISION_LOG.md already contains a header comment explaining the expected entry format.
+
+### Step 4: Verify prototype files parse with the model
+
+After copying, verify that:
+- `docs/reviewers/baseline/METADATA.yaml` parses successfully with the new `ReviewerMetadata` model
+- All field values match the prototype's intended defaults
+
+This can be done as a manual check or added to an integration test.
+
+### Step 5: Run tests and verify
+
+Run `uv run pytest tests/test_models.py` to ensure:
+- All new tests pass
+- Existing tests still pass
+- No regressions introduced
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add chunk backreference to the new model classes in `src/models.py`:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+```python
+# Chunk: docs/chunks/reviewer_infrastructure - Reviewer entity model
+class TrustLevel(StrEnum):
+    ...
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **Prototype files exist**: The prototype reviewer files at `docs/investigations/orchestrator_quality_assurance/prototypes/reviewers/baseline/` already exist and contain the content to be copied.
+- **Pydantic already in use**: The project already uses Pydantic for model validation (see existing imports in `src/models.py`).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Date field format**: The prototype uses `created_at: 2026-01-13` (ISO date). We're storing this as a string rather than validating as a proper date object—simple approach, but means invalid dates could slip through. Acceptable for MVP; can tighten later.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Reviewer discovery**: This chunk creates the directory structure but doesn't add a `ve reviewer list` command or similar. Discovery will be manual initially. Future chunks may add CLI support.
+
+3. **METADATA.yaml vs frontmatter**: Unlike other artifacts (chunks, narratives) that use YAML frontmatter in markdown files, reviewers use a standalone METADATA.yaml file. This is intentional per the investigation design—reviewers are config-first, not prose-first.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Step 3: Date field format in METADATA.yaml**: The prototype METADATA.yaml had `created_at: 2026-01-13` (unquoted), which YAML parses as a `datetime.date` object. The Pydantic model expects a string per the plan. Changed to quoted format `created_at: "2026-01-13"` so YAML parses it as a string. This is a minor adjustment—the file format is slightly different from the prototype, but this ensures the METADATA.yaml file validates correctly with the model.

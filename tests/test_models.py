@@ -20,6 +20,10 @@ from models import (
     FrictionProposedChunk,
     FrictionFrontmatter,
     ProposedChunk,
+    TrustLevel,
+    LoopDetectionConfig,
+    ReviewerStats,
+    ReviewerMetadata,
 )
 
 
@@ -745,3 +749,272 @@ class TestProposedChunkDependsOn:
         """depends_on allows duplicate indices (edge case, but not invalid)."""
         chunk = ProposedChunk(prompt="Do something", depends_on=[0, 0, 1])
         assert chunk.depends_on == [0, 0, 1]
+
+
+# Chunk: docs/chunks/reviewer_infrastructure - Reviewer entity model
+class TestReviewerMetadata:
+    """Tests for ReviewerMetadata model."""
+
+    def test_reviewer_metadata_rejects_empty_name(self):
+        """Empty name is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="")
+        assert "name cannot be empty" in str(exc_info.value)
+
+    def test_reviewer_metadata_rejects_whitespace_name(self):
+        """Whitespace-only name is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="   ")
+        assert "name cannot be empty" in str(exc_info.value)
+
+    def test_reviewer_metadata_rejects_invalid_trust_level(self):
+        """Invalid trust_level value is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", trust_level="invalid")
+        assert "trust_level" in str(exc_info.value).lower()
+
+    def test_reviewer_metadata_rejects_negative_stats(self):
+        """Negative statistics values are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", stats={"reviews_completed": -1})
+        assert "cannot be negative" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", stats={"approvals": -5})
+        assert "cannot be negative" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", stats={"examples_marked_bad": -1})
+        assert "cannot be negative" in str(exc_info.value)
+
+    def test_reviewer_metadata_rejects_zero_loop_detection(self):
+        """Loop detection thresholds less than 1 are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", loop_detection={"max_iterations": 0})
+        assert "must be at least 1" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", loop_detection={"escalation_threshold": 0})
+        assert "must be at least 1" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerMetadata(name="test", loop_detection={"same_issue_threshold": 0})
+        assert "must be at least 1" in str(exc_info.value)
+
+    def test_reviewer_metadata_valid_minimal(self):
+        """Minimal valid config with only name parses successfully."""
+        metadata = ReviewerMetadata(name="baseline")
+        assert metadata.name == "baseline"
+        assert metadata.trust_level == TrustLevel.OBSERVATION
+        assert metadata.domain_scope == []
+        assert metadata.delegated_categories == []
+        assert metadata.loop_detection.max_iterations == 3
+        assert metadata.loop_detection.escalation_threshold == 2
+        assert metadata.loop_detection.same_issue_threshold == 2
+        assert metadata.stats.reviews_completed == 0
+        assert metadata.stats.approvals == 0
+        assert metadata.forked_from is None
+        assert metadata.forked_at is None
+        assert metadata.created_at is None
+
+    def test_reviewer_metadata_valid_full(self):
+        """Full config with all fields parses successfully."""
+        metadata = ReviewerMetadata(
+            name="python-reviewer",
+            description="Specialized reviewer for Python code",
+            trust_level=TrustLevel.DELEGATION,
+            domain_scope=["src/**/*.py", "tests/**/*.py"],
+            delegated_categories=["style", "naming"],
+            loop_detection={
+                "max_iterations": 5,
+                "escalation_threshold": 3,
+                "same_issue_threshold": 2,
+            },
+            forked_from="baseline",
+            forked_at="2026-01-15",
+            created_at="2026-01-15",
+            stats={
+                "reviews_completed": 10,
+                "approvals": 7,
+                "feedbacks": 2,
+                "escalations": 1,
+                "examples_marked_good": 5,
+                "examples_marked_bad": 1,
+            },
+        )
+        assert metadata.name == "python-reviewer"
+        assert metadata.description == "Specialized reviewer for Python code"
+        assert metadata.trust_level == TrustLevel.DELEGATION
+        assert metadata.domain_scope == ["src/**/*.py", "tests/**/*.py"]
+        assert metadata.delegated_categories == ["style", "naming"]
+        assert metadata.loop_detection.max_iterations == 5
+        assert metadata.loop_detection.escalation_threshold == 3
+        assert metadata.forked_from == "baseline"
+        assert metadata.forked_at == "2026-01-15"
+        assert metadata.created_at == "2026-01-15"
+        assert metadata.stats.reviews_completed == 10
+        assert metadata.stats.approvals == 7
+        assert metadata.stats.feedbacks == 2
+        assert metadata.stats.escalations == 1
+        assert metadata.stats.examples_marked_good == 5
+        assert metadata.stats.examples_marked_bad == 1
+
+    def test_all_trust_levels_accepted(self):
+        """All valid trust level values are accepted."""
+        for level in TrustLevel:
+            metadata = ReviewerMetadata(name="test", trust_level=level)
+            assert metadata.trust_level == level
+
+    def test_trust_level_accepts_string_values(self):
+        """trust_level accepts string values that match enum values."""
+        metadata = ReviewerMetadata(name="test", trust_level="observation")
+        assert metadata.trust_level == TrustLevel.OBSERVATION
+
+        metadata = ReviewerMetadata(name="test", trust_level="calibration")
+        assert metadata.trust_level == TrustLevel.CALIBRATION
+
+        metadata = ReviewerMetadata(name="test", trust_level="delegation")
+        assert metadata.trust_level == TrustLevel.DELEGATION
+
+        metadata = ReviewerMetadata(name="test", trust_level="full")
+        assert metadata.trust_level == TrustLevel.FULL
+
+    def test_uppercase_trust_level_rejected(self):
+        """Uppercase trust_level values are rejected (case-sensitive enum)."""
+        with pytest.raises(ValidationError):
+            ReviewerMetadata(name="test", trust_level="OBSERVATION")
+
+
+class TestLoopDetectionConfig:
+    """Tests for LoopDetectionConfig model."""
+
+    def test_defaults_applied(self):
+        """Default values are applied when not provided."""
+        config = LoopDetectionConfig()
+        assert config.max_iterations == 3
+        assert config.escalation_threshold == 2
+        assert config.same_issue_threshold == 2
+
+    def test_custom_values_accepted(self):
+        """Custom values override defaults."""
+        config = LoopDetectionConfig(
+            max_iterations=10, escalation_threshold=5, same_issue_threshold=3
+        )
+        assert config.max_iterations == 10
+        assert config.escalation_threshold == 5
+        assert config.same_issue_threshold == 3
+
+    def test_rejects_zero_values(self):
+        """Zero values are rejected for all thresholds."""
+        with pytest.raises(ValidationError) as exc_info:
+            LoopDetectionConfig(max_iterations=0)
+        assert "max_iterations must be at least 1" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            LoopDetectionConfig(escalation_threshold=0)
+        assert "escalation_threshold must be at least 1" in str(exc_info.value)
+
+        with pytest.raises(ValidationError) as exc_info:
+            LoopDetectionConfig(same_issue_threshold=0)
+        assert "same_issue_threshold must be at least 1" in str(exc_info.value)
+
+    def test_rejects_negative_values(self):
+        """Negative values are rejected for all thresholds."""
+        with pytest.raises(ValidationError) as exc_info:
+            LoopDetectionConfig(max_iterations=-1)
+        assert "must be at least 1" in str(exc_info.value)
+
+
+class TestReviewerStats:
+    """Tests for ReviewerStats model."""
+
+    def test_defaults_to_zeros(self):
+        """All stats default to zero."""
+        stats = ReviewerStats()
+        assert stats.reviews_completed == 0
+        assert stats.approvals == 0
+        assert stats.feedbacks == 0
+        assert stats.escalations == 0
+        assert stats.examples_marked_good == 0
+        assert stats.examples_marked_bad == 0
+
+    def test_accepts_positive_values(self):
+        """Positive values are accepted for all stats."""
+        stats = ReviewerStats(
+            reviews_completed=100,
+            approvals=80,
+            feedbacks=15,
+            escalations=5,
+            examples_marked_good=50,
+            examples_marked_bad=10,
+        )
+        assert stats.reviews_completed == 100
+        assert stats.approvals == 80
+        assert stats.feedbacks == 15
+        assert stats.escalations == 5
+        assert stats.examples_marked_good == 50
+        assert stats.examples_marked_bad == 10
+
+    def test_rejects_negative_reviews_completed(self):
+        """Negative reviews_completed is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(reviews_completed=-1)
+        assert "reviews_completed cannot be negative" in str(exc_info.value)
+
+    def test_rejects_negative_approvals(self):
+        """Negative approvals is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(approvals=-1)
+        assert "approvals cannot be negative" in str(exc_info.value)
+
+    def test_rejects_negative_feedbacks(self):
+        """Negative feedbacks is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(feedbacks=-1)
+        assert "feedbacks cannot be negative" in str(exc_info.value)
+
+    def test_rejects_negative_escalations(self):
+        """Negative escalations is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(escalations=-1)
+        assert "escalations cannot be negative" in str(exc_info.value)
+
+    def test_rejects_negative_examples_marked_good(self):
+        """Negative examples_marked_good is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(examples_marked_good=-1)
+        assert "examples_marked_good cannot be negative" in str(exc_info.value)
+
+    def test_rejects_negative_examples_marked_bad(self):
+        """Negative examples_marked_bad is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReviewerStats(examples_marked_bad=-1)
+        assert "examples_marked_bad cannot be negative" in str(exc_info.value)
+
+
+class TestReviewerMetadataIntegration:
+    """Integration tests that verify actual METADATA.yaml files parse correctly."""
+
+    def test_baseline_reviewer_metadata_parses(self):
+        """The baseline reviewer METADATA.yaml parses successfully with the model."""
+        import yaml
+        from pathlib import Path
+
+        metadata_path = Path("docs/reviewers/baseline/METADATA.yaml")
+        if not metadata_path.exists():
+            pytest.skip("Baseline reviewer METADATA.yaml not found")
+
+        with open(metadata_path) as f:
+            data = yaml.safe_load(f)
+
+        # Parse with the model
+        metadata = ReviewerMetadata(**data)
+
+        # Verify expected values from the baseline
+        assert metadata.name == "baseline"
+        assert metadata.trust_level == TrustLevel.OBSERVATION
+        assert metadata.domain_scope == []
+        assert metadata.delegated_categories == []
+        assert metadata.loop_detection.max_iterations == 3
+        assert metadata.forked_from is None
+        assert metadata.stats.reviews_completed == 0
