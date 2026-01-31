@@ -725,9 +725,14 @@ class Scheduler:
     async def _check_conflicts(self, work_unit: WorkUnit) -> list[str]:
         """Check for conflicts with active work units and return blocking chunks.
 
-        Analyzes the work unit against all RUNNING and READY work units to
-        detect potential conflicts. Returns immediately if any SERIALIZE
-        verdict is found with an active blocker.
+        For work units with explicit_deps=True, conflict detection uses only the
+        blocked_by list that was populated at injection time from declared
+        dependencies. The oracle is bypassed entirely, trusting the explicit
+        dependency declaration.
+
+        For work units without explicit_deps, analyzes the work unit against all
+        RUNNING and READY work units to detect potential conflicts. Returns
+        immediately if any SERIALIZE verdict is found with an active blocker.
 
         For ASK_OPERATOR verdicts without an override, the work unit is marked
         as needing attention.
@@ -738,14 +743,31 @@ class Scheduler:
         Returns:
             List of chunk names that are blocking this work unit
         """
-        from orchestrator.oracle import create_oracle
-
         chunk = work_unit.chunk
         blocking_chunks = []
 
         # Get all RUNNING and READY work units (except self)
         running_units = self.store.list_work_units(status=WorkUnitStatus.RUNNING)
         ready_units = self.store.list_work_units(status=WorkUnitStatus.READY)
+
+        # Chunk: docs/chunks/explicit_deps_skip_oracle - Oracle bypass for explicit dependencies
+        # When explicit_deps=True, skip oracle analysis entirely. The blocked_by list
+        # was populated at injection time from declared dependencies - trust that
+        # declaration rather than using heuristic detection.
+        if work_unit.explicit_deps:
+            # Only check if any chunk in blocked_by is currently RUNNING
+            running_chunk_names = {u.chunk for u in running_units}
+            for blocked_chunk in work_unit.blocked_by:
+                if blocked_chunk in running_chunk_names:
+                    blocking_chunks.append(blocked_chunk)
+                    logger.info(
+                        f"Explicit-deps work unit {chunk} blocked by running {blocked_chunk}"
+                    )
+            # No oracle analysis, no verdict caching - just blocked_by checks
+            return blocking_chunks
+
+        # Non-explicit work units use oracle-based conflict detection
+        from orchestrator.oracle import create_oracle
 
         active_chunks = [
             u.chunk for u in running_units + ready_units
