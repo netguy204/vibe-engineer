@@ -135,8 +135,8 @@ class TestChunkListInTaskDirectory:
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
-    def test_latest_returns_implementing_chunk_from_external_repo(self, tmp_path):
-        """--latest returns implementing chunk from external repo with repo prefix."""
+    def test_current_returns_implementing_chunk_from_external_repo(self, tmp_path):
+        """--current returns implementing chunk from external repo with repo prefix."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
 
         # Create ACTIVE and IMPLEMENTING chunks
@@ -149,7 +149,7 @@ class TestChunkListInTaskDirectory:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "list", "--latest", "--project-dir", str(task_dir)]
+            cli, ["chunk", "list", "--current", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 0
@@ -193,8 +193,8 @@ projects:
         assert result.exit_code == 1
         assert "No chunks found" in result.output
 
-    def test_error_when_no_implementing_chunk_with_latest(self, tmp_path):
-        """Reports error when --latest but no IMPLEMENTING chunk exists."""
+    def test_error_when_no_implementing_chunk_with_current(self, tmp_path):
+        """Reports error when --current but no IMPLEMENTING chunk exists."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
 
         # Create only ACTIVE chunks
@@ -204,7 +204,7 @@ projects:
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["chunk", "list", "--latest", "--project-dir", str(task_dir)]
+            cli, ["chunk", "list", "--current", "--project-dir", str(task_dir)]
         )
 
         assert result.exit_code == 1

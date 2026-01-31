@@ -12,7 +12,7 @@ class TestListCommand:
         result = runner.invoke(cli, ["chunk", "list", "--help"])
         assert result.exit_code == 0
         assert "List all chunks" in result.output
-        assert "--latest" in result.output
+        assert "--current" in result.output
 
     def test_empty_project_exits_with_error(self, runner, temp_project):
         """Empty project: stderr says 'No chunks found', exit code 1."""
@@ -61,21 +61,21 @@ class TestListCommand:
         assert any("first" in line for line in lines)
         assert any("second" in line for line in lines)
 
-    def test_latest_flag_outputs_implementing_chunk(self, runner, temp_project):
-        """--latest outputs the current IMPLEMENTING chunk."""
+    def test_current_flag_outputs_implementing_chunk(self, runner, temp_project):
+        """--current outputs the current IMPLEMENTING chunk."""
         # Create first chunk (IMPLEMENTING)
         runner.invoke(
             cli,
-            ["chunk", "start", "current", "--project-dir", str(temp_project)]
+            ["chunk", "start", "current_chunk", "--project-dir", str(temp_project)]
         )
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         lines = result.output.strip().split("\n")
         assert len(lines) == 1
-        assert "current" in lines[0]
+        assert "current_chunk" in lines[0]
 
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
@@ -132,11 +132,20 @@ class TestListStatusDisplay:
         assert "feature" in result.output
 
 
-class TestLatestFlagWithStatus:
-    """Tests for --latest flag using in-repo storage."""
+# Chunk: docs/chunks/chunk_list_flags - Renamed --latest to --current
+class TestCurrentFlag:
+    """Tests for --current flag (renamed from --latest)."""
 
-    def test_latest_returns_implementing_chunk(self, runner, temp_project):
-        """--latest returns an IMPLEMENTING chunk."""
+    def test_help_shows_current_flag(self, runner):
+        """--help shows the --current flag."""
+        result = runner.invoke(cli, ["chunk", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--current" in result.output
+        # --latest should no longer appear
+        assert "--latest" not in result.output
+
+    def test_current_returns_implementing_chunk(self, runner, temp_project):
+        """--current returns an IMPLEMENTING chunk."""
         # Create an IMPLEMENTING chunk
         runner.invoke(
             cli,
@@ -144,22 +153,22 @@ class TestLatestFlagWithStatus:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "implementing" in result.output
 
-    def test_latest_fails_when_no_chunks(self, runner, temp_project):
-        """--latest fails when no chunks exist."""
+    def test_current_fails_when_no_chunks(self, runner, temp_project):
+        """--current fails when no chunks exist."""
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 1
         assert "No implementing chunk found" in result.output or "No chunks found" in result.output
 
-    def test_latest_ignores_future_chunks(self, runner, temp_project):
-        """--latest returns IMPLEMENTING, not FUTURE chunks."""
+    def test_current_ignores_future_chunks(self, runner, temp_project):
+        """--current returns IMPLEMENTING, not FUTURE chunks."""
         # Create IMPLEMENTING chunk
         runner.invoke(
             cli,
@@ -172,13 +181,29 @@ class TestLatestFlagWithStatus:
         )
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         # Should return the IMPLEMENTING one
         lines = result.output.strip().split("\n")
         assert len(lines) == 1
         assert "implementing" in lines[0]
+
+    def test_current_and_last_active_mutually_exclusive(self, runner, temp_project):
+        """--current and --last-active cannot be used together."""
+        # Create a chunk for valid state
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--current", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Error message should mention mutual exclusivity or that both can't be used
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
 
 
 # Chunk: docs/chunks/chunk_last_active - Last active chunk lookup
@@ -238,8 +263,8 @@ class TestLastActiveFlag:
         )
         assert result.exit_code == 1
 
-    def test_last_active_and_latest_mutually_exclusive(self, runner, temp_project):
-        """--last-active and --latest cannot be used together."""
+    def test_last_active_and_current_mutually_exclusive(self, runner, temp_project):
+        """--last-active and --current cannot be used together."""
         # Create a chunk for valid state
         runner.invoke(
             cli,
@@ -248,7 +273,7 @@ class TestLastActiveFlag:
 
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--last-active", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--last-active", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Error message should mention mutual exclusivity or that both can't be used
@@ -487,8 +512,8 @@ track: main
         # External chunk should have tip indicator
         assert "*" in result.output
 
-    def test_latest_flag_does_not_return_external_chunks(self, runner, temp_project):
-        """--latest flag returns IMPLEMENTING chunks, not external ones."""
+    def test_current_flag_does_not_return_external_chunks(self, runner, temp_project):
+        """--current flag returns IMPLEMENTING chunks, not external ones."""
         # Create an external chunk reference
         external_chunk_dir = temp_project / "docs" / "chunks" / "external_feature"
         external_chunk_dir.mkdir(parents=True)
@@ -501,7 +526,7 @@ track: main
 
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)]
         )
         # Should fail because there's no IMPLEMENTING chunk
         assert result.exit_code == 1
@@ -774,8 +799,8 @@ class TestStatusConvenienceFlags:
 class TestStatusFilterMutualExclusivity:
     """Tests for mutual exclusivity between status filters and output mode flags."""
 
-    def test_status_and_latest_mutually_exclusive(self, runner, temp_project):
-        """--status and --latest cannot be used together."""
+    def test_status_and_current_mutually_exclusive(self, runner, temp_project):
+        """--status and --current cannot be used together."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -783,7 +808,7 @@ class TestStatusFilterMutualExclusivity:
 
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--status", "FUTURE", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--status", "FUTURE", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
@@ -802,8 +827,8 @@ class TestStatusFilterMutualExclusivity:
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
 
-    def test_future_flag_and_latest_mutually_exclusive(self, runner, temp_project):
-        """--future and --latest cannot be used together."""
+    def test_future_flag_and_current_mutually_exclusive(self, runner, temp_project):
+        """--future and --current cannot be used together."""
         runner.invoke(
             cli,
             ["chunk", "start", "feature", "--project-dir", str(temp_project)]
@@ -811,7 +836,7 @@ class TestStatusFilterMutualExclusivity:
 
         result = runner.invoke(
             cli,
-            ["chunk", "list", "--future", "--latest", "--project-dir", str(temp_project)]
+            ["chunk", "list", "--future", "--current", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
 
@@ -873,3 +898,231 @@ track: main
         # Both should appear
         assert "local_feature" in result.output
         assert "external_feature" in result.output
+
+
+# Chunk: docs/chunks/chunk_list_flags - New --recent flag
+class TestRecentFlag:
+    """Tests for --recent flag in 've chunk list'."""
+
+    def test_help_shows_recent_flag(self, runner):
+        """--help shows the --recent flag."""
+        result = runner.invoke(cli, ["chunk", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--recent" in result.output
+
+    def test_recent_returns_active_chunks(self, runner, temp_project):
+        """--recent returns ACTIVE chunks."""
+        # Create and complete a chunk (IMPLEMENTING -> ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature_one", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "feature_one" in result.output
+        assert "docs/chunks/" in result.output
+
+    def test_recent_shows_multiple_active_chunks(self, runner, temp_project):
+        """--recent shows multiple ACTIVE chunks in creation order."""
+        # Create and complete three chunks
+        for name in ["first", "second", "third"]:
+            runner.invoke(
+                cli,
+                ["chunk", "start", name, "--project-dir", str(temp_project)]
+            )
+            runner.invoke(
+                cli,
+                ["chunk", "complete", "--project-dir", str(temp_project)]
+            )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # All three should appear
+        assert "first" in result.output
+        assert "second" in result.output
+        assert "third" in result.output
+        # Should be in newest-first order
+        lines = result.output.strip().split("\n")
+        assert len(lines) == 3
+        assert "third" in lines[0]
+        assert "second" in lines[1]
+        assert "first" in lines[2]
+
+    def test_recent_fails_when_no_active_chunks(self, runner, temp_project):
+        """--recent fails when no ACTIVE chunks exist."""
+        # Create only IMPLEMENTING and FUTURE chunks
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert "no active" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_recent_fails_when_empty_project(self, runner, temp_project):
+        """--recent fails when no chunks exist."""
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+
+    def test_recent_ignores_implementing_chunks(self, runner, temp_project):
+        """--recent returns only ACTIVE chunks, not IMPLEMENTING."""
+        # Create and complete one chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create an IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert "implementing" not in result.output
+
+    def test_recent_ignores_future_chunks(self, runner, temp_project):
+        """--recent returns only ACTIVE chunks, not FUTURE."""
+        # Create and complete one chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create a FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert "future-work" not in result.output
+
+    def test_recent_limits_to_10_chunks(self, runner, temp_project):
+        """--recent limits output to 10 chunks even if more exist."""
+        # Create and complete 12 chunks
+        for i in range(12):
+            runner.invoke(
+                cli,
+                ["chunk", "start", f"chunk_{i:02d}", "--project-dir", str(temp_project)]
+            )
+            runner.invoke(
+                cli,
+                ["chunk", "complete", "--project-dir", str(temp_project)]
+            )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+        assert len(lines) == 10
+        # Should have newest chunks (11, 10, 09, ..., 02) but not 00, 01
+        assert "chunk_11" in result.output
+        assert "chunk_02" in result.output
+        assert "chunk_01" not in result.output
+        assert "chunk_00" not in result.output
+
+    def test_recent_outputs_docs_chunks_path(self, runner, temp_project):
+        """--recent outputs path in docs/chunks/ format."""
+        # Create and complete a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "docs/chunks/my_feature" in result.output
+
+
+class TestRecentFlagMutualExclusivity:
+    """Tests for --recent flag mutual exclusivity."""
+
+    def test_recent_and_current_mutually_exclusive(self, runner, temp_project):
+        """--recent and --current cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--current", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+    def test_recent_and_last_active_mutually_exclusive(self, runner, temp_project):
+        """--recent and --last-active cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+    def test_recent_and_status_mutually_exclusive(self, runner, temp_project):
+        """--recent and --status cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--recent", "--status", "ACTIVE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()

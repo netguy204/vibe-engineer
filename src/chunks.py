@@ -157,6 +157,30 @@ class Chunks:
                 return chunk_name
         return None
 
+    def get_recent_active_chunks(self, limit: int = 10) -> list[str]:
+        """Return the most recently created ACTIVE chunks.
+
+        Returns ACTIVE chunks ordered by creation (newest first), limited to
+        the specified number. Uses the existing list_chunks() causal ordering
+        and filters to only ACTIVE status.
+
+        Args:
+            limit: Maximum number of chunks to return (default: 10).
+
+        Returns:
+            List of chunk directory names, ordered newest first, limited to `limit`.
+            Returns empty list if no ACTIVE chunks exist.
+        """
+        chunks = self.list_chunks()
+        active_chunks = []
+        for chunk_name in chunks:
+            frontmatter = self.parse_chunk_frontmatter(chunk_name)
+            if frontmatter and frontmatter.status == ChunkStatus.ACTIVE:
+                active_chunks.append(chunk_name)
+                if len(active_chunks) >= limit:
+                    break
+        return active_chunks
+
     def get_last_active_chunk(self) -> str | None:
         """Return the most recently completed ACTIVE tip chunk.
 

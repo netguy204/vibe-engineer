@@ -8,170 +8,128 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk renames the `--latest` flag to `--current` and adds a new `--recent` flag to `ve chunk list`. The implementation follows the existing CLI pattern established for `--latest` and `--last-active` flags.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
+1. **Rename `--latest` to `--current`** in the CLI option definition. The underlying `get_current_chunk()` method in `Chunks` class already has the correct semantics—it finds the currently IMPLEMENTING chunk.
+2. **Add `--recent` flag** that shows the 10 most recently created ACTIVE chunks. This requires a new method in the `Chunks` class to find recent ACTIVE chunks by creation order.
+3. **Update documentation** in the CLAUDE.md template and command templates that reference `--latest`.
+4. **Write tests first** per TESTING_PHILOSOPHY.md, then implement to make them pass.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunk_list_flags/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The approach builds on the existing `list_chunks()` method which already returns chunks in causal order (newest first) and the `parse_chunk_frontmatter()` method for filtering by status.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `--current` flag
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_chunk_list.py` that verify:
+- `--current` flag shows the currently IMPLEMENTING chunk (same as old `--latest`)
+- `--current` fails when no IMPLEMENTING chunk exists
+- `--current` ignores FUTURE chunks
+- Help text shows `--current` not `--latest`
 
-Example:
+These tests will fail because `--current` doesn't exist yet.
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_chunk_list.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write failing tests for `--recent` flag
 
-Location: src/segment/format.rs
+Add tests to `tests/test_chunk_list.py` that verify:
+- `--recent` flag shows up to 10 ACTIVE chunks in creation order (newest first)
+- `--recent` returns only ACTIVE status chunks
+- `--recent` fails when no ACTIVE chunks exist
+- `--recent` limits output to 10 chunks even if more exist
+- `--recent` is mutually exclusive with `--current` and `--last-active`
+- Help text shows `--recent` flag with appropriate description
 
-### Step 2: Implement header serialization
+These tests will fail because `--recent` doesn't exist yet.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_chunk_list.py`
 
-### Step 3: ...
+### Step 3: Add `get_recent_active_chunks()` method to Chunks class
 
----
+Implement a new method in `src/chunks.py` that:
+- Returns up to `limit` (default 10) ACTIVE chunks
+- Orders by creation (using existing `list_chunks()` causal ordering)
+- Filters to only ACTIVE status
 
-**BACKREFERENCE COMMENTS**
+```python
+def get_recent_active_chunks(self, limit: int = 10) -> list[str]:
+    """Return the most recently created ACTIVE chunks.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Returns:
+        List of chunk directory names, ordered newest first, limited to `limit`.
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/chunks.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 4: Rename `--latest` to `--current` in CLI
 
-## Dependencies
+Update `src/ve.py`:
+- Change `@click.option("--latest", ...)` to `@click.option("--current", ...)`
+- Update function parameter name from `latest` to `current`
+- Update error messages and internal references
+- Preserve the behavior (calls `get_current_chunk()`)
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/ve.py`
 
-If there are no dependencies, delete this section.
--->
+### Step 5: Add `--recent` flag to CLI
+
+Update `src/ve.py`:
+- Add `@click.option("--recent", is_flag=True, help="Output the 10 most recently created ACTIVE chunks")`
+- Add mutual exclusivity check with `--current` and `--last-active`
+- Implement the output: call `get_recent_active_chunks()` and format each as `docs/chunks/{name}`
+
+Location: `src/ve.py`
+
+### Step 6: Update task directory handling
+
+Update `_list_task_chunks()` in `src/ve.py` to support:
+- Rename `latest` parameter to `current`
+- Add `recent` parameter handling for task context
+
+Location: `src/ve.py`
+
+### Step 7: Update CLAUDE.md template
+
+Update `src/templates/claude/CLAUDE.md.jinja2`:
+- Change `ve chunk list --latest` to `ve chunk list --current`
+- The text says "find the most recently created chunk" which is misleading—update to clarify it shows the currently IMPLEMENTING chunk
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 8: Update command templates
+
+Update all command templates that reference `--latest`:
+- `src/templates/commands/chunk-plan.md.jinja2`
+- `src/templates/commands/chunk-complete.md.jinja2`
+- `src/templates/commands/chunk-implement.md.jinja2`
+- `src/templates/commands/chunk-create.md.jinja2`
+- `src/templates/commands/chunk-commit.md.jinja2`
+
+Change `--latest` to `--current` in all these files.
+
+Location: `src/templates/commands/*.jinja2`
+
+### Step 9: Run all tests and verify
+
+Run the full test suite to ensure:
+- New tests for `--current` and `--recent` pass
+- Existing tests still pass (with updates for renamed flag)
+- No regressions
+
+```bash
+uv run pytest tests/
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Backwards compatibility**: Users may have scripts relying on `--latest`. This is a breaking change but the investigation notes "No backwards compatibility needed". Should verify with operator if this is acceptable.
+- **Task context complexity**: The `--recent` flag needs to work in task directory mode. May need to aggregate ACTIVE chunks from both external repo and local projects, or just from external repo.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
