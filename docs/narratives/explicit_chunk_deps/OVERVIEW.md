@@ -1,24 +1,24 @@
 ---
-status: DRAFTING
+status: ACTIVE
 advances_trunk_goal: "Required Properties: Following the workflow must maintain the health of documents over time and should not grow more difficult over time."
 proposed_chunks:
   - prompt: "Add depends_on field to chunk GOAL.md template with schema documentation explaining it provides explicit dependencies that bypass the oracle's auto-detection"
-    chunk_directory: null
+    chunk_directory: explicit_deps_goal_template
     depends_on: []
   - prompt: "Add depends_on field to proposed_chunks schema in narrative and investigation templates, using index-based references to other prompts in the same array"
-    chunk_directory: null
+    chunk_directory: explicit_deps_proposed_schema
     depends_on: []
   - prompt: "Propagate dependencies during chunk-create: when creating a chunk from a narrative, translate index-based depends_on to chunk directory names"
-    chunk_directory: null
+    chunk_directory: explicit_deps_chunk_propagate
     depends_on: [1]
   - prompt: "Add explicit_deps flag to WorkUnit model indicating this work unit uses declared dependencies and should skip oracle conflict detection"
-    chunk_directory: null
+    chunk_directory: explicit_deps_workunit_flag
     depends_on: []
   - prompt: "Implement batch injection with topological sort: extend ve orch inject to accept multiple chunks, sort by dependency graph, and inject in order so depends_on names resolve"
-    chunk_directory: null
+    chunk_directory: explicit_deps_batch_inject
     depends_on: [0, 3]
   - prompt: "Skip oracle for explicit-dep work units: modify scheduler's _check_conflicts to bypass oracle when explicit_deps=True, using only declared blocked_by"
-    chunk_directory: null
+    chunk_directory: explicit_deps_skip_oracle
     depends_on: [3]
 created_after: []
 ---
