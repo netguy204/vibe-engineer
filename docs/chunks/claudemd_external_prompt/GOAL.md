@@ -5,10 +5,13 @@ parent_chunk: null
 code_paths:
   - src/templates/claude/CLAUDE.md.jinja2
   - docs/trunk/ARTIFACTS.md
+  - docs/trunk/EXTERNAL.md
 code_references:
   - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "External Artifacts pointer in CLAUDE.md template directing agents to ARTIFACTS.md"
-  - ref: docs/trunk/ARTIFACTS.md#External Artifacts
+    implements: "External Artifacts pointer in CLAUDE.md template directing agents to EXTERNAL.md"
+  - ref: docs/trunk/ARTIFACTS.md#external-artifacts
+    implements: "Brief External Artifacts section with redirect to EXTERNAL.md"
+  - ref: docs/trunk/EXTERNAL.md
     implements: "Full External Artifacts documentation explaining how to identify and resolve external.yaml files"
 narrative: task_artifact_discovery
 investigation: null

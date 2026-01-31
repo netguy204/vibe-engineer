@@ -143,21 +143,6 @@ Always use the local path within the current repository (e.g., `docs/chunks/chun
 
 ## External Artifacts {#external-artifacts}
 
-When work spans multiple repositories, artifact directories may contain an `external.yaml` file instead of the usual GOAL.md or OVERVIEW.md. These are pointers to artifacts in other repositories.
+External artifacts enable multi-repository workflows by providing pointers to artifacts in other repositories. When an artifact directory contains `external.yaml` instead of GOAL.md or OVERVIEW.md, it's pointing to content in another repo.
 
-**External file structure:**
-```yaml
-artifact_id: some_feature
-artifact_type: chunk          # chunk, narrative, investigation, or subsystem
-repo: org/other-repo          # Repository containing the actual artifact
-track: main                   # Branch to follow
-```
-
-**When you encounter external artifacts:**
-- Use `ve external resolve <artifact_id>` to view the actual artifact content
-- This fetches the current HEAD of the external repository
-
-**Common scenarios:**
-- Task directories spanning multiple projects
-- Shared narratives across codebases
-- Cross-repo investigations
+For comprehensive documentation on external artifacts, see [EXTERNAL.md](EXTERNAL.md).

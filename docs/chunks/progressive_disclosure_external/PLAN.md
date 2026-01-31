@@ -8,170 +8,81 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extracts external artifacts documentation from `docs/trunk/ARTIFACTS.md` into a standalone `docs/trunk/EXTERNAL.md` file and updates the CLAUDE.md template to point to the new location.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach follows the progressive disclosure pattern established by the `progressive_disclosure_refactor` chunk: situational content lives in dedicated docs/trunk/*.md files, while CLAUDE.md contains only signposts that help agents discover when to read the detailed documentation.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Key design decisions:**
+- External artifacts documentation merits a separate file because multi-repo workflows are a distinct, complex topic that most agents will never need
+- The signpost pattern ("Read when" + trigger keywords + link) is already established and working well
+- `ve init` already renders docs/trunk files, so no template infrastructure changes are needed
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/progressive_disclosure_external/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+**Testing approach per docs/trunk/TESTING_PHILOSOPHY.md:**
+- This is primarily a documentation change, so behavioral tests are limited
+- Verify `ve init` renders without errors (existing test coverage)
+- Verify existing tests pass (no regressions)
+- No new tests required - template content is explicitly out of scope for testing per Testing Philosophy
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create docs/trunk/EXTERNAL.md
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create the new external artifacts reference document with comprehensive multi-repo workflow documentation. Content should cover:
 
-Example:
+- What external artifacts are (cross-repository pointers)
+- The external.yaml file structure
+- How to resolve external artifacts (`ve external resolve`)
+- Common scenarios (task directories, shared narratives, cross-repo investigations)
+- The relationship between external.yaml and local paths
 
-### Step 1: Define the SegmentHeader struct
+Use the existing content from `docs/trunk/ARTIFACTS.md#external-artifacts` as the starting point, but expand with additional context appropriate for a standalone reference doc.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `docs/trunk/EXTERNAL.md`
 
-Location: src/segment/format.rs
+### Step 2: Update CLAUDE.md.jinja2 signpost
 
-### Step 2: Implement header serialization
+Update the External Artifacts signpost in CLAUDE.md.jinja2 to point to `docs/trunk/EXTERNAL.md` instead of `docs/trunk/ARTIFACTS.md#external-artifacts`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+The signpost already follows the correct pattern:
+```markdown
+### External Artifacts
 
-### Step 3: ...
+Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+See: `docs/trunk/EXTERNAL.md`
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/templates/claude/CLAUDE.md.jinja2`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Update ARTIFACTS.md to remove external section
+
+Remove the `## External Artifacts {#external-artifacts}` section from ARTIFACTS.md since the content now lives in EXTERNAL.md. Add a brief mention and cross-reference to maintain discoverability.
+
+Location: `docs/trunk/ARTIFACTS.md`
+
+### Step 4: Render and verify
+
+Run `uv run ve init` to render the updated templates and verify:
+- Templates render without errors
+- CLAUDE.md contains the updated signpost pointing to EXTERNAL.md
+- docs/trunk/EXTERNAL.md exists with expected content
+
+### Step 5: Run tests
+
+Run `uv run pytest tests/` to verify no regressions were introduced.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **progressive_disclosure_refactor**: Must be complete (provides the signpost structure in CLAUDE.md.jinja2)
+  - Status: ACTIVE (completed)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Content scope**: The current external artifacts section in ARTIFACTS.md is relatively brief (~200 words). EXTERNAL.md should be expanded to be a comprehensive reference, but not so large that it defeats the purpose of extraction.
+- **Cross-reference consistency**: After this change, external artifacts will be documented in EXTERNAL.md but the ARTIFACTS.md page still discusses artifact types. Ensure the cross-reference is clear.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
