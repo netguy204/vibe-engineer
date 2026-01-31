@@ -928,3 +928,543 @@ class TestOrchPsAttentionReason:
             assert result.exit_code == 0
             # REASON column should not appear when no attention reasons
             assert "REASON" not in result.output
+
+
+# Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with dependency ordering
+class TestOrchInjectBatch:
+    """Tests for ve orch inject command with multiple chunks."""
+
+    def test_inject_multiple_chunks_no_dependencies(self, runner, tmp_path):
+        """Inject multiple chunks without dependencies."""
+        # Create chunk directories with GOAL.md files
+        chunks_dir = tmp_path / "docs" / "chunks"
+        for name in ["chunk_a", "chunk_b", "chunk_c"]:
+            chunk_dir = chunks_dir / name
+            chunk_dir.mkdir(parents=True)
+            (chunk_dir / "GOAL.md").write_text(
+                f"""---
+status: FUTURE
+depends_on: []
+---
+
+# {name}
+"""
+            )
+
+        injected_chunks = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    injected_chunks.append(json["chunk"])
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": json.get("priority", 0),
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                elif path == "/work-units":
+                    # List work units - return empty initially
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "chunk_b", "chunk_c", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert len(injected_chunks) == 3
+            assert "chunk_a" in injected_chunks
+            assert "chunk_b" in injected_chunks
+            assert "chunk_c" in injected_chunks
+
+    def test_inject_single_chunk_backward_compatible(self, runner, tmp_path):
+        """Single-chunk usage remains backward compatible."""
+        # Create a chunk directory
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunk_dir = chunks_dir / "my_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: []
+---
+
+# my_chunk
+"""
+        )
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "chunk": "my_chunk",
+                "phase": "PLAN",
+                "priority": 0,
+                "status": "READY",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "my_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "Injected" in result.output
+            assert "my_chunk" in result.output
+
+    def test_inject_topological_ordering(self, runner, tmp_path):
+        """Chunks with depends_on are injected after their dependencies."""
+        # Create chunk directories with dependencies
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_a has no dependencies
+        chunk_a_dir = chunks_dir / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: []
+---
+
+# chunk_a
+"""
+        )
+
+        # chunk_b depends on chunk_a
+        chunk_b_dir = chunks_dir / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_a
+---
+
+# chunk_b
+"""
+        )
+
+        # chunk_c depends on chunk_b (transitive dep on chunk_a)
+        chunk_c_dir = chunks_dir / "chunk_c"
+        chunk_c_dir.mkdir(parents=True)
+        (chunk_c_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_b
+---
+
+# chunk_c
+"""
+        )
+
+        injection_order = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    injection_order.append(json["chunk"])
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": json.get("priority", 0),
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                elif path == "/work-units":
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            # Inject in reverse order to verify topological sort works
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_c", "chunk_b", "chunk_a", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # chunk_a must be before chunk_b, chunk_b must be before chunk_c
+            assert injection_order.index("chunk_a") < injection_order.index("chunk_b")
+            assert injection_order.index("chunk_b") < injection_order.index("chunk_c")
+
+    def test_inject_cycle_detection(self, runner, tmp_path):
+        """Error when chunks form a dependency cycle."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_a depends on chunk_b
+        chunk_a_dir = chunks_dir / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_b
+---
+
+# chunk_a
+"""
+        )
+
+        # chunk_b depends on chunk_a (cycle!)
+        chunk_b_dir = chunks_dir / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_a
+---
+
+# chunk_b
+"""
+        )
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "chunk_b", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "cycle" in result.output.lower()
+
+    def test_inject_external_dependency_validation(self, runner, tmp_path):
+        """Error when depends_on references a chunk not in batch and not an existing work unit."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_a depends on missing_chunk (not in batch)
+        chunk_a_dir = chunks_dir / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - missing_chunk
+---
+
+# chunk_a
+"""
+        )
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units":
+                    # No existing work units
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "missing_chunk" in result.output
+            # Should mention it's not in batch and not existing work unit
+            assert "not" in result.output.lower()
+
+    def test_inject_blocked_by_populated(self, runner, tmp_path):
+        """Work units have blocked_by populated from depends_on."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_a has no dependencies
+        chunk_a_dir = chunks_dir / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: []
+---
+
+# chunk_a
+"""
+        )
+
+        # chunk_b depends on chunk_a
+        chunk_b_dir = chunks_dir / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_a
+---
+
+# chunk_b
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                elif path == "/work-units":
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "chunk_b", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # Find the chunk_b injection call
+            chunk_b_call = next(c for c in inject_calls if c["chunk"] == "chunk_b")
+            assert "chunk_a" in chunk_b_call["blocked_by"]
+
+    def test_inject_explicit_deps_flag_set(self, runner, tmp_path):
+        """Work units with non-empty depends_on have explicit_deps=True."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_a has no dependencies
+        chunk_a_dir = chunks_dir / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on: []
+---
+
+# chunk_a
+"""
+        )
+
+        # chunk_b depends on chunk_a
+        chunk_b_dir = chunks_dir / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - chunk_a
+---
+
+# chunk_b
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                elif path == "/work-units":
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "chunk_b", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # chunk_a has no depends_on, so explicit_deps should be False
+            chunk_a_call = next(c for c in inject_calls if c["chunk"] == "chunk_a")
+            assert chunk_a_call.get("explicit_deps", False) is False
+
+            # chunk_b has depends_on, so explicit_deps should be True
+            chunk_b_call = next(c for c in inject_calls if c["chunk"] == "chunk_b")
+            assert chunk_b_call.get("explicit_deps") is True
+
+    def test_inject_external_dependency_exists_as_work_unit(self, runner, tmp_path):
+        """Dependencies outside the batch are allowed if they exist as work units."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        # chunk_b depends on external_chunk (not in batch but exists as work unit)
+        chunk_b_dir = chunks_dir / "chunk_b"
+        chunk_b_dir.mkdir(parents=True)
+        (chunk_b_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+depends_on:
+  - external_chunk
+---
+
+# chunk_b
+"""
+        )
+
+        inject_calls = []
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    inject_calls.append(json)
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                        "explicit_deps": json.get("explicit_deps", False),
+                    }
+                elif path == "/work-units":
+                    # external_chunk exists as a work unit
+                    return {
+                        "work_units": [
+                            {"chunk": "external_chunk", "status": "RUNNING"}
+                        ],
+                        "count": 1,
+                    }
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_b", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert len(inject_calls) == 1
+            assert inject_calls[0]["chunk"] == "chunk_b"
+            assert "external_chunk" in inject_calls[0]["blocked_by"]
+
+    def test_inject_batch_output_format(self, runner, tmp_path):
+        """Batch injection shows progress for each chunk."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        for name in ["chunk_a", "chunk_b"]:
+            chunk_dir = chunks_dir / name
+            chunk_dir.mkdir(parents=True)
+            deps = "[]" if name == "chunk_a" else "[chunk_a]"
+            (chunk_dir / "GOAL.md").write_text(
+                f"""---
+status: FUTURE
+depends_on: {deps}
+---
+
+# {name}
+"""
+            )
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                    }
+                elif path == "/work-units":
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_b", "chunk_a", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            # Should mention both chunks were injected
+            assert "chunk_a" in result.output
+            assert "chunk_b" in result.output
+            # Should show blocked_by info for chunk_b
+            assert "blocked_by" in result.output.lower() or "Injected 2" in result.output
+
+    def test_inject_batch_json_output(self, runner, tmp_path):
+        """Batch injection with --json outputs array of results."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+
+        for name in ["chunk_a", "chunk_b"]:
+            chunk_dir = chunks_dir / name
+            chunk_dir.mkdir(parents=True)
+            (chunk_dir / "GOAL.md").write_text(
+                f"""---
+status: FUTURE
+depends_on: []
+---
+
+# {name}
+"""
+            )
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+
+            def mock_request(method, path, json=None):
+                if path == "/work-units/inject":
+                    return {
+                        "chunk": json["chunk"],
+                        "phase": "PLAN",
+                        "priority": 0,
+                        "status": "READY",
+                        "blocked_by": json.get("blocked_by", []),
+                    }
+                elif path == "/work-units":
+                    return {"work_units": [], "count": 0}
+                return {}
+
+            mock_client._request = mock_request
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "inject", "chunk_a", "chunk_b", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert "results" in data
+            assert len(data["results"]) == 2
