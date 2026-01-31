@@ -19,6 +19,7 @@ from models import (
     FrictionTheme,
     FrictionProposedChunk,
     FrictionFrontmatter,
+    ProposedChunk,
 )
 
 
@@ -670,3 +671,78 @@ class TestFrictionEntryReference:
 
         with pytest.raises(ValueError):
             FrictionEntryReference(entry_id="F001", scope="invalid")
+
+
+# Chunk: docs/chunks/explicit_deps_chunk_propagate - Dependency propagation for chunks
+class TestProposedChunkDependsOn:
+    """Tests for ProposedChunk.depends_on field."""
+
+    def test_depends_on_defaults_to_empty_list(self):
+        """depends_on defaults to empty list when not provided."""
+        chunk = ProposedChunk(prompt="Do something")
+        assert chunk.depends_on == []
+
+    def test_depends_on_accepts_valid_indices(self):
+        """depends_on accepts a list of non-negative integers."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[0, 1, 2])
+        assert chunk.depends_on == [0, 1, 2]
+
+    def test_depends_on_accepts_single_index(self):
+        """depends_on accepts a single index."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[0])
+        assert chunk.depends_on == [0]
+
+    def test_depends_on_accepts_zero_index(self):
+        """depends_on accepts index 0 (first element reference)."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[0])
+        assert chunk.depends_on == [0]
+
+    def test_depends_on_rejects_negative_index(self):
+        """depends_on rejects negative indices."""
+        with pytest.raises(ValidationError) as exc_info:
+            ProposedChunk(prompt="Do something", depends_on=[-1])
+        assert "non-negative" in str(exc_info.value)
+
+    def test_depends_on_rejects_any_negative_in_list(self):
+        """depends_on rejects if any index is negative."""
+        with pytest.raises(ValidationError) as exc_info:
+            ProposedChunk(prompt="Do something", depends_on=[0, 2, -3])
+        assert "non-negative" in str(exc_info.value)
+        assert "-3" in str(exc_info.value)
+
+    def test_depends_on_accepts_large_indices(self):
+        """depends_on accepts large indices (validation is index-level, not array bounds)."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[100, 999])
+        assert chunk.depends_on == [100, 999]
+
+    def test_depends_on_with_chunk_directory(self):
+        """depends_on works correctly when chunk_directory is also provided."""
+        chunk = ProposedChunk(
+            prompt="Do something",
+            chunk_directory="my_chunk",
+            depends_on=[0, 1]
+        )
+        assert chunk.prompt == "Do something"
+        assert chunk.chunk_directory == "my_chunk"
+        assert chunk.depends_on == [0, 1]
+
+    def test_depends_on_from_dict(self):
+        """depends_on parses correctly from dict (YAML-like input)."""
+        data = {
+            "prompt": "Create auth middleware",
+            "chunk_directory": None,
+            "depends_on": [0]
+        }
+        chunk = ProposedChunk(**data)
+        assert chunk.depends_on == [0]
+        assert chunk.chunk_directory is None
+
+    def test_depends_on_preserves_order(self):
+        """depends_on preserves the order of indices."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[2, 0, 1])
+        assert chunk.depends_on == [2, 0, 1]
+
+    def test_depends_on_allows_duplicates(self):
+        """depends_on allows duplicate indices (edge case, but not invalid)."""
+        chunk = ProposedChunk(prompt="Do something", depends_on=[0, 0, 1])
+        assert chunk.depends_on == [0, 0, 1]

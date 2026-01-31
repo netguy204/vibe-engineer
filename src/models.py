@@ -422,10 +422,16 @@ class ProposedChunk(BaseModel):
 
     Represents a chunk that has been proposed but may or may not have been created yet.
     When chunk_directory is None or empty, the chunk has not yet been created.
+
+    The depends_on field stores indices of other proposed chunks in the same array
+    that this chunk depends on. These are 0-based indices referencing sibling prompts.
+    When the chunk is created, index-based dependencies are resolved to chunk directory
+    names by looking up proposed_chunks[index].chunk_directory.
     """
 
     prompt: str  # The chunk prompt text
     chunk_directory: str | None = None  # Populated when chunk is created
+    depends_on: list[int] = []  # Indices of sibling proposed chunks this depends on
 
     @field_validator("prompt")
     @classmethod
@@ -433,6 +439,15 @@ class ProposedChunk(BaseModel):
         """Validate prompt is non-empty."""
         if not v or not v.strip():
             raise ValueError("prompt cannot be empty")
+        return v
+
+    @field_validator("depends_on")
+    @classmethod
+    def validate_depends_on(cls, v: list[int]) -> list[int]:
+        """Validate depends_on indices are non-negative."""
+        for idx in v:
+            if idx < 0:
+                raise ValueError(f"depends_on indices must be non-negative, got {idx}")
         return v
 
 

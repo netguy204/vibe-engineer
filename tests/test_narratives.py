@@ -236,3 +236,153 @@ Just regular markdown content.
         frontmatter = narratives.parse_narrative_frontmatter("0001-no_front")
 
         assert frontmatter is None
+
+
+# Chunk: docs/chunks/explicit_deps_chunk_propagate - Dependency propagation for chunks
+class TestNarrativeExplicitDependencies:
+    """Tests for explicit depends_on field in narrative proposed_chunks."""
+
+    def test_parse_proposed_chunks_with_depends_on(self, temp_project):
+        """Verify depends_on field is preserved in parsed proposed_chunks."""
+        narr_dir = temp_project / "docs" / "narratives" / "explicit_deps"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: "Test explicit dependencies"
+proposed_chunks:
+  - prompt: "Create auth core module"
+    chunk_directory: "auth_core"
+    depends_on: []
+  - prompt: "Create auth middleware"
+    chunk_directory: null
+    depends_on: [0]
+  - prompt: "Create auth tests"
+    chunk_directory: "auth_tests"
+    depends_on: [0, 1]
+---
+# Explicit Dependencies Narrative
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("explicit_deps")
+
+        assert frontmatter is not None
+        assert len(frontmatter.proposed_chunks) == 3
+
+        # First chunk has no dependencies
+        assert frontmatter.proposed_chunks[0].depends_on == []
+        assert frontmatter.proposed_chunks[0].chunk_directory == "auth_core"
+
+        # Second chunk depends on first (index 0)
+        assert frontmatter.proposed_chunks[1].depends_on == [0]
+        assert frontmatter.proposed_chunks[1].chunk_directory is None
+
+        # Third chunk depends on first and second (indices 0 and 1)
+        assert frontmatter.proposed_chunks[2].depends_on == [0, 1]
+        assert frontmatter.proposed_chunks[2].chunk_directory == "auth_tests"
+
+    def test_resolve_dependency_indices_to_chunk_directories(self, temp_project):
+        """Test that dependency indices can be resolved to chunk directory names."""
+        narr_dir = temp_project / "docs" / "narratives" / "dep_resolution"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: "Test dependency resolution"
+proposed_chunks:
+  - prompt: "Create base module"
+    chunk_directory: "base_module"
+    depends_on: []
+  - prompt: "Create extension"
+    chunk_directory: "extension_module"
+    depends_on: [0]
+---
+# Dependency Resolution Test
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("dep_resolution")
+
+        assert frontmatter is not None
+        proposed = frontmatter.proposed_chunks
+
+        # Simulate what the chunk-create command does:
+        # For proposed_chunks[1] with depends_on: [0], resolve index 0
+        depends_on_indices = proposed[1].depends_on
+        resolved_deps = []
+        for idx in depends_on_indices:
+            dep_chunk = proposed[idx]
+            if dep_chunk.chunk_directory:
+                resolved_deps.append(dep_chunk.chunk_directory)
+
+        assert resolved_deps == ["base_module"]
+
+    def test_unresolved_dependency_when_chunk_directory_null(self, temp_project):
+        """Test that unresolved dependencies (null chunk_directory) are handled."""
+        narr_dir = temp_project / "docs" / "narratives" / "unresolved_deps"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: "Test unresolved dependencies"
+proposed_chunks:
+  - prompt: "First chunk"
+    chunk_directory: null
+    depends_on: []
+  - prompt: "Second chunk depends on first"
+    chunk_directory: null
+    depends_on: [0]
+---
+# Unresolved Dependencies Test
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("unresolved_deps")
+
+        assert frontmatter is not None
+        proposed = frontmatter.proposed_chunks
+
+        # Simulate dependency resolution where dependency has null chunk_directory
+        depends_on_indices = proposed[1].depends_on
+        resolved_deps = []
+        unresolved_indices = []
+        for idx in depends_on_indices:
+            dep_chunk = proposed[idx]
+            if dep_chunk.chunk_directory:
+                resolved_deps.append(dep_chunk.chunk_directory)
+            else:
+                unresolved_indices.append(idx)
+
+        # Dependency at index 0 is unresolved (chunk_directory is null)
+        assert resolved_deps == []
+        assert unresolved_indices == [0]
+
+    def test_proposed_chunks_without_depends_on_defaults_empty(self, temp_project):
+        """Verify proposed_chunks without depends_on field defaults to empty list."""
+        narr_dir = temp_project / "docs" / "narratives" / "no_deps"
+        narr_dir.mkdir(parents=True)
+
+        overview = narr_dir / "OVERVIEW.md"
+        overview.write_text("""---
+status: ACTIVE
+advances_trunk_goal: "Test default depends_on"
+proposed_chunks:
+  - prompt: "First chunk"
+    chunk_directory: null
+  - prompt: "Second chunk"
+    chunk_directory: "second"
+---
+# No Explicit Dependencies Test
+""")
+
+        narratives = Narratives(temp_project)
+        frontmatter = narratives.parse_narrative_frontmatter("no_deps")
+
+        assert frontmatter is not None
+        # Both chunks should have empty depends_on (default)
+        assert frontmatter.proposed_chunks[0].depends_on == []
+        assert frontmatter.proposed_chunks[1].depends_on == []
