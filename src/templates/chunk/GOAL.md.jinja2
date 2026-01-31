@@ -40,6 +40,11 @@ explicit approval. Do NOT commit or inject until the operator approves.
 This applies whether triggered by "in the background", "create a future chunk",
 or any other mechanism that creates a FUTURE chunk.
 
+COMMIT BOTH FILES: When committing a FUTURE chunk after approval, add the entire
+chunk directory (both GOAL.md and PLAN.md) to the commit, not just GOAL.md. The
+`ve chunk create` command creates both files, and leaving PLAN.md untracked will
+cause merge conflicts when the orchestrator creates a worktree for the PLAN phase.
+
 PARENT_CHUNK:
 - null for new work
 - chunk directory name (e.g., "006-segment-compaction") for corrections or modifications

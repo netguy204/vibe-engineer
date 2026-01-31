@@ -127,3 +127,21 @@ completely in order:
    "Note: Chunk <existing_chunk> is currently being implemented. You can work
    on this new chunk by completing the current one first with `ve chunk complete`,
    or create this one with `--future` to work on it later."
+
+9. **IMPORTANT: When committing a new chunk, commit the entire chunk directory.**
+
+   The `ve chunk create` command creates both GOAL.md and PLAN.md files. When
+   committing after refinement and approval, add the **entire chunk directory**
+   to the commit, not just the files you modified:
+
+   ```bash
+   git add docs/chunks/<shortname>/
+   ```
+
+   **Why this matters:** If you only commit GOAL.md (the file you edited), PLAN.md
+   remains untracked on main. When the orchestrator later creates a worktree to
+   run the PLAN phase, the merge will fail with "untracked working tree files
+   would be overwritten" because PLAN.md exists in both places.
+
+   This is especially critical for FUTURE chunks being prepared for orchestrator
+   injection—always commit both files together.
