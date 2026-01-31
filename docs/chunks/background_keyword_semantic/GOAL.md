@@ -3,11 +3,11 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/claude/CLAUDE.md.jinja2
+- docs/trunk/ORCHESTRATOR.md
 - src/templates/chunk/GOAL.md.jinja2
 code_references:
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Background keyword documentation section in CLAUDE.md"
+- ref: docs/trunk/ORCHESTRATOR.md
+  implements: "Background keyword documentation section (moved from CLAUDE.md)"
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: "Background workflow note in chunk GOAL.md template"
 narrative: null

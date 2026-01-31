@@ -4,9 +4,12 @@ ticket: null
 parent_chunk: null
 code_paths:
   - src/templates/claude/CLAUDE.md.jinja2
+  - docs/trunk/ARTIFACTS.md
 code_references:
   - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "External Artifacts documentation section explaining how to identify and resolve external.yaml files"
+    implements: "External Artifacts pointer in CLAUDE.md template directing agents to ARTIFACTS.md"
+  - ref: docs/trunk/ARTIFACTS.md#External Artifacts
+    implements: "Full External Artifacts documentation explaining how to identify and resolve external.yaml files"
 narrative: task_artifact_discovery
 investigation: null
 subsystems: []

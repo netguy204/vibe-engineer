@@ -4,12 +4,12 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/commands/chunk-plan.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- docs/trunk/ARTIFACTS.md
 code_references:
   - ref: src/templates/commands/chunk-plan.md.jinja2
     implements: "Cluster prefix suggestion step (Step 2) for semantic chunk naming"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Investigation frontmatter reference, Proposed Chunks section, and Investigation lifecycle details"
+  - ref: docs/trunk/ARTIFACTS.md
+    implements: "Investigation frontmatter reference, Proposed Chunks section, and Investigation lifecycle details (moved from CLAUDE.md.jinja2 by progressive_disclosure_refactor)"
 narrative: null
 investigation: template_drift
 subsystems: []

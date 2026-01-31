@@ -32,165 +32,71 @@ To understand recent work, use `ve chunk list --latest` to find the most recentl
 
 ### Chunk Naming Conventions
 
-Name chunks by the **initiative** they advance, not the artifact type or action verb. Ask: "What multi-chunk effort does this chunk belong to?" Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes that create superclusters: `chunk_`, `fix_`, `cli_`, `api_`, `util_`. See `docs/investigations/alphabetical_chunk_grouping/OVERVIEW.md` for detailed rationale.
+Name chunks by the **initiative** they advance, not the artifact type or action verb. Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes: `chunk_`, `fix_`, `cli_`, `api_`, `util_`.
 
 ### Chunk Frontmatter References
 
-Chunk GOAL.md files may reference other artifact types in their frontmatter:
+Chunk GOAL.md files may reference other artifacts in their frontmatter (`narrative`, `investigation`, `friction_entries`). When you see these references, read the referenced artifact to understand the broader context.
 
-- **narrative**: References a narrative directory (e.g., `investigations`) that this chunk helps implement
-- **investigation**: References an investigation directory (e.g., `memory_leak`) from which this chunk originated, providing traceability from implementation work back to exploratory findings
-- **friction_entries**: Links to friction log entries this chunk addresses, providing "why did we do this work?" traceability
+See: `docs/trunk/ARTIFACTS.md` for details on each artifact type.
 
-When you see these references, read the referenced artifact to understand the broader context.
+## Extended Artifacts
 
-## Narratives (`docs/narratives/`)
+VE supports additional artifact types for different scenarios. When you encounter these situations, read the linked documentation:
 
-Narratives are multi-chunk initiatives that capture a high-level ambition decomposed into implementation steps. Each narrative directory contains an OVERVIEW.md with:
+### Narratives (`docs/narratives/`)
 
-- **Advances Trunk Goal** - How this narrative advances the project's goals
-- **Proposed Chunks** - List of chunk prompts and their corresponding chunk directories (in `proposed_chunks` frontmatter)
+Multi-chunk initiatives with upfront decomposition. **Read when**: planning large features, working on chunks that reference a narrative, or decomposing big ambitions.
 
-When a chunk references a narrative, read the narrative's OVERVIEW.md to understand the larger initiative the chunk belongs to.
+See: `docs/trunk/ARTIFACTS.md#narratives`
 
-## Subsystems (`docs/subsystems/`)
+### Investigations (`docs/investigations/`)
 
-Subsystems document emergent architectural patterns discovered in the codebase. Each subsystem directory contains an OVERVIEW.md describing:
+Exploratory documents for understanding before acting. **Read when**: diagnosing issues, exploring unfamiliar code, or validating hypotheses before committing to implementation.
 
-- **Intent** - What the subsystem accomplishes
-- **Scope** - What's in and out of scope
-- **Invariants** - Rules that must always hold
-- **Code References** - Symbolic references to implementations with compliance levels
+See: `docs/trunk/ARTIFACTS.md#investigations`
 
-Subsystem status values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
+### Subsystems (`docs/subsystems/`)
 
-**When to check subsystems**: Before implementing patterns that might already exist in the codebase, check `docs/subsystems/` for existing documentation. Subsystems capture how things *should* work, including known inconsistencies.
+Emergent architectural patterns. **Read when**: implementing patterns that might already exist, or when code backreferences mention a subsystem.
 
-**Subsystem status affects your behavior**:
-- `DISCOVERING` / `DOCUMENTED`: The pattern is documented but may have inconsistencies. Do NOT expand scope to fix inconsistencies unless explicitly asked.
-- `REFACTORING`: Active consolidation work. You MAY expand scope for consistency improvements.
-- `STABLE`: The subsystem is authoritative. Follow its patterns for new code.
-- `DEPRECATED`: Avoid using this pattern; may suggest alternatives.
+See: `docs/trunk/ARTIFACTS.md#subsystems`
 
-## Investigations (`docs/investigations/`)
+### Friction Log (`docs/trunk/FRICTION.md`)
 
-Investigations are exploratory documents for understanding something before committing to action—either diagnosing an issue or exploring a concept. Each investigation contains an OVERVIEW.md with:
+Accumulative ledger for pain points. **Read when**: capturing friction, or when friction patterns suggest work.
 
-- **Trigger** - What prompted the investigation
-- **Success Criteria** - What "done" looks like
-- **Testable Hypotheses** - Beliefs to verify or falsify
-- **Proposed Chunks** - Work items that emerge from findings
+See: `docs/trunk/ARTIFACTS.md#friction-log`
 
-Investigation status values: `ONGOING`, `SOLVED`, `NOTED`, `DEFERRED`
+### External Artifacts
 
-**When to use each artifact type:**
-- **Investigation**: When you need to understand something before committing to action—exploring unfamiliar code, diagnosing unclear issues, or validating hypotheses
-- **Chunk**: When you know what needs to be done and can proceed directly to implementation
-- **Narrative**: When you have a clear multi-step goal that can be decomposed upfront into planned chunks
-- **Friction Log**: When you encounter a pain point that doesn't need immediate action but should be remembered—captures friction over time; patterns emerge organically
+Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
 
-## Friction Log (`docs/trunk/FRICTION.md`)
+See: `docs/trunk/ARTIFACTS.md#external-artifacts`
 
-The friction log is an accumulative ledger for capturing pain points encountered during project use. Unlike other artifacts, friction logs:
+## Orchestrator (`ve orch`)
 
-- **Have indefinite lifespan**: A friction log is like a journal—you don't "complete" it
-- **Contain many entries**: Each entry is a distinct friction point; the log is a ledger, not a document
-- **Have no artifact-level status**: The log is always implicitly active; only entries have lifecycle
+Manages parallel chunk execution across worktrees. **Read when**:
+- User mentions "background", "parallel", or "orchestrator"
+- Working with FUTURE chunks
+- Managing concurrent workstreams
 
-### Entry Structure
+See: `docs/trunk/ORCHESTRATOR.md`
 
-Each friction entry uses the format:
+Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`
 
-```markdown
-### FXXX: YYYY-MM-DD [theme-id] Title
+## Code Backreferences
 
-Description of the friction point and context.
+Source code may contain backreference comments linking to documentation:
+
+```python
+# Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/auth_refactor - Authentication system redesign
 ```
 
-Where:
-- `FXXX` is a sequential ID (F001, F002, etc.) for stable references
-- `YYYY-MM-DD` is the date observed
-- `[theme-id]` categorizes the entry (themes emerge organically as entries accumulate)
-- Title is a brief summary
+When you see these, read the referenced artifact to understand context.
 
-### Entry Lifecycle
-
-Entry status is **derived**, not stored:
-
-- **OPEN**: Entry ID not in any `proposed_chunks.addresses`
-- **ADDRESSED**: Entry ID appears in a proposed chunk that has been created
-- **RESOLVED**: Entry is addressed by a chunk that has reached ACTIVE status
-
-### When Patterns Emerge
-
-When friction accumulates (3+ entries in a theme, or recurring pain), add a proposed chunk to the friction log frontmatter:
-
-```yaml
-proposed_chunks:
-  - prompt: "Standardize CLI naming conventions"
-    addresses: [F003, F007, F012]
-    chunk_directory: null  # Set when chunk is created
-```
-
-Chunks created from friction should reference the entries they address via the `friction_entries` frontmatter field, enabling "why did we do this work?" traceability.
-
-Use `/friction-log` to quickly capture a friction point without ceremony.
-
-## Proposed Chunks
-
-The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives and investigations to track work that has been proposed but not yet created as chunks. Each entry has:
-
-- **prompt**: The chunk prompt text describing the work
-- **chunk_directory**: `null` until a chunk is created, then the directory name
-
-Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet across the entire project. This helps identify pending work from all sources.
-
-## External Artifacts
-
-When work spans multiple repositories, artifact directories may contain an `external.yaml` file instead of the usual GOAL.md or OVERVIEW.md. These files are pointers to artifacts that live in other repositories.
-
-### Identifying External Artifacts
-
-External artifacts are files named `external.yaml` found in artifact directories:
-
-```
-docs/chunks/some_feature/external.yaml      # External chunk
-docs/narratives/big_initiative/external.yaml  # External narrative
-docs/investigations/root_cause/external.yaml  # External investigation
-```
-
-### External File Structure
-
-```yaml
-artifact_id: some_feature
-artifact_type: chunk          # chunk, narrative, investigation, or subsystem
-repo: org/other-repo          # Repository containing the actual artifact
-track: main                   # Branch to follow
-```
-
-### Resolving External Artifacts
-
-When you encounter an `external.yaml` file, use `ve external resolve` to view the actual artifact content:
-
-```bash
-ve external resolve <artifact_id>
-```
-
-This command:
-- Displays the artifact's goal/overview content
-- Shows the local filesystem path where the artifact is cached
-- Lists the artifact's directory contents
-
-The resolve command always fetches the current HEAD of the external repository, ensuring you see the latest version.
-
-### When You'll Encounter External Artifacts
-
-External artifacts appear in multi-repository workflows:
-- **Task directories**: When a task spans multiple projects, chunks in one project may reference work happening in another
-- **Shared narratives**: Large initiatives may have components implemented across different codebases
-- **Cross-repo investigations**: Debugging issues that span system boundaries
-
-When you see an `external.yaml`, resolve it to understand the work before proceeding.
+See: `docs/trunk/ARTIFACTS.md#code-backreferences` for valid types and usage.
 
 ## Available Commands
 
@@ -200,12 +106,12 @@ Use these slash commands for artifact management:
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
 - `/chunk-complete` - Mark a chunk complete and update references
-- `/cluster-rename` - Batch-rename chunks matching a prefix (e.g., `/cluster-rename old_prefix new_prefix`)
+- `/cluster-rename` - Batch-rename chunks matching a prefix
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
-- `/narrative-compact` - Consolidate multiple chunks into a narrative (reduces backreference clutter)
+- `/narrative-compact` - Consolidate multiple chunks into a narrative
 - `/subsystem-discover` - Document an emergent architectural pattern
-- `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
-- `/friction-log` - Capture a friction point for later pattern analysis
+- `/investigation-create` - Start a new investigation
+- `/friction-log` - Capture a friction point
 
 ## Creating Artifacts
 
@@ -237,216 +143,10 @@ If you encounter a situation where no creation command exists for an artifact ty
 
 You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
 
-1. **Start with chunks** - The create → plan → implement → complete cycle gives immediate, tangible progress. Most work lives here.
-2. **Discover larger artifacts when needed** - Narratives emerge when work is too big for one chunk. Subsystems emerge when you keep touching the same patterns. Investigations emerge when you need to understand before acting.
-3. **Graduate to tasks for multi-project work** - When work spans repositories, the same patterns apply at a larger scale.
-4. **Use orchestration for parallel workflows** - When managing multiple concurrent workstreams, the orchestrator (`ve orch`) automates scheduling, attention routing, and conflict detection.
-
-The documentation teaches itself: follow backreferences in code to discover the subsystems that govern it. Each artifact type is discovered when the current level becomes insufficient.
-
-## Working with the Orchestrator
-
-When the orchestrator is running (`ve orch status` shows "Running"), you can help manage the parallel workflow on behalf of the operator. This section describes common orchestrator interactions.
-
-### Key Commands
-
-| Command | Purpose |
-|---------|---------|
-| `ve orch status` | Check if orchestrator is running |
-| `ve orch ps` | List all work units and their status |
-| `ve orch inject <chunk>` | Submit a chunk to the orchestrator |
-| `ve orch attention` | Show chunks needing operator input |
-| `ve orch answer <chunk>` | Answer a question from a work unit |
-| `ve orch resolve <chunk>` | Resolve a conflict verdict |
-| `ve orch work-unit delete <chunk>` | Remove a work unit |
-
-### Creating and Submitting FUTURE Chunks
-
-When the operator asks you to create work for later (or when an IMPLEMENTING chunk already exists), create chunks with FUTURE status.
-
-**CRITICAL: FUTURE chunks require operator approval before commit/inject.** The workflow is:
-
-1. Create the chunk with `ve chunk create my_chunk --future`
-2. Refine the GOAL.md
-3. **Present the goal to the operator and wait for explicit approval**
-4. Only after approval: commit and inject
-
-```bash
-# Create a FUTURE chunk
-ve chunk create my_chunk --future
-
-# Refine GOAL.md, then STOP and present to operator for review
-# DO NOT proceed until operator approves
-
-# After operator approves, commit the chunk
-git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): create my_chunk"
-
-# Submit to orchestrator
-ve orch inject my_chunk
-```
-
-**Important**: Always commit chunks before injecting them. The orchestrator works from the git state, not your working directory.
-
-### Batch Creating Multiple Chunks
-
-When creating multiple chunks at once (e.g., from a narrative's proposed_chunks), use batch creation:
-
-```bash
-# Create multiple FUTURE chunks in one command
-ve chunk create auth_login auth_logout auth_refresh --future
-
-# With a shared ticket ID
-ve chunk create auth_login auth_logout auth_refresh --future --ticket AUTH-123
-```
-
-**After batch creation, refine each goal in parallel** using sub-agents:
-
-```python
-# Example: spawn Task tool sub-agents to refine each chunk's goal concurrently
-# This maximizes efficiency when multiple chunks need goal refinement
-```
-
-**Workflow for batch creation:**
-
-1. **Batch create** all chunks: `ve chunk create chunk_a chunk_b chunk_c --future`
-2. **Parallel refinement**: Spawn sub-agents (Task tool) to refine each GOAL.md simultaneously
-3. **Present all goals** to the operator for review
-4. **After approval**: Commit all chunks and inject into orchestrator
-
-**Note on backward compatibility**: When exactly 2 arguments are provided and the second contains a dash (e.g., `ve chunk create my_feature VE-001`), the second argument is treated as a ticket ID (legacy single-chunk mode). For batch creation with 2 chunks, use `--future` flag.
-
-### Re-injecting After Updates
-
-If you update a chunk's GOAL.md or PLAN.md after it's been injected, the orchestrator won't see your changes automatically. To update:
-
-```bash
-# Commit your changes
-git add docs/chunks/my_chunk/ && git commit -m "docs: update my_chunk goal"
-
-# Delete and re-inject
-ve orch work-unit delete my_chunk
-ve orch inject my_chunk
-```
-
-### Handling Attention Items
-
-Work units enter NEEDS_ATTENTION status when they require operator input (questions, conflicts, failures). Check the attention queue:
-
-```bash
-ve orch attention
-```
-
-For questions, you can answer on behalf of the operator if you have sufficient context:
-
-```bash
-ve orch answer my_chunk "The answer to the question"
-```
-
-For conflicts between chunks, resolve them:
-
-```bash
-ve orch resolve my_chunk --verdict INDEPENDENT  # or SERIALIZE
-```
-
-### Batch Operations
-
-Use `/orchestrator-submit-future` to submit all FUTURE chunks at once. This command:
-1. Finds all FUTURE chunks
-2. Checks each is committed (no uncommitted changes)
-3. Checks each isn't already in the orchestrator
-4. Injects eligible chunks
-
-### Proactive Orchestrator Support
-
-When working interactively with the operator, consider these proactive actions:
-
-- **After creating FUTURE chunks**: Present the GOAL.md for review; do NOT commit/inject until approved
-- **When operator mentions parallel work**: Check `ve orch status` and suggest using the orchestrator
-- **When fixing bugs discovered during work**: Create FUTURE chunks for issues outside current scope
-- **When attention items accumulate**: Alert the operator or help resolve items you have context for
-
-### The "Background" Keyword
-
-When the operator says **"in the background"** (or similar phrases), this signals use of the orchestrator for background execution.
-
-**Two distinct use cases:**
-
-#### 1. Execute an existing chunk in the background
-
-**Trigger phrases:**
-- "execute [chunk] in the background"
-- "run [chunk] in the background"
-- "run [chunk] in the orchestrator"
-- "inject [chunk]"
-
-**Expected agent behavior:**
-
-1. **Ensure chunk is committed** - if there are uncommitted changes, commit them first
-2. **Start orchestrator if needed** - `ve orch start` if not running
-3. **Inject the chunk** - `ve orch inject <chunk_name>`
-4. **Confirm injection** - report the work unit status
-
-Do NOT change the chunk status to IMPLEMENTING - the orchestrator manages that.
-
-```bash
-# Example workflow
-git add docs/chunks/my_chunk/ && git commit -m "feat(chunks): add my_chunk"
-ve orch start  # if not running
-ve orch inject my_chunk
-```
-
-#### 2. Create a new chunk for background execution
-
-**Trigger phrases:**
-- "do this in the background"
-- "handle this in the background"
-- "create a future chunk"
-- "create a FUTURE chunk"
-
-**Expected agent behavior:**
-
-1. **Create a FUTURE chunk** using `ve chunk create my_chunk --future`
-2. **Refine the GOAL.md** with the operator as normal
-3. **Present the goal for operator review** and wait for explicit approval
-4. **Commit the chunk** only after the operator approves
-5. **Inject into orchestrator** using `ve orch inject my_chunk`
-6. **Continue with other work**
-
-**Contrast with default behavior:**
-
-| Scenario | Chunk Status | Agent Behavior |
-|----------|--------------|----------------|
-| Without "background" | IMPLEMENTING | Work on the chunk immediately in current session |
-| With "background" (new) | FUTURE | Create chunk, get approval, commit, inject |
-| With "background" (existing) | (unchanged) | Commit if needed, inject into orchestrator |
-
-**Important:** For new chunks, always wait for operator approval before committing. For existing chunks the operator is explicitly requesting execution, so proceed directly.
-
-## Code Backreferences
-
-Source code may contain backreference comments that link code back to documentation:
-
-```python
-# Subsystem: docs/subsystems/template_system - Unified template rendering
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-**Valid backreference types:**
-
-- `# Subsystem: docs/subsystems/<name>` - Links to enduring architectural patterns. Use when code implements or extends a documented subsystem.
-- `# Chunk: docs/chunks/<name>` - Links to implementation work. Use when code was created or significantly modified by a chunk.
-
-**When to use each type:**
-
-| Type | Purpose | Lifespan | When to add |
-|------|---------|----------|-------------|
-| Subsystem | Architectural pattern | Enduring | Code follows a documented subsystem's patterns |
-| Chunk | Implementation work | Until SUPERSEDED/HISTORICAL | Code created or significantly modified by the chunk |
-
-**Chunk backreferences and task context:**
-
-When adding chunk backreferences in a multi-project task, always use the local path within the current repository (e.g., `docs/chunks/chunk_name`), not cross-repository paths. Each participating project has `external.yaml` pointers for chunks that live in the external artifacts repo. The local path is universally resolvable from within the project.
-
-**Narrative backreferences:** Do NOT add `# Narrative:` backreferences. Narratives decompose into chunks; reference the implementing chunk instead.
+1. **Start with chunks** - The create → plan → implement → complete cycle gives immediate, tangible progress.
+2. **Discover larger artifacts when needed** - Narratives emerge when work is too big for one chunk. Subsystems emerge when you keep touching the same patterns.
+3. **Graduate to orchestration** - When managing parallel workflows, the orchestrator automates scheduling and conflict detection.
+
+The documentation teaches itself: follow backreferences in code to discover the subsystems that govern it.
 
 <!-- VE:MANAGED:END -->

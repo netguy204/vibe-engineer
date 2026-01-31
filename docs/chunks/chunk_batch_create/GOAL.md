@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/ve.py
-- src/templates/claude/CLAUDE.md.jinja2
+- docs/trunk/ORCHESTRATOR.md
 - tests/test_chunk_start.py
 code_references:
 - ref: src/ve.py#create
@@ -13,8 +13,8 @@ code_references:
   implements: "Batch chunk creation handler for task directory (cross-repo) mode"
 - ref: tests/test_chunk_start.py#TestBatchCreation
   implements: "Test suite for batch chunk creation functionality"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Documentation for batch creation in CLAUDE.md template"
+- ref: docs/trunk/ORCHESTRATOR.md
+  implements: "Documentation for batch creation in orchestrator reference"
 narrative: null
 investigation: null
 subsystems:
