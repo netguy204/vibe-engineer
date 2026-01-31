@@ -8,170 +8,291 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a REVIEW phase to the orchestrator scheduler by extending the existing phase
+progression system. The REVIEW phase acts as a quality gate between IMPLEMENT and
+COMPLETE, invoking the `/chunk-review` skill to assess implementation alignment
+with documented intent.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design decisions:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Phase insertion**: Add `WorkUnitPhase.REVIEW` between IMPLEMENT and COMPLETE.
+   The phase progression map in `scheduler.py` will be updated:
+   `IMPLEMENT → REVIEW → COMPLETE`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_review_phase/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Skill invocation pattern**: Follow the existing pattern in `AgentRunner` where
+   phases map to skill files. Add `chunk-review.md` as the skill for REVIEW phase.
+
+3. **Decision parsing**: The /chunk-review skill outputs a YAML decision block with
+   `decision: APPROVE|FEEDBACK|ESCALATE`. The scheduler will parse this to route:
+   - APPROVE → proceed to COMPLETE
+   - FEEDBACK → return to IMPLEMENT with iteration context
+   - ESCALATE → mark NEEDS_ATTENTION
+
+4. **Feedback context file**: On FEEDBACK, create `docs/chunks/{chunk}/REVIEW_FEEDBACK.md`
+   with the reviewer's feedback. The implementer skill reads this on retry.
+
+5. **Iteration tracking**: Add `review_iterations` field to WorkUnit model to track
+   how many review cycles have occurred.
+
+6. **Loop detection**: Auto-escalate when `review_iterations` exceeds the reviewer's
+   `max_iterations` config (from METADATA.yaml).
+
+**Subsystem considerations:**
+
+This chunk implements the orchestrator subsystem (docs/subsystems/orchestrator).
+The existing invariants that apply:
+- Invariant 2: Status changes must be logged (broadcast via WebSocket)
+- Invariant 3: Each phase is a fresh agent context
+- Invariant 5: Questions captured with session_id for resume
+
+**Testing approach:**
+
+Following docs/trunk/TESTING_PHILOSOPHY.md, tests will verify phase transitions
+and decision routing using mocked agent results. Unit tests for the decision
+parsing logic. Integration tests for the IMPLEMENT → REVIEW → COMPLETE flow.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the review
+  phase extension to the orchestrator's phase progression system. Follow existing
+  patterns for phase transitions, WebSocket broadcasting, and agent result handling.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add REVIEW phase enum and WorkUnit iteration tracking
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Extend the orchestrator models to support the review phase:
 
-Example:
+1. Add `WorkUnitPhase.REVIEW` enum value in `src/orchestrator/models.py`:
+   - Position it between IMPLEMENT and COMPLETE in the enum definition
 
-### Step 1: Define the SegmentHeader struct
+2. Add `review_iterations` field to `WorkUnit` model:
+   - Type: `int = 0`
+   - Purpose: Track how many IMPLEMENT → REVIEW cycles have occurred
+   - Update `model_dump_json_serializable()` to include this field
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/orchestrator/models.py`
 
-Location: src/segment/format.rs
+### Step 2: Add REVIEW skill to phase-to-skill mapping
 
-### Step 2: Implement header serialization
+Update the agent runner to recognize the REVIEW phase:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. In `src/orchestrator/agent.py`, add entry to `PHASE_SKILL_FILES`:
+   ```python
+   WorkUnitPhase.REVIEW: "chunk-review.md",
+   ```
 
-### Step 3: ...
+Location: `src/orchestrator/agent.py`
+
+### Step 3: Add ReviewDecision model for parsing skill output
+
+Create a pydantic model to parse the /chunk-review skill's YAML output:
+
+1. Add to `src/orchestrator/models.py`:
+   ```python
+   class ReviewDecision(StrEnum):
+       APPROVE = "APPROVE"
+       FEEDBACK = "FEEDBACK"
+       ESCALATE = "ESCALATE"
+
+   class ReviewResult(BaseModel):
+       decision: ReviewDecision
+       summary: str
+       issues: list[dict] = []  # For FEEDBACK: location, concern, suggestion
+       reason: Optional[str] = None  # For ESCALATE: AMBIGUITY|SCOPE|etc
+       iteration: int = 1
+   ```
+
+2. Add a parsing function to extract YAML decision from agent output
+
+Location: `src/orchestrator/models.py`
+
+### Step 4: Implement REVIEW_FEEDBACK.md creation
+
+Create a helper function to write the feedback context file:
+
+1. Add to `src/orchestrator/scheduler.py`:
+   ```python
+   def create_review_feedback_file(
+       worktree_path: Path,
+       chunk: str,
+       feedback: ReviewResult,
+       iteration: int,
+   ) -> Path:
+   ```
+
+2. The file contents should include:
+   - Current iteration count
+   - Reviewer's feedback (issues list)
+   - Summary of what needs to be addressed
+   - Clear instructions for the implementer
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 5: Update phase progression map
+
+Modify the scheduler's phase advancement logic:
+
+1. Update `next_phase_map` in `_advance_phase()`:
+   ```python
+   next_phase_map = {
+       WorkUnitPhase.GOAL: WorkUnitPhase.PLAN,
+       WorkUnitPhase.PLAN: WorkUnitPhase.IMPLEMENT,
+       WorkUnitPhase.IMPLEMENT: WorkUnitPhase.REVIEW,  # Changed
+       WorkUnitPhase.REVIEW: WorkUnitPhase.COMPLETE,   # New
+       WorkUnitPhase.COMPLETE: None,
+   }
+   ```
+
+Location: `src/orchestrator/scheduler.py#Scheduler._advance_phase`
+
+### Step 6: Implement review result handling
+
+Add logic to handle the three decision types after REVIEW phase:
+
+1. Add method `_handle_review_result()` to Scheduler:
+   ```python
+   async def _handle_review_result(
+       self,
+       work_unit: WorkUnit,
+       worktree_path: Path,
+       result: AgentResult,
+   ) -> None:
+   ```
+
+2. Parse the YAML decision from result (agent output may contain it)
+
+3. Route based on decision:
+   - **APPROVE**: Call `_advance_phase()` to proceed to COMPLETE
+   - **FEEDBACK**:
+     - Increment `review_iterations`
+     - Create REVIEW_FEEDBACK.md file
+     - Set phase back to IMPLEMENT, status to READY
+   - **ESCALATE**: Call `_mark_needs_attention()` with escalation reason
+
+4. Integrate loop detection:
+   - Read `max_iterations` from reviewer's METADATA.yaml (default: 3)
+   - If `review_iterations >= max_iterations`, auto-escalate
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 7: Integrate review handling into agent result flow
+
+Modify `_handle_agent_result()` to detect REVIEW phase and route appropriately:
+
+1. After checking `result.completed`, add REVIEW phase detection:
+   ```python
+   if result.completed and work_unit.phase == WorkUnitPhase.REVIEW:
+       await self._handle_review_result(work_unit, worktree_path, result)
+       return
+   ```
+
+2. Ensure worktree_path is available (may need to get from WorktreeManager)
+
+Location: `src/orchestrator/scheduler.py#Scheduler._handle_agent_result`
+
+### Step 8: Add reviewer config loading utility
+
+Create helper to read reviewer's METADATA.yaml:
+
+1. Add function to load loop detection settings:
+   ```python
+   def load_reviewer_config(project_dir: Path, reviewer: str = "baseline") -> dict:
+       """Load reviewer config from docs/reviewers/{reviewer}/METADATA.yaml."""
+   ```
+
+2. Extract relevant fields:
+   - `loop_detection.max_iterations` (default: 3)
+   - `loop_detection.same_issue_threshold` (default: 2)
+
+Location: `src/orchestrator/scheduler.py` (or new `src/orchestrator/reviewer.py`)
+
+### Step 9: Update state store schema for review_iterations
+
+Add migration for the new field:
+
+1. In `src/orchestrator/state.py`, add migration to add `review_iterations` column
+   to work_units table if not exists
+
+2. Update `_row_to_work_unit()` and `_work_unit_to_row()` methods
+
+Location: `src/orchestrator/state.py`
+
+### Step 10: Write unit tests for review phase transitions
+
+Create tests verifying:
+
+1. `test_advance_implement_to_review`: IMPLEMENT → REVIEW phase transition
+2. `test_advance_review_to_complete`: REVIEW (on APPROVE) → COMPLETE
+3. `test_review_feedback_returns_to_implement`: REVIEW (on FEEDBACK) → IMPLEMENT
+4. `test_review_feedback_increments_iterations`: review_iterations counter
+5. `test_review_escalate_marks_needs_attention`: ESCALATE → NEEDS_ATTENTION
+6. `test_review_loop_detection_auto_escalates`: max_iterations exceeded
+
+Location: `tests/test_orchestrator_scheduler.py` (new TestReviewPhase class)
+
+### Step 11: Write unit tests for review decision parsing
+
+Create tests for ReviewResult parsing:
+
+1. `test_parse_approve_decision`: Parse valid APPROVE YAML
+2. `test_parse_feedback_decision`: Parse FEEDBACK with issues list
+3. `test_parse_escalate_decision`: Parse ESCALATE with reason
+4. `test_parse_malformed_yaml`: Graceful handling of parse errors
+
+Location: `tests/test_orchestrator_scheduler.py` or new `tests/test_review_parsing.py`
+
+### Step 12: Create REVIEW_FEEDBACK.md template test
+
+Test the feedback file creation:
+
+1. `test_create_review_feedback_file`: Verify file is created with correct content
+2. `test_feedback_file_includes_iteration_count`: Check iteration tracking
+3. `test_feedback_file_readable_by_implementer`: Ensure format is agent-friendly
+
+Location: `tests/test_orchestrator_scheduler.py`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+When implementing code, add backreference comments:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Chunk: docs/chunks/orch_review_phase - Review phase integration
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add at:
+- `ReviewDecision` and `ReviewResult` models
+- `_handle_review_result()` method
+- `create_review_feedback_file()` function
+- Test class `TestReviewPhase`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **chunk_review_skill** (ACTIVE): The `/chunk-review` skill must exist and produce
+  parseable YAML output. This chunk consumes the skill's output format.
 
-If there are no dependencies, delete this section.
--->
+- **reviewer_infrastructure** (ACTIVE): The `docs/reviewers/baseline/METADATA.yaml`
+  must exist with `loop_detection.max_iterations` config.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **YAML parsing from agent output**: The /chunk-review skill outputs a YAML block
+   embedded in the agent's response. Need reliable extraction. Mitigation: Use
+   `---` delimiters and regex pattern matching similar to frontmatter parsing.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Worktree path availability in _handle_agent_result**: The current flow may not
+   have worktree_path readily available. May need to retrieve from WorktreeManager
+   using the chunk name.
+
+3. **Same-issue detection for loop detection**: The investigation mentions detecting
+   when the same issue recurs across iterations. For MVP, only implement
+   `max_iterations` counting. Defer `same_issue_threshold` to future enhancement.
+
+4. **State migration**: Adding `review_iterations` column requires a schema migration.
+   The existing migration pattern in StateStore should handle this.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*

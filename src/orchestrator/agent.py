@@ -37,6 +37,7 @@ PHASE_SKILL_FILES = {
     WorkUnitPhase.GOAL: "chunk-create.md",
     WorkUnitPhase.PLAN: "chunk-plan.md",
     WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
+    WorkUnitPhase.REVIEW: "chunk-review.md",
     WorkUnitPhase.COMPLETE: "chunk-complete.md",
 }
 

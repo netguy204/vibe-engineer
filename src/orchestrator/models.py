@@ -62,6 +62,7 @@ class WorkUnitPhase(StrEnum):
     GOAL = "GOAL"  # Drafting or refining the chunk goal
     PLAN = "PLAN"  # Creating the technical implementation plan
     IMPLEMENT = "IMPLEMENT"  # Writing the code
+    REVIEW = "REVIEW"  # Reviewing implementation for alignment with documented intent
     COMPLETE = "COMPLETE"  # Finalizing and completing the chunk
 
 
@@ -104,6 +105,8 @@ class WorkUnit(BaseModel):
     # for this work unit, treating the dependencies as authoritative rather than
     # heuristically detected.
     explicit_deps: bool = False
+    # Track how many IMPLEMENT → REVIEW cycles have occurred for loop detection
+    review_iterations: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -135,6 +138,7 @@ class WorkUnit(BaseModel):
             "conflict_verdicts": self.conflict_verdicts,
             "conflict_override": self.conflict_override,
             "explicit_deps": self.explicit_deps,
+            "review_iterations": self.review_iterations,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -198,6 +202,41 @@ class AgentResult(BaseModel):
     session_id: Optional[str] = None  # Session ID for resuming
     question: Optional[dict] = None  # Question data if suspended
     error: Optional[str] = None  # Error message if failed
+
+
+class ReviewDecision(StrEnum):
+    """Decision outcome from the /chunk-review skill.
+
+    Determines how the scheduler routes the work unit after review.
+    """
+
+    APPROVE = "APPROVE"  # Implementation meets documented intent, proceed to COMPLETE
+    FEEDBACK = "FEEDBACK"  # Issues found, return to IMPLEMENT with context
+    ESCALATE = "ESCALATE"  # Cannot decide, requires operator intervention
+
+
+class ReviewIssue(BaseModel):
+    """A single issue identified during review.
+
+    Structured representation of a concern with location and suggested fix.
+    """
+
+    location: str  # File path or symbol reference
+    concern: str  # Description of the issue
+    suggestion: Optional[str] = None  # Suggested fix or approach
+
+
+class ReviewResult(BaseModel):
+    """Structured output from the /chunk-review skill.
+
+    Parsed from the YAML decision block in the agent's response.
+    """
+
+    decision: ReviewDecision
+    summary: str  # Brief summary of the review
+    issues: list[ReviewIssue] = []  # Issues found (for FEEDBACK decisions)
+    reason: Optional[str] = None  # Escalation reason (for ESCALATE decisions)
+    iteration: int = 1  # Current review iteration number
 
 
 from dataclasses import dataclass, field

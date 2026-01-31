@@ -1,6 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_inject_validate - Inject endpoint validation tests
-# Chunk: docs/chunks/orch_attention_queue - Attention queue API tests
 """Tests for the orchestrator HTTP API."""
 
 import pytest

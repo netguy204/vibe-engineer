@@ -27,7 +27,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 8
+    CURRENT_VERSION = 9
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -97,6 +97,7 @@ class StateStore:
             6: self._migrate_v6,
             7: self._migrate_v7,
             8: self._migrate_v8,
+            9: self._migrate_v9,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -243,6 +244,19 @@ class StateStore:
             """
         )
 
+    def _migrate_v9(self) -> None:
+        """Add review_iterations field for tracking review cycles.
+
+        Tracks how many IMPLEMENT → REVIEW cycles have occurred for loop detection.
+        Auto-escalation triggers when this exceeds the reviewer's max_iterations config.
+        """
+        self.connection.executescript(
+            """
+            -- Add review_iterations column for tracking review loop iterations
+            ALTER TABLE work_units ADD COLUMN review_iterations INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -274,8 +288,9 @@ class StateStore:
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
-                     conflict_verdicts, conflict_override, explicit_deps, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     conflict_verdicts, conflict_override, explicit_deps, review_iterations,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -292,6 +307,7 @@ class StateStore:
                     conflict_verdicts_json,
                     work_unit.conflict_override,
                     1 if work_unit.explicit_deps else 0,
+                    work_unit.review_iterations,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -350,7 +366,7 @@ class StateStore:
                 priority = ?, session_id = ?, completion_retries = ?,
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                 conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
-                updated_at = ?
+                review_iterations = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -367,6 +383,7 @@ class StateStore:
                 conflict_verdicts_json,
                 work_unit.conflict_override,
                 1 if work_unit.explicit_deps else 0,
+                work_unit.review_iterations,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -654,6 +671,13 @@ class StateStore:
         except (IndexError, KeyError):
             explicit_deps = False
 
+        try:
+            review_iterations = (
+                row["review_iterations"] if row["review_iterations"] is not None else 0
+            )
+        except (IndexError, KeyError):
+            review_iterations = 0
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -669,6 +693,7 @@ class StateStore:
             conflict_verdicts=conflict_verdicts,
             conflict_override=conflict_override,
             explicit_deps=explicit_deps,
+            review_iterations=review_iterations,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

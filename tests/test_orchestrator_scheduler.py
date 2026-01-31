@@ -20,6 +20,7 @@ from orchestrator.scheduler import (
 from orchestrator.models import (
     AgentResult,
     OrchestratorConfig,
+    ReviewDecision,
     WorkUnit,
     WorkUnitPhase,
     WorkUnitStatus,
@@ -3349,3 +3350,387 @@ status: ACTIVE
                 call_kwargs = mock_broadcast.call_args.kwargs
                 assert call_kwargs["status"] == "NEEDS_ATTENTION"
                 assert call_kwargs["chunk"] == "test_chunk"
+
+
+# Chunk: docs/chunks/orch_review_phase - Review phase tests
+class TestReviewPhase:
+    """Tests for REVIEW phase transitions and handling."""
+
+    @pytest.mark.asyncio
+    async def test_advance_implement_to_review(self, scheduler, state_store):
+        """Advances from IMPLEMENT to REVIEW phase."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.phase == WorkUnitPhase.REVIEW
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_advance_review_to_complete(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Advancing from REVIEW with APPROVE decision goes to COMPLETE."""
+        # Set up chunk directory with an APPROVE decision file
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        # Write an APPROVE decision YAML
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: APPROVE
+summary: Implementation looks good
+iteration: 1
+""")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=True, suspended=False)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        # Should advance to COMPLETE phase (handled by _advance_phase)
+        assert updated.phase == WorkUnitPhase.COMPLETE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_review_feedback_returns_to_implement(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """REVIEW with FEEDBACK decision returns to IMPLEMENT."""
+        # Set up chunk directory with a FEEDBACK decision file
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: FEEDBACK
+summary: Issues found in implementation
+issues:
+  - location: src/main.py
+    concern: Missing error handling
+    suggestion: Add try/except block
+iteration: 1
+""")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_iterations=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=True, suspended=False)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.phase == WorkUnitPhase.IMPLEMENT
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.review_iterations == 1
+
+        # Feedback file should be created
+        feedback_file = chunk_dir / "REVIEW_FEEDBACK.md"
+        assert feedback_file.exists()
+        content = feedback_file.read_text()
+        assert "Issues to Address" in content
+        assert "Missing error handling" in content
+
+    @pytest.mark.asyncio
+    async def test_review_feedback_increments_iterations(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Multiple FEEDBACK decisions increment the iteration counter."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: FEEDBACK
+summary: Still has issues
+iteration: 2
+""")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_iterations=1,  # Already had one iteration
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=True, suspended=False)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.review_iterations == 2
+
+    @pytest.mark.asyncio
+    async def test_review_escalate_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """REVIEW with ESCALATE decision marks NEEDS_ATTENTION."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: ESCALATE
+summary: Fundamental design issue
+reason: AMBIGUITY - Requirements unclear
+""")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=True, suspended=False)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            with patch("orchestrator.scheduler.broadcast_attention_update"):
+                await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "escalated" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_review_loop_detection_auto_escalates(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Auto-escalates when iterations exceed max_iterations."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        # Decision file with FEEDBACK, but we've already hit max iterations
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: FEEDBACK
+summary: More issues found
+""")
+
+        # Create reviewers config with max_iterations = 3
+        reviewers_dir = tmp_path / "docs" / "reviewers" / "baseline"
+        reviewers_dir.mkdir(parents=True)
+        (reviewers_dir / "METADATA.yaml").write_text("""name: baseline
+loop_detection:
+  max_iterations: 3
+""")
+
+        # Point project_dir to tmp_path so load_reviewer_config finds the config
+        scheduler.project_dir = tmp_path
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_iterations=3,  # Already at max
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(completed=True, suspended=False)
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            with patch("orchestrator.scheduler.broadcast_attention_update"):
+                await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "exceeded" in updated.attention_reason.lower()
+        assert "iterations" in updated.attention_reason.lower()
+
+
+class TestReviewDecisionParsing:
+    """Tests for parsing review decision from agent output."""
+
+    def test_parse_approve_decision(self):
+        """Parse valid APPROVE YAML."""
+        from orchestrator.scheduler import parse_review_decision
+
+        output = """The review is complete.
+
+```yaml
+decision: APPROVE
+summary: Implementation looks good and meets all requirements
+iteration: 1
+```
+
+Done.
+"""
+        result = parse_review_decision(output)
+        assert result is not None
+        assert result.decision == ReviewDecision.APPROVE
+        assert "looks good" in result.summary
+
+    def test_parse_feedback_decision(self):
+        """Parse FEEDBACK with issues list."""
+        from orchestrator.scheduler import parse_review_decision
+
+        output = """Review findings:
+
+```yaml
+decision: FEEDBACK
+summary: Some issues need to be addressed
+issues:
+  - location: src/main.py#function
+    concern: Missing error handling
+    suggestion: Add try/except
+  - location: src/utils.py
+    concern: Unused import
+iteration: 1
+```
+"""
+        result = parse_review_decision(output)
+        assert result is not None
+        assert result.decision == ReviewDecision.FEEDBACK
+        assert len(result.issues) == 2
+        assert result.issues[0].location == "src/main.py#function"
+        assert "error handling" in result.issues[0].concern
+
+    def test_parse_escalate_decision(self):
+        """Parse ESCALATE with reason."""
+        from orchestrator.scheduler import parse_review_decision
+
+        output = """```yaml
+decision: ESCALATE
+summary: Cannot complete review
+reason: AMBIGUITY - Requirements are unclear
+```
+"""
+        result = parse_review_decision(output)
+        assert result is not None
+        assert result.decision == ReviewDecision.ESCALATE
+        assert result.reason == "AMBIGUITY - Requirements are unclear"
+
+    def test_parse_malformed_yaml(self):
+        """Graceful handling of parse errors."""
+        from orchestrator.scheduler import parse_review_decision
+
+        output = """```yaml
+this is not: valid yaml: with: too many: colons
+decision: [malformed]
+```
+"""
+        result = parse_review_decision(output)
+        # Should return None when parsing fails
+        assert result is None
+
+    def test_parse_fallback_decision_line(self):
+        """Parse simple decision line as fallback."""
+        from orchestrator.scheduler import parse_review_decision
+
+        output = """
+Review complete.
+decision: APPROVE
+Everything looks good.
+"""
+        result = parse_review_decision(output)
+        assert result is not None
+        assert result.decision == ReviewDecision.APPROVE
+
+
+class TestReviewFeedbackFile:
+    """Tests for REVIEW_FEEDBACK.md file creation."""
+
+    def test_create_review_feedback_file(self, tmp_path):
+        """Verify file is created with correct content."""
+        from orchestrator.scheduler import create_review_feedback_file
+        from orchestrator.models import ReviewResult, ReviewDecision, ReviewIssue
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        feedback = ReviewResult(
+            decision=ReviewDecision.FEEDBACK,
+            summary="Issues found during review",
+            issues=[
+                ReviewIssue(
+                    location="src/main.py",
+                    concern="Missing docstring",
+                    suggestion="Add function docstring",
+                ),
+            ],
+            iteration=1,
+        )
+
+        result_path = create_review_feedback_file(
+            tmp_path, "test_chunk", feedback, 1
+        )
+
+        assert result_path.exists()
+        content = result_path.read_text()
+
+        assert "# Review Feedback" in content
+        assert "**Iteration:** 1" in content
+        assert "FEEDBACK" in content
+        assert "Issues found during review" in content
+        assert "Missing docstring" in content
+        assert "Add function docstring" in content
+
+    def test_feedback_file_includes_iteration_count(self, tmp_path):
+        """Check iteration tracking in feedback file."""
+        from orchestrator.scheduler import create_review_feedback_file
+        from orchestrator.models import ReviewResult, ReviewDecision
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        feedback = ReviewResult(
+            decision=ReviewDecision.FEEDBACK,
+            summary="Second round of feedback",
+            iteration=2,
+        )
+
+        result_path = create_review_feedback_file(
+            tmp_path, "test_chunk", feedback, 2
+        )
+
+        content = result_path.read_text()
+        assert "**Iteration:** 2" in content

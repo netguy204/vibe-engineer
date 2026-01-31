@@ -1,6 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_question_forward - Question intercept hook tests
-# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox enforcement tests
 """Tests for the orchestrator agent runner."""
 
 import pytest
