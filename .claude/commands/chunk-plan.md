@@ -5,8 +5,7 @@ description: Create a chunk PLAN.md file containing the technical breakdown for 
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
-This file is rendered from: src/templates/commands/chunk-plan.md.jinja2
-Edit the source template, then run `ve init` to regenerate.
+Run `ve init` to regenerate.
 -->
 
 ## Tips

@@ -29,9 +29,16 @@ TRIGGER:
 PROPOSED_CHUNKS:
 - Starts empty; entries are added if investigation reveals actionable work
 - Each entry records a chunk prompt for work that should be done
-- Format: list of {prompt, chunk_directory} where:
+- Format: list of {prompt, chunk_directory, depends_on} where:
   - prompt: The proposed chunk prompt text
   - chunk_directory: Populated when/if the chunk is actually created via /chunk-create
+  - depends_on: Optional array of integer indices referencing other prompts in the same array.
+    This expresses implementation dependencies between proposed chunks.
+    - Indices are zero-based (e.g., `depends_on: [0, 2]` means "this prompt depends on
+      prompts at indices 0 and 2 in this array")
+    - Use when chunks have ordering constraints (e.g., chunk B needs chunk A's interfaces)
+    - At chunk-create time, index references are translated to chunk directory names
+    - Omit or set to [] for prompts with no dependencies
 - Unlike narrative chunks (which are planned upfront), these emerge from investigation findings
 -->
 
