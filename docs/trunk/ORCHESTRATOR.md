@@ -53,12 +53,9 @@ ve chunk create auth_login auth_logout auth_refresh --future
 ve chunk create auth_login auth_logout auth_refresh --future --ticket AUTH-123
 ```
 
-**After batch creation, refine each goal in parallel** using sub-agents:
+**After batch creation, refine each goal in parallel** using sub-agents. This
+maximizes efficiency when multiple chunks need goal refinement
 
-```python
-# Example: spawn Task tool sub-agents to refine each chunk's goal concurrently
-# This maximizes efficiency when multiple chunks need goal refinement
-```
 
 **Workflow for batch creation:**
 
@@ -99,7 +96,7 @@ ve orch answer my_chunk "The answer to the question"
 For conflicts between chunks:
 
 ```bash
-ve orch resolve my_chunk --verdict INDEPENDENT  # or SERIALIZE
+ve orch resolve my_chunk --with other_chunk parallelize  # or serialize
 ```
 
 ## Batch Operations
