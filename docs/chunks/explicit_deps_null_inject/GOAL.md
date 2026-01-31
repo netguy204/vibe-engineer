@@ -1,20 +1,41 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/models.py
+- src/ve.py
+- tests/test_orchestrator_cli.py
+- tests/test_models.py
+code_references:
+  - ref: src/models.py#ChunkFrontmatter
+    implements: "depends_on field type changed to Optional[list[str]] enabling null vs empty distinction"
+  - ref: src/ve.py#read_chunk_dependencies
+    implements: "Preserves None vs [] distinction when reading chunk frontmatter"
+  - ref: src/ve.py#validate_external_dependencies
+    implements: "Skips validation for chunks with None (unknown) dependencies"
+  - ref: src/ve.py#topological_sort_chunks
+    implements: "Treats None as empty list for topological ordering purposes"
+  - ref: src/ve.py#orch_inject
+    implements: "Sets explicit_deps=True when depends_on is list (including empty), bypasses when None"
+  - ref: tests/test_models.py#TestChunkFrontmatterDependsOn
+    implements: "Model-level tests for depends_on null vs empty parsing"
+  - ref: tests/test_orchestrator_cli.py#TestOrchInjectBatch::test_inject_null_depends_on_uses_oracle
+    implements: "Test that null depends_on results in oracle consultation"
+  - ref: tests/test_orchestrator_cli.py#TestOrchInjectBatch::test_inject_empty_depends_on_bypasses_oracle
+    implements: "Test that empty depends_on bypasses oracle with explicit_deps=True"
+  - ref: tests/test_orchestrator_cli.py#TestOrchInjectBatch::test_inject_populated_depends_on_bypasses_oracle
+    implements: "Test that populated depends_on sets both explicit_deps and blocked_by"
 narrative: explicit_deps_null_semantics
 investigation: null
 subsystems: []
-friction_entries:
-  - entry_id: F015
-    scope: full
+friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_unblock_transition", "chunklist_status_filter"]
+created_after:
+- orch_unblock_transition
+- chunklist_status_filter
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
