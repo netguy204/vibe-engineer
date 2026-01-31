@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - docs/trunk/ARTIFACTS.md
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: docs/trunk/ARTIFACTS.md#friction-log
     implements: "Friction Log documentation section, entry structure, lifecycle, and artifact-type guidance"
 narrative: null
 investigation: friction_log_artifact

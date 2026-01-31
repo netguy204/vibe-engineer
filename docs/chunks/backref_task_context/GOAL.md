@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - docs/trunk/ARTIFACTS.md
   - src/templates/chunk/PLAN.md.jinja2
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: docs/trunk/ARTIFACTS.md
     implements: "Code Backreferences section documenting valid backreference types and task context guidance"
   - ref: src/templates/chunk/PLAN.md.jinja2
     implements: "Backreference comments guidance with chunk support and task context note"
