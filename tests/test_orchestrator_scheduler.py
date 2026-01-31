@@ -2225,6 +2225,277 @@ class TestConflictChecking:
         assert updated.conflict_verdicts == {}
 
 
+# Chunk: docs/chunks/explicit_deps_skip_oracle - Oracle bypass for explicit dependencies
+class TestExplicitDepsOracleBypass:
+    """Tests for explicit_deps oracle bypass in scheduler.
+
+    When a work unit has explicit_deps=True, the scheduler should skip oracle
+    analysis entirely and only check if blocked_by chunks are RUNNING.
+    """
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_skips_oracle(self, scheduler, state_store):
+        """Explicit-dep work units do not call oracle.analyze_conflict."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit with a blocked_by entry
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a READY blocker (not RUNNING)
+        blocker_unit = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker_unit)
+
+        # Mock the oracle to verify it's not called
+        with patch("orchestrator.oracle.create_oracle") as mock_create_oracle:
+            blocking = await scheduler._check_conflicts(work_unit)
+
+            # Oracle should NOT be created or called
+            mock_create_oracle.assert_not_called()
+
+        # Not blocked because blocker is READY, not RUNNING
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_blocked_when_blocker_running(self, scheduler, state_store):
+        """Explicit-dep work units block only when blocked_by chunk is RUNNING."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit blocked by another chunk
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a RUNNING blocker
+        blocker_unit = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+
+        # Should be blocked because blocker is RUNNING
+        assert "blocker_chunk" in blocking
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_unblocked_when_blocker_done(self, scheduler, state_store):
+        """Explicit-dep work units unblock when blocked_by chunk is DONE."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit blocked by a DONE chunk
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["done_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a DONE work unit
+        done_unit = WorkUnit(
+            chunk="done_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(done_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+
+        # Should NOT be blocked - blocker is DONE
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_unblocked_when_blocker_not_exists(self, scheduler, state_store):
+        """Explicit-dep work units unblock when blocked_by chunk doesn't exist."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit blocked by a non-existent chunk
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["nonexistent_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+
+        # Should NOT be blocked - blocker doesn't exist (not RUNNING)
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_multiple_blockers_partial_running(self, scheduler, state_store):
+        """Explicit-dep work units block on any RUNNING blocker from blocked_by list."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit blocked by multiple chunks
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["blocker_a", "blocker_b", "blocker_c"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # blocker_a is DONE
+        done_unit = WorkUnit(
+            chunk="blocker_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(done_unit)
+
+        # blocker_b is RUNNING
+        running_unit = WorkUnit(
+            chunk="blocker_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(running_unit)
+
+        # blocker_c is READY (not running)
+        ready_unit = WorkUnit(
+            chunk="blocker_c",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(ready_unit)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+
+        # Should be blocked only by the RUNNING chunk
+        assert blocking == ["blocker_b"]
+
+    @pytest.mark.asyncio
+    async def test_non_explicit_deps_still_uses_oracle(self, scheduler, state_store, tmp_path):
+        """Non-explicit work units continue to use oracle analysis."""
+        now = datetime.now(timezone.utc)
+
+        # Create a non-explicit work unit (explicit_deps=False is default)
+        work_unit = WorkUnit(
+            chunk="normal_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=False,  # Default, but explicit for clarity
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create another RUNNING work unit
+        running_unit = WorkUnit(
+            chunk="other_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(running_unit)
+
+        # Mock the oracle
+        mock_analysis = MagicMock()
+        mock_analysis.verdict.value = "INDEPENDENT"
+
+        with patch("orchestrator.oracle.create_oracle") as mock_create_oracle:
+            mock_oracle = MagicMock()
+            mock_oracle.analyze_conflict.return_value = mock_analysis
+            mock_create_oracle.return_value = mock_oracle
+
+            blocking = await scheduler._check_conflicts(work_unit)
+
+            # Oracle SHOULD be created and called for non-explicit work units
+            mock_create_oracle.assert_called_once()
+            mock_oracle.analyze_conflict.assert_called_once_with("normal_chunk", "other_chunk")
+
+        # Independent verdict means no blocking
+        assert blocking == []
+
+    @pytest.mark.asyncio
+    async def test_explicit_deps_ignores_other_active_chunks(self, scheduler, state_store):
+        """Explicit-dep work units ignore chunks not in blocked_by even if RUNNING."""
+        now = datetime.now(timezone.utc)
+
+        # Create an explicit-dep work unit with specific blocked_by
+        work_unit = WorkUnit(
+            chunk="explicit_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["specific_blocker"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a RUNNING chunk that's NOT in blocked_by
+        other_running = WorkUnit(
+            chunk="unrelated_running_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(other_running)
+
+        # The specific_blocker is READY (not running)
+        specific_blocker = WorkUnit(
+            chunk="specific_blocker",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(specific_blocker)
+
+        blocking = await scheduler._check_conflicts(work_unit)
+
+        # Should NOT be blocked - unrelated_running_chunk isn't in blocked_by,
+        # and specific_blocker is READY not RUNNING
+        assert blocking == []
+
+
 class TestQuestionForwardingFlow:
     """Tests for the complete question forwarding flow.
 
