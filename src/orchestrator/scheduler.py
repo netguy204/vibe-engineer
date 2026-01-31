@@ -414,8 +414,11 @@ class Scheduler:
                 return
 
             # Update work unit to RUNNING
+            # Chunk: docs/chunks/orch_unblock_transition - Clear stale fields on RUNNING
             work_unit.status = WorkUnitStatus.RUNNING
             work_unit.worktree = str(worktree_path)
+            work_unit.attention_reason = None  # Clear any stale reason
+            work_unit.blocked_by = []  # Clear stale blockers
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
@@ -704,10 +707,12 @@ class Scheduler:
 
         else:
             # Advance to next phase
+            # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason on READY
             logger.info(f"Work unit {chunk} advancing to phase {next_phase.value}")
             work_unit.phase = next_phase
             work_unit.status = WorkUnitStatus.READY
             work_unit.session_id = None
+            work_unit.attention_reason = None  # Clear any stale reason
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
@@ -884,11 +889,13 @@ class Scheduler:
         Called when a work unit transitions to DONE. For each work unit that
         has the completed chunk in its blocked_by list:
         1. Remove the completed chunk from blocked_by
-        2. If blocked_by becomes empty and status is BLOCKED, transition to READY
+        2. If blocked_by becomes empty and status is BLOCKED or NEEDS_ATTENTION,
+           transition to READY and clear attention_reason
 
         Args:
             completed_chunk: The chunk name that just completed
         """
+        # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION unblock
         # Find all work units that have completed_chunk in their blocked_by
         blocked_units = self.store.list_blocked_by_chunk(completed_chunk)
 
@@ -898,12 +905,19 @@ class Scheduler:
                 unit.blocked_by.remove(completed_chunk)
                 unit.updated_at = datetime.now(timezone.utc)
 
-                # If no more blockers and status is BLOCKED, transition to READY
-                if not unit.blocked_by and unit.status == WorkUnitStatus.BLOCKED:
+                # If no more blockers and status is BLOCKED or NEEDS_ATTENTION,
+                # transition to READY. Work units can be in NEEDS_ATTENTION when
+                # they encountered a conflict that required serialization - once
+                # the blocker completes, they should automatically become READY.
+                if not unit.blocked_by and unit.status in (
+                    WorkUnitStatus.BLOCKED,
+                    WorkUnitStatus.NEEDS_ATTENTION,
+                ):
                     logger.info(
                         f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
                     )
                     unit.status = WorkUnitStatus.READY
+                    unit.attention_reason = None  # Clear stale reason
                 else:
                     logger.info(
                         f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "

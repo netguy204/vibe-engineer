@@ -2891,6 +2891,318 @@ status: ACTIVE
         assert "chunk_d" in updated_b.blocked_by
 
 
+class TestNeedsAttentionUnblock:
+    """Tests for NEEDS_ATTENTION to READY transition when blockers complete.
+
+    When a work unit is in NEEDS_ATTENTION status (e.g., due to a conflict with
+    a running chunk that needed serialization), and its blocker completes, the
+    work unit should transition to READY status automatically.
+
+    This addresses the bug where work units remained stuck in NEEDS_ATTENTION
+    after their blockers completed because _unblock_dependents only checked for
+    BLOCKED status, not NEEDS_ATTENTION status.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unblock_needs_attention_to_ready(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Work unit in NEEDS_ATTENTION transitions to READY when blocker completes."""
+        # Set up chunk_a with ACTIVE status (will complete)
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase (about to transition to DONE)
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create chunk_b in NEEDS_ATTENTION status, blocked by chunk_a
+        # This simulates a scenario where chunk_b encountered a conflict and
+        # was marked NEEDS_ATTENTION with chunk_a in its blocked_by list
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            blocked_by=["chunk_a"],
+            attention_reason="Conflict with running chunk_a. Use 've orch resolve' to proceed.",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_b)
+
+        # Verify chunk_b is NEEDS_ATTENTION
+        assert state_store.get_work_unit("chunk_b").status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "chunk_a" in state_store.get_work_unit("chunk_b").blocked_by
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify chunk_a is DONE
+        updated_a = state_store.get_work_unit("chunk_a")
+        assert updated_a.status == WorkUnitStatus.DONE
+
+        # Verify chunk_b is now READY (not still stuck in NEEDS_ATTENTION)
+        updated_b = state_store.get_work_unit("chunk_b")
+        assert updated_b.status == WorkUnitStatus.READY
+        assert "chunk_a" not in updated_b.blocked_by
+
+    @pytest.mark.asyncio
+    async def test_unblock_clears_attention_reason(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Transitioning from NEEDS_ATTENTION to READY clears attention_reason."""
+        # Set up chunk_a with ACTIVE status
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create chunk_b in NEEDS_ATTENTION with stale attention_reason
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            blocked_by=["chunk_a"],
+            attention_reason="Stale reason that should be cleared",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_b)
+
+        # Verify chunk_b has attention_reason
+        assert state_store.get_work_unit("chunk_b").attention_reason is not None
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify chunk_b's attention_reason is cleared
+        updated_b = state_store.get_work_unit("chunk_b")
+        assert updated_b.status == WorkUnitStatus.READY
+        assert updated_b.attention_reason is None
+
+    @pytest.mark.asyncio
+    async def test_unblock_multiple_needs_attention_work_units(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Multiple NEEDS_ATTENTION work units transition when blocker completes."""
+        # Set up chunk_a with ACTIVE status
+        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
+        chunk_a_dir.mkdir(parents=True)
+        (chunk_a_dir / "GOAL.md").write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk A
+"""
+        )
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_uncommitted_changes.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+
+        now = datetime.now(timezone.utc)
+
+        # Create chunk_a in COMPLETE phase
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(chunk_a)
+
+        # Create multiple work units in NEEDS_ATTENTION status blocked by chunk_a
+        for name, reason in [
+            ("chunk_b", "Conflict with chunk_a"),
+            ("chunk_c", "Another conflict with chunk_a"),
+            ("chunk_d", "Third conflict with chunk_a"),
+        ]:
+            work_unit = WorkUnit(
+                chunk=name,
+                phase=WorkUnitPhase.PLAN,
+                status=WorkUnitStatus.NEEDS_ATTENTION,
+                blocked_by=["chunk_a"],
+                attention_reason=reason,
+                created_at=now,
+                updated_at=now,
+            )
+            state_store.create_work_unit(work_unit)
+
+        # Advance chunk_a to DONE
+        await scheduler._advance_phase(chunk_a)
+
+        # Verify all work units are now READY with cleared attention_reason
+        for name in ["chunk_b", "chunk_c", "chunk_d"]:
+            updated = state_store.get_work_unit(name)
+            assert updated.status == WorkUnitStatus.READY, f"{name} should be READY"
+            assert updated.attention_reason is None, f"{name} should have cleared reason"
+            assert "chunk_a" not in updated.blocked_by, f"{name} should not be blocked"
+
+
+class TestAttentionReasonCleanup:
+    """Tests for attention_reason and blocked_by cleanup on status transitions.
+
+    The attention_reason field should be cleared when work units transition to
+    READY or RUNNING states, regardless of how that transition occurs (phase
+    advancement, manual status change, unblock, etc.).
+
+    The blocked_by field should be cleared when work units transition to RUNNING.
+    """
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_clears_attention_reason(self, scheduler, state_store):
+        """Phase advancement to READY clears any stale attention_reason."""
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit that was previously in NEEDS_ATTENTION but is
+        # now advancing phases (simulating manual resolution followed by retry)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            attention_reason="This should be cleared",  # Stale from previous state
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Advance phase (PLAN -> IMPLEMENT)
+        await scheduler._advance_phase(work_unit)
+
+        # Verify attention_reason is cleared
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.phase == WorkUnitPhase.IMPLEMENT
+        assert updated.attention_reason is None
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_clears_attention_reason(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Transitioning to RUNNING clears any stale attention_reason."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with stale attention_reason (from previous NEEDS_ATTENTION)
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            attention_reason="Stale reason from previous state",  # Should be cleared
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify attention_reason is cleared when RUNNING
+        # Note: the work unit may have already completed, check intermediate state
+        # by checking the mock wasn't called with attention_reason
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.attention_reason is None
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_clears_blocked_by(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Transitioning to RUNNING clears any stale blocked_by entries."""
+        # Set up chunk for activation
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "GOAL.md").write_text(
+            """---
+status: FUTURE
+ticket: null
+---
+
+# Chunk Goal
+"""
+        )
+
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+
+        # Create work unit with stale blocked_by (from previous blocking state)
+        # This can happen when blockers complete but blocked_by wasn't cleared
+        work_unit = WorkUnit(
+            chunk="test_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            blocked_by=["stale_blocker_1", "stale_blocker_2"],  # Should be cleared
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify blocked_by is cleared when RUNNING
+        updated = state_store.get_work_unit("test_chunk")
+        assert updated.blocked_by == []
+
+
 class TestWebSocketBroadcasts:
     """Tests for WebSocket broadcast invariant.
 

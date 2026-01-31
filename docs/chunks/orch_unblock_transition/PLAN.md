@@ -8,168 +8,165 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk fixes three related bugs in the orchestrator's status transition logic:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **NEEDS_ATTENTION to READY transition on unblock**: When `_unblock_dependents()`
+   removes the last blocker from a work unit's `blocked_by` list, the code checks
+   for `status == BLOCKED` but the actual status is `NEEDS_ATTENTION`. This leaves
+   work units orphaned. The fix extends the condition to also check for
+   `NEEDS_ATTENTION` status.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Stale `attention_reason` on status transitions**: The `attention_reason` field
+   persists when work units transition to READY or RUNNING states. This causes
+   confusing output in `ve orch ps`. The fix clears `attention_reason` whenever a
+   work unit transitions to READY or RUNNING.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_unblock_transition/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Stale `blocked_by` when transitioning to RUNNING**: The `blocked_by` list is
+   not cleared when work units start running, leading to confusing display. The
+   fix clears `blocked_by` when a work unit transitions to RUNNING.
+
+The implementation follows Test-Driven Development per docs/trunk/TESTING_PHILOSOPHY.md:
+write failing tests first, then implement the fix, then verify tests pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS fixes to
+  the Scheduler class within the orchestrator subsystem. The subsystem's invariant
+  "Work unit transitions are logged for debugging" is maintained.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for NEEDS_ATTENTION to READY transition
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests in `tests/test_orchestrator_scheduler.py` that verify:
 
-Example:
+1. When a blocker completes and a work unit has `status=NEEDS_ATTENTION` with
+   `blocked_by` becoming empty, it transitions to `status=READY`
+2. The `attention_reason` field is cleared on this transition
+3. Multiple work units blocked by the same chunk all transition correctly
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_orchestrator_scheduler.py` (new test class `TestNeedsAttentionUnblock`)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+These tests should fail initially because the current code only checks for
+`status == BLOCKED` in `_unblock_dependents`.
 
-Location: src/segment/format.rs
+### Step 2: Fix the NEEDS_ATTENTION to READY transition in scheduler
 
-### Step 2: Implement header serialization
+Modify `_unblock_dependents()` in `src/orchestrator/scheduler.py` to:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. Check for both `BLOCKED` and `NEEDS_ATTENTION` statuses when determining if
+   a work unit should transition to `READY` after its last blocker completes
+2. Clear `attention_reason` when transitioning to `READY`
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace code
-back to the documentation that motivated it. Place comments at the appropriate level:
-
-- **Module-level**: If this chunk creates the entire file
-- **Class-level**: If this chunk creates or significantly modifies a class
-- **Method-level**: If this chunk adds nuance to a specific method
-
-Format (place immediately before the symbol):
-```
-# Chunk: docs/chunks/short_name - Brief description of what this chunk does
+The existing code at lines 901-912:
+```python
+# If no more blockers and status is BLOCKED, transition to READY
+if not unit.blocked_by and unit.status == WorkUnitStatus.BLOCKED:
+    logger.info(
+        f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
+    )
+    unit.status = WorkUnitStatus.READY
 ```
 
-When multiple chunks have touched the same code, list all relevant chunks:
-```
-# Chunk: docs/chunks/symbolic_code_refs - Symbolic code reference format
-# Chunk: docs/chunks/bidirectional_refs - Bidirectional chunk-subsystem linking
+Should be extended to also handle `NEEDS_ATTENTION`:
+```python
+# If no more blockers and status is BLOCKED or NEEDS_ATTENTION, transition to READY
+if not unit.blocked_by and unit.status in (
+    WorkUnitStatus.BLOCKED, WorkUnitStatus.NEEDS_ATTENTION
+):
+    logger.info(
+        f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
+    )
+    unit.status = WorkUnitStatus.READY
+    unit.attention_reason = None  # Clear stale reason
 ```
 
-If the code also relates to a subsystem, include subsystem backreferences:
+Location: `src/orchestrator/scheduler.py#_unblock_dependents`
+
+### Step 3: Write failing tests for attention_reason cleanup on transitions
+
+Add tests that verify:
+
+1. `attention_reason` is cleared when a work unit transitions to `READY` (via
+   API update or scheduler phase advancement)
+2. `attention_reason` is cleared when a work unit transitions to `RUNNING`
+   (via scheduler dispatch)
+
+Location: `tests/test_orchestrator_scheduler.py` (extend or add test class)
+
+### Step 4: Clear attention_reason on READY transitions in scheduler
+
+Modify `_advance_phase()` in `src/orchestrator/scheduler.py` to clear
+`attention_reason` when transitioning to `READY` status (around line 709):
+
+```python
+work_unit.phase = next_phase
+work_unit.status = WorkUnitStatus.READY
+work_unit.session_id = None
+work_unit.attention_reason = None  # Clear any stale reason
 ```
-# Chunk: docs/chunks/short_name - Brief description
-# Subsystem: docs/subsystems/short_name - Brief subsystem description
+
+Location: `src/orchestrator/scheduler.py#_advance_phase`
+
+### Step 5: Clear attention_reason and blocked_by on RUNNING transition
+
+Modify `_run_work_unit()` in `src/orchestrator/scheduler.py` to clear both
+`attention_reason` and `blocked_by` when transitioning to `RUNNING` (around
+lines 417-420):
+
+```python
+work_unit.status = WorkUnitStatus.RUNNING
+work_unit.worktree = str(worktree_path)
+work_unit.attention_reason = None  # Clear any stale reason
+work_unit.blocked_by = []  # Clear stale blockers
+work_unit.updated_at = datetime.now(timezone.utc)
 ```
--->
 
-## Dependencies
+Location: `src/orchestrator/scheduler.py#_run_work_unit`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 6: Write failing tests for blocked_by cleanup on RUNNING
 
-If there are no dependencies, delete this section.
--->
+Add tests that verify `blocked_by` is cleared when work units transition
+to `RUNNING` status.
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+### Step 7: Run all tests and verify existing tests still pass
+
+Run the full test suite to ensure:
+- New tests pass
+- Existing orchestrator tests continue to pass
+- No regressions introduced
+
+```bash
+uv run pytest tests/test_orchestrator_scheduler.py -v
+```
+
+### Step 8: Update code_paths in GOAL.md
+
+Update the chunk's GOAL.md frontmatter with the files that were modified:
+- `src/orchestrator/scheduler.py`
+- `tests/test_orchestrator_scheduler.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **WebSocket broadcast timing**: The scheduler already calls
+   `broadcast_work_unit_update()` after updating work units. Need to verify that
+   clearing `attention_reason` doesn't require a separate broadcast call for
+   the attention queue.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Race conditions with API updates**: The API at `api.py` also allows manual
+   status updates. Should the API also clear `attention_reason`/`blocked_by` on
+   transitions to READY/RUNNING? After review, the API's `update_work_unit_endpoint`
+   doesn't automatically manage these fields - it trusts the caller. This is
+   acceptable since the scheduler is the primary state machine manager.
+
+3. **Backwards compatibility**: Existing work units may have stale `attention_reason`
+   or `blocked_by` values. When they next transition, these will be cleared. This
+   is the desired behavior.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
