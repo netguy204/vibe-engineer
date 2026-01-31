@@ -751,7 +751,6 @@ class TestProposedChunkDependsOn:
         assert chunk.depends_on == [0, 0, 1]
 
 
-# Chunk: docs/chunks/reviewer_infrastructure - Reviewer entity model
 class TestReviewerMetadata:
     """Tests for ReviewerMetadata model."""
 

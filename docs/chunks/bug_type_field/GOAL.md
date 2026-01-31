@@ -16,7 +16,7 @@ code_references:
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "BUG_TYPE documentation section and frontmatter field"
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Step 5: Bug fix detection (classification prompting not yet implemented)"
+    implements: "Step 7: Bug fix detection (classification prompting not yet implemented)"
   - ref: src/templates/commands/chunk-complete.md.jinja2
     implements: "Bug type-aware backreference and status transition guidance"
   - ref: tests/test_models.py#TestChunkFrontmatterBugType

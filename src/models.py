@@ -653,7 +653,6 @@ class FrictionEntryReference(BaseModel):
         return v
 
 
-# Chunk: docs/chunks/reviewer_infrastructure - Reviewer entity model
 class TrustLevel(StrEnum):
     """Trust levels for reviewer agents.
 
