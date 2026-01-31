@@ -8,153 +8,81 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk updates the **narrative** and **investigation** OVERVIEW.md templates to document the `depends_on` field semantics in their `proposed_chunks` schema. The sibling chunk `explicit_deps_goal_docs` handles the chunk GOAL.md template; this chunk handles the templates where proposed chunks are defined.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The work is straightforward: add clear documentation explaining the null vs empty list distinction to both templates. The documentation should:
+1. Explain when to omit `depends_on` (agent doesn't know dependencies)
+2. Explain when to use `[]` (agent explicitly declares no dependencies)
+3. Explain when to use integer indices (agent declares specific dependencies)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This follows the template_system subsystem patterns (per `docs/subsystems/template_system/OVERVIEW.md`), which is STABLE. We will use the canonical templates at `src/templates/narrative/OVERVIEW.md.jinja2` and `src/templates/investigation/OVERVIEW.md.jinja2`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/explicit_deps_template_docs/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per TESTING_PHILOSOPHY.md, this is template content update work—we don't test template prose, only that templates render without error. Since we're only modifying comment blocks within existing templates, no new tests are needed. Existing template rendering tests (if any) will continue to pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system by modifying Jinja2 templates within the canonical template directory structure. The templates at `src/templates/narrative/` and `src/templates/investigation/` follow the subsystem's conventions (`.jinja2` suffix, rendered via the template system). No deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update narrative template `proposed_chunks` documentation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Modify `src/templates/narrative/OVERVIEW.md.jinja2` to expand the `depends_on` documentation in the frontmatter comment block. Replace the current explanation:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+- depends_on: Optional array of integer indices referencing other prompts in the same array.
+  This expresses implementation dependencies between proposed chunks.
+  - Indices are zero-based (e.g., `depends_on: [0, 2]` means "this prompt depends on
+    prompts at indices 0 and 2 in this array")
+  - Use when chunks have ordering constraints (e.g., chunk B needs chunk A's interfaces)
+  - At chunk-create time, index references are translated to chunk directory names
+  - Omit or set to [] for prompts with no dependencies
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+With enhanced documentation that clarifies the null vs empty semantics:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+```
+- depends_on: Optional array of integer indices expressing implementation dependencies.
+
+  SEMANTICS (null vs empty distinction):
+  | Value           | Meaning                                 | Oracle behavior |
+  |-----------------|----------------------------------------|-----------------|
+  | omitted/null    | "I don't know dependencies for this"  | Consult oracle  |
+  | []              | "Explicitly has no dependencies"       | Bypass oracle   |
+  | [0, 2]          | "Depends on prompts at indices 0 & 2"  | Bypass oracle   |
+
+  - Indices are zero-based and reference other prompts in this same array
+  - At chunk-create time, index references are translated to chunk directory names
+  - Use `[]` when you've analyzed the chunks and determined they're independent
+  - Omit the field when you don't have enough context to determine dependencies
+```
+
+Location: `src/templates/narrative/OVERVIEW.md.jinja2`
+
+### Step 2: Update investigation template `proposed_chunks` documentation
+
+Modify `src/templates/investigation/OVERVIEW.md.jinja2` with the same enhancement to the `depends_on` documentation in the frontmatter comment block.
+
+The investigation template currently has the same text as the narrative template for this field. Apply the same change.
+
+Location: `src/templates/investigation/OVERVIEW.md.jinja2`
+
+### Step 3: Verify templates render correctly
+
+Run `uv run ve init` to re-render templates and verify no syntax errors were introduced. Since this is template content modification (not structural changes), a successful render is sufficient verification.
+
+### Step 4: Verify consistency between templates
+
+Review both updated templates to ensure the documentation is identical where it should be (the `depends_on` semantics table and explanation). The two templates should have the same explanation of this field since it has the same semantics in both contexts.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **explicit_deps_null_inject** (ACTIVE): The implementation chunk that establishes the null vs empty semantics in the orchestrator. This documentation must align with that implementation.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Low risk**: This is documentation-only work within template comment blocks. The templates will continue to render identically (the changes are in HTML comments that guide agents, not in rendered content).
+- **Consistency**: Must ensure the explanation matches what `explicit_deps_null_inject` implemented. The semantics table in this plan matches the narrative's OVERVIEW.md which was the source of truth for that implementation.
 
 ## Deviations
 
