@@ -9,6 +9,7 @@ investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
+depends_on: []
 created_after: {{ created_after | default([], true) | tojson }}
 ---
 
@@ -165,6 +166,41 @@ WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
 - Narrative chunk sequencing in OVERVIEW.md
 - Design documents describing the intended build order
 - The `created_after` field will naturally reflect this once chunks ship
+
+DEPENDS_ON:
+- Declares explicit implementation dependencies that bypass the orchestrator's conflict oracle
+- Format: list of chunk directory name strings (e.g., ["auth_api", "auth_client"])
+- Default: [] (empty list - no explicit dependencies declared)
+
+PURPOSE AND BEHAVIOR:
+- When non-empty, the orchestrator uses these dependencies instead of running conflict detection
+- Dependencies express order within a single injection batch (intra-batch scheduling)
+- The chunks listed in depends_on will be scheduled to complete before this chunk starts
+- The orchestrator treats these dependencies as authoritative, bypassing heuristic auto-detection
+
+CONTRAST WITH created_after:
+- `created_after` tracks CAUSAL ORDERING (what work existed when chunk was created)
+- `depends_on` tracks IMPLEMENTATION DEPENDENCIES (what must complete before this chunk runs)
+- `created_after` is auto-populated at creation time and should NOT be modified manually
+- `depends_on` is agent-populated based on design requirements and may be edited
+
+WHEN TO USE:
+- When you know chunk B requires chunk A's implementation to exist before B can work
+- When the conflict oracle would otherwise miss a subtle dependency
+- When you want to enforce a specific execution order within a batch injection
+- When a narrative or investigation explicitly defines chunk sequencing
+
+EXAMPLE:
+  # Chunk B depends on chunk A completing first
+  depends_on: ["auth_api"]
+
+  # Chunk C depends on both A and B completing first
+  depends_on: ["auth_api", "auth_client"]
+
+VALIDATION:
+- Referenced chunks should exist in docs/chunks/ (warning if not found)
+- Circular dependencies will be detected at injection time
+- Dependencies on ACTIVE chunks are allowed (they've already completed)
 -->
 
 # Chunk Goal

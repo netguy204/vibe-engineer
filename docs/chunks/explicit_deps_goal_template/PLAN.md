@@ -1,177 +1,73 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is a pure schema/template change. We will:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Add the `depends_on` field to the GOAL.md Jinja2 template frontmatter
+2. Add comprehensive schema documentation in the template's comment block explaining the field's purpose, format, and behavior
+3. Verify the template renders correctly via `ve init`
+4. Ensure backward compatibility - existing chunks without `depends_on` should continue to work
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The change follows the established pattern in the template: frontmatter fields have corresponding documentation in the large comment block that explains schema semantics to agents.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/explicit_deps_goal_template/GOAL.md)
-with references to the files that you expect to touch.
--->
+No new code logic is required - this is purely a schema definition that will be consumed by later chunks in the explicit_chunk_deps narrative (specifically `explicit_deps_batch_inject` for reading the field during injection).
+
+Per docs/trunk/TESTING_PHILOSOPHY.md, "We verify templates render without error and files are created, but don't assert on template prose." The existing test_init.py tests already verify that `ve init` renders templates successfully, which will validate this change.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system. The change follows the established pattern of Jinja2 templates with `.jinja2` suffix. No deviations - we're adding a new frontmatter field following the existing pattern of other fields like `created_after`, `narrative`, etc.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add depends_on field to GOAL.md.jinja2 frontmatter
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `depends_on: []` to the frontmatter section of `src/templates/chunk/GOAL.md.jinja2`, positioning it after `bug_type` and before `created_after` for logical grouping with other agent-facing metadata.
 
-Example:
+Location: `src/templates/chunk/GOAL.md.jinja2`
 
-### Step 1: Define the SegmentHeader struct
+Input: Current template without depends_on field
+Output: Template with `depends_on: []` in frontmatter
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add DEPENDS_ON schema documentation to comment block
 
-Location: src/segment/format.rs
+Add a comprehensive DEPENDS_ON documentation section to the template's comment block (the large `<!-- ... -->` section that documents all frontmatter fields). The documentation should explain:
 
-### Step 2: Implement header serialization
+- **Purpose**: Declares explicit dependencies that bypass the oracle's auto-detection
+- **Scope**: Intra-batch scheduling (dependencies express order within a single injection batch)
+- **Format**: List of chunk directory name strings (e.g., `["auth_api", "auth_client"]`)
+- **Behavior**: When non-empty, the orchestrator uses these dependencies instead of running conflict detection
+- **Contrast with created_after**: Clarify that `depends_on` is for implementation dependencies, while `created_after` is for causal ordering
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Position this documentation after the CREATED_AFTER section, since they're conceptually related (both deal with chunk ordering, but for different purposes).
 
-### Step 3: ...
+Location: `src/templates/chunk/GOAL.md.jinja2`
 
----
+### Step 3: Verify template renders correctly
 
-**BACKREFERENCE COMMENTS**
+Run `ve init` in a test project to verify:
+- The template renders without Jinja2 errors
+- The `depends_on: []` field appears in the generated GOAL.md frontmatter
+- The DEPENDS_ON documentation appears in the comment block
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+This can be done manually or by running the existing test suite (test_init.py).
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Location: Command line / tests/
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 4: Update GOAL.md code_paths
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Update this chunk's GOAL.md to record the files touched:
+- `src/templates/chunk/GOAL.md.jinja2`
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Location: `docs/chunks/explicit_deps_goal_template/GOAL.md`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Documentation placement**: The template already has ~170 lines of frontmatter documentation. Adding another field increases cognitive load for agents reading the template. Mitigated by clear sectioning and following the established pattern.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Field name consistency**: The narrative's proposed_chunks use index-based `depends_on` references, while chunk GOAL.md uses directory name strings. This is intentional (narratives reference prompts by array index; chunks reference concrete directory names), but may need explicit documentation to avoid confusion.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*

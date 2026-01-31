@@ -17,7 +17,6 @@ class TestChunksClass:
 
         assert result_path.exists()
         assert result_path.is_dir()
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         assert result_path.name == "my_feature"
 
     def test_create_chunk_default_status_implementing(self, temp_project):
@@ -61,7 +60,6 @@ class TestChunksClass:
         assert chunk_mgr.num_chunks == 1
 
         # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
         assert chunk_mgr.num_chunks == 2
@@ -83,7 +81,6 @@ class TestListChunks:
         chunk_mgr.create_chunk("VE-001", "feature")
         result = chunk_mgr.list_chunks()
         assert len(result) == 1
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         assert result[0] == "feature"
 
     def test_multiple_chunks_descending_order(self, temp_project):
@@ -91,7 +88,6 @@ class TestListChunks:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
@@ -108,7 +104,6 @@ class TestListChunks:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "with_ticket")
         # Complete first chunk before creating second (guard prevents multiple IMPLEMENTING)
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         chunk_mgr.update_status("with_ticket", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk(None, "without_ticket")
         result = chunk_mgr.list_chunks()
@@ -132,7 +127,6 @@ class TestGetLatestChunk:
         """Single chunk returns that chunk's name."""
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "feature")
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         assert chunk_mgr.get_latest_chunk() == "feature"
 
     def test_multiple_chunks_returns_highest(self, temp_project):
@@ -140,7 +134,6 @@ class TestGetLatestChunk:
         chunk_mgr = Chunks(temp_project)
         chunk_mgr.create_chunk("VE-001", "first")
         # Complete each chunk before creating the next (guard prevents multiple IMPLEMENTING)
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         chunk_mgr.update_status("first", ChunkStatus.ACTIVE)
         chunk_mgr.create_chunk("VE-002", "second")
         chunk_mgr.update_status("second", ChunkStatus.ACTIVE)
@@ -312,7 +305,6 @@ class TestChunkDirectoryInTemplates:
         plan_path = result_path / "PLAN.md"
         plan_content = plan_path.read_text()
 
-        # Chunk: docs/chunks/chunknaming_drop_ticket - Directory uses short_name only
         # Should contain the chunk directory without ticket suffix
         assert "docs/chunks/feature/GOAL.md" in plan_content
         assert "NNNN-name" not in plan_content
@@ -870,7 +862,6 @@ class TestChunkTemplateWithTaskContext:
         assert ".ve-task.yaml" in goal_content
 
 
-# Chunk: docs/chunks/chunk_last_active - Last active chunk lookup
 class TestGetLastActiveChunk:
     """Tests for Chunks.get_last_active_chunk() method."""
 
