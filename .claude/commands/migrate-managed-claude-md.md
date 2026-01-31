@@ -5,8 +5,7 @@ description: Migrate legacy CLAUDE.md to use magic markers for VE-managed conten
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
-This file is rendered from: src/templates/commands/migrate-managed-claude-md.md.jinja2
-Edit the source template, then run `ve init` to regenerate.
+Run `ve init` to regenerate.
 -->
 
 ## Tips

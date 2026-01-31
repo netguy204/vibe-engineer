@@ -20,6 +20,13 @@ PROPOSED_CHUNKS:
 - Each entry records which prompt was refined and where the resulting chunk lives
 - prompt: The prompt text from this document that was used to create the chunk
 - chunk_directory: The created chunk directory (e.g., "0007-feature_name"), null until created
+- depends_on: Optional array of integer indices referencing other prompts in the same array.
+  This expresses implementation dependencies between proposed chunks.
+  - Indices are zero-based (e.g., `depends_on: [0, 2]` means "this prompt depends on
+    prompts at indices 0 and 2 in this array")
+  - Use when chunks have ordering constraints (e.g., chunk B needs chunk A's interfaces)
+  - At chunk-create time, index references are translated to chunk directory names
+  - Omit or set to [] for prompts with no dependencies
 - DO NOT POPULATE this array during narrative creation. It will be populated as
   chunks are created.
 - Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet

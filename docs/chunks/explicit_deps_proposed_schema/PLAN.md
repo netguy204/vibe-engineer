@@ -8,153 +8,71 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extends the `proposed_chunks` schema in both narrative and investigation templates to support a `depends_on` field. The field uses index-based references, allowing agents to express dependencies between proposed chunks before they are created as actual chunks.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach follows the pattern already demonstrated in the `explicit_chunk_deps` narrative's OVERVIEW.md, which uses `depends_on: [0, 2]` syntax to reference prompts at indices 0 and 2 in the same `proposed_chunks` array.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Key design decisions:
+- **Index-based references**: Since proposed chunks don't have directory names yet (they're just prompts), we use array indices as stable identifiers within a single proposed_chunks array
+- **Zero-based indexing**: Matches standard programming conventions
+- **Schema documentation in templates**: The templates contain extensive comment blocks explaining each field; we add `depends_on` documentation to these blocks
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/explicit_deps_proposed_schema/GOAL.md)
-with references to the files that you expect to touch.
--->
+The work is purely template editing - no runtime code changes. This is a schema extension that chunk #3 (explicit_deps_chunk_propagate) will consume when translating proposed_chunks into actual chunks.
+
+No tests are needed because:
+1. Template content verification is explicitly out of scope per TESTING_PHILOSOPHY.md ("We verify templates render without error and files are created, but don't assert on template prose")
+2. The change adds documentation to existing comment blocks - no runtime behavior changes
+3. Existing tests for `ve init` and template rendering already ensure templates are syntactically valid
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are affected. This chunk modifies only template documentation comments, not runtime code patterns.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update the narrative template's PROPOSED_CHUNKS schema
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**File:** `src/templates/narrative/OVERVIEW.md.jinja2`
 
-Example:
+Add documentation for the `depends_on` field to the PROPOSED_CHUNKS schema section in the comment block. The documentation should explain:
 
-### Step 1: Define the SegmentHeader struct
+- **What it is:** An optional array of integer indices referencing other prompts in the same `proposed_chunks` array
+- **Format:** Zero-based integer indices (e.g., `depends_on: [0, 2]` means "this prompt depends on prompts at indices 0 and 2")
+- **When to use:** When chunks have implementation dependencies that affect execution order
+- **How it flows:** At chunk-create time, index references are translated to chunk directory names
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: Add after the existing prompt/chunk_directory field documentation in the PROPOSED_CHUNKS comment block.
 
-Location: src/segment/format.rs
+### Step 2: Update the investigation template's PROPOSED_CHUNKS schema
 
-### Step 2: Implement header serialization
+**File:** `src/templates/investigation/OVERVIEW.md.jinja2`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add the same `depends_on` field documentation to the investigation template's PROPOSED_CHUNKS schema section. Investigations use the same proposed_chunks format as narratives, so the documentation should be consistent.
 
-### Step 3: ...
+Location: Add after the existing prompt/chunk_directory field documentation in the PROPOSED_CHUNKS comment block.
 
----
+### Step 3: Verify templates render correctly
 
-**BACKREFERENCE COMMENTS**
+Run `uv run ve init` to regenerate templates and verify no syntax errors.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Run the existing test suite to confirm templates still render correctly:
+```bash
+uv run pytest tests/ -v
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+No new tests are needed per TESTING_PHILOSOPHY.md (template prose is not tested), but existing tests must continue to pass.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk has no dependencies on other chunks in the narrative - it can be implemented independently. Per the narrative's proposed_chunks, this chunk (index 1) has `depends_on: []`.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+**Low risk.** This is a documentation-only change with no runtime behavior.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+**Open questions resolved by design:**
+- **Why indices instead of names?** Proposed chunks don't have directory names yet - they're just prompts. Index references are stable within a single array and get translated to chunk names during `/chunk-create`.
+- **What about circular dependencies?** The index-based system inherently prevents forward references (a prompt cannot depend on a higher-index prompt that doesn't exist yet). Circular dependencies are impossible within a single array.
 
 ## Deviations
 

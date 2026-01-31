@@ -5,8 +5,7 @@ description: Batch-submit all FUTURE chunks to the orchestrator.
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
-This file is rendered from: src/templates/commands/orchestrator-submit-future.md.jinja2
-Edit the source template, then run `ve init` to regenerate.
+Run `ve init` to regenerate.
 -->
 
 ## Tips
