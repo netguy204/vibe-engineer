@@ -142,6 +142,37 @@ class TestInvestigationGuidance:
         assert "opinion" in lower_result or "believe" in lower_result or "hypothes" in lower_result
 
 
+class TestInvestigationDependsOnSemantics:
+    """Tests for depends_on null vs empty semantics documentation in investigation template."""
+
+    def test_documents_null_vs_empty_distinction(self):
+        """Template documents the semantic difference between omitted/null and empty list."""
+        from template_system import render_template
+
+        result = render_template("investigation", "OVERVIEW.md.jinja2")
+        # Should have the semantic distinction documented
+        assert "NULL VS EMPTY SEMANTICS" in result
+
+    def test_documents_oracle_behavior(self):
+        """Template documents how orchestrator oracle handles different depends_on values."""
+        from template_system import render_template
+
+        result = render_template("investigation", "OVERVIEW.md.jinja2")
+        # Should mention oracle behavior for each case
+        lower_result = result.lower()
+        assert "oracle" in lower_result
+        assert "bypass" in lower_result or "consult" in lower_result
+
+    def test_documents_empty_list_means_independent(self):
+        """Template documents that empty list explicitly declares independence."""
+        from template_system import render_template
+
+        result = render_template("investigation", "OVERVIEW.md.jinja2")
+        # Should explain that [] means "explicitly has no dependencies"
+        assert "[]" in result
+        assert "independent" in result.lower() or "no dependencies" in result.lower()
+
+
 class TestInvestigationIntegration:
     """Integration tests for the investigation template."""
 

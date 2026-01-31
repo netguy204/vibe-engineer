@@ -98,6 +98,8 @@ to get stuck in NEEDS_ATTENTION when they could safely proceed. Issues encounter
 Root cause: State cleanup isn't happening on status transitions. Created future chunk
 `orch_unblock_transition` to address the cleanup bugs.
 
+note: this is addressed by eager depends_on introduceed via docs/narratives/explicit_chunk_deps
+
 ### F002: 2026-01-12 [context-resolution] Chunk validation uses wrong context in task projects
 
 When working in a task folder and creating a chunk for a specific project within that task,
@@ -116,6 +118,8 @@ context, not the parent task context.
 **Impact**: High—blocked completion of work and required manual intervention to understand
 what was happening.
 
+note: resolved by docs/chunks/task_chunk_validation and docs/chunks/taskdir_context_cmds
+
 ### F003: 2026-01-12 [orchestrator] Attention list CLI examples truncated
 
 When running 've orch attention list', the output includes example CLI commands for addressing issues like conflicts, but these commands are truncated and unreadable. This makes it harder to quickly resolve attention items without having to guess or look up the correct command syntax.
@@ -129,6 +133,8 @@ Claude declares work complete when implementation is actually incomplete or has 
 Observed ~18 instances across 50 conversations analyzed (roughly 1 per 2-3 substantive conversations).
 
 **Impact**: High
+
+note: addressed by REVIEW phase in orchestrator, see docs/investigations/orchestrator_quality_assurance
 
 ### F005: 2026-01-12 [skill-ux] Long completion reports lack clear action items
 
@@ -171,11 +177,15 @@ scheduler.py, and test file, then `ve orch work-unit status X DONE`.
 
 **Impact**: High—blocks work unit completion, requires git expertise to resolve.
 
+note: addressed by /orchestrator-investigate skill which provides guided recovery workflow
+
 ### F008: 2026-01-13 [template-evolution] ve init lacks semantic merge for templates
 
 After initializing a project, template improvements (CLAUDE.md, trunk GOAL/SPEC, friction log) need semantic merge to incorporate updates while preserving customizations. Current options are only skip or overwrite, forcing a choice between losing customizations or missing template improvements.
 
 **Impact**: Medium
+
+note: resolved by docs/chunks/claudemd_magic_markers and docs/chunks/claudemd_migrate_managed
 
 ### F009: 2026-01-13 [orchestrator] Agent completes successfully but commit fails silently
 
@@ -216,6 +226,8 @@ When working in a task context with multiple active projects, artifact creation 
 
 **Impact**: Medium—creates hesitation and workflow friction, but has workarounds (cd into specific project first).
 
+note: resolved by docs/chunks/selective_project_linking and docs/chunks/selective_artifact_friction (--projects flag)
+
 ### F011: 2026-01-15 [context-resolution] Subsystem status command fails in task context
 
 When running 've subsystem status savings_accounting STABLE' from a task directory, the command failed with 'Subsystem not found in docs/subsystems/'. The subsystem existed in the artifacts repo, not the task's local docs/subsystems/. The command only searched the task-level directory instead of resolving the subsystem in the artifacts repository where it was actually defined.
@@ -228,9 +240,13 @@ Agents can't reliably dereference external.yml files. They don't think to use CL
 
 **Impact**: Medium
 
+note: resolved by docs/chunks/claudemd_external_prompt which added EXTERNAL.md docs and CLAUDE.md prompting
+
 ### F013: 2026-01-20 [template-evolution] Narrative frontmatter non-standard after subsystem migration
 
 When creating a narrative inside a project that was recently migrated from chunks to subsystems, the narrative OVERVIEW.md frontmatter does not follow the standard format. The migration process doesn't update narrative templates or existing narratives to use the current frontmatter conventions.
+
+Note: this issue is obsolete now that the global scratchpad is deprecated.
 
 **Impact**: Medium
 
@@ -238,4 +254,22 @@ When creating a narrative inside a project that was recently migrated from chunk
 
 When running 've chunk list-proposed', it's unclear whether the command searches only the current project's docs/ directory or also looks in the global user area (e.g., ~/.config/vibe-engineer/ or similar). The command output and help text don't clarify the search scope, creating uncertainty about whether all proposed chunks are being shown.
 
+Note: this issue is obsolete now that the global scratchpad is deprecated.
+
 **Impact**: Low
+
+### F015: 2026-01-31 [orchestrator] No way to declare chunks as independent (bypass oracle)
+
+depends_on: [] triggers oracle consultation rather than bypassing it. Only explicit dependencies (depends_on: [chunk_x]) set explicit_deps=True and bypass oracle. There's no mechanism to declare 'these chunks are independent, trust me' without adding fake dependencies. This means logically independent chunks touching different subsystems still get oracle analysis, potentially flagging false conflicts.
+
+**Impact**: Medium
+
+note: resolved by docs/narratives/explicit_chunk_deps_null_semantics
+
+### F016: 2026-01-31 [orchestrator] PLAN.md not committed before inject causes merge failure
+
+When creating a FUTURE chunk and immediately injecting it, the PLAN.md created by the orchestrator's PLAN phase ends up as an untracked file on main. When the orchestrator later tries to merge its branch back to main, the merge fails with 'untracked working tree files would be overwritten by merge'. Root cause: the operator said 'commit and inject' but only the GOAL.md was committed - the PLAN phase then created PLAN.md in both the worktree branch AND somehow on main, causing the conflict. Requires manual intervention to remove the untracked file and complete the merge.
+
+**Impact**: Medium
+
+note: resolved by docs/chunks/orch_plan_merge_conflict
