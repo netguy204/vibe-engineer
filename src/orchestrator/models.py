@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/explicit_deps_workunit_flag - WorkUnit explicit_deps field
+# Chunk: docs/chunks/orch_verify_active - completion_retries and max_completion_retries fields
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.

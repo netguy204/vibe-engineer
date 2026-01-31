@@ -329,6 +329,7 @@ class Friction:
         return frontmatter.themes
 
     # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+    # Chunk: docs/chunks/selective_artifact_friction - Retrieve external friction sources
     def get_external_friction_sources(self) -> list[ExternalFrictionSource]:
         """Get external friction sources referenced by this friction log.
 

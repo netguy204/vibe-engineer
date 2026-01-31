@@ -2,6 +2,9 @@
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/workflow_artifacts - External reference utilities
+# Chunk: docs/chunks/external_artifact_unpin - Unpinned external reference creation
+# Chunk: docs/chunks/external_chunk_causal - created_after support in external.yaml
+# Chunk: docs/chunks/ordering_remove_seqno - Short name format for external.yaml creation
 
 This module provides type-agnostic utilities for working with external artifact
 references across all workflow artifact types (chunks, narratives, investigations,
@@ -15,6 +18,7 @@ import yaml
 from models import ArtifactType, ExternalArtifactRef
 
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Mapping of artifact types to main document file names
 # Map artifact type to the main document file
 ARTIFACT_MAIN_FILE: dict[ArtifactType, str] = {
     ArtifactType.CHUNK: "GOAL.md",
@@ -23,6 +27,7 @@ ARTIFACT_MAIN_FILE: dict[ArtifactType, str] = {
     ArtifactType.SUBSYSTEM: "OVERVIEW.md",
 }
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Mapping of artifact types to directory names
 # Map artifact type to its directory name under docs/
 ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
     ArtifactType.CHUNK: "chunks",
@@ -32,6 +37,7 @@ ARTIFACT_DIR_NAME: dict[ArtifactType, str] = {
 }
 
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Utility to get main file name for an artifact type
 def get_main_file_for_type(artifact_type: ArtifactType) -> str:
     """Get the main document file name for an artifact type.
 
@@ -44,6 +50,7 @@ def get_main_file_for_type(artifact_type: ArtifactType) -> str:
     return ARTIFACT_MAIN_FILE[artifact_type]
 
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Generic detection of external artifact references
 def is_external_artifact(path: Path, artifact_type: ArtifactType) -> bool:
     """Detect if path is an external artifact reference.
 
@@ -63,6 +70,7 @@ def is_external_artifact(path: Path, artifact_type: ArtifactType) -> bool:
     return has_external and not has_main
 
 
+# Chunk: docs/chunks/consolidate_ext_ref_utils - Artifact type detection from directory path
 def detect_artifact_type_from_path(path: Path) -> ArtifactType:
     """Detect artifact type from directory path.
 
@@ -118,6 +126,7 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
     return ExternalArtifactRef.model_validate(data)
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path normalization
 def normalize_artifact_path(
     input_path: str,
     search_path: Path | None = None,
@@ -222,6 +231,7 @@ def normalize_artifact_path(
     )
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Simple prefix stripping for known artifact types
 def strip_artifact_path_prefix(
     input_id: str,
     artifact_type: ArtifactType,

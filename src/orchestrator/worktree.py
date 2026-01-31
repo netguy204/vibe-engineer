@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_task_worktrees - Multi-repo worktree support for task context
 """Git worktree manager for isolated chunk execution.
 
 Provides worktree lifecycle management for parallel agent execution.

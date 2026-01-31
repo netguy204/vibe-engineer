@@ -2,6 +2,8 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/ordering_remove_seqno - Short name directory format for subsystems
+# Chunk: docs/chunks/populate_created_after - Automatic created_after population on subsystem creation
 
 from __future__ import annotations
 
@@ -105,6 +107,7 @@ class Subsystems:
         except (yaml.YAMLError, ValidationError):
             return None
 
+    # Chunk: docs/chunks/subsystem_cli_scaffolding - Lookup subsystem directory by shortname
     def find_by_shortname(self, shortname: str) -> str | None:
         """Find subsystem directory by shortname.
 
@@ -128,6 +131,7 @@ class Subsystems:
         return len(self.enumerate_subsystems())
 
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
+    # Chunk: docs/chunks/subsystem_cli_scaffolding - Create subsystem directory with template
     def create_subsystem(self, shortname: str) -> pathlib.Path:
         """Create a new subsystem directory with OVERVIEW.md template.
 
@@ -192,6 +196,7 @@ class Subsystems:
                 duplicates.append(name)
         return duplicates
 
+    # Chunk: docs/chunks/bidirectional_refs - Validates chunk references in subsystem frontmatter exist
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:
         """Validate chunk references in a subsystem's frontmatter.
 
@@ -231,6 +236,7 @@ class Subsystems:
 
         return errors
 
+    # Chunk: docs/chunks/subsystem_status_transitions - Get current subsystem status
     def get_status(self, subsystem_id: str) -> SubsystemStatus:
         """Get the current status of a subsystem.
 
@@ -248,6 +254,7 @@ class Subsystems:
             raise ValueError(f"Subsystem '{subsystem_id}' not found in docs/subsystems/")
         return frontmatter.status
 
+    # Chunk: docs/chunks/subsystem_status_transitions - Validate transition and update status
     def update_status(
         self, subsystem_id: str, new_status: SubsystemStatus
     ) -> tuple[SubsystemStatus, SubsystemStatus]:
@@ -324,6 +331,8 @@ class Subsystems:
 
         overview_path.write_text(new_content)
 
+    # Chunk: docs/chunks/subsystem_impact_resolution - Find subsystems with overlapping code refs
+    # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.code_references and code_paths
     def find_overlapping_subsystems(
         self, chunk_id: str, chunks: Chunks
     ) -> list[dict]:
@@ -394,6 +403,7 @@ class Subsystems:
         return results
 
     # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+    # Chunk: docs/chunks/subsystem_impact_resolution - Helper for hierarchical reference comparison
     def _find_overlapping_refs(
         self, chunk_refs: list[str], subsystem_refs: list[str]
     ) -> list[str]:

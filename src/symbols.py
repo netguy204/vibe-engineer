@@ -10,6 +10,7 @@ import ast
 from pathlib import Path
 
 
+# Chunk: docs/chunks/symbolic_code_refs - AST-based symbol extraction from source files
 def extract_symbols(file_path: Path) -> set[str]:
     """Extract all symbol definitions from a Python source file.
 
@@ -80,6 +81,7 @@ def _extract_from_node(node: ast.AST, prefix: list[str], symbols: set[str]) -> N
 
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/symbolic_code_refs - Parse symbolic reference into file path and symbol
 def parse_reference(
     ref: str, *, current_project: str | None = None
 ) -> tuple[str, str, str | None]:
@@ -172,6 +174,7 @@ def qualify_ref(ref: str, project: str) -> str:
     return f"{project}::{ref}"
 
 
+# Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check for overlap detection
 def is_parent_of(parent: str, child: str) -> bool:
     """Check if parent reference hierarchically contains child reference.
 

@@ -207,6 +207,7 @@ class Migrations:
         except (yaml.YAMLError, ValidationError):
             return None
 
+    # Chunk: docs/chunks/claudemd_migrate_managed - CLI support for managed_claude_md migration type
     def create_migration(
         self,
         migration_type: str = "chunks_to_subsystems",

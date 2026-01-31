@@ -3,6 +3,18 @@
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/copy_as_external - ve artifact copy-external command
+# Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with dependency ordering
+# Chunk: docs/chunks/explicit_deps_null_inject - Null vs empty depends_on handling in orch inject
+# Chunk: docs/chunks/external_resolve - ve external resolve command
+# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
+# Chunk: docs/chunks/external_resolve_enhance - Enhanced resolve output format
+# Chunk: docs/chunks/external_artifact_unpin - Removed sync command and pinning
+# Chunk: docs/chunks/orch_tcp_port - ve orch start with --port and --host options
+# Chunk: docs/chunks/orch_url_command - ve orch url command for getting orchestrator endpoint
+# Chunk: docs/chunks/project_init_command - ve init command for project initialization
+# Chunk: docs/chunks/remove_external_ref - ve artifact remove-external command
+# Chunk: docs/chunks/rename_chunk_start_to_create - ve chunk create command with start alias
 
 import pathlib
 
@@ -151,6 +163,7 @@ def chunk():
 @click.option("--future", is_flag=True, help="Create chunk with FUTURE status instead of IMPLEMENTING")
 @click.option("--ticket", default=None, help="Ticket ID to apply to all chunks")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
+# Chunk: docs/chunks/chunk_batch_create - CLI command accepting variadic chunk names with batch creation logic
 def create(short_names, project_dir, yes, future, ticket, projects):
     """Create a new chunk (or multiple chunks).
 
@@ -296,6 +309,7 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 chunk.add_command(create, name="start")
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - CLI handler for cross-repo mode output
 def _start_task_chunk(
     task_dir: pathlib.Path,
     short_name: str,
@@ -331,6 +345,7 @@ def _start_task_chunk(
         click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/chunk_batch_create - Batch chunk creation handler for task directory mode
 def _start_task_chunks(
     task_dir: pathlib.Path,
     short_names: list[str],
@@ -443,6 +458,10 @@ def _parse_status_filters(
     help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
 )
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/artifact_list_ordering - CLI command with tip indicator display using ArtifactIndex
+# Chunk: docs/chunks/chunk_list_command-ve-002 - CLI command ve chunk list with --latest, --last-active, and --project-dir options
+# Chunk: docs/chunks/chunk_list_flags - CLI command with renamed --current flag and new --recent flag
+# Chunk: docs/chunks/chunk_last_active - CLI handler with --last-active flag and mutual exclusivity check
 def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
     """List all chunks.
 
@@ -696,6 +715,8 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
+# Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode
+# Chunk: docs/chunks/chunk_last_active - Cross-repo (task context) support for --last-active
 def _list_task_chunks(
     current: bool,
     last_active: bool,
@@ -846,6 +867,7 @@ def list_proposed_chunks_cmd(project_dir):
     _format_proposed_chunks_by_source(proposed)
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI command using strip_artifact_path_prefix
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2404,6 +2426,7 @@ def artifact():
     pass
 
 
+# Chunk: docs/chunks/artifact_promote - CLI command ve artifact promote <path> [--name]
 @artifact.command()
 @click.argument("artifact_path", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option("--name", "new_name", type=str, help="New name for artifact in destination")

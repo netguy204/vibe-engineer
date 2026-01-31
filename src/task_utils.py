@@ -1,5 +1,9 @@
 """Utility functions for cross-repository task management."""
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/copy_as_external - Artifact copy-external command implementation
+# Chunk: docs/chunks/external_artifact_unpin - External artifact unpinning
+# Chunk: docs/chunks/external_chunk_causal - External chunk causal ordering
+# Chunk: docs/chunks/remove_external_ref - Artifact remove-external command implementation
 
 import re
 from dataclasses import dataclass
@@ -21,6 +25,7 @@ from git_utils import get_current_sha
 from models import TaskConfig, ExternalArtifactRef, ArtifactType
 
 
+# Chunk: docs/chunks/selective_project_linking - Parse --projects CLI option into resolved refs
 def parse_projects_option(
     projects_input: str | None,
     available_projects: list[str],
@@ -51,6 +56,7 @@ def parse_projects_option(
     return [resolve_project_ref(p, available_projects) for p in project_names]
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible project reference resolution
 def resolve_project_ref(
     project_input: str,
     available_projects: list[str],
@@ -171,6 +177,7 @@ def is_task_directory(path: Path) -> bool:
     return (path / ".ve-task.yaml").exists()
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Resolves org/repo reference to filesystem path
 def resolve_repo_directory(task_dir: Path, repo_ref: str) -> Path:
     """Resolve a GitHub-style org/repo reference to a filesystem path.
 
@@ -252,6 +259,8 @@ def load_task_config(path: Path) -> TaskConfig:
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/chunk_create_task_aware - Calculates next sequential chunk ID for a project
+# Chunk: docs/chunks/artifact_list_ordering - Updated to use enumerate_chunks for directory-based ID calculation
 def get_next_chunk_id(project_path: Path) -> str:
     """Return next sequential chunk ID (e.g., '0005') for a project.
 
@@ -330,6 +339,7 @@ def update_frontmatter_field(
     goal_path.write_text(new_content)
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Updates GOAL.md frontmatter with dependents
 def add_dependents_to_chunk(
     chunk_path: Path,
     dependents: list[dict],
@@ -350,12 +360,14 @@ def add_dependents_to_chunk(
     update_frontmatter_field(goal_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Exception class for user-friendly error messages
 class TaskChunkError(Exception):
     """Error during task chunk creation with user-friendly message."""
 
     pass
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Orchestrator for multi-repo chunk creation
 def create_task_chunk(
     task_dir: Path,
     short_name: str,
@@ -468,6 +480,7 @@ def create_task_chunk(
     }
 
 
+# Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
 def list_task_chunks(task_dir: Path) -> list[dict]:
     """List chunks from external repo with their dependents.
 
@@ -519,6 +532,7 @@ def list_task_chunks(task_dir: Path) -> list[dict]:
     return results
 
 
+# Chunk: docs/chunks/chunk_list_repo_source - Return tuple of (chunk_name, external_artifact_repo) for task context
 def get_current_task_chunk(task_dir: Path) -> tuple[str | None, str]:
     """Get the current (IMPLEMENTING) chunk from external repo.
 
@@ -560,6 +574,7 @@ class TaskNarrativeError(Exception):
     pass
 
 
+# Chunk: docs/chunks/task_aware_investigations - Error class for task investigation operations
 class TaskInvestigationError(Exception):
     """Error during task investigation creation with user-friendly message."""
 
@@ -592,6 +607,7 @@ def add_dependents_to_narrative(
     update_frontmatter_field(overview_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/task_aware_investigations - Helper to update investigation with dependents
 def add_dependents_to_investigation(
     investigation_path: Path,
     dependents: list[dict],
@@ -632,6 +648,7 @@ def add_dependents_to_subsystem(
     update_frontmatter_field(overview_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering for task narrative creation
 def create_task_narrative(
     task_dir: Path,
     short_name: str,
@@ -788,6 +805,8 @@ def list_task_narratives(task_dir: Path) -> list[dict]:
     return results
 
 
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering for task investigation creation
+# Chunk: docs/chunks/task_aware_investigations - Task directory investigation creation
 def create_task_investigation(
     task_dir: Path,
     short_name: str,
@@ -887,6 +906,7 @@ def create_task_investigation(
     }
 
 
+# Chunk: docs/chunks/task_aware_investigations - Lists investigations from external repo
 def list_task_investigations(task_dir: Path) -> list[dict]:
     """List investigations from external repo with their dependents.
 
@@ -944,6 +964,7 @@ def list_task_investigations(task_dir: Path) -> list[dict]:
     return results
 
 
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering for task subsystem creation
 def create_task_subsystem(
     task_dir: Path,
     short_name: str,
@@ -1100,6 +1121,7 @@ def list_task_subsystems(task_dir: Path) -> list[dict]:
     return results
 
 
+# Chunk: docs/chunks/artifact_promote - Exception class for user-friendly promotion error messages
 class TaskPromoteError(Exception):
     """Error during artifact promotion with user-friendly message."""
 
@@ -1112,6 +1134,7 @@ class TaskArtifactListError(Exception):
     pass
 
 
+# Chunk: docs/chunks/artifact_promote - Walk up from artifact path to find task directory
 def find_task_directory(start_path: Path) -> Path | None:
     """Walk up from start_path to find directory containing .ve-task.yaml.
 
@@ -1203,6 +1226,7 @@ def check_task_project_context(project_dir: Path) -> TaskProjectContext | None:
     return None
 
 
+# Chunk: docs/chunks/artifact_promote - Determine which project contains the artifact being promoted
 def identify_source_project(task_dir: Path, artifact_path: Path, config: TaskConfig) -> str:
     """Determine which project (org/repo format) contains the artifact.
 
@@ -1239,6 +1263,7 @@ def identify_source_project(task_dir: Path, artifact_path: Path, config: TaskCon
     )
 
 
+# Chunk: docs/chunks/artifact_promote - Generic helper to add dependents to any artifact type
 def add_dependents_to_artifact(
     artifact_path: Path,
     artifact_type: ArtifactType,
@@ -1263,6 +1288,7 @@ def add_dependents_to_artifact(
     update_frontmatter_field(main_path, "dependents", dependents)
 
 
+# Chunk: docs/chunks/artifact_copy_backref - Append dependent entry with idempotency
 def append_dependent_to_artifact(
     artifact_path: Path,
     artifact_type: ArtifactType,
@@ -1327,6 +1353,7 @@ def append_dependent_to_artifact(
     main_path.write_text(new_content)
 
 
+# Chunk: docs/chunks/artifact_promote - Parse created_after field from artifact's main file
 def _get_artifact_created_after(artifact_path: Path, artifact_type: ArtifactType) -> list[str]:
     """Get the created_after field from an artifact's main file.
 
@@ -1364,6 +1391,7 @@ def _get_artifact_created_after(artifact_path: Path, artifact_type: ArtifactType
     return []
 
 
+# Chunk: docs/chunks/artifact_promote - Core promotion logic for artifact task-level promotion
 def promote_artifact(
     artifact_path: Path,
     new_name: str | None = None,
@@ -1785,6 +1813,8 @@ class TaskCopyExternalError(Exception):
     pass
 
 
+# Chunk: docs/chunks/artifact_copy_backref - Back-reference update for copy-external
+# Chunk: docs/chunks/accept_full_artifact_paths - Flexible path/project resolution for copy-external
 def copy_artifact_as_external(
     task_dir: Path,
     artifact_path: str,

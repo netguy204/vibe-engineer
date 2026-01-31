@@ -1,6 +1,8 @@
 """Chunks module - business logic for chunk management."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/ordering_remove_seqno - Short name directory format and chunk resolution
+# Chunk: docs/chunks/populate_created_after - Automatic created_after population on chunk creation
 
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
     from subsystems import Subsystems
 
 
+# Chunk: docs/chunks/chunk_validate - Structured error reporting for validation
 @dataclass
 class ValidationResult:
     """Result of chunk completion validation."""
@@ -43,6 +46,7 @@ class ValidationResult:
     chunk_name: str | None = None
 
 
+# Chunk: docs/chunks/cluster_prefix_suggest - TF-IDF prefix suggestion result
 @dataclass
 class SuggestPrefixResult:
     """Result of prefix suggestion analysis."""
@@ -89,6 +93,7 @@ class Chunks:
     def num_chunks(self):
         return len(self.enumerate_chunks())
 
+    # Chunk: docs/chunks/chunknaming_drop_ticket - Collision detection ignoring ticket_id
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name.
 
@@ -114,6 +119,8 @@ class Chunks:
                 duplicates.append(name)
         return duplicates
 
+    # Chunk: docs/chunks/artifact_list_ordering - Updated to use ArtifactIndex for causal ordering
+    # Chunk: docs/chunks/chunk_list_command-ve-002 - Lists chunks in causal order (newest first) using ArtifactIndex
     def list_chunks(self) -> list[str]:
         """List all chunks in causal order (newest first).
 
@@ -130,6 +137,8 @@ class Chunks:
         # Reverse to get newest first (ArtifactIndex returns oldest first)
         return list(reversed(ordered))
 
+    # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
+    # Chunk: docs/chunks/chunk_list_command-ve-002 - Returns first chunk in causal order (newest)
     def get_latest_chunk(self) -> str | None:
         """Return the first chunk in causal order (newest).
 
@@ -141,6 +150,8 @@ class Chunks:
             return chunks[0]
         return None
 
+    # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
+    # Chunk: docs/chunks/chunk_frontmatter_model - Uses ChunkStatus.IMPLEMENTING for status comparison
     def get_current_chunk(self) -> str | None:
         """Return the first IMPLEMENTING chunk in causal order.
 
@@ -157,6 +168,7 @@ class Chunks:
                 return chunk_name
         return None
 
+    # Chunk: docs/chunks/chunk_list_flags - New method returning up to 10 most recently created ACTIVE chunks
     def get_recent_active_chunks(self, limit: int = 10) -> list[str]:
         """Return the most recently created ACTIVE chunks.
 
@@ -181,6 +193,7 @@ class Chunks:
                     break
         return active_chunks
 
+    # Chunk: docs/chunks/chunk_last_active - Core ACTIVE tip lookup with mtime-based selection
     def get_last_active_chunk(self) -> str | None:
         """Return the most recently completed ACTIVE tip chunk.
 
@@ -224,6 +237,7 @@ class Chunks:
         active_tips.sort(key=get_goal_mtime, reverse=True)
         return active_tips[0]
 
+    # Chunk: docs/chunks/chunk_frontmatter_model - Uses ChunkStatus.FUTURE for status comparison
     def activate_chunk(self, chunk_id: str) -> str:
         """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
 
@@ -271,6 +285,9 @@ class Chunks:
 
     # Subsystem: docs/subsystems/template_system - Template rendering system
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
+    # Chunk: docs/chunks/chunk_template_expansion - Template rendering with ActiveChunk context
+    # Chunk: docs/chunks/chunknaming_drop_ticket - Directory naming without ticket suffix
+    # Chunk: docs/chunks/coderef_format_prompting - Projects parameter for task-context template rendering
     def create_chunk(
         self,
         ticket_id: str | None,
@@ -298,6 +315,7 @@ class Chunks:
                 f"Chunk with short_name '{short_name}' already exists: {duplicates[0]}"
             )
 
+        # Chunk: docs/chunks/chunk_create_guard - Guard logic preventing multiple IMPLEMENTING chunks
         # Only guard non-FUTURE chunk creation
         if status != "FUTURE":
             current = self.get_current_chunk()
@@ -331,6 +349,7 @@ class Chunks:
         )
         return chunk_path
 
+    # Chunk: docs/chunks/chunk_overlap_command - Resolves 4-digit or full name to directory name
     def resolve_chunk_id(self, chunk_id: str) -> str | None:
         """Resolve a chunk ID to its directory name.
 
@@ -356,6 +375,7 @@ class Chunks:
                 return name
         return None
 
+    # Chunk: docs/chunks/chunk_overlap_command - Resolves chunk ID to GOAL.md path
     def get_chunk_goal_path(self, chunk_id: str) -> pathlib.Path | None:
         """Resolve chunk ID to GOAL.md path.
 
@@ -367,6 +387,7 @@ class Chunks:
             return None
         return self.chunk_dir / chunk_name / "GOAL.md"
 
+    # Chunk: docs/chunks/chunk_overlap_command - Extracts and parses YAML frontmatter from GOAL.md
     def parse_chunk_frontmatter(self, chunk_id: str) -> ChunkFrontmatter | None:
         """Parse YAML frontmatter from a chunk's GOAL.md.
 
@@ -376,6 +397,7 @@ class Chunks:
         frontmatter, _ = self.parse_chunk_frontmatter_with_errors(chunk_id)
         return frontmatter
 
+    # Chunk: docs/chunks/coderef_format_prompting - Frontmatter parsing that surfaces validation error details
     def parse_chunk_frontmatter_with_errors(
         self, chunk_id: str
     ) -> tuple[ChunkFrontmatter | None, list[str]]:
@@ -551,6 +573,7 @@ class Chunks:
             is_external=False,
         )
 
+    # Chunk: docs/chunks/chunk_overlap_command - Parses nested code_references format into file->line mappings
     def parse_code_references(self, refs: list) -> dict[str, tuple[int, int]]:
         """Parse code_references from frontmatter into file -> (earliest, latest) mapping.
 
@@ -605,6 +628,7 @@ class Chunks:
         """Check if code_references use symbolic format (has 'ref' key)."""
         return any("ref" in ref for ref in code_refs)
 
+    # Chunk: docs/chunks/chunk_overlap_command - Finds ACTIVE chunks with lower IDs having overlapping references
     def find_overlapping_chunks(self, chunk_id: str) -> list[str]:
         """Find ACTIVE chunks created before target with overlapping code references.
 
@@ -702,6 +726,9 @@ class Chunks:
 
         return sorted(affected)
 
+    # Chunk: docs/chunks/chunk_validate - Status, code_references, subsystem, investigation, and narrative validation
+    # Chunk: docs/chunks/bidirectional_refs - Extended to include subsystem reference validation
+    # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed ChunkStatus and frontmatter.code_references
     def validate_chunk_complete(
         self,
         chunk_id: str | None = None,
@@ -858,6 +885,7 @@ class Chunks:
             chunk_name=chunk_name_to_validate,
         )
 
+    # Chunk: docs/chunks/chunk_validate - Symbol existence verification for code references
     def _validate_symbol_exists(self, ref: str) -> list[str]:
         """Validate that a symbolic reference points to an existing symbol.
 
@@ -1122,6 +1150,8 @@ class Chunks:
 
         return (current_status, new_status)
 
+    # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
+    # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.subsystems access
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
@@ -1159,6 +1189,7 @@ class Chunks:
 
         return errors
 
+    # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 
@@ -1195,6 +1226,7 @@ class Chunks:
 
         return errors
 
+    # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
         """Validate narrative reference in a chunk's frontmatter.
 
@@ -1390,6 +1422,7 @@ def plan_has_content(plan_path: pathlib.Path) -> bool:
     return len(content_without_comments) > 0
 
 
+# Chunk: docs/chunks/symbolic_code_refs - Overlap detection using symbolic references
 def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str], project: str) -> bool:
     """Determine if two lists of symbolic references have any overlap.
 
@@ -1823,6 +1856,7 @@ def update_backreferences(
     return replaced_count
 
 
+# Chunk: docs/chunks/cluster_prefix_suggest - Extract text content from GOAL.md
 def extract_goal_text(goal_path: pathlib.Path) -> str:
     """Extract text content from GOAL.md, skipping frontmatter and HTML comments.
 
@@ -1849,6 +1883,7 @@ def extract_goal_text(goal_path: pathlib.Path) -> str:
     return content.strip()
 
 
+# Chunk: docs/chunks/cluster_prefix_suggest - Get alphabetical prefix (first word before underscore)
 def get_chunk_prefix(chunk_name: str) -> str:
     """Get alphabetical prefix (first word before underscore).
 
@@ -1861,6 +1896,7 @@ def get_chunk_prefix(chunk_name: str) -> str:
     return chunk_name.split("_")[0]
 
 
+# Chunk: docs/chunks/cluster_prefix_suggest - Main TF-IDF similarity computation and prefix suggestion logic
 def suggest_prefix(
     project_dir: pathlib.Path,
     chunk_id: str,

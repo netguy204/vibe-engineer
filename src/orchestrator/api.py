@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with explicit_deps parameter
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.

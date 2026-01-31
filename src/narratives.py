@@ -2,6 +2,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/populate_created_after - Automatic created_after population on narrative creation
 
 import re
 

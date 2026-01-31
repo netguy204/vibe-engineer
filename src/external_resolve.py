@@ -1,6 +1,10 @@
 """Resolve external artifact references and retrieve their content.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/external_resolve - External chunk resolution infrastructure
+# Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
+# Chunk: docs/chunks/external_resolve_enhance - Enhanced resolve with local path and directory listing
+# Chunk: docs/chunks/external_artifact_unpin - Always resolve to HEAD
 
 This module provides functions to resolve external artifact references and
 read their content, supporting both task directory mode (using local worktrees)

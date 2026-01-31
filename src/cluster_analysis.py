@@ -24,6 +24,7 @@ HEALTHY_MIN_SIZE = 3
 HEALTHY_MAX_SIZE = 8
 
 
+# Chunk: docs/chunks/cluster_list_command - Cluster categorization dataclass with size-based buckets
 @dataclass
 class ClusterCategories:
     """Categorized clusters by size for diagnostic output.
@@ -76,6 +77,7 @@ class ClusterCategories:
         return len(self.superclusters)
 
 
+# Chunk: docs/chunks/cluster_list_command - Group chunks by first underscore-delimited word prefix
 def get_chunk_clusters(project_dir: Path) -> dict[str, list[str]]:
     """Group chunks by their alphabetical prefix.
 
@@ -107,6 +109,7 @@ def get_chunk_clusters(project_dir: Path) -> dict[str, list[str]]:
     return sorted_clusters
 
 
+# Chunk: docs/chunks/cluster_list_command - Categorize clusters into singletons/small/healthy/superclusters
 def categorize_clusters(clusters: dict[str, list[str]]) -> ClusterCategories:
     """Categorize clusters by size into navigational value buckets.
 
@@ -133,6 +136,7 @@ def categorize_clusters(clusters: dict[str, list[str]]) -> ClusterCategories:
     return categories
 
 
+# Chunk: docs/chunks/cluster_list_command - Dataclass for singleton merge suggestions
 @dataclass
 class MergeSuggestion:
     """Suggestion for merging a singleton into an existing cluster.
@@ -147,6 +151,7 @@ class MergeSuggestion:
     suggested_new_name: str  # What the chunk would be renamed to
 
 
+# Chunk: docs/chunks/cluster_list_command - TF-IDF based semantic similarity for singleton merge suggestions
 def suggest_singleton_merges(
     project_dir: Path,
     clusters: dict[str, list[str]],
@@ -276,6 +281,7 @@ def suggest_singleton_merges(
     return suggestions
 
 
+# Chunk: docs/chunks/cluster_list_command - Terminal output formatting for cluster analysis
 def format_cluster_output(
     categories: ClusterCategories,
     merge_suggestions: list[MergeSuggestion] | None = None,
@@ -373,6 +379,7 @@ def format_cluster_output(
     return "\n".join(lines)
 
 
+# Chunk: docs/chunks/cluster_subsystem_prompt - Dataclass for cluster size warning result
 @dataclass
 class ClusterSizeWarning:
     """Result of cluster size check for subsystem prompt.
@@ -389,6 +396,7 @@ class ClusterSizeWarning:
     threshold: int
 
 
+# Chunk: docs/chunks/cluster_subsystem_prompt - Cluster size check with subsystem awareness
 def check_cluster_size(
     prefix: str,
     project_dir: Path,
@@ -441,6 +449,7 @@ def check_cluster_size(
     )
 
 
+# Chunk: docs/chunks/cluster_subsystem_prompt - Warning message formatter with ordinal
 def format_cluster_warning(warning: ClusterSizeWarning) -> str:
     """Format a cluster size warning message for display.
 
@@ -460,6 +469,7 @@ def format_cluster_warning(warning: ClusterSizeWarning) -> str:
     )
 
 
+# Chunk: docs/chunks/cluster_subsystem_prompt - Integer to ordinal string conversion
 def _ordinal(n: int) -> str:
     """Convert integer to ordinal string (1st, 2nd, 3rd, etc.)."""
     if 11 <= (n % 100) <= 13:

@@ -2,6 +2,7 @@
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/project_init_command - Project initialization CLI command
 
 import pathlib
 from dataclasses import dataclass, field
@@ -17,11 +18,13 @@ from template_system import (
 )
 
 
+# Chunk: docs/chunks/claudemd_magic_markers - Magic marker constants for START and END delimiters
 # Magic marker constants for CLAUDE.md managed content
 MARKER_START = "<!-- VE:MANAGED:START -->"
 MARKER_END = "<!-- VE:MANAGED:END -->"
 
 
+# Chunk: docs/chunks/claudemd_magic_markers - Named tuple for marker parsing results
 class MarkerParseResult(NamedTuple):
     """Result of parsing magic markers from content."""
 
@@ -32,6 +35,7 @@ class MarkerParseResult(NamedTuple):
     error: str | None  # Error message if markers are malformed
 
 
+# Chunk: docs/chunks/claudemd_magic_markers - Marker detection and content segmentation logic
 def parse_markers(content: str) -> MarkerParseResult:
     """Parse magic markers from content.
 
@@ -239,6 +243,7 @@ class Project:
         return result
 
     # Subsystem: docs/subsystems/template_system - Uses render_template
+    # Chunk: docs/chunks/claudemd_magic_markers - Marker-aware CLAUDE.md initialization with preservation
     def _init_claude_md(self) -> InitResult:
         """Create or update CLAUDE.md at project root from template.
 

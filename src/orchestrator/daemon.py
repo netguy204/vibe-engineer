@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_tcp_port - TCP port support for browser dashboard access
+# Chunk: docs/chunks/orch_url_command - URL command for getting orchestrator endpoint
 """Daemon process management for the orchestrator.
 
 Handles starting, stopping, and monitoring the orchestrator daemon process.

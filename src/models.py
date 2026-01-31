@@ -1,6 +1,14 @@
 """Pydantic models for chunk validation."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/cross_repo_schemas - Task and external artifact reference models
+# Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with dependency ordering
+# Chunk: docs/chunks/explicit_deps_chunk_propagate - Dependency propagation in chunk creation
+# Chunk: docs/chunks/explicit_deps_null_inject - Null vs empty depends_on semantics
+# Chunk: docs/chunks/external_artifact_unpin - External artifact unpinning
+# Chunk: docs/chunks/external_chunk_causal - External chunk causal ordering
+# Chunk: docs/chunks/ordering_field - created_after field for causal ordering
+# Chunk: docs/chunks/ordering_remove_seqno - Short name directory format and ID resolution
 
 import re
 from enum import StrEnum
@@ -11,6 +19,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem status enum for documentation lifecycle
 class SubsystemStatus(StrEnum):
     """Status values for subsystem documentation lifecycle."""
 
@@ -38,6 +47,7 @@ VALID_INVESTIGATION_TRANSITIONS: dict[InvestigationStatus, set[InvestigationStat
 }
 
 
+# Chunk: docs/chunks/chunk_frontmatter_model - Chunk lifecycle status StrEnum
 class ChunkStatus(StrEnum):
     """Status values for chunk lifecycle."""
 
@@ -48,6 +58,7 @@ class ChunkStatus(StrEnum):
     HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
 
 
+# Chunk: docs/chunks/bug_type_field - BugType enum with SEMANTIC and IMPLEMENTATION values
 class BugType(StrEnum):
     """Classification of bug fix chunks to guide completion behavior.
 
@@ -69,6 +80,8 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
 }
 
 
+# Chunk: docs/chunks/artifact_ordering_index - Enum defining workflow artifact types
+# Chunk: docs/chunks/consolidate_ext_refs - Moved ArtifactType enum from artifact_ordering.py to models.py
 class ArtifactType(StrEnum):
     """Types of workflow artifacts that can be ordered."""
 
@@ -78,6 +91,7 @@ class ArtifactType(StrEnum):
     SUBSYSTEM = "subsystem"
 
 
+# Chunk: docs/chunks/subsystem_status_transitions - State machine rules for status transitions
 VALID_STATUS_TRANSITIONS: dict[SubsystemStatus, set[SubsystemStatus]] = {
     SubsystemStatus.DISCOVERING: {SubsystemStatus.DOCUMENTED, SubsystemStatus.DEPRECATED},
     SubsystemStatus.DOCUMENTED: {SubsystemStatus.REFACTORING, SubsystemStatus.DEPRECATED},
@@ -123,6 +137,7 @@ ARTIFACT_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 CHUNK_ID_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
+# Chunk: docs/chunks/subsystem_schemas_and_model - Model for chunk-to-subsystem relationships
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -156,6 +171,7 @@ class ChunkRelationship(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/bidirectional_refs - Pydantic model for chunk-to-subsystem relationship
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
@@ -201,6 +217,7 @@ def _require_valid_dir_name(value: str, field_name: str) -> str:
     return value
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Validator for GitHub org/repo format
 def _require_valid_repo_ref(value: str, field_name: str) -> str:
     """Validate a GitHub-style org/repo reference.
 
@@ -236,6 +253,9 @@ def _require_valid_repo_ref(value: str, field_name: str) -> str:
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Model with org/repo format validation
+
+
 class TaskConfig(BaseModel):
     """Configuration for cross-repository workflow artifact management.
 
@@ -264,6 +284,7 @@ class TaskConfig(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference model with artifact_type and artifact_id fields
 class ExternalArtifactRef(BaseModel):
     """Reference to a workflow artifact in another repository.
 
@@ -296,6 +317,7 @@ class ExternalArtifactRef(BaseModel):
     # have it. External references now always resolve to HEAD (see DEC-002).
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Model for chunk GOAL.md frontmatter with dependents
 class ChunkDependent(BaseModel):
     """Frontmatter schema for chunk GOAL.md files with dependents."""
 
@@ -316,6 +338,8 @@ class CodeReference(BaseModel):
     ranges: list[CodeRange]
 
 
+# Chunk: docs/chunks/chunk_validate - Pydantic model for symbolic code references with validation
+# Chunk: docs/chunks/coderef_format_prompting - Improved org/repo format error messages
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
@@ -451,6 +475,7 @@ class ProposedChunk(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/subsystem_schemas_and_model - Frontmatter schema for subsystem OVERVIEW.md
 class SubsystemFrontmatter(BaseModel):
     """Frontmatter schema for subsystem OVERVIEW.md files.
 
@@ -493,6 +518,7 @@ class NarrativeFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo narratives
 
 
+# Chunk: docs/chunks/task_aware_investigations - Investigation frontmatter with dependents field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.
 
@@ -507,6 +533,8 @@ class InvestigationFrontmatter(BaseModel):
 
 
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
+# Chunk: docs/chunks/chunk_frontmatter_model - Pydantic model for chunk GOAL.md frontmatter validation
+# Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -580,6 +608,7 @@ class FrictionProposedChunk(BaseModel):
 FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
 
 
+# Chunk: docs/chunks/selective_artifact_friction - External friction source reference schema
 class ExternalFrictionSource(BaseModel):
     """Reference to friction entries in an external repository.
 
@@ -618,6 +647,7 @@ class ExternalFrictionSource(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/selective_artifact_friction - Friction log frontmatter schema
 class FrictionFrontmatter(BaseModel):
     """Frontmatter schema for FRICTION.md files.
 
@@ -653,6 +683,7 @@ class FrictionEntryReference(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/reviewer_infrastructure - Reviewer agent trust level and metadata models
 class TrustLevel(StrEnum):
     """Trust levels for reviewer agents.
 

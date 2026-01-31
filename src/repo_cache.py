@@ -5,6 +5,8 @@ The cache enables reading files and resolving refs without network round-trips
 after the initial clone.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/external_resolve - Repository cache infrastructure
+# Chunk: docs/chunks/external_resolve_enhance - Regular clones with working tree access
 """
 
 import subprocess

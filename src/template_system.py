@@ -13,6 +13,7 @@ from constants import template_dir
 
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/cluster_subsystem_prompt - cluster_subsystem_threshold configuration field
 @dataclass
 class VeConfig:
     """VE project configuration loaded from .ve-config.yaml.
@@ -34,6 +35,7 @@ class VeConfig:
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/cluster_subsystem_prompt - Load cluster_subsystem_threshold from config
 def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
     """Load .ve-config.yaml from project root.
 

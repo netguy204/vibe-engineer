@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_verify_active - Resume agent session for ACTIVE status marking
 """Agent runner for executing chunk phases.
 
 Uses Claude Agent SDK to run agents for each phase of chunk work.

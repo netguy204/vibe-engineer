@@ -3,6 +3,8 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
+# Chunk: docs/chunks/external_chunk_causal - External chunk ordering in ArtifactIndex
+# Chunk: docs/chunks/ordering_active_only - Status-filtered tip detection for causal ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
 listings using directory enumeration for staleness detection and topological sorting.
@@ -21,6 +23,7 @@ from external_refs import ARTIFACT_MAIN_FILE, ARTIFACT_DIR_NAME, is_external_art
 from models import ArtifactType
 
 
+# Chunk: docs/chunks/artifact_ordering_index - Kahn's algorithm for multi-parent DAG topological sorting
 def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
     """Topological sort with multi-parent support using Kahn's algorithm.
 
@@ -68,6 +71,7 @@ def _topological_sort_multi_parent(deps: dict[str, list[str]]) -> list[str]:
 # _ARTIFACT_MAIN_FILE is imported from external_refs as ARTIFACT_MAIN_FILE
 
 
+# Chunk: docs/chunks/artifact_index_no_git - Directory enumeration for staleness detection without git
 def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set[str]:
     """Enumerate artifact directory names.
 
@@ -134,6 +138,7 @@ def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
         return None
 
 
+# Chunk: docs/chunks/artifact_ordering_index - Extracts created_after field from YAML frontmatter
 def _parse_created_after(file_path: Path) -> list[str]:
     """Parse the created_after field from a file's frontmatter.
 
@@ -240,6 +245,7 @@ _TIP_ELIGIBLE_STATUSES: dict[ArtifactType, set[str] | None] = {
 _INDEX_VERSION = 3
 
 
+# Chunk: docs/chunks/artifact_ordering_index - Main class providing cached ordering and tip identification
 class ArtifactIndex:
     """Cached ordering system for workflow artifacts.
 
@@ -280,6 +286,7 @@ class ArtifactIndex:
         """Save the index to disk."""
         self._index_file.write_text(json.dumps(index, indent=2))
 
+    # Chunk: docs/chunks/artifact_index_no_git - Directory set comparison for staleness detection
     def _is_index_stale(
         self, index: dict[str, Any], artifact_type: ArtifactType
     ) -> bool:
@@ -320,6 +327,7 @@ class ArtifactIndex:
 
         return False
 
+    # Chunk: docs/chunks/artifact_index_no_git - Index building with directories list instead of hashes
     def _build_index_for_type(self, artifact_type: ArtifactType) -> dict[str, Any]:
         """Build index data for a specific artifact type."""
         artifact_dir = self._get_artifact_dir(artifact_type)
@@ -413,6 +421,7 @@ class ArtifactIndex:
 
         return self._cache.get(artifact_type.value, {})
 
+    # Chunk: docs/chunks/artifact_ordering_index - Returns topologically sorted artifact names in causal order
     def get_ordered(self, artifact_type: ArtifactType) -> list[str]:
         """Get artifact names in causal order (oldest first).
 
@@ -426,6 +435,7 @@ class ArtifactIndex:
         type_index = self._ensure_index_fresh(artifact_type)
         return type_index.get("ordered", [])
 
+    # Chunk: docs/chunks/artifact_ordering_index - Identifies artifacts with no dependents (current work frontiers)
     def find_tips(self, artifact_type: ArtifactType) -> list[str]:
         """Find artifacts that have no dependents.
 
@@ -441,6 +451,7 @@ class ArtifactIndex:
         type_index = self._ensure_index_fresh(artifact_type)
         return type_index.get("tips", [])
 
+    # Chunk: docs/chunks/artifact_ordering_index - Forces index regeneration for specified artifact type
     def rebuild(self, artifact_type: ArtifactType | None = None) -> None:
         """Force rebuild of the index.
 
