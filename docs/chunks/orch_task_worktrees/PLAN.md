@@ -8,153 +8,219 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extend the existing `WorktreeManager` class in `src/orchestrator/worktree.py` to support task context mode where multiple repositories need coordinated worktrees under a shared `work/` directory.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Core strategy:**
+1. Add an optional `repo_paths` parameter to `create_worktree()` that signals task context mode
+2. When in task context: create `work/` and `log/` directories, with worktrees for each repo under `work/<repo-name>/`
+3. Keep existing single-repo behavior unchanged when `repo_paths` is not provided
+4. Extend `remove_worktree()` and `merge_to_base()` to handle multi-repo cleanup and merging
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_task_worktrees/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Key design decisions:**
+- Each repo worktree uses branch `orch/<chunk>` in its respective repository
+- The `work/` directory is the agent's working directory; repos appear as sibling directories
+- Commits and merges happen independently per repo; orchestrator coordinates success verification
+- Single-repo mode continues to use `.ve/chunks/<chunk>/worktree/` (no `work/` wrapper)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the worktree management portion of the orchestrator subsystem, extending `WorktreeManager` for task context support. The subsystem is DOCUMENTED status, so this is new functionality extending existing patterns rather than fixing deviations.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add tests for multi-repo worktree creation (TDD red phase)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write failing tests for the new task context behavior before implementing.
 
-Example:
+Location: `tests/test_orchestrator_worktree.py`
 
-### Step 1: Define the SegmentHeader struct
+Tests to add:
+- `test_create_worktree_with_repo_paths_creates_work_dir`: Verify `work/` directory structure created
+- `test_create_worktree_with_repo_paths_creates_worktrees_per_repo`: Verify each repo gets a worktree under `work/<repo-name>/`
+- `test_create_worktree_with_repo_paths_uses_correct_branches`: Verify each worktree is on `orch/<chunk>` branch
+- `test_create_worktree_single_repo_unchanged`: Verify existing behavior still works when `repo_paths` not provided
+- `test_get_work_directory_returns_work_path`: Test new `get_work_directory()` method
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Use the existing `setup_task_directory()` helper from `conftest.py` to create test fixtures.
 
-Location: src/segment/format.rs
+### Step 2: Implement multi-repo worktree creation
 
-### Step 2: Implement header serialization
+Extend `create_worktree()` to accept an optional `repo_paths` parameter.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/orchestrator/worktree.py`
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Changes:
+```python
+def create_worktree(
+    self,
+    chunk: str,
+    repo_paths: Optional[list[Path]] = None,
+) -> Path:
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Behavior:
+- If `repo_paths` is `None`: existing single-repo behavior (unchanged)
+- If `repo_paths` is provided:
+  1. Create `.ve/chunks/<chunk>/work/` directory
+  2. Create `.ve/chunks/<chunk>/log/` directory
+  3. For each repo in `repo_paths`:
+     - Create worktree at `.ve/chunks/<chunk>/work/<repo.name>/`
+     - Create branch `orch/<chunk>` in that repo if it doesn't exist
+     - Add the worktree on that branch
+  4. Return path to `work/` directory (the agent's working directory)
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add helper method:
+```python
+def get_work_directory(self, chunk: str) -> Path:
+    """Get the work directory for a chunk in task context."""
+    return self._get_worktree_base_path(chunk) / "work"
+```
+
+Add backreference comment:
+```python
+# Chunk: docs/chunks/orch_task_worktrees - Task context multi-repo worktree support
+```
+
+### Step 3: Add tests for multi-repo worktree removal (TDD red phase)
+
+Write failing tests for cleanup behavior.
+
+Location: `tests/test_orchestrator_worktree.py`
+
+Tests to add:
+- `test_remove_worktree_with_repo_paths_cleans_all`: Verify all repo worktrees removed
+- `test_remove_worktree_with_repo_paths_removes_branches`: Verify branches deleted when requested
+- `test_remove_worktree_single_repo_unchanged`: Verify existing cleanup behavior unchanged
+
+### Step 4: Implement multi-repo worktree removal
+
+Extend `remove_worktree()` to handle multi-repo case.
+
+Location: `src/orchestrator/worktree.py`
+
+Changes:
+```python
+def remove_worktree(
+    self,
+    chunk: str,
+    remove_branch: bool = False,
+    repo_paths: Optional[list[Path]] = None,
+) -> None:
+```
+
+Behavior:
+- If `repo_paths` is `None`: existing single-repo behavior
+- If `repo_paths` is provided:
+  1. For each repo in `repo_paths`:
+     - Run `git worktree remove` for `.ve/chunks/<chunk>/work/<repo.name>/`
+     - Optionally delete branch `orch/<chunk>` in that repo
+  2. Remove the `work/` directory if empty
+  3. Prune worktrees in each repo
+
+### Step 5: Add tests for multi-repo merge (TDD red phase)
+
+Write failing tests for merge behavior.
+
+Location: `tests/test_orchestrator_worktree.py`
+
+Tests to add:
+- `test_merge_to_base_with_repo_paths_merges_all`: Verify merge happens in each repo
+- `test_merge_to_base_partial_failure_reports_which_failed`: If one repo fails to merge, report clearly
+- `test_has_changes_with_repo_paths`: Test checking for changes across multiple repos
+
+### Step 6: Implement multi-repo merge
+
+Extend `merge_to_base()` to handle multi-repo case.
+
+Location: `src/orchestrator/worktree.py`
+
+Changes:
+```python
+def merge_to_base(
+    self,
+    chunk: str,
+    delete_branch: bool = True,
+    repo_paths: Optional[list[Path]] = None,
+) -> None:
+```
+
+Behavior:
+- If `repo_paths` is `None`: existing single-repo behavior
+- If `repo_paths` is provided:
+  1. For each repo in `repo_paths`:
+     - Checkout base branch (determined per-repo)
+     - Merge `orch/<chunk>` into base
+     - Optionally delete the branch
+  2. If any merge fails, abort all merges that succeeded (rollback) and raise with details
+
+Add similar extension to `has_changes()`:
+```python
+def has_changes(
+    self,
+    chunk: str,
+    repo_paths: Optional[list[Path]] = None,
+) -> bool | dict[str, bool]:
+```
+- Single-repo: returns `bool` (existing behavior)
+- Multi-repo: returns `dict[str, bool]` mapping repo name to whether it has changes
+
+### Step 7: Add tests for worktree listing in task context
+
+Location: `tests/test_orchestrator_worktree.py`
+
+Tests to add:
+- `test_list_worktrees_includes_task_context_chunks`: Verify chunks with `work/` directories detected
+- `test_worktree_exists_task_context`: Verify `worktree_exists()` works for task context structure
+
+### Step 8: Update helper methods for task context detection
+
+Add method to check if a chunk is in task context mode:
+
+Location: `src/orchestrator/worktree.py`
+
+```python
+def is_task_context(self, chunk: str) -> bool:
+    """Check if a chunk uses task context (multi-repo) structure."""
+    return (self._get_worktree_base_path(chunk) / "work").exists()
+```
+
+Update `worktree_exists()` to handle both modes:
+- Single-repo: check for `worktree/.git`
+- Task context: check for `work/` with at least one repo subdirectory containing `.git`
+
+Update `list_worktrees()` to detect both modes.
+
+### Step 9: Run full test suite and verify
+
+Run all tests to ensure:
+1. New multi-repo tests pass
+2. Existing single-repo tests still pass (no regressions)
+
+```bash
+uv run pytest tests/test_orchestrator_worktree.py -v
+```
+
+### Step 10: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the files touched:
+- `src/orchestrator/worktree.py`
+- `tests/test_orchestrator_worktree.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. This chunk builds on:
+- Existing `WorktreeManager` class in `src/orchestrator/worktree.py`
+- Existing test fixtures in `tests/conftest.py` (`setup_task_directory()`, `make_ve_initialized_git_repo()`)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Base branch per repo**: In task context, each repository may have a different default branch (main vs master). The current `WorktreeManager` captures the base branch at initialization. For multi-repo, we need to determine the base branch per-repo. **Mitigation**: Query each repo for its current branch at worktree creation time rather than using `self._base_branch`.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Merge rollback complexity**: If merging succeeds in repo A but fails in repo B, we need to undo the merge in repo A. Git merge undo is possible but adds complexity. **Mitigation**: Start with a simple approach that reports which repos failed; full transactional semantics can be added later if needed.
+
+3. **Return type change for `has_changes()`**: Changing return type from `bool` to `bool | dict[str, bool]` could break callers. **Mitigation**: This is internal API; callers are within the orchestrator module and can be updated. Review call sites in scheduler/daemon.
+
+4. **Worktree path uniqueness**: When multiple repos are in `work/`, repo names must be unique (they are - they're directory names within the task directory).
 
 ## Deviations
 
