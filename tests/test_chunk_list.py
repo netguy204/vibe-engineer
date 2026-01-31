@@ -506,3 +506,370 @@ track: main
         # Should fail because there's no IMPLEMENTING chunk
         assert result.exit_code == 1
         assert "No implementing chunk found" in result.output
+
+
+# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
+class TestStatusFiltering:
+    """Tests for status filtering in 've chunk list' command."""
+
+    def test_status_filter_future_only(self, runner, temp_project):
+        """--status FUTURE shows only FUTURE chunks."""
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+        assert "implementing" not in result.output
+
+    def test_status_filter_implementing_only(self, runner, temp_project):
+        """--status IMPLEMENTING shows only IMPLEMENTING chunks."""
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "IMPLEMENTING", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "implementing" in result.output
+        assert "future-work" not in result.output
+
+    def test_status_filter_active_only(self, runner, temp_project):
+        """--status ACTIVE shows only ACTIVE chunks."""
+        # Create and complete a chunk (IMPLEMENTING -> ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "ACTIVE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert "future-work" not in result.output
+
+    def test_status_filter_case_insensitive(self, runner, temp_project):
+        """Status filter is case-insensitive."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "future", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+
+    def test_status_filter_multiple_statuses(self, runner, temp_project):
+        """Multiple --status options show chunks matching any status."""
+        # Create and complete a chunk (ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE", "--status", "ACTIVE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+        assert "completed" in result.output
+        assert "implementing" not in result.output
+
+    def test_status_filter_comma_separated(self, runner, temp_project):
+        """--status FUTURE,ACTIVE shows both statuses."""
+        # Create and complete a chunk (ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE,ACTIVE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+        assert "completed" in result.output
+        assert "implementing" not in result.output
+
+    def test_status_filter_invalid_status_error(self, runner, temp_project):
+        """Invalid status value produces helpful error."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "INVALID", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        # Should list valid options
+        assert "FUTURE" in result.output or "Invalid status" in result.output
+
+    def test_status_filter_empty_result(self, runner, temp_project):
+        """No chunks match filter shows appropriate message."""
+        # Create only IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "ACTIVE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert "No chunks found" in result.output or "matching" in result.output.lower()
+
+    def test_status_filter_with_project_dir(self, runner, temp_project):
+        """--status composes correctly with --project-dir."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+
+
+class TestStatusConvenienceFlags:
+    """Tests for convenience flags --future, --active, --implementing."""
+
+    def test_future_flag_equivalent_to_status_future(self, runner, temp_project):
+        """--future is equivalent to --status FUTURE."""
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--future", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "future-work" in result.output
+        assert "implementing" not in result.output
+
+    def test_active_flag_equivalent_to_status_active(self, runner, temp_project):
+        """--active is equivalent to --status ACTIVE."""
+        # Create and complete a chunk (ACTIVE)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert "future-work" not in result.output
+
+    def test_implementing_flag_equivalent_to_status_implementing(self, runner, temp_project):
+        """--implementing is equivalent to --status IMPLEMENTING."""
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future-work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--implementing", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "implementing" in result.output
+        assert "future-work" not in result.output
+
+
+class TestStatusFilterMutualExclusivity:
+    """Tests for mutual exclusivity between status filters and output mode flags."""
+
+    def test_status_and_latest_mutually_exclusive(self, runner, temp_project):
+        """--status and --latest cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE", "--latest", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+    def test_status_and_last_active_mutually_exclusive(self, runner, temp_project):
+        """--status and --last-active cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "FUTURE", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+    def test_future_flag_and_latest_mutually_exclusive(self, runner, temp_project):
+        """--future and --latest cannot be used together."""
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--future", "--latest", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+
+
+class TestStatusFilterWithExternalChunks:
+    """Tests for status filtering with external chunk references."""
+
+    def test_status_filter_excludes_external_chunks(self, runner, temp_project):
+        """Status filtering excludes external chunks (they have no parseable status)."""
+        # Create a local IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "local_feature", "--project-dir", str(temp_project)]
+        )
+
+        # Create an external chunk reference
+        external_chunk_dir = temp_project / "docs" / "chunks" / "external_feature"
+        external_chunk_dir.mkdir(parents=True)
+        external_yaml_content = """artifact_type: chunk
+artifact_id: external_feature
+repo: acme/external-repo
+track: main
+"""
+        (external_chunk_dir / "external.yaml").write_text(external_yaml_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--status", "IMPLEMENTING", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Local IMPLEMENTING chunk should appear
+        assert "local_feature" in result.output
+        # External chunk should NOT appear (can't filter by status)
+        assert "external_feature" not in result.output
+
+    def test_no_status_filter_includes_external_chunks(self, runner, temp_project):
+        """Without status filter, external chunks are included."""
+        # Create a local IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "local_feature", "--project-dir", str(temp_project)]
+        )
+
+        # Create an external chunk reference
+        external_chunk_dir = temp_project / "docs" / "chunks" / "external_feature"
+        external_chunk_dir.mkdir(parents=True)
+        external_yaml_content = """artifact_type: chunk
+artifact_id: external_feature
+repo: acme/external-repo
+track: main
+"""
+        (external_chunk_dir / "external.yaml").write_text(external_yaml_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        # Both should appear
+        assert "local_feature" in result.output
+        assert "external_feature" in result.output

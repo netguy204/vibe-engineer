@@ -374,23 +374,120 @@ def _start_task_chunks(
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
+def _parse_status_filters(
+    status_option: tuple[str, ...],
+    future_flag: bool,
+    active_flag: bool,
+    implementing_flag: bool,
+) -> tuple[set[ChunkStatus] | None, str | None]:
+    """Parse and validate status filters from CLI options.
+
+    Args:
+        status_option: Tuple of status strings from --status option (may include comma-separated)
+        future_flag: Whether --future flag was set
+        active_flag: Whether --active flag was set
+        implementing_flag: Whether --implementing flag was set
+
+    Returns:
+        Tuple of (status_set, error_message). status_set is None if no filtering requested,
+        or a set of ChunkStatus values. error_message is None on success, or contains
+        the error message with valid options listed.
+    """
+    statuses: set[ChunkStatus] = set()
+
+    # Add statuses from convenience flags
+    if future_flag:
+        statuses.add(ChunkStatus.FUTURE)
+    if active_flag:
+        statuses.add(ChunkStatus.ACTIVE)
+    if implementing_flag:
+        statuses.add(ChunkStatus.IMPLEMENTING)
+
+    # Parse statuses from --status option (handles comma-separated and multiple options)
+    for status_str in status_option:
+        # Split by comma to handle --status FUTURE,ACTIVE
+        parts = [s.strip() for s in status_str.split(",") if s.strip()]
+        for part in parts:
+            # Case-insensitive lookup
+            upper_part = part.upper()
+            try:
+                statuses.add(ChunkStatus(upper_part))
+            except ValueError:
+                valid_statuses = ", ".join(s.value for s in ChunkStatus)
+                return None, f"Invalid status '{part}'. Valid statuses: {valid_statuses}"
+
+    # Return None if no filtering requested (empty set means show all)
+    if not statuses:
+        return None, None
+
+    return statuses, None
+
+
 @chunk.command("list")
 @click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--last-active", is_flag=True, help="Output only the most recently completed ACTIVE chunk")
+@click.option(
+    "--status",
+    "status_filter",
+    multiple=True,
+    help="Filter by status (case-insensitive). Can specify multiple times or comma-separated. "
+    "Valid statuses: FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL",
+)
+@click.option("--future", "future_flag", is_flag=True, help="Show only FUTURE chunks (shortcut for --status FUTURE)")
+@click.option("--active", "active_flag", is_flag=True, help="Show only ACTIVE chunks (shortcut for --status ACTIVE)")
+@click.option(
+    "--implementing",
+    "implementing_flag",
+    is_flag=True,
+    help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
+)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_chunks(latest, last_active, project_dir):
+def list_chunks(latest, last_active, status_filter, future_flag, active_flag, implementing_flag, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
+
+    Status filtering: Use --status to filter by chunk lifecycle state.
+    Multiple statuses can be specified with multiple --status options or
+    comma-separated values (e.g., --status FUTURE,ACTIVE). Status values
+    are case-insensitive.
+
+    Convenience flags: --future, --active, --implementing are shortcuts
+    for the corresponding --status values.
+
+    Note: --status filters and convenience flags are mutually exclusive
+    with --latest and --last-active.
     """
-    # Check mutual exclusivity
+    # Parse status filters
+    status_set, error = _parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
+    if error:
+        click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Check mutual exclusivity of output modes
+    has_status_filter = status_set is not None
     if latest and last_active:
         click.echo("Error: --latest and --last-active are mutually exclusive. Cannot use both.", err=True)
+        raise SystemExit(1)
+    if has_status_filter and latest:
+        click.echo(
+            "Error: Status filters (--status, --future, --active, --implementing) are "
+            "mutually exclusive with --latest.",
+            err=True,
+        )
+        raise SystemExit(1)
+    if has_status_filter and last_active:
+        click.echo(
+            "Error: Status filters (--status, --future, --active, --implementing) are "
+            "mutually exclusive with --last-active.",
+            err=True,
+        )
         raise SystemExit(1)
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_chunks(latest, last_active, project_dir)
+        _list_task_chunks(latest, last_active, status_set, project_dir)
         return
 
     # Single-repo mode - list from docs/chunks/
@@ -417,24 +514,50 @@ def list_chunks(latest, last_active, project_dir):
         artifact_index = ArtifactIndex(project_dir)
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
 
+        # Track if any chunks pass the filter
+        filtered_count = 0
+
         for chunk_name in chunk_list:
             chunk_path = project_dir / "docs" / "chunks" / chunk_name
             # Check for external artifact reference before parsing frontmatter
             if is_external_artifact(chunk_path, ArtifactType.CHUNK):
                 external_ref = load_external_ref(chunk_path)
+                # External chunks have no parseable status - skip when filtering
+                if status_set is not None:
+                    continue
                 status = f"EXTERNAL: {external_ref.repo}"
             else:
                 frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
                 if frontmatter:
-                    status = frontmatter.status.value
+                    chunk_status = frontmatter.status
+                    # Apply status filter if specified
+                    if status_set is not None and chunk_status not in status_set:
+                        continue
+                    status = chunk_status.value
                 elif errors:
+                    # Chunks with parse errors - skip when filtering
+                    if status_set is not None:
+                        continue
                     # Show first error for brevity
                     first_error = errors[0]
                     status = f"PARSE ERROR: {first_error}"
                 else:
+                    # Unknown status - skip when filtering
+                    if status_set is not None:
+                        continue
                     status = "UNKNOWN"
+            filtered_count += 1
             tip_indicator = " *" if chunk_name in tips else ""
             click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+
+        # Handle case where all chunks were filtered out
+        if filtered_count == 0:
+            if status_set is not None:
+                status_names = ", ".join(s.value for s in status_set)
+                click.echo(f"No chunks found matching status: {status_names}", err=True)
+            else:
+                click.echo("No chunks found", err=True)
+            raise SystemExit(1)
 
 
 @chunk.command("complete")
@@ -471,31 +594,61 @@ def complete_chunk(chunk_id, project_dir):
     click.echo(f"Completed docs/chunks/{chunk_name}")
 
 
+# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
 def _format_grouped_artifact_list(
     grouped_data: dict,
     artifact_type_dir: str,
+    status_set: set[ChunkStatus] | None = None,
 ) -> None:
     """Format and display grouped artifact listing output.
 
     Args:
         grouped_data: Dict from list_task_artifacts_grouped with external and projects keys
         artifact_type_dir: Directory name for the artifact type (e.g., "chunks", "narratives")
+        status_set: If provided, filter to only artifacts with matching status (chunks only)
     """
     external = grouped_data["external"]
     projects = grouped_data["projects"]
 
-    # Check if there are any artifacts at all
-    has_external = bool(external["artifacts"])
-    has_projects = any(p["artifacts"] for p in projects)
+    # Apply status filtering if specified (only applies to chunks)
+    def status_matches(status_str: str) -> bool:
+        """Check if an artifact's status string matches the filter."""
+        if status_set is None:
+            return True
+        # Try to convert status string to ChunkStatus
+        try:
+            artifact_status = ChunkStatus(status_str.upper())
+            return artifact_status in status_set
+        except ValueError:
+            # Status doesn't match any ChunkStatus (e.g., EXTERNAL, PARSE ERROR)
+            # Exclude when filtering
+            return False
+
+    # Filter external artifacts
+    filtered_external = [a for a in external["artifacts"] if status_matches(a["status"])]
+
+    # Filter project artifacts
+    filtered_projects = []
+    for project in projects:
+        filtered_artifacts = [a for a in project["artifacts"] if status_matches(a["status"])]
+        filtered_projects.append({**project, "artifacts": filtered_artifacts})
+
+    # Check if there are any artifacts after filtering
+    has_external = bool(filtered_external)
+    has_projects = any(p["artifacts"] for p in filtered_projects)
 
     if not has_external and not has_projects:
-        click.echo(f"No {artifact_type_dir} found", err=True)
+        if status_set is not None:
+            status_names = ", ".join(s.value for s in status_set)
+            click.echo(f"No {artifact_type_dir} found matching status: {status_names}", err=True)
+        else:
+            click.echo(f"No {artifact_type_dir} found", err=True)
         raise SystemExit(1)
 
     # Display external artifacts
-    if external["artifacts"]:
+    if filtered_external:
         click.echo(f"# External Artifacts ({external['repo']})")
-        for artifact in external["artifacts"]:
+        for artifact in filtered_external:
             name = artifact["name"]
             status = artifact["status"]
             is_tip = artifact.get("is_tip", False)
@@ -511,7 +664,7 @@ def _format_grouped_artifact_list(
         click.echo()
 
     # Display each project's local artifacts
-    for project in projects:
+    for project in filtered_projects:
         if project["artifacts"]:
             click.echo(f"# {project['repo']} (local)")
             for artifact in project["artifacts"]:
@@ -524,8 +677,21 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
-def _list_task_chunks(latest: bool, last_active: bool, task_dir: pathlib.Path):
-    """Handle chunk listing in task directory (cross-repo mode)."""
+# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
+def _list_task_chunks(
+    latest: bool,
+    last_active: bool,
+    status_set: set[ChunkStatus] | None,
+    task_dir: pathlib.Path,
+):
+    """Handle chunk listing in task directory (cross-repo mode).
+
+    Args:
+        latest: If True, output only the current IMPLEMENTING chunk
+        last_active: If True, output only the most recently completed ACTIVE chunk
+        status_set: If provided, filter to only chunks with matching status
+        task_dir: Path to the task directory
+    """
     try:
         if latest:
             current_chunk, external_repo = get_current_task_chunk(task_dir)
@@ -547,7 +713,7 @@ def _list_task_chunks(latest: bool, last_active: bool, task_dir: pathlib.Path):
             click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
-            _format_grouped_artifact_list(grouped_data, "chunks")
+            _format_grouped_artifact_list(grouped_data, "chunks", status_set)
     except (TaskChunkError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
