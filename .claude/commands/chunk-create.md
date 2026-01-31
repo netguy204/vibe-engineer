@@ -61,14 +61,41 @@ completely in order:
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
 
-5. **Check if this is a bug fix.** Look for these signals that indicate bug fix
+5. **Check if this chunk comes from a narrative or investigation with dependencies.**
+
+   If the work being created matches a prompt in a narrative's or investigation's
+   `proposed_chunks` array, check for `depends_on` references:
+
+   a. **Find the matching prompt**: Read the source artifact's OVERVIEW.md and find
+      the `proposed_chunks` entry whose `prompt` matches (or closely describes) this work.
+
+   b. **Check for depends_on**: If the matching entry has `depends_on: [0, 2]` or similar,
+      these are indices referencing other entries in the same `proposed_chunks` array.
+
+   c. **Resolve to chunk names**: For each index in `depends_on`:
+      - Look up `proposed_chunks[index]` in the same array
+      - Get the `chunk_directory` value from that entry
+      - If `chunk_directory` is a valid name (not null), add it to the chunk's `depends_on`
+      - If `chunk_directory` is null, **warn the user**: "Dependency at index N has not
+        been created yet. Consider creating chunks in dependency order, or leave this
+        dependency unresolved for now."
+
+   d. **Populate the chunk's depends_on field**: Add the resolved chunk directory names
+      to the new chunk's GOAL.md `depends_on` frontmatter field as a list of strings.
+      Example: `depends_on: ["auth_core", "config_module"]`
+
+   e. **Update the narrative/investigation**: After creating the chunk, update the
+      source artifact's `proposed_chunks` array to set `chunk_directory: "<shortname>"`
+      for the entry matching this chunk's prompt.
+
+6. **Check if this is a bug fix.** Look for these signals that indicate bug fix
    work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
    "incorrect", "wrong", "failing".
 
    If the work is a bug fix, note this in the GOAL.md success criteria so that
    when implementation is complete, the fix can be verified.
 
-6. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
+7. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
    check if there's already an IMPLEMENTING chunk.
 
    If there IS an existing IMPLEMENTING chunk, inform the user:
