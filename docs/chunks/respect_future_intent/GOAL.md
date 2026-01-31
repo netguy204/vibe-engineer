@@ -6,7 +6,8 @@ code_paths:
   - src/templates/commands/chunk-create.md.jinja2
 code_references:
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "User intent detection for FUTURE vs IMPLEMENTING chunk creation, including priority order, conflict handling, and safe pause protocol"
+    implements: "Basic existing-implementing-chunk detection (Step 8 only); does NOT implement user intent detection, priority order, conflict handling, or safe pause protocol from success criteria"
+    status: partial
 narrative: null
 subsystems: []
 created_after: ["investigation_chunk_refs"]
