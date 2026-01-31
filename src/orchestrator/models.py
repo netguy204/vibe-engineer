@@ -107,6 +107,9 @@ class WorkUnit(BaseModel):
     explicit_deps: bool = False
     # Track how many IMPLEMENT → REVIEW cycles have occurred for loop detection
     review_iterations: int = 0
+    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+    # Track how many times the reviewer was nudged to call the ReviewDecision tool
+    review_nudge_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -139,6 +142,7 @@ class WorkUnit(BaseModel):
             "conflict_override": self.conflict_override,
             "explicit_deps": self.explicit_deps,
             "review_iterations": self.review_iterations,
+            "review_nudge_count": self.review_nudge_count,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -191,6 +195,21 @@ class OrchestratorConfig(BaseModel):
         }
 
 
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+class ReviewToolDecision(BaseModel):
+    """Structured data from the ReviewDecision tool call.
+
+    Captures the reviewer's explicit decision submitted via the tool,
+    making the decision unambiguous and machine-readable.
+    """
+
+    decision: str  # APPROVE, FEEDBACK, or ESCALATE
+    summary: str  # Brief summary of the review
+    criteria_assessment: Optional[list[dict]] = None  # Optional structured feedback
+    issues: Optional[list[dict]] = None  # Issues for FEEDBACK decisions
+    reason: Optional[str] = None  # Reason for ESCALATE decisions
+
+
 class AgentResult(BaseModel):
     """Result from running an agent phase.
 
@@ -202,6 +221,8 @@ class AgentResult(BaseModel):
     session_id: Optional[str] = None  # Session ID for resuming
     question: Optional[dict] = None  # Question data if suspended
     error: Optional[str] = None  # Error message if failed
+    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+    review_decision: Optional[ReviewToolDecision] = None  # Captured from ReviewDecision tool call
 
 
 class ReviewDecision(StrEnum):

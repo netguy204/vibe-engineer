@@ -3379,7 +3379,12 @@ class TestReviewPhase:
     async def test_advance_review_to_complete(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """Advancing from REVIEW with APPROVE decision goes to COMPLETE."""
+        """Advancing from REVIEW with APPROVE decision goes to COMPLETE.
+
+        Note: Uses review_nudge_count=2 so file fallback is triggered after one
+        more nudge attempt (3 is max). This tests backward compatibility with
+        file-based decisions.
+        """
         # Set up chunk directory with an APPROVE decision file
         chunk_dir = tmp_path / "docs" / "chunks" / "test"
         chunk_dir.mkdir(parents=True)
@@ -3399,6 +3404,7 @@ iteration: 1
             chunk="test",
             phase=WorkUnitPhase.REVIEW,
             status=WorkUnitStatus.RUNNING,
+            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
             created_at=now,
             updated_at=now,
         )
@@ -3418,7 +3424,12 @@ iteration: 1
     async def test_review_feedback_returns_to_implement(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """REVIEW with FEEDBACK decision returns to IMPLEMENT."""
+        """REVIEW with FEEDBACK decision returns to IMPLEMENT.
+
+        Note: Uses review_nudge_count=2 so file fallback is triggered after one
+        more nudge attempt (3 is max). This tests backward compatibility with
+        file-based decisions.
+        """
         # Set up chunk directory with a FEEDBACK decision file
         chunk_dir = tmp_path / "docs" / "chunks" / "test"
         chunk_dir.mkdir(parents=True)
@@ -3442,6 +3453,7 @@ iteration: 1
             phase=WorkUnitPhase.REVIEW,
             status=WorkUnitStatus.RUNNING,
             review_iterations=0,
+            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
             created_at=now,
             updated_at=now,
         )
@@ -3468,7 +3480,12 @@ iteration: 1
     async def test_review_feedback_increments_iterations(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """Multiple FEEDBACK decisions increment the iteration counter."""
+        """Multiple FEEDBACK decisions increment the iteration counter.
+
+        Note: Uses review_nudge_count=2 so file fallback is triggered after one
+        more nudge attempt (3 is max). This tests backward compatibility with
+        file-based decisions.
+        """
         chunk_dir = tmp_path / "docs" / "chunks" / "test"
         chunk_dir.mkdir(parents=True)
 
@@ -3487,6 +3504,7 @@ iteration: 2
             phase=WorkUnitPhase.REVIEW,
             status=WorkUnitStatus.RUNNING,
             review_iterations=1,  # Already had one iteration
+            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
             created_at=now,
             updated_at=now,
         )
@@ -3504,7 +3522,12 @@ iteration: 2
     async def test_review_escalate_marks_needs_attention(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """REVIEW with ESCALATE decision marks NEEDS_ATTENTION."""
+        """REVIEW with ESCALATE decision marks NEEDS_ATTENTION.
+
+        Note: Uses review_nudge_count=2 so file fallback is triggered after one
+        more nudge attempt (3 is max). This tests backward compatibility with
+        file-based decisions.
+        """
         chunk_dir = tmp_path / "docs" / "chunks" / "test"
         chunk_dir.mkdir(parents=True)
 
@@ -3522,6 +3545,7 @@ reason: AMBIGUITY - Requirements unclear
             chunk="test",
             phase=WorkUnitPhase.REVIEW,
             status=WorkUnitStatus.RUNNING,
+            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
             created_at=now,
             updated_at=now,
         )
@@ -3734,3 +3758,305 @@ class TestReviewFeedbackFile:
 
         content = result_path.read_text()
         assert "**Iteration:** 2" in content
+
+
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+class TestReviewDecisionTool:
+    """Tests for the ReviewDecision tool-based review decision handling."""
+
+    @pytest.mark.asyncio
+    async def test_review_decision_from_tool_call(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Review decision from tool call is captured and routed correctly."""
+        from orchestrator.models import ReviewToolDecision
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult with a captured review decision from tool call
+        tool_decision = ReviewToolDecision(
+            decision="APPROVE",
+            summary="Implementation meets all requirements",
+            criteria_assessment=[{"criterion": "test", "status": "satisfied"}],
+        )
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=tool_decision,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        # Should advance to COMPLETE phase
+        assert updated.phase == WorkUnitPhase.COMPLETE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_review_feedback_from_tool_call(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """FEEDBACK decision from tool call routes back to IMPLEMENT."""
+        from orchestrator.models import ReviewToolDecision
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_iterations=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult with FEEDBACK from tool call
+        tool_decision = ReviewToolDecision(
+            decision="FEEDBACK",
+            summary="Missing error handling",
+            issues=[
+                {"location": "src/main.py", "concern": "No try/except", "suggestion": "Add error handling"}
+            ],
+        )
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=tool_decision,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.phase == WorkUnitPhase.IMPLEMENT
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.review_iterations == 1
+
+        # Feedback file should be created
+        feedback_file = chunk_dir / "REVIEW_FEEDBACK.md"
+        assert feedback_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_review_escalate_from_tool_call(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """ESCALATE decision from tool call marks NEEDS_ATTENTION."""
+        from orchestrator.models import ReviewToolDecision
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        tool_decision = ReviewToolDecision(
+            decision="ESCALATE",
+            summary="Requirements are ambiguous",
+            reason="AMBIGUITY - Cannot determine correct behavior",
+        )
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=tool_decision,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            with patch("orchestrator.scheduler.broadcast_attention_update"):
+                await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "escalated" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_nudge_when_tool_not_called(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """When reviewer completes without calling tool, session is resumed with nudge."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_nudge_count=0,
+            session_id="session-123",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult with NO review decision (tool not called)
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            session_id="session-123",
+            review_decision=None,  # Tool was not called
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        # Should be READY to resume with nudge
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.pending_answer is not None
+        assert "ReviewDecision" in updated.pending_answer
+        assert updated.review_nudge_count == 1
+        assert updated.session_id == "session-123"
+
+    @pytest.mark.asyncio
+    async def test_escalate_after_max_nudges(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """After 3 nudges without tool call, escalates to NEEDS_ATTENTION."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_nudge_count=2,  # Already nudged twice
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # AgentResult with NO review decision (tool not called after nudges)
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=None,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            with patch("orchestrator.scheduler.broadcast_attention_update"):
+                await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        # After 3rd nudge (2 previous + 1 this time), should escalate
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "nudge" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_file_parsing_after_max_nudges(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """After max nudges, falls back to file parsing if decision file exists."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        # Create a decision file (fallback)
+        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
+        decision_file.write_text("""decision: APPROVE
+summary: Implementation looks good
+""")
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_nudge_count=2,  # Already nudged twice (will be 3rd)
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=None,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        # Should advance to COMPLETE phase using file fallback
+        assert updated.phase == WorkUnitPhase.COMPLETE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_nudge_count_resets_on_successful_decision(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """Nudge count is reset when tool is called successfully."""
+        from orchestrator.models import ReviewToolDecision
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test"
+        chunk_dir.mkdir(parents=True)
+
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REVIEW,
+            status=WorkUnitStatus.RUNNING,
+            review_nudge_count=2,  # Had some nudges before
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        tool_decision = ReviewToolDecision(
+            decision="APPROVE",
+            summary="All good now",
+        )
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=tool_decision,
+        )
+
+        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
+            await scheduler._handle_review_result(work_unit, tmp_path, result)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.review_nudge_count == 0  # Reset to 0

@@ -22,7 +22,8 @@ import yaml
 from chunks import Chunks
 from models import ChunkStatus
 from task_utils import update_frontmatter_field
-from orchestrator.agent import AgentRunner, create_log_callback
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+from orchestrator.agent import AgentRunner, create_log_callback, create_review_decision_hook
 from orchestrator.models import (
     AgentResult,
     ConflictVerdict,
@@ -30,6 +31,7 @@ from orchestrator.models import (
     ReviewDecision,
     ReviewIssue,
     ReviewResult,
+    ReviewToolDecision,
     TaskContextInfo,
     WorkUnit,
     WorkUnitPhase,
@@ -608,6 +610,15 @@ class Scheduler:
                 question_text = question_data.get("question", "Unknown question")
                 logger.info(f"Agent {chunk} asked question: {question_text[:100]}")
 
+            # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+            # Create callback for review decision capture during REVIEW phase
+            review_decision_callback = None
+            if phase == WorkUnitPhase.REVIEW:
+                def review_decision_callback(decision_data: ReviewToolDecision) -> None:
+                    logger.info(
+                        f"Agent {chunk} submitted review decision: {decision_data.decision}"
+                    )
+
             # Run the agent
             logger.info(f"Running agent for {chunk} phase {phase.value}")
             result = await self.agent_runner.run_phase(
@@ -618,6 +629,7 @@ class Scheduler:
                 answer=pending_answer,
                 log_callback=log_callback,
                 question_callback=question_callback,
+                review_decision_callback=review_decision_callback,
             )
 
             # Clear pending_answer after successful dispatch
@@ -1095,6 +1107,7 @@ class Scheduler:
 
                 self.store.update_work_unit(unit)
 
+    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     async def _handle_review_result(
         self,
         work_unit: WorkUnit,
@@ -1108,16 +1121,19 @@ class Scheduler:
         - FEEDBACK: Return to IMPLEMENT phase with iteration increment
         - ESCALATE: Mark NEEDS_ATTENTION with escalation reason
 
+        The decision is obtained from (in order of preference):
+        1. ReviewDecision tool call captured in AgentResult.review_decision
+        2. REVIEW_DECISION.yaml file (fallback for backward compatibility)
+        3. Agent log parsing (final fallback)
+
+        If no decision is found after max nudges, escalates to NEEDS_ATTENTION.
+
         Args:
             work_unit: The work unit in REVIEW phase
             worktree_path: Path to the worktree
             result: AgentResult from the review phase
         """
         chunk = work_unit.chunk
-
-        # Try to parse the review decision from the agent output
-        # The agent output may be in result logs or session data
-        # For now, we'll look for decision indicators in any available output
 
         # Load reviewer config for loop detection settings
         reviewer_config = load_reviewer_config(self.project_dir)
@@ -1137,24 +1153,97 @@ class Scheduler:
             )
             return
 
-        # Try to parse the review decision
-        # The decision should be in the agent's output or in a result file
         review_result = None
 
-        # First, try to read the decision from a REVIEW_DECISION.yaml file
-        # that the /chunk-review skill may have created
-        decision_file = worktree_path / "docs" / "chunks" / chunk / "REVIEW_DECISION.yaml"
-        if decision_file.exists():
-            try:
-                with open(decision_file) as f:
-                    content = f.read()
-                    review_result = parse_review_decision(f"```yaml\n{content}\n```")
-            except Exception as e:
-                logger.warning(f"Error reading decision file: {e}")
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        # Priority 1: Check if review decision was captured from tool call
+        if result.review_decision is not None:
+            logger.info(
+                f"Review decision captured from tool call for {chunk}: "
+                f"{result.review_decision.decision}"
+            )
+            # Convert ReviewToolDecision to ReviewResult
+            decision_str = result.review_decision.decision.upper()
+            if decision_str in [d.value for d in ReviewDecision]:
+                # Convert issues from tool format to ReviewIssue format
+                issues = []
+                if result.review_decision.issues:
+                    for issue_dict in result.review_decision.issues:
+                        if isinstance(issue_dict, dict):
+                            issues.append(ReviewIssue(
+                                location=issue_dict.get("location", "unknown"),
+                                concern=issue_dict.get("concern", ""),
+                                suggestion=issue_dict.get("suggestion"),
+                            ))
 
-        # If no decision file, try parsing from agent logs
+                review_result = ReviewResult(
+                    decision=ReviewDecision(decision_str),
+                    summary=result.review_decision.summary,
+                    issues=issues,
+                    reason=result.review_decision.reason,
+                    iteration=current_iteration,
+                )
+                # Reset nudge count since tool was called successfully
+                work_unit.review_nudge_count = 0
+            else:
+                logger.warning(
+                    f"Invalid decision value from tool call: {decision_str}"
+                )
+
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        # If no tool decision and agent completed, implement nudging
+        if review_result is None and result.completed:
+            # No tool call - increment nudge count and decide whether to nudge or escalate
+            work_unit.review_nudge_count += 1
+            work_unit.updated_at = datetime.now(timezone.utc)
+            self.store.update_work_unit(work_unit)
+
+            max_nudges = 3
+            if work_unit.review_nudge_count < max_nudges:
+                # Continue the session with a nudge prompt
+                logger.info(
+                    f"Reviewer for {chunk} did not call ReviewDecision tool, "
+                    f"nudging (attempt {work_unit.review_nudge_count}/{max_nudges})"
+                )
+                # Mark as needing to resume with nudge
+                # The nudge will be handled in the next dispatch cycle
+                work_unit.pending_answer = (
+                    "You completed the review but did not call the ReviewDecision tool. "
+                    "Please call the ReviewDecision tool now to submit your final decision. "
+                    "The tool accepts: decision (APPROVE, FEEDBACK, or ESCALATE), "
+                    "summary (brief explanation), and optional issues or reason."
+                )
+                work_unit.session_id = result.session_id  # Keep session for resume
+                work_unit.status = WorkUnitStatus.READY  # Ready to resume
+                work_unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(work_unit)
+
+                await broadcast_work_unit_update(
+                    chunk=work_unit.chunk,
+                    status=work_unit.status.value,
+                    phase=work_unit.phase.value,
+                )
+                return  # Will resume in next dispatch cycle
+
+            # Max nudges reached - fall back to file/log parsing
+            logger.warning(
+                f"Reviewer for {chunk} did not call ReviewDecision tool after "
+                f"{max_nudges} nudges, falling back to file/log parsing"
+            )
+
+        # Priority 2 (fallback): Try to read from REVIEW_DECISION.yaml file
         if review_result is None:
-            # Read the review phase log if available
+            decision_file = worktree_path / "docs" / "chunks" / chunk / "REVIEW_DECISION.yaml"
+            if decision_file.exists():
+                try:
+                    with open(decision_file) as f:
+                        content = f.read()
+                        review_result = parse_review_decision(f"```yaml\n{content}\n```")
+                except Exception as e:
+                    logger.warning(f"Error reading decision file: {e}")
+
+        # Priority 3 (fallback): Try parsing from agent logs
+        if review_result is None:
             log_dir = self.worktree_manager.get_log_path(chunk)
             review_log = log_dir / "review.txt"
             if review_log.exists():
@@ -1164,22 +1253,27 @@ class Scheduler:
                 except Exception as e:
                     logger.warning(f"Error parsing review log: {e}")
 
+        # If still no decision after all fallbacks, escalate to NEEDS_ATTENTION
         if review_result is None:
-            # Could not determine review decision - default to APPROVE
-            # This allows forward progress while logging the uncertainty
-            logger.warning(
-                f"Could not parse review decision for {chunk}, defaulting to APPROVE"
+            logger.error(
+                f"Could not determine review decision for {chunk} after "
+                f"{work_unit.review_nudge_count} nudges and file/log fallback"
             )
-            review_result = ReviewResult(
-                decision=ReviewDecision.APPROVE,
-                summary="Review completed but decision format not recognized. "
-                        "Defaulting to APPROVE.",
+            await self._mark_needs_attention(
+                work_unit,
+                f"Review completed but could not determine decision. "
+                f"Reviewer did not call ReviewDecision tool after {work_unit.review_nudge_count} "
+                f"nudges and no decision found in files/logs.",
             )
+            return
 
         # Route based on decision
         if review_result.decision == ReviewDecision.APPROVE:
             logger.info(f"Review APPROVED for {chunk}: {review_result.summary}")
-            # Proceed to COMPLETE phase (normal advancement)
+            # Reset nudge count and proceed to COMPLETE phase
+            work_unit.review_nudge_count = 0
+            work_unit.updated_at = datetime.now(timezone.utc)
+            self.store.update_work_unit(work_unit)
             await self._advance_phase(work_unit)
 
         elif review_result.decision == ReviewDecision.FEEDBACK:
@@ -1198,6 +1292,7 @@ class Scheduler:
 
             # Increment iteration counter and return to IMPLEMENT phase
             work_unit.review_iterations = current_iteration
+            work_unit.review_nudge_count = 0  # Reset nudge count
             work_unit.phase = WorkUnitPhase.IMPLEMENT
             work_unit.status = WorkUnitStatus.READY
             work_unit.session_id = None  # Fresh session for re-implementation
@@ -1216,6 +1311,9 @@ class Scheduler:
             logger.warning(
                 f"Review ESCALATED for {chunk}: {review_result.reason or review_result.summary}"
             )
+            work_unit.review_nudge_count = 0  # Reset nudge count
+            work_unit.updated_at = datetime.now(timezone.utc)
+            self.store.update_work_unit(work_unit)
             await self._mark_needs_attention(
                 work_unit,
                 f"Review escalated: {review_result.reason or review_result.summary}",

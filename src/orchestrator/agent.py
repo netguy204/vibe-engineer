@@ -23,7 +23,7 @@ from claude_agent_sdk.types import (
     HookContext,
 )
 
-from orchestrator.models import AgentResult, WorkUnitPhase
+from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
 
 
 class AgentRunnerError(Exception):
@@ -280,6 +280,72 @@ def create_question_intercept_hook(
     return {"PreToolUse": [hook_matcher]}
 
 
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+def create_review_decision_hook(
+    on_decision: Callable[[ReviewToolDecision], None],
+) -> dict[str, list[HookMatcher]]:
+    """Create a PreToolUse hook that intercepts ReviewDecision tool calls.
+
+    When the reviewer agent calls the ReviewDecision tool, this hook captures
+    the decision data and allows the tool to succeed from the agent's perspective.
+    The captured decision is then available for the scheduler to route the work unit.
+
+    Args:
+        on_decision: Callback receiving the captured ReviewToolDecision.
+
+    Returns:
+        Hook configuration dict suitable for ClaudeAgentOptions.hooks
+    """
+
+    async def hook_handler(
+        hook_input: PreToolUseHookInput,
+        transcript: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        """Handle PreToolUse events for ReviewDecision."""
+        tool_input = hook_input.get("tool_input", {})
+
+        # Extract decision data from tool_input
+        decision_str = tool_input.get("decision", "").upper()
+        summary = tool_input.get("summary", "No summary provided")
+        criteria_assessment = tool_input.get("criteria_assessment")
+        issues = tool_input.get("issues")
+        reason = tool_input.get("reason")
+
+        # Create the structured decision object
+        decision_data = ReviewToolDecision(
+            decision=decision_str,
+            summary=summary,
+            criteria_assessment=criteria_assessment,
+            issues=issues,
+            reason=reason,
+        )
+
+        # Call the callback with the captured decision
+        on_decision(decision_data)
+
+        # Return hook output that allows the tool to succeed
+        # This tells the agent its tool call was accepted
+        return SyncHookJSONOutput(
+            decision="allow",
+            hookSpecificOutput={
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "Review decision captured",
+            },
+        )
+
+    # Build the hook matcher for ReviewDecision tool
+    # The tool name may have various capitalizations, so we match case-insensitively
+    hook_matcher: HookMatcher = {
+        "matcher": re.compile(r"^ReviewDecision$", re.IGNORECASE),
+        "hooks": [hook_handler],
+        "timeout": None,
+    }
+
+    return {"PreToolUse": [hook_matcher]}
+
+
 def _load_skill_content(skill_path: Path) -> str:
     """Load skill content from a file, stripping YAML frontmatter.
 
@@ -356,6 +422,7 @@ class AgentRunner:
 
         return skill_content
 
+    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     async def run_phase(
         self,
         chunk: str,
@@ -365,6 +432,7 @@ class AgentRunner:
         answer: Optional[str] = None,
         log_callback: Optional[callable] = None,
         question_callback: Optional[Callable[[dict], None]] = None,
+        review_decision_callback: Optional[Callable[[ReviewToolDecision], None]] = None,
     ) -> AgentResult:
         """Run a single phase for a chunk.
 
@@ -378,6 +446,9 @@ class AgentRunner:
             question_callback: Optional callback for capturing AskUserQuestion calls.
                 When provided, configures a hook to intercept questions and suspend
                 the agent. The callback receives the question data dict.
+            review_decision_callback: Optional callback for capturing ReviewDecision tool calls.
+                When provided, configures a hook to intercept review decisions during
+                the REVIEW phase. The callback receives the ReviewToolDecision data.
 
         Returns:
             AgentResult with outcome of the phase execution
@@ -421,6 +492,12 @@ class AgentRunner:
 
         # Track captured question data for building result
         captured_question: dict | None = None
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        # Track captured review decision from ReviewDecision tool call
+        captured_review_decision: ReviewToolDecision | None = None
+
+        # Start with sandbox hooks
+        all_hooks = sandbox_hooks
 
         if question_callback:
             # Create hook that intercepts AskUserQuestion and captures data
@@ -430,10 +507,20 @@ class AgentRunner:
                 question_callback(question_data)
 
             question_hooks = create_question_intercept_hook(on_question)
-            # Merge sandbox and question hooks
-            options.hooks = _merge_hooks(sandbox_hooks, question_hooks)
-        else:
-            options.hooks = sandbox_hooks
+            all_hooks = _merge_hooks(all_hooks, question_hooks)
+
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        if review_decision_callback:
+            # Create hook that intercepts ReviewDecision tool calls
+            def on_review_decision(decision_data: ReviewToolDecision) -> None:
+                nonlocal captured_review_decision
+                captured_review_decision = decision_data
+                review_decision_callback(decision_data)
+
+            review_hooks = create_review_decision_hook(on_review_decision)
+            all_hooks = _merge_hooks(all_hooks, review_hooks)
+
+        options.hooks = all_hooks
 
         # Handle resume with answer
         if resume_session_id:
@@ -489,18 +576,21 @@ class AgentRunner:
             )
 
         # Build result
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
         if error:
             return AgentResult(
                 completed=False,
                 suspended=False,
                 session_id=session_id,
                 error=error,
+                review_decision=captured_review_decision,
             )
         else:
             return AgentResult(
                 completed=completed,
                 suspended=False,
                 session_id=session_id,
+                review_decision=captured_review_decision,
             )
 
     async def run_commit(
