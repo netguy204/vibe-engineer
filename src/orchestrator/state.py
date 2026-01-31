@@ -27,7 +27,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 7
+    CURRENT_VERSION = 8
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -96,6 +96,7 @@ class StateStore:
             5: self._migrate_v5,
             6: self._migrate_v6,
             7: self._migrate_v7,
+            8: self._migrate_v8,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -227,6 +228,21 @@ class StateStore:
             """
         )
 
+    def _migrate_v8(self) -> None:
+        """Add explicit_deps field for declared dependency bypass.
+
+        When explicit_deps is True, the work unit uses explicitly declared
+        dependencies from the chunk's depends_on frontmatter, and the scheduler
+        should skip oracle conflict analysis.
+        """
+        self.connection.executescript(
+            """
+            -- Add explicit_deps column for signaling oracle bypass
+            -- 0 = False (use oracle), 1 = True (use declared deps)
+            ALTER TABLE work_units ADD COLUMN explicit_deps INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -258,8 +274,8 @@ class StateStore:
                 INSERT INTO work_units
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
-                     conflict_verdicts, conflict_override, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     conflict_verdicts, conflict_override, explicit_deps, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -275,6 +291,7 @@ class StateStore:
                     work_unit.pending_answer,
                     conflict_verdicts_json,
                     work_unit.conflict_override,
+                    1 if work_unit.explicit_deps else 0,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -332,7 +349,8 @@ class StateStore:
             SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
                 priority = ?, session_id = ?, completion_retries = ?,
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
-                conflict_verdicts = ?, conflict_override = ?, updated_at = ?
+                conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
+                updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -348,6 +366,7 @@ class StateStore:
                 work_unit.pending_answer,
                 conflict_verdicts_json,
                 work_unit.conflict_override,
+                1 if work_unit.explicit_deps else 0,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -630,6 +649,11 @@ class StateStore:
         except (IndexError, KeyError):
             conflict_override = None
 
+        try:
+            explicit_deps = bool(row["explicit_deps"]) if row["explicit_deps"] is not None else False
+        except (IndexError, KeyError):
+            explicit_deps = False
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -644,6 +668,7 @@ class StateStore:
             pending_answer=pending_answer,
             conflict_verdicts=conflict_verdicts,
             conflict_override=conflict_override,
+            explicit_deps=explicit_deps,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

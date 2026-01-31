@@ -1,6 +1,7 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/orch_foundation - State store tests
 # Chunk: docs/chunks/orch_attention_reason - Attention reason persistence tests
+# Chunk: docs/chunks/explicit_deps_workunit_flag - explicit_deps field persistence tests
 """Tests for the orchestrator SQLite state store."""
 
 import pytest
@@ -477,6 +478,118 @@ class TestDisplacedChunkPersistence:
 
         assert len(units) == 1
         assert units[0].displaced_chunk == "existing_chunk"
+
+
+class TestExplicitDepsPersistence:
+    """Tests for explicit_deps field persistence.
+
+    The explicit_deps field signals that a work unit uses explicitly declared
+    dependencies from the chunk's depends_on frontmatter, and the scheduler
+    should skip oracle conflict analysis.
+    """
+
+    def test_stores_explicit_deps_true(self, store):
+        """explicit_deps=True is stored on create."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="explicit_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+        store.create_work_unit(unit)
+        retrieved = store.get_work_unit("explicit_test")
+
+        assert retrieved.explicit_deps is True
+
+    def test_explicit_deps_false_by_default(self, store, sample_work_unit):
+        """explicit_deps defaults to False."""
+        store.create_work_unit(sample_work_unit)
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+
+        assert retrieved.explicit_deps is False
+
+    def test_updates_explicit_deps(self, store, sample_work_unit):
+        """explicit_deps can be updated."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update with explicit_deps=True
+        sample_work_unit.explicit_deps = True
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        assert retrieved.explicit_deps is True
+
+    def test_explicit_deps_preserved_in_list(self, store):
+        """explicit_deps is included when listing work units."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="explicit_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        units = store.list_work_units()
+
+        assert len(units) == 1
+        assert units[0].explicit_deps is True
+
+    def test_explicit_deps_roundtrip(self, store):
+        """explicit_deps survives create-update-retrieve cycle."""
+        now = datetime.now(timezone.utc)
+
+        # Create with True
+        unit = WorkUnit(
+            chunk="roundtrip_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            blocked_by=["dep_a", "dep_b"],
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # Retrieve and verify
+        retrieved = store.get_work_unit("roundtrip_test")
+        assert retrieved.explicit_deps is True
+        assert retrieved.blocked_by == ["dep_a", "dep_b"]
+
+        # Update to False
+        retrieved.explicit_deps = False
+        retrieved.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(retrieved)
+
+        # Retrieve again and verify
+        final = store.get_work_unit("roundtrip_test")
+        assert final.explicit_deps is False
+        # blocked_by should be preserved
+        assert final.blocked_by == ["dep_a", "dep_b"]
+
+    def test_explicit_deps_in_json_serialization(self, store):
+        """explicit_deps is included in JSON serialization."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="serialize_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            explicit_deps=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+        serialized = unit.model_dump_json_serializable()
+
+        assert "explicit_deps" in serialized
+        assert serialized["explicit_deps"] is True
 
 
 class TestListBlockedByChunk:

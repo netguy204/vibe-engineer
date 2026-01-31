@@ -98,6 +98,12 @@ class WorkUnit(BaseModel):
     pending_answer: Optional[str] = None  # Operator answer to be injected on resume
     conflict_verdicts: dict[str, str] = {}  # Maps other chunk names to ConflictVerdict values
     conflict_override: Optional[str] = None  # Operator override for ASK_OPERATOR cases
+    # When True, this work unit uses explicitly declared dependencies from the chunk's
+    # depends_on frontmatter. The blocked_by list was populated at injection time from
+    # these declared dependencies. The scheduler should skip oracle conflict analysis
+    # for this work unit, treating the dependencies as authoritative rather than
+    # heuristically detected.
+    explicit_deps: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -128,6 +134,7 @@ class WorkUnit(BaseModel):
             "pending_answer": self.pending_answer,
             "conflict_verdicts": self.conflict_verdicts,
             "conflict_override": self.conflict_override,
+            "explicit_deps": self.explicit_deps,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
