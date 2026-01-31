@@ -62,7 +62,6 @@ class WorktreeManager:
         else:
             self._base_branch = base_branch or self._get_current_branch()
 
-    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
     def _get_task_directory(self) -> Optional[Path]:
         """Get the task directory if in task context mode.
 
@@ -437,7 +436,6 @@ class WorktreeManager:
 
         return work_dir
 
-    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
     def _setup_agent_environment_symlinks(self, work_dir: Path) -> None:
         """Create symlinks to task-level configuration in work/ directory.
 
@@ -564,7 +562,6 @@ class WorktreeManager:
             self._cleanup_agent_environment_symlinks(work_dir)
             shutil.rmtree(work_dir, ignore_errors=True)
 
-    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
     def _cleanup_agent_environment_symlinks(self, work_dir: Path) -> None:
         """Remove symlinks from work/ directory.
 

@@ -414,7 +414,6 @@ class Scheduler:
                 return
 
             # Update work unit to RUNNING
-            # Chunk: docs/chunks/orch_unblock_transition - Clear stale fields on RUNNING
             work_unit.status = WorkUnitStatus.RUNNING
             work_unit.worktree = str(worktree_path)
             work_unit.attention_reason = None  # Clear any stale reason
@@ -707,7 +706,6 @@ class Scheduler:
 
         else:
             # Advance to next phase
-            # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason on READY
             logger.info(f"Work unit {chunk} advancing to phase {next_phase.value}")
             work_unit.phase = next_phase
             work_unit.status = WorkUnitStatus.READY
@@ -755,7 +753,6 @@ class Scheduler:
         running_units = self.store.list_work_units(status=WorkUnitStatus.RUNNING)
         ready_units = self.store.list_work_units(status=WorkUnitStatus.READY)
 
-        # Chunk: docs/chunks/explicit_deps_skip_oracle - Oracle bypass for explicit dependencies
         # When explicit_deps=True, skip oracle analysis entirely. The blocked_by list
         # was populated at injection time from declared dependencies - trust that
         # declaration rather than using heuristic detection.
@@ -895,7 +892,6 @@ class Scheduler:
         Args:
             completed_chunk: The chunk name that just completed
         """
-        # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION unblock
         # Find all work units that have completed_chunk in their blocked_by
         blocked_units = self.store.list_blocked_by_chunk(completed_chunk)
 

@@ -374,7 +374,6 @@ def _start_task_chunks(
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
 def _parse_status_filters(
     status_option: tuple[str, ...],
     future_flag: bool,
@@ -594,7 +593,6 @@ def complete_chunk(chunk_id, project_dir):
     click.echo(f"Completed docs/chunks/{chunk_name}")
 
 
-# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
 def _format_grouped_artifact_list(
     grouped_data: dict,
     artifact_type_dir: str,
@@ -677,7 +675,6 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
-# Chunk: docs/chunks/chunklist_status_filter - Status filtering for chunk list
 def _list_task_chunks(
     latest: bool,
     last_active: bool,

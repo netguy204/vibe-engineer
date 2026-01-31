@@ -1136,7 +1136,6 @@ def find_task_directory(start_path: Path) -> Path | None:
     return None
 
 
-# Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
 @dataclass
 class TaskProjectContext:
     """Context information when running from within a task's project.

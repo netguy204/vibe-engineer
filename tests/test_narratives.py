@@ -238,7 +238,6 @@ Just regular markdown content.
         assert frontmatter is None
 
 
-# Chunk: docs/chunks/explicit_deps_chunk_propagate - Dependency propagation for chunks
 class TestNarrativeExplicitDependencies:
     """Tests for explicit depends_on field in narrative proposed_chunks."""
 

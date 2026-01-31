@@ -673,7 +673,6 @@ class TestFrictionEntryReference:
             FrictionEntryReference(entry_id="F001", scope="invalid")
 
 
-# Chunk: docs/chunks/explicit_deps_chunk_propagate - Dependency propagation for chunks
 class TestProposedChunkDependsOn:
     """Tests for ProposedChunk.depends_on field."""
 
