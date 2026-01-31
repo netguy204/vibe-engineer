@@ -25,6 +25,9 @@ from orchestrator.log_parser import (
     format_phase_header,
     format_result_banner,
     format_entry,
+    format_entry_for_html,
+    format_phase_header_for_html,
+    format_result_banner_for_html,
 )
 
 
@@ -478,3 +481,128 @@ class TestFormatEntry:
 
         lines = format_entry(entry)
         assert len(lines) >= 2  # Tool call + text
+
+
+class TestFormatEntryForHtml:
+    """Tests for HTML-safe formatting functions."""
+
+    def test_format_entry_for_html_escapes_html(self):
+        """Escapes HTML special characters in formatted output."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 30, 0),
+            message_type="AssistantMessage",
+            content={
+                "text_blocks": [TextContent(text="Test <script>alert('xss')</script>")],
+                "tool_calls": [],
+            },
+            raw_line="",
+        )
+
+        lines = format_entry_for_html(entry)
+        # The output should be HTML-escaped
+        for line in lines:
+            assert "<script>" not in line
+            assert "&lt;script&gt;" in line or "script" not in line
+
+    def test_format_entry_for_html_preserves_symbols(self):
+        """Preserves unicode symbols like ▶, ✓, ✗, 💬."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 30, 0),
+            message_type="AssistantMessage",
+            content={
+                "text_blocks": [TextContent(text="Hello")],
+                "tool_calls": [],
+            },
+            raw_line="",
+        )
+
+        lines = format_entry_for_html(entry)
+        # At least one line should contain the speech emoji
+        joined = " ".join(lines)
+        assert "💬" in joined
+
+    def test_format_entry_for_html_tool_call_symbols(self):
+        """Preserves ▶ symbol for tool calls."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 30, 0),
+            message_type="AssistantMessage",
+            content={
+                "text_blocks": [],
+                "tool_calls": [
+                    ToolCall(tool_id="t1", name="Bash", input={}, description="Test")
+                ],
+            },
+            raw_line="",
+        )
+
+        lines = format_entry_for_html(entry)
+        assert len(lines) >= 1
+        assert "▶" in lines[0]
+
+    def test_format_entry_for_html_escapes_ampersand(self):
+        """Escapes ampersands in text."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 30, 0),
+            message_type="AssistantMessage",
+            content={
+                "text_blocks": [TextContent(text="foo & bar")],
+                "tool_calls": [],
+            },
+            raw_line="",
+        )
+
+        lines = format_entry_for_html(entry)
+        joined = " ".join(lines)
+        assert "&amp;" in joined
+
+    def test_format_phase_header_for_html(self):
+        """Formats phase header for HTML display."""
+        dt = datetime(2026, 1, 31, 14, 30, 56)
+        result = format_phase_header_for_html("IMPLEMENT", dt)
+
+        assert "IMPLEMENT" in result
+        assert "14:30:56" in result
+        assert "===" in result
+
+    def test_format_phase_header_for_html_escapes_html(self):
+        """Escapes HTML in phase header."""
+        dt = datetime(2026, 1, 31, 14, 30, 56)
+        # Phase names shouldn't contain HTML, but test escaping anyway
+        result = format_phase_header_for_html("<script>", dt)
+
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_format_result_banner_for_html_success(self):
+        """Formats result banner for HTML display."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 37, 2),
+            message_type="ResultMessage",
+            content=ResultInfo(
+                subtype="success",
+                duration_ms=365854,
+                total_cost_usd=1.42,
+                num_turns=40,
+                is_error=False,
+            ),
+            raw_line="",
+        )
+
+        result = format_result_banner_for_html(entry)
+        assert "SUCCESS" in result
+        assert "══" in result  # Unicode double lines preserved
+
+    def test_format_result_banner_for_html_empty_for_non_result(self):
+        """Returns empty string for non-ResultMessage."""
+        entry = ParsedLogEntry(
+            timestamp=datetime(2026, 1, 31, 14, 30, 0),
+            message_type="AssistantMessage",
+            content={
+                "text_blocks": [],
+                "tool_calls": [],
+            },
+            raw_line="",
+        )
+
+        result = format_result_banner_for_html(entry)
+        assert result == ""

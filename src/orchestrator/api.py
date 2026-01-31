@@ -5,6 +5,7 @@ Provides REST endpoints for work unit management and daemon status.
 Built with Starlette for minimal dependencies.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -36,6 +37,11 @@ from orchestrator.websocket import (
     get_manager,
 )
 from orchestrator.worktree import WorktreeManager
+from orchestrator.log_parser import (
+    format_entry_for_html,
+    format_phase_header_for_html,
+    parse_log_line,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1152,6 +1158,258 @@ async def retry_merge_endpoint(request: Request):
     })
 
 
+# Log streaming WebSocket endpoint
+
+
+def _get_log_directory(chunk: str) -> Path:
+    """Get the log directory for a chunk.
+
+    Args:
+        chunk: Chunk name
+
+    Returns:
+        Path to the log directory (.ve/chunks/{chunk}/log/)
+
+    Raises:
+        RuntimeError: If project directory not initialized
+    """
+    if _project_dir is None:
+        raise RuntimeError("Project directory not initialized")
+    return _project_dir / ".ve" / "chunks" / chunk / "log"
+
+
+def _detect_current_phase(log_dir: Path) -> Optional[str]:
+    """Detect the current phase from existing log files.
+
+    Returns the most recent phase based on file modification time.
+
+    Args:
+        log_dir: Path to the log directory
+
+    Returns:
+        Phase name (e.g., 'plan', 'implement') or None if no logs
+    """
+    if not log_dir.exists():
+        return None
+
+    phases = ["goal", "plan", "implement", "review", "complete"]
+    latest_mtime = 0.0
+    latest_phase = None
+
+    for phase in phases:
+        log_file = log_dir / f"{phase}.txt"
+        if log_file.exists():
+            mtime = log_file.stat().st_mtime
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                latest_phase = phase
+
+    return latest_phase
+
+
+async def _stream_log_file(
+    websocket: WebSocket,
+    log_file: Path,
+    phase: str,
+    start_position: int = 0,
+) -> int:
+    """Stream log file contents to the WebSocket.
+
+    Parses existing log lines and sends them as formatted HTML.
+
+    Args:
+        websocket: WebSocket connection to send to
+        log_file: Path to the log file
+        phase: Phase name for header
+        start_position: File position to start reading from
+
+    Returns:
+        Final file position after reading
+    """
+    if not log_file.exists():
+        return 0
+
+    with open(log_file, "r") as f:
+        f.seek(start_position)
+
+        # If starting from beginning, send phase header
+        if start_position == 0:
+            # Get first entry timestamp for header
+            first_line = f.readline()
+            if first_line:
+                entry = parse_log_line(first_line)
+                if entry:
+                    header = format_phase_header_for_html(
+                        phase.upper(), entry.timestamp
+                    )
+                    await websocket.send_json({
+                        "type": "log_line",
+                        "content": header,
+                        "is_header": True,
+                    })
+                    # Also send the first entry
+                    lines = format_entry_for_html(entry)
+                    for line in lines:
+                        await websocket.send_json({
+                            "type": "log_line",
+                            "content": line,
+                        })
+            else:
+                # Empty file, reset position
+                f.seek(0)
+
+        # Read remaining lines
+        for line in f:
+            entry = parse_log_line(line)
+            if entry:
+                formatted_lines = format_entry_for_html(entry)
+                for formatted_line in formatted_lines:
+                    await websocket.send_json({
+                        "type": "log_line",
+                        "content": formatted_line,
+                    })
+
+        return f.tell()
+
+
+async def log_stream_websocket_endpoint(websocket: WebSocket) -> None:
+    """WebSocket endpoint for streaming parsed log output.
+
+    Connects to /ws/log/{chunk} and streams log entries for the specified chunk.
+    Streams existing logs then follows for new entries.
+    """
+    chunk = websocket.path_params["chunk"]
+    await websocket.accept()
+
+    # Get log directory
+    try:
+        log_dir = _get_log_directory(chunk)
+    except RuntimeError as e:
+        await websocket.send_json({
+            "type": "error",
+            "content": str(e),
+        })
+        await websocket.close()
+        return
+
+    # Check if chunk exists
+    store = _get_store()
+    work_unit = store.get_work_unit(chunk)
+
+    if work_unit is None:
+        await websocket.send_json({
+            "type": "error",
+            "content": f"Chunk '{chunk}' not found",
+        })
+        await websocket.close()
+        return
+
+    # Detect current phase
+    current_phase = _detect_current_phase(log_dir)
+
+    if current_phase is None:
+        # No logs yet - send informative message
+        await websocket.send_json({
+            "type": "info",
+            "content": "Waiting for log output...",
+        })
+
+    # Track file positions for each phase
+    file_positions: dict[str, int] = {}
+    phases = ["goal", "plan", "implement", "review", "complete"]
+
+    # Stream existing logs
+    if current_phase:
+        for phase in phases:
+            log_file = log_dir / f"{phase}.txt"
+            if log_file.exists():
+                position = await _stream_log_file(websocket, log_file, phase, 0)
+                file_positions[phase] = position
+
+                # Stop if we've reached the current phase
+                if phase == current_phase:
+                    break
+
+    # Enter follow mode - poll for new content
+    poll_interval = 0.5  # 500ms polling
+    try:
+        while True:
+            # Check if work unit is still running
+            work_unit = store.get_work_unit(chunk)
+            if work_unit is None:
+                await websocket.send_json({
+                    "type": "info",
+                    "content": "Work unit removed",
+                })
+                break
+
+            if work_unit.status == WorkUnitStatus.DONE:
+                await websocket.send_json({
+                    "type": "completed",
+                    "content": "Work unit completed",
+                })
+                break
+
+            # Re-detect current phase (might have transitioned)
+            new_phase = _detect_current_phase(log_dir)
+
+            if new_phase and new_phase != current_phase:
+                # Phase transition - stream the new phase's logs
+                log_file = log_dir / f"{new_phase}.txt"
+                if log_file.exists():
+                    position = await _stream_log_file(
+                        websocket, log_file, new_phase, 0
+                    )
+                    file_positions[new_phase] = position
+                    current_phase = new_phase
+
+            elif current_phase:
+                # Check for new content in current phase
+                log_file = log_dir / f"{current_phase}.txt"
+                if log_file.exists():
+                    current_size = log_file.stat().st_size
+                    last_position = file_positions.get(current_phase, 0)
+
+                    if current_size > last_position:
+                        # New content available
+                        position = await _stream_log_file(
+                            websocket, log_file, current_phase, last_position
+                        )
+                        file_positions[current_phase] = position
+
+            # Wait for next poll or client message
+            try:
+                # Use asyncio.wait_for to implement timeout while still
+                # being able to receive messages (like heartbeat)
+                await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=poll_interval,
+                )
+            except asyncio.TimeoutError:
+                # Normal timeout, continue polling
+                pass
+            except WebSocketDisconnect:
+                # Client disconnected
+                break
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"Log stream error for chunk '{chunk}': {e}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "content": f"Stream error: {e}",
+            })
+        except Exception:
+            pass
+
+    try:
+        await websocket.close()
+    except Exception:
+        pass
+
+
 # Application factory
 
 
@@ -1182,6 +1440,8 @@ def create_app(project_dir: Path) -> Starlette:
     routes = [
         Route("/", endpoint=dashboard_endpoint, methods=["GET"]),
         WebSocketRoute("/ws", endpoint=websocket_endpoint),
+        # Log streaming WebSocket - must come before generic routes
+        WebSocketRoute("/ws/log/{chunk:path}", endpoint=log_stream_websocket_endpoint),
         Route("/status", endpoint=status_endpoint, methods=["GET"]),
         # Config endpoints
         Route("/config", endpoint=get_config_endpoint, methods=["GET"]),
