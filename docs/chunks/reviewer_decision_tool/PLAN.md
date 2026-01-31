@@ -1,177 +1,148 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Replace the current text/YAML parsing approach for reviewer decisions with an explicit tool-call mechanism. The reviewer agent will be given access to a `ReviewDecision` tool that it must call to indicate its final decision. This makes the decision unambiguous and machine-readable.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The implementation follows the existing hook pattern used for `AskUserQuestion` interception (see `create_question_intercept_hook` in `src/orchestrator/agent.py`). We will:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. Create a `ReviewDecision` tool definition that the agent can call
+2. Create a hook that intercepts the tool call and captures the decision data
+3. Return the captured decision in the `AgentResult` so the scheduler can route appropriately
+4. Update the `/chunk-review` skill to instruct the reviewer to use the tool
+5. Add in-session nudging when the reviewer completes without calling the tool
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decision_tool/GOAL.md)
-with references to the files that you expect to touch.
--->
+This approach:
+- **Eliminates parsing ambiguity**: The decision comes from a structured tool call, not free-form text
+- **Maintains backward compatibility**: Falls back gracefully if tool isn't called (nudges first, then escalates)
+- **Follows existing patterns**: Uses the same hook infrastructure as question interception
+
+Per docs/trunk/TESTING_PHILOSOPHY.md, we will write tests first for each behavioral component.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS new functionality within the orchestrator subsystem, specifically extending the agent execution and review handling patterns. The existing patterns (hooks for tool interception, AgentResult for capturing outcomes) will be reused.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for ReviewDecision tool capture
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests that verify:
+- ReviewDecision tool call is captured by a hook
+- Decision data (decision, summary, criteria_assessment) is extracted correctly
+- AgentResult includes the captured review decision
+- Missing tool call is detected
 
-Example:
+Location: `tests/test_orchestrator_scheduler.py` (add to existing TestReviewPhase class or new TestReviewDecisionTool class)
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add ReviewDecision data structures to models
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add structures to capture the tool call data:
+- `ReviewToolDecision`: Pydantic model for the structured tool call data
+- Update `AgentResult` to include optional `review_decision` field
 
-Location: src/segment/format.rs
+Location: `src/orchestrator/models.py`
 
-### Step 2: Implement header serialization
+### Step 3: Create the ReviewDecision hook
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Implement `create_review_decision_hook()` following the pattern of `create_question_intercept_hook()`:
+- Match on a tool name like "ReviewDecision" or match a regex pattern
+- Extract decision, summary, and optional criteria_assessment from tool_input
+- Store captured data for return in AgentResult
+- Return `SyncHookJSONOutput` with decision="allow" so the tool "succeeds" from the agent's perspective
 
-### Step 3: ...
+Location: `src/orchestrator/agent.py`
+
+### Step 4: Integrate hook into REVIEW phase execution
+
+Update `AgentRunner.run_phase()` to:
+- Accept an optional `review_decision_callback` parameter
+- When phase is REVIEW, configure the ReviewDecision hook
+- Return the captured decision in AgentResult
+
+Location: `src/orchestrator/agent.py`
+
+### Step 5: Write failing tests for in-session nudging
+
+Create tests that verify:
+- When reviewer completes without calling ReviewDecision tool, session is continued
+- Nudge message prompts reviewer to call the tool
+- After 3 nudges without tool call, escalate to NEEDS_ATTENTION
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+### Step 6: Implement in-session nudging in scheduler
+
+Update `_handle_review_result()` in scheduler to:
+- Check if `AgentResult` has a `review_decision`
+- If not, increment a nudge counter on the work unit
+- If nudge_count < 3, resume the session with a nudge prompt
+- If nudge_count >= 3, mark NEEDS_ATTENTION
+
+This requires adding a `review_nudge_count` field to `WorkUnit`.
+
+Location: `src/orchestrator/scheduler.py`, `src/orchestrator/models.py`
+
+### Step 7: Update scheduler to route based on tool decision
+
+Modify `_handle_review_result()` to:
+- Prefer the decision from `AgentResult.review_decision` over file/log parsing
+- Route work unit based on decision: APPROVE→COMPLETE, FEEDBACK→IMPLEMENT, ESCALATE→NEEDS_ATTENTION
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 8: Write failing tests for updated /chunk-review skill
+
+Create tests that verify the skill template instructs the reviewer to use the ReviewDecision tool.
+
+Location: `tests/test_templates.py` or similar
+
+### Step 9: Update /chunk-review skill template
+
+Modify the skill to:
+- Inform reviewer that ReviewDecision tool is available
+- Instruct reviewer to call the tool with their final decision
+- Remove or de-emphasize the YAML output format (keep as fallback documentation)
+
+Location: `src/templates/commands/chunk-review.md.jinja2`
+
+### Step 10: Verify all existing tests pass
+
+Run full test suite to ensure backward compatibility:
+- Existing review decision parsing tests should still pass (fallback path)
+- Phase advancement tests should work with new tool-based flow
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+### Step 11: Add SQLite migration for review_nudge_count
+
+If the new field requires a schema change, add a migration:
+- Add `review_nudge_count` column to work_units table (default 0)
+
+Location: `src/orchestrator/state.py`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+When implementing, add:
+```python
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Tool definition mechanism**: The Claude Agent SDK may have specific requirements for how custom tools are defined. Need to verify if we need to provide a tool schema or if hook interception alone is sufficient.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Tool name matching**: Need to determine the exact tool name the agent will use. Options:
+   - Define a custom tool in the skill prompt
+   - Use a naming convention the hook can match
+   - May need to investigate Claude Agent SDK capabilities for custom tools
+
+3. **Session resume behavior**: In-session nudging requires resuming with a new prompt. Need to verify the Claude Agent SDK supports this pattern cleanly (similar to how we resume after answering questions).
+
+4. **Backward compatibility**: Some REVIEW phases may already be in progress when this change deploys. Need to ensure the fallback to YAML parsing still works for those cases.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*

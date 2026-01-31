@@ -11,12 +11,13 @@ from orchestrator.agent import (
     PHASE_SKILL_FILES,
     create_log_callback,
     create_question_intercept_hook,
+    create_review_decision_hook,
     create_sandbox_enforcement_hook,
     _load_skill_content,
     _is_sandbox_violation,
     _merge_hooks,
 )
-from orchestrator.models import AgentResult, WorkUnitPhase
+from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
 
 
 @pytest.fixture
@@ -1248,3 +1249,293 @@ class TestAgentRunnerSandboxIntegration:
             assert "PreToolUse" in options.hooks
             matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
             assert "Bash" in matchers
+
+
+# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+class TestReviewDecisionHook:
+    """Tests for ReviewDecision tool interception hook."""
+
+    def test_create_hook_returns_valid_hook_config(self):
+        """Hook config has correct structure for PreToolUse."""
+        captured = []
+        hooks = create_review_decision_hook(lambda d: captured.append(d))
+
+        assert "PreToolUse" in hooks
+        assert len(hooks["PreToolUse"]) == 1
+
+        hook_matcher = hooks["PreToolUse"][0]
+        # Matcher is a regex pattern for case-insensitive matching
+        assert hook_matcher["matcher"].pattern == "^ReviewDecision$"
+        assert hook_matcher["hooks"] is not None
+        assert len(hook_matcher["hooks"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_hook_extracts_decision_data(self):
+        """Hook callback receives decision, summary, and structured data."""
+        captured = []
+        hooks = create_review_decision_hook(lambda d: captured.append(d))
+
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        # Simulate PreToolUseHookInput for ReviewDecision
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": "/tmp/work",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "ReviewDecision",
+            "tool_input": {
+                "decision": "APPROVE",
+                "summary": "Implementation meets all requirements",
+                "criteria_assessment": [
+                    {"criterion": "Tests pass", "status": "satisfied"}
+                ],
+            },
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        # Verify callback was called with extracted data
+        assert len(captured) == 1
+        decision_data = captured[0]
+        assert isinstance(decision_data, ReviewToolDecision)
+        assert decision_data.decision == "APPROVE"
+        assert decision_data.summary == "Implementation meets all requirements"
+        assert len(decision_data.criteria_assessment) == 1
+
+    @pytest.mark.asyncio
+    async def test_hook_extracts_feedback_with_issues(self):
+        """Hook extracts issues for FEEDBACK decisions."""
+        captured = []
+        hooks = create_review_decision_hook(lambda d: captured.append(d))
+
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": "/tmp/work",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "ReviewDecision",
+            "tool_input": {
+                "decision": "FEEDBACK",
+                "summary": "Missing error handling",
+                "issues": [
+                    {
+                        "location": "src/main.py",
+                        "concern": "No try/except",
+                        "suggestion": "Add error handling",
+                    }
+                ],
+            },
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        assert len(captured) == 1
+        decision_data = captured[0]
+        assert decision_data.decision == "FEEDBACK"
+        assert len(decision_data.issues) == 1
+        assert decision_data.issues[0]["location"] == "src/main.py"
+
+    @pytest.mark.asyncio
+    async def test_hook_extracts_escalate_with_reason(self):
+        """Hook extracts reason for ESCALATE decisions."""
+        captured = []
+        hooks = create_review_decision_hook(lambda d: captured.append(d))
+
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": "/tmp/work",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "ReviewDecision",
+            "tool_input": {
+                "decision": "ESCALATE",
+                "summary": "Cannot determine correct behavior",
+                "reason": "Requirements are ambiguous",
+            },
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        assert len(captured) == 1
+        decision_data = captured[0]
+        assert decision_data.decision == "ESCALATE"
+        assert decision_data.reason == "Requirements are ambiguous"
+
+    @pytest.mark.asyncio
+    async def test_hook_returns_allow_decision(self):
+        """Hook output allows tool execution to succeed."""
+        hooks = create_review_decision_hook(lambda d: None)
+        hook_handler = hooks["PreToolUse"][0]["hooks"][0]
+
+        hook_input = {
+            "session_id": "test-session",
+            "transcript_path": "/tmp/transcript",
+            "cwd": "/tmp/work",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "ReviewDecision",
+            "tool_input": {
+                "decision": "APPROVE",
+                "summary": "All good",
+            },
+        }
+
+        result = await hook_handler(hook_input, None, {"signal": None})
+
+        # Should allow the tool call (not block like question hook)
+        assert result["decision"] == "allow"
+
+
+class TestRunPhaseWithReviewDecisionCallback:
+    """Tests for run_phase with review_decision_callback."""
+
+    @pytest.mark.asyncio
+    async def test_run_phase_with_callback_configures_hook(self, project_dir, tmp_path):
+        """When callback provided, options include ReviewDecision hook."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            # Provide a review_decision callback
+            captured = []
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.REVIEW,
+                worktree_path=worktree_path,
+                review_decision_callback=lambda d: captured.append(d),
+            )
+
+            # Verify query was called with options containing hooks
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+
+            # Find the ReviewDecision matcher (it's a regex pattern)
+            matchers = options.hooks["PreToolUse"]
+            has_review_hook = any(
+                hasattr(h["matcher"], "pattern") and h["matcher"].pattern == "^ReviewDecision$"
+                for h in matchers
+            )
+            assert has_review_hook
+
+    @pytest.mark.asyncio
+    async def test_run_phase_captures_review_decision(self, project_dir, tmp_path):
+        """When ReviewDecision intercepted, result has review_decision set."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        captured_decisions = []
+
+        with patch("orchestrator.agent.query") as mock_query:
+            async def mock_async_iter(prompt, options):
+                # Simulate receiving an init message with session_id
+                yield {"type": "init", "session_id": "test-session-123"}
+
+                # Simulate the SDK calling our hook when ReviewDecision is used
+                if options.hooks and "PreToolUse" in options.hooks:
+                    for matcher in options.hooks["PreToolUse"]:
+                        if hasattr(matcher["matcher"], "pattern"):
+                            hook_handler = matcher["hooks"][0]
+                            hook_input = {
+                                "session_id": "test-session-123",
+                                "transcript_path": "/tmp/transcript",
+                                "cwd": str(worktree_path),
+                                "hook_event_name": "PreToolUse",
+                                "tool_name": "ReviewDecision",
+                                "tool_input": {
+                                    "decision": "APPROVE",
+                                    "summary": "All tests pass",
+                                },
+                            }
+                            await hook_handler(hook_input, None, {"signal": None})
+
+                # Simulate completion
+                from orchestrator.agent import ResultMessage
+                mock_result = MagicMock(spec=ResultMessage)
+                mock_result.result = "Review complete"
+                mock_result.is_error = False
+                yield mock_result
+
+            mock_query.side_effect = mock_async_iter
+
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.REVIEW,
+                worktree_path=worktree_path,
+                review_decision_callback=lambda d: captured_decisions.append(d),
+            )
+
+            # Verify result has review_decision
+            assert result.completed is True
+            assert result.review_decision is not None
+            assert result.review_decision.decision == "APPROVE"
+            assert result.review_decision.summary == "All tests pass"
+
+            # Verify callback was called
+            assert len(captured_decisions) == 1
+
+    @pytest.mark.asyncio
+    async def test_run_phase_merges_all_hooks(self, project_dir, tmp_path):
+        """run_phase merges sandbox, question, and review decision hooks."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        with patch("orchestrator.agent.query") as mock_query:
+            from orchestrator.agent import ResultMessage
+
+            mock_result = MagicMock(spec=ResultMessage)
+            mock_result.result = "Success"
+            mock_result.is_error = False
+
+            async def mock_async_iter(*args, **kwargs):
+                yield mock_result
+
+            mock_query.return_value = mock_async_iter()
+
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.REVIEW,
+                worktree_path=worktree_path,
+                question_callback=lambda q: None,
+                review_decision_callback=lambda d: None,
+            )
+
+            # Verify query was called with options containing all hooks
+            mock_query.assert_called_once()
+            call_kwargs = mock_query.call_args.kwargs
+            options = call_kwargs["options"]
+            assert options.hooks is not None
+            assert "PreToolUse" in options.hooks
+
+            matchers = options.hooks["PreToolUse"]
+            matcher_types = []
+            for m in matchers:
+                if hasattr(m["matcher"], "pattern"):
+                    matcher_types.append(m["matcher"].pattern)
+                else:
+                    matcher_types.append(m["matcher"])
+
+            # Should have Bash (sandbox), AskUserQuestion (question), and ReviewDecision
+            assert "Bash" in matcher_types
+            assert "AskUserQuestion" in matcher_types
+            assert "^ReviewDecision$" in matcher_types

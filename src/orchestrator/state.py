@@ -29,7 +29,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 9
+    CURRENT_VERSION = 10
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -100,6 +100,7 @@ class StateStore:
             7: self._migrate_v7,
             8: self._migrate_v8,
             9: self._migrate_v9,
+            10: self._migrate_v10,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -259,6 +260,21 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+    def _migrate_v10(self) -> None:
+        """Add review_nudge_count field for tracking in-session nudges.
+
+        When the reviewer agent completes without calling the ReviewDecision tool,
+        the scheduler continues the session with a nudge prompt. This field tracks
+        how many nudges have been attempted. After 3 nudges, escalates to NEEDS_ATTENTION.
+        """
+        self.connection.executescript(
+            """
+            -- Add review_nudge_count column for tracking nudge attempts
+            ALTER TABLE work_units ADD COLUMN review_nudge_count INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -291,8 +307,8 @@ class StateStore:
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
                      conflict_verdicts, conflict_override, explicit_deps, review_iterations,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     review_nudge_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -310,6 +326,7 @@ class StateStore:
                     work_unit.conflict_override,
                     1 if work_unit.explicit_deps else 0,
                     work_unit.review_iterations,
+                    work_unit.review_nudge_count,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -368,7 +385,7 @@ class StateStore:
                 priority = ?, session_id = ?, completion_retries = ?,
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                 conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
-                review_iterations = ?, updated_at = ?
+                review_iterations = ?, review_nudge_count = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -386,6 +403,7 @@ class StateStore:
                 work_unit.conflict_override,
                 1 if work_unit.explicit_deps else 0,
                 work_unit.review_iterations,
+                work_unit.review_nudge_count,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -680,6 +698,14 @@ class StateStore:
         except (IndexError, KeyError):
             review_iterations = 0
 
+        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        try:
+            review_nudge_count = (
+                row["review_nudge_count"] if row["review_nudge_count"] is not None else 0
+            )
+        except (IndexError, KeyError):
+            review_nudge_count = 0
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -696,6 +722,7 @@ class StateStore:
             conflict_override=conflict_override,
             explicit_deps=explicit_deps,
             review_iterations=review_iterations,
+            review_nudge_count=review_nudge_count,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
