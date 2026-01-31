@@ -1,177 +1,233 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a `ve orch tail <chunk>` command that parses and displays orchestrator agent
+logs in a human-friendly format. The command will:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Log Parsing Module** (`src/orchestrator/log_parser.py`): Create a dedicated
+   module for parsing the raw log format. Logs are written by
+   `create_log_callback()` in `src/orchestrator/agent.py` with the format:
+   `[ISO_TIMESTAMP] repr(message_object)`. The parser will handle:
+   - `SystemMessage` - Skip or summarize (session init metadata)
+   - `AssistantMessage` - Extract `TextBlock(text='...')` and `ToolUseBlock(name='...', input={...})`
+   - `UserMessage` - Extract `ToolResultBlock(content='...')`
+   - `ResultMessage` - Final status with `subtype`, `duration_ms`, `total_cost_usd`, `num_turns`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **CLI Command** (`src/ve.py`): Add `ve orch tail` command with:
+   - Basic mode: Display recent log output for a chunk
+   - Follow mode (`-f`): Stream new lines as they're written, detect phase transitions
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_tail_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Display Formatting**: Transform parsed messages into the display format
+   specified in GOAL.md:
+   - Simplified timestamps (HH:MM:SS from ISO format)
+   - `▶` for tool calls with tool name + description
+   - `✓` for tool results (abbreviated summaries)
+   - `💬` for assistant text (word-wrapped, truncated if needed)
+   - Phase headers with start time
+   - ResultMessage as summary banner
+
+The implementation follows existing patterns in the codebase:
+- CLI command structure mirrors other `orch` subcommands (e.g., `orch ps`, `orch status`)
+- Uses `WorktreeManager.get_log_path()` for log directory location
+- Test patterns follow `tests/test_orchestrator_cli.py` using Click's test runner
+
+References DEC-001 (uvx-based CLI) - all functionality accessible via CLI.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the orchestrator
+  subsystem's `WorktreeManager` for log path resolution and phase definitions from
+  `WorkUnitPhase`. The log parsing module will be added to `src/orchestrator/`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create log parser module
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/orchestrator/log_parser.py` with dataclasses and parsing functions:
 
-Example:
+```python
+@dataclass
+class ParsedLogEntry:
+    timestamp: datetime
+    message_type: str  # SystemMessage, AssistantMessage, UserMessage, ResultMessage
+    content: Any  # Type-specific parsed content
 
-### Step 1: Define the SegmentHeader struct
+def parse_log_line(line: str) -> Optional[ParsedLogEntry]:
+    """Parse a single log line into structured data."""
+    # Extract [timestamp] and message body
+    # Parse the repr() output to extract message type and content
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+def parse_log_file(log_path: Path) -> list[ParsedLogEntry]:
+    """Parse all entries from a log file."""
+```
 
-Location: src/segment/format.rs
+Key parsing challenges:
+- Log lines use Python repr() format, not JSON - need regex-based parsing
+- `TextBlock(text='...')` may have multiline content with escaped newlines
+- `ToolUseBlock(name='...', input={...})` - input is a dict
+- `ToolResultBlock(content='...')` - content may be truncated
 
-### Step 2: Implement header serialization
+Location: `src/orchestrator/log_parser.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 2: Create display formatter
 
-### Step 3: ...
+Add display formatting to the log parser module:
+
+```python
+def format_tool_call(entry: ParsedLogEntry) -> str:
+    """Format a tool call (ToolUseBlock) for display."""
+    # Extract tool name and description from input
+    # Return: "HH:MM:SS ▶ ToolName: description"
+
+def format_tool_result(entry: ParsedLogEntry) -> str:
+    """Format a tool result (ToolResultBlock) for display."""
+    # Abbreviate: line counts, pass/fail, file created
+    # Return: "HH:MM:SS ✓ summary"
+
+def format_assistant_text(entry: ParsedLogEntry, max_width: int = 80) -> str:
+    """Format assistant TextBlock with word-wrap."""
+    # Return: "HH:MM:SS 💬 wrapped_text..."
+
+def format_phase_header(phase: str, start_time: datetime) -> str:
+    """Format phase transition header."""
+    # Return: "=== PHASE phase === (started HH:MM:SS)"
+
+def format_result_banner(entry: ParsedLogEntry) -> str:
+    """Format ResultMessage as summary banner."""
+    # Return: "HH:MM:SS ══ SUCCESS/ERROR ══ duration | cost | turns"
+```
+
+Location: `src/orchestrator/log_parser.py`
+
+### Step 3: Add tail command to CLI
+
+Add the `tail` subcommand to the `orch` group in `src/ve.py`:
+
+```python
+@orch.command("tail")
+@click.argument("chunk")
+@click.option("-f", "--follow", is_flag=True, help="Follow log output in real-time")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_tail(chunk, follow, project_dir):
+    """Stream log output for an orchestrator work unit."""
+```
+
+Basic mode implementation:
+1. Use `WorktreeManager.get_log_path(chunk)` to find log directory
+2. Detect which phase logs exist (plan.txt, implement.txt, complete.txt, review.txt)
+3. Parse and display the most recent phase log
+4. Show phase header at start
+
+Location: `src/ve.py` (near other `orch` commands)
+
+### Step 4: Implement follow mode
+
+Add follow mode (`-f`) functionality:
+
+1. After displaying existing content, enter a polling loop
+2. Use file position tracking to detect new lines
+3. When a phase log file ends with `ResultMessage`, check for next phase file
+4. Auto-transition to new phase log when detected
+5. Display phase header on transition
+6. Exit gracefully on Ctrl+C
+
+Follow mode needs to handle:
+- New lines appended to current phase log
+- Phase transitions (PLAN → IMPLEMENT → REVIEW → COMPLETE cycle)
+- Chunk completion (all phases done)
+
+Location: `src/ve.py`
+
+### Step 5: Add error handling
+
+Handle edge cases gracefully:
+- Chunk not found: "Error: Chunk 'name' not found"
+- No logs yet: "No logs yet for chunk 'name'. The work unit may not have started."
+- Chunk already completed: Display full log with result banner, then exit
+- Work unit in NEEDS_ATTENTION: Note this in output, still show available logs
+
+Location: `src/ve.py` and `src/orchestrator/log_parser.py`
+
+### Step 6: Write unit tests for log parser
+
+Create `tests/test_orchestrator_log_parser.py` with tests for:
+
+```python
+class TestParseLogLine:
+    def test_parse_timestamp_extraction(self): ...
+    def test_parse_assistant_message_text_block(self): ...
+    def test_parse_assistant_message_tool_use_block(self): ...
+    def test_parse_user_message_tool_result(self): ...
+    def test_parse_result_message_success(self): ...
+    def test_parse_result_message_error(self): ...
+    def test_parse_malformed_line_returns_none(self): ...
+
+class TestFormatting:
+    def test_format_tool_call_with_description(self): ...
+    def test_format_tool_result_abbreviated(self): ...
+    def test_format_assistant_text_word_wrap(self): ...
+    def test_format_phase_header(self): ...
+    def test_format_result_banner_success(self): ...
+    def test_format_result_banner_error(self): ...
+```
+
+Test with realistic log samples derived from the actual Claude Agent SDK output format.
+
+Location: `tests/test_orchestrator_log_parser.py`
+
+### Step 7: Write CLI integration tests
+
+Add to `tests/test_orchestrator_cli.py`:
+
+```python
+class TestOrchTail:
+    def test_tail_displays_log_output(self, runner, tmp_path): ...
+    def test_tail_chunk_not_found(self, runner, tmp_path): ...
+    def test_tail_no_logs_yet(self, runner, tmp_path): ...
+    def test_tail_shows_phase_header(self, runner, tmp_path): ...
+    def test_tail_follow_mode_detects_new_lines(self, runner, tmp_path): ...
+    def test_tail_follow_mode_phase_transition(self, runner, tmp_path): ...
+    def test_tail_result_message_shows_banner(self, runner, tmp_path): ...
+```
+
+Tests will create mock log files in the expected format to verify parsing and display.
+
+Location: `tests/test_orchestrator_cli.py`
+
+### Step 8: Update code_paths in GOAL.md
+
+Update the `code_paths` frontmatter field to include:
+- `src/orchestrator/log_parser.py`
+- `src/ve.py`
+- `tests/test_orchestrator_log_parser.py`
+- `tests/test_orchestrator_cli.py`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+The log parser module will include:
+```python
+# Chunk: docs/chunks/orch_tail_command - Log parsing and tail command for orchestrator
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Log format stability**: The logs use Python `repr()` output of SDK message
+   objects. If the SDK changes its repr format, parsing may break. Mitigate by
+   using flexible regex patterns and failing gracefully on unparseable lines.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Follow mode polling interval**: Need to balance responsiveness vs CPU usage.
+   Plan to use 100ms polling interval with `time.sleep()`.
+
+3. **Large log files**: If a phase log is very large, displaying all of it may
+   be slow. Consider adding `--lines N` option to limit initial display (future
+   enhancement, not in scope for this chunk).
+
+4. **Terminal width detection**: Word-wrapping assistant text requires knowing
+   terminal width. Will use `shutil.get_terminal_size()` with fallback to 80.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+(To be populated during implementation)
