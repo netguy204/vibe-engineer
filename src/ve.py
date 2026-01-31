@@ -94,7 +94,6 @@ def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list
     return []
 
 
-# Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
 def warn_task_project_context(context: TaskProjectContext | None, artifact_type: str) -> None:
     """Emit a warning if running an artifact command from within a task's project.
 
@@ -145,7 +144,6 @@ def chunk():
     pass
 
 
-# Chunk: docs/chunks/chunk_batch_create - Batch creation of multiple chunks
 @chunk.command("create")
 @click.argument("short_names", nargs=-1, required=True)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -163,7 +161,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 
     When creating multiple chunks, use --ticket flag for ticket ID.
     """
-    # Chunk: docs/chunks/chunk_batch_create - Handle backward compat for single name + positional ticket_id
     # Legacy mode: "ve chunk create my_feature VE-001" (single chunk with positional ticket)
     # Batch mode: "ve chunk create chunk_a chunk_b chunk_c --future" (multiple chunks)
     #
@@ -244,7 +241,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
-    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
     task_context = check_task_project_context(project_dir)
     warn_task_project_context(task_context, "chunk")
 
@@ -335,7 +331,6 @@ def _start_task_chunk(
         click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/chunk_batch_create - Batch creation of multiple chunks
 def _start_task_chunks(
     task_dir: pathlib.Path,
     short_names: list[str],
@@ -1152,7 +1147,6 @@ def create_narrative(short_name, project_dir, projects):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
-    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
     task_context = check_task_project_context(project_dir)
     warn_task_project_context(task_context, "narrative")
 
@@ -1566,7 +1560,6 @@ def discover(shortname, project_dir, projects):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
-    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
     task_context = check_task_project_context(project_dir)
     warn_task_project_context(task_context, "subsystem")
 
@@ -1710,7 +1703,6 @@ def overlap(chunk_id, project_dir):
     the chunk across the external repo and all project repos, then checks
     for overlapping subsystems in the same repo where the chunk was found.
     """
-    # Chunk: docs/chunks/taskdir_subsystem_overlap - Task context support for subsystem overlap
     from task_utils import (
         is_task_directory,
         find_task_directory,
@@ -1834,7 +1826,6 @@ def create_investigation(short_name, project_dir, projects):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
-    # Chunk: docs/chunks/taskdir_cli_guidance - CLI context warnings for task projects
     task_context = check_task_project_context(project_dir)
     warn_task_project_context(task_context, "investigation")
 
@@ -2396,7 +2387,6 @@ def orch_status(json_output, project_dir):
             click.echo("Status: Stopped")
 
 
-# Chunk: docs/chunks/orch_url_command - URL command for orchestrator
 @orch.command("url")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2641,35 +2631,221 @@ def work_unit_delete(chunk, json_output, project_dir):
         client.close()
 
 
+def topological_sort_chunks(
+    chunks: list[str],
+    dependencies: dict[str, list[str]],
+) -> list[str]:
+    """Sort chunks by dependency order (dependencies first).
+
+    Uses Kahn's algorithm for topological sorting.
+
+    Args:
+        chunks: List of chunk names to sort
+        dependencies: Maps chunk name -> list of chunk names it depends on
+
+    Returns:
+        Chunks in topological order (dependencies before dependents)
+
+    Raises:
+        ValueError: If a dependency cycle is detected
+    """
+    # Build in-degree map (count of dependencies within the batch for each chunk)
+    in_degree: dict[str, int] = {chunk: 0 for chunk in chunks}
+    batch_set = set(chunks)
+
+    # Only count dependencies that are in the batch
+    for chunk in chunks:
+        for dep in dependencies.get(chunk, []):
+            if dep in batch_set:
+                in_degree[chunk] += 1
+
+    # Start with chunks that have no in-batch dependencies
+    queue = [chunk for chunk in chunks if in_degree[chunk] == 0]
+    result: list[str] = []
+
+    while queue:
+        # Sort for deterministic ordering
+        queue.sort()
+        current = queue.pop(0)
+        result.append(current)
+
+        # Reduce in-degree for chunks that depend on current
+        for chunk in chunks:
+            if current in dependencies.get(chunk, []):
+                in_degree[chunk] -= 1
+                if in_degree[chunk] == 0:
+                    queue.append(chunk)
+
+    # If we haven't processed all chunks, there's a cycle
+    if len(result) != len(chunks):
+        # Find the cycle for error message
+        remaining = [c for c in chunks if c not in result]
+        # Build a simple cycle representation
+        cycle_parts = []
+        visited = set()
+        current = remaining[0]
+        while current not in visited:
+            visited.add(current)
+            cycle_parts.append(current)
+            # Find next node in cycle
+            for dep in dependencies.get(current, []):
+                if dep in remaining:
+                    current = dep
+                    break
+        cycle_parts.append(current)  # Complete the cycle
+        cycle_str = " -> ".join(cycle_parts)
+        raise ValueError(f"Dependency cycle detected: {cycle_str}")
+
+    return result
+
+
+def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -> dict[str, list[str]]:
+    """Read depends_on from chunk frontmatter for all specified chunks.
+
+    Args:
+        project_dir: Project directory
+        chunk_names: List of chunk names to read
+
+    Returns:
+        Dict mapping chunk name -> list of depends_on chunk names
+    """
+    from chunks import Chunks
+
+    chunks_manager = Chunks(project_dir)
+    dependencies: dict[str, list[str]] = {}
+
+    for chunk_name in chunk_names:
+        frontmatter = chunks_manager.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is not None:
+            dependencies[chunk_name] = frontmatter.depends_on or []
+        else:
+            dependencies[chunk_name] = []
+
+    return dependencies
+
+
+def validate_external_dependencies(
+    client,
+    batch_chunks: set[str],
+    dependencies: dict[str, list[str]],
+) -> list[str]:
+    """Validate that dependencies outside the batch exist as work units.
+
+    Args:
+        client: Orchestrator client for querying existing work units
+        batch_chunks: Set of chunk names in the current batch
+        dependencies: Maps chunk name -> list of depends_on chunk names
+
+    Returns:
+        List of error messages (empty if all external deps exist)
+    """
+    # Collect all external dependencies
+    external_deps: set[str] = set()
+    for chunk, deps in dependencies.items():
+        for dep in deps:
+            if dep not in batch_chunks:
+                external_deps.add(dep)
+
+    if not external_deps:
+        return []
+
+    # Query existing work units
+    try:
+        result = client._request("GET", "/work-units")
+        existing_chunks = {wu["chunk"] for wu in result.get("work_units", [])}
+    except Exception:
+        existing_chunks = set()
+
+    # Check which external deps are missing
+    errors: list[str] = []
+    for dep in external_deps:
+        if dep not in existing_chunks:
+            # Find which chunk(s) depend on this missing dep
+            dependents = [c for c, d in dependencies.items() if dep in d]
+            for dependent in dependents:
+                errors.append(
+                    f"Chunk '{dependent}' depends on '{dep}' which is not in this batch "
+                    "and not an existing work unit"
+                )
+
+    return errors
+
+
 @orch.command("inject")
-@click.argument("chunk")
+@click.argument("chunks", nargs=-1, required=True)
 @click.option("--phase", type=str, default=None, help="Override initial phase (GOAL, PLAN, IMPLEMENT)")
 @click.option("--priority", type=int, default=0, help="Scheduling priority (higher = more urgent)")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def orch_inject(chunk, phase, priority, json_output, project_dir):
-    """Inject a chunk into the orchestrator work pool.
+def orch_inject(chunks, phase, priority, json_output, project_dir):
+    """Inject one or more chunks into the orchestrator work pool.
 
-    Validates chunk exists and determines initial phase from chunk state.
+    Accepts multiple chunk arguments: ve orch inject chunk_a chunk_b chunk_c
+
+    When multiple chunks are provided, they are topologically sorted by their
+    depends_on declarations and injected in dependency order (dependencies first).
+    Chunks with non-empty depends_on have their work units created with blocked_by
+    populated and explicit_deps=True.
     """
     from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
-    import json
+    import json as json_module
 
-    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+    # Strip artifact path prefixes from all chunks
+    chunk_list = [strip_artifact_path_prefix(c, ArtifactType.CHUNK) for c in chunks]
+    batch_chunks = set(chunk_list)
 
     client = create_client(project_dir)
     try:
-        # Use the inject endpoint via generic request
-        body = {"chunk": chunk, "priority": priority}
-        if phase:
-            body["phase"] = phase
+        # Read dependencies from all chunks
+        if len(chunk_list) > 1 and not json_output:
+            click.echo(f"Reading dependencies for {len(chunk_list)} chunks...")
 
-        result = client._request("POST", "/work-units/inject", json=body)
+        dependencies = read_chunk_dependencies(project_dir, chunk_list)
 
+        # Validate external dependencies exist as work units
+        errors = validate_external_dependencies(client, batch_chunks, dependencies)
+        if errors:
+            for error in errors:
+                click.echo(f"Error: {error}", err=True)
+            raise SystemExit(1)
+
+        # Topologically sort chunks
+        try:
+            sorted_chunks = topological_sort_chunks(chunk_list, dependencies)
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+        # Inject in order
+        results: list[dict] = []
+        for chunk in sorted_chunks:
+            chunk_deps = dependencies.get(chunk, [])
+            body = {"chunk": chunk, "priority": priority}
+            if phase:
+                body["phase"] = phase
+
+            # Set blocked_by and explicit_deps for chunks with dependencies
+            if chunk_deps:
+                body["blocked_by"] = chunk_deps
+                body["explicit_deps"] = True
+
+            result = client._request("POST", "/work-units/inject", json=body)
+            results.append(result)
+
+            if not json_output:
+                blocked_info = ""
+                if chunk_deps:
+                    blocked_info = f" blocked_by={chunk_deps}"
+                priority_info = f" priority={result.get('priority', priority)}"
+                click.echo(
+                    f"Injected: {result['chunk']} [{result['phase']}]{priority_info}{blocked_info}"
+                )
+
+        # Final output
         if json_output:
-            click.echo(json.dumps(result, indent=2))
-        else:
-            click.echo(f"Injected: {result['chunk']} [{result['phase']}] priority={result['priority']}")
+            click.echo(json_module.dumps({"results": results}, indent=2))
+        elif len(chunk_list) > 1:
+            click.echo(f"Injected {len(results)} chunks in dependency order")
 
     except DaemonNotRunningError as e:
         click.echo(f"Error: {e}", err=True)

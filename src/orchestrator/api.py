@@ -464,13 +464,28 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     if not isinstance(priority, int):
         return _error_response("priority must be an integer")
 
+    # Get optional blocked_by list (for explicit dependency injection)
+    blocked_by = body.get("blocked_by", [])
+    if not isinstance(blocked_by, list):
+        return _error_response("blocked_by must be a list")
+
+    # Get optional explicit_deps flag (signals oracle bypass for dependency management)
+    explicit_deps = body.get("explicit_deps", False)
+    if not isinstance(explicit_deps, bool):
+        return _error_response("explicit_deps must be a boolean")
+
+    # Determine initial status based on blocked_by
+    initial_status = WorkUnitStatus.BLOCKED if blocked_by else WorkUnitStatus.READY
+
     # Create work unit
     now = datetime.now(timezone.utc)
     unit = WorkUnit(
         chunk=chunk,
         phase=phase,
-        status=WorkUnitStatus.READY,
+        status=initial_status,
         priority=priority,
+        blocked_by=blocked_by,
+        explicit_deps=explicit_deps,
         created_at=now,
         updated_at=now,
     )

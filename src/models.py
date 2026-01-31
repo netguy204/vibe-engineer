@@ -526,6 +526,7 @@ class ChunkFrontmatter(BaseModel):
     created_after: list[str] = []
     friction_entries: list["FrictionEntryReference"] = []
     bug_type: BugType | None = None
+    depends_on: list[str] = []
 
 
 class FrictionTheme(BaseModel):
