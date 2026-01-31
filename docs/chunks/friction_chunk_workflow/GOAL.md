@@ -3,12 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/chunk-create.md.jinja2
   - src/templates/commands/chunk-complete.md.jinja2
   - tests/test_friction_workflow.py
 code_references:
-  - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Friction entry selection workflow in step 6 - prompts operator to select friction entries, adds to chunk frontmatter, updates FRICTION.md proposed_chunks"
   - ref: src/templates/commands/chunk-complete.md.jinja2
     implements: "Friction resolution reporting in step 12 - detects friction_entries in chunk, reports resolution status for full/partial scope"
   - ref: tests/test_friction_workflow.py#TestFrictionWorkflowIntegration

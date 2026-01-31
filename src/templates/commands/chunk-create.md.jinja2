@@ -88,14 +88,39 @@ completely in order:
       source artifact's `proposed_chunks` array to set `chunk_directory: "<shortname>"`
       for the entry matching this chunk's prompt.
 
-6. **Check if this is a bug fix.** Look for these signals that indicate bug fix
+6. **Understand the `depends_on` null vs empty semantics.**
+
+   The `depends_on` field in GOAL.md has three meaningful states, and the default
+   template value of `depends_on: []` is an **explicit assertion**, not a placeholder.
+
+   - **`depends_on: []`** (empty list): You have analyzed the chunk and determined it
+     has no implementation dependencies on other chunks. This **bypasses the orchestrator's
+     conflict oracle**—use it when you're confident the chunk is independent.
+
+   - **`depends_on: null`** or omit entirely: You haven't analyzed dependencies, or the
+     analysis is uncertain. This **triggers oracle consultation** at injection time for
+     heuristic dependency detection.
+
+   - **`depends_on: ["chunk_a", ...]`**: You know specific chunks that must complete
+     before this one. This also **bypasses the oracle** with your explicit declarations.
+
+   **When to change the default:**
+
+   - If step 5 above found dependencies from a narrative/investigation, populate them.
+   - If this chunk is part of a batch and you're uncertain about inter-dependencies,
+     **change `depends_on: []` to `depends_on: null`** so the oracle can analyze.
+   - If you're creating a standalone chunk and have verified it's independent, leave `[]`.
+
+   See the GOAL.md template's DEPENDS_ON section for the full semantics table.
+
+7. **Check if this is a bug fix.** Look for these signals that indicate bug fix
    work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
    "incorrect", "wrong", "failing".
 
    If the work is a bug fix, note this in the GOAL.md success criteria so that
    when implementation is complete, the fix can be verified.
 
-7. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
+8. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
    check if there's already an IMPLEMENTING chunk.
 
    If there IS an existing IMPLEMENTING chunk, inform the user:

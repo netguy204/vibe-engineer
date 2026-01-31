@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: COMPLETED
 advances_trunk_goal: "Required Properties: Following the workflow must maintain the health of documents over time and should not grow more difficult over time."
 proposed_chunks:
   - prompt: "Update orchestrator injection logic to distinguish depends_on: [] (explicit no-deps, bypass oracle) from depends_on: null/omitted (unknown deps, consult oracle)"

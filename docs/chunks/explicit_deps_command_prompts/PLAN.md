@@ -8,153 +8,118 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The dependency chunks (`explicit_deps_goal_docs` and `explicit_deps_template_docs`) have already
+updated the template files with comprehensive documentation of the null vs empty semantics:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- `src/templates/chunk/GOAL.md.jinja2` - Documents `depends_on` semantics in the DEPENDS_ON section
+- `src/templates/narrative/OVERVIEW.md.jinja2` - Documents `depends_on` in proposed_chunks schema
+- `src/templates/investigation/OVERVIEW.md.jinja2` - Documents `depends_on` in proposed_chunks schema
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This chunk updates the **command prompts** that guide agents through creating these artifacts. The key
+insight is that command prompts need to teach agents **when** to use each form, not just document
+what they mean (the templates already do that).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/explicit_deps_command_prompts/GOAL.md)
-with references to the files that you expect to touch.
--->
+Strategy:
+1. Update `/chunk-create` prompt to teach agents the distinction when populating `depends_on`
+2. Update `/narrative-create` prompt to explain the semantics for `proposed_chunks.depends_on`
+3. Check other commands that reference `depends_on` for consistency (investigation-create already
+   defers to chunk-create, so it may not need changes)
 
-## Subsystem Considerations
+Per TESTING_PHILOSOPHY.md, we don't test template prose content. Verification is:
+- Templates render without error (`uv run ve init`)
+- The documentation is present and readable
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+<!-- No subsystems are relevant to this chunk - it only modifies documentation/prompts -->
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update `/chunk-create` command prompt
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add documentation to `src/templates/commands/chunk-create.md.jinja2` that teaches agents
+the `depends_on` null vs empty semantics. The current prompt already has step 5 about
+checking narratives/investigations for dependencies, but it doesn't explain when to
+leave the field as `null` vs setting it to `[]`.
 
-Example:
+Add a new step (or augment step 5) that explains:
 
-### Step 1: Define the SegmentHeader struct
+1. **When to set `depends_on: []`**: The agent has analyzed the chunk and determined it
+   has no implementation dependencies on other chunks in the same batch. This bypasses
+   the orchestrator's conflict oracle.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. **When to leave `depends_on` as `null` or omit it**: The agent hasn't analyzed
+   dependencies yet, or the analysis is uncertain. This triggers oracle consultation.
 
-Location: src/segment/format.rs
+3. **When to set `depends_on: ["chunk_a", ...]`**: The agent knows specific chunks
+   that must complete before this one.
 
-### Step 2: Implement header serialization
+The key teaching moment: the default template value of `depends_on: []` is an
+**explicit assertion of independence**, not a placeholder to be filled in later.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/templates/commands/chunk-create.md.jinja2`
 
-### Step 3: ...
+### Step 2: Update `/narrative-create` command prompt
 
----
+Add documentation to `src/templates/commands/narrative-create.md.jinja2` that explains
+the `depends_on` semantics for entries in the `proposed_chunks` array.
 
-**BACKREFERENCE COMMENTS**
+The current prompt is minimal (only 3 steps). Add guidance about:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+1. When populating `proposed_chunks` entries, the `depends_on` field follows the same
+   null vs empty semantics as chunk GOAL.md.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+2. Index-based dependencies (`[0, 2]`) are converted to chunk directory names at
+   chunk-create time.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+3. If the agent doesn't know dependencies between proposed chunks, **omit the field**
+   rather than using `[]`. Using `[]` asserts independence.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Location: `src/templates/commands/narrative-create.md.jinja2`
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 3: Check `/investigation-create` for consistency
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Review `src/templates/commands/investigation-create.md.jinja2` to determine if it needs
+updates. Based on initial review, it delegates chunk creation to `/chunk-create`, so it
+may not need direct `depends_on` documentation. However, it does mention "Proposed Chunks"
+in Phase 2A step 6, which might benefit from a note about the semantics.
+
+If changes are needed, add similar guidance as Step 2.
+
+Location: `src/templates/commands/investigation-create.md.jinja2`
+
+### Step 4: Verify templates render correctly
+
+Run `uv run ve init` to regenerate rendered command files and verify no syntax errors.
+
+Location: Project root
+
+### Step 5: Update code_paths in GOAL.md
+
+Add the modified template files to the `code_paths` frontmatter field in the chunk's
+GOAL.md for traceability.
+
+Location: `docs/chunks/explicit_deps_command_prompts/GOAL.md`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+This chunk depends on:
 
-If there are no dependencies, delete this section.
--->
+- **explicit_deps_goal_docs** (ACTIVE): Updated `src/templates/chunk/GOAL.md.jinja2` with the
+  semantics table. This chunk's command prompts reference that documentation.
+
+- **explicit_deps_template_docs** (ACTIVE): Updated `src/templates/narrative/OVERVIEW.md.jinja2`
+  and `src/templates/investigation/OVERVIEW.md.jinja2` with the semantics table. This chunk's
+  command prompts reference that documentation.
+
+Both dependencies are satisfied (status: ACTIVE).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Prompt length**: Adding detailed `depends_on` guidance increases command prompt length.
+  The chunk-create prompt is already substantial. Keeping the new content concise is important.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Redundancy with templates**: The templates now contain the semantics table. The command
+  prompts should teach **when to use each form** without duplicating the full semantics
+  documentation. Reference the templates rather than repeating everything.
 
 ## Deviations
 
