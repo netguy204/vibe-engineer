@@ -3458,6 +3458,156 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
         client.close()
 
 
+@orch.command("tail")
+@click.argument("chunk")
+@click.option("-f", "--follow", is_flag=True, help="Follow log output in real-time")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_tail(chunk, follow, project_dir):
+    """Stream log output for an orchestrator work unit.
+
+    Displays parsed, human-readable log output for CHUNK. Shows tool calls,
+    tool results, and assistant messages in a condensed format.
+
+    Use -f to follow the log in real-time as the agent works.
+    """
+    import time
+    from orchestrator.log_parser import (
+        parse_log_file,
+        format_entry,
+        format_phase_header,
+    )
+    from orchestrator.models import WorkUnitPhase
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    # Get log directory - compute directly without WorktreeManager to avoid git requirement
+    log_dir = project_dir / ".ve" / "chunks" / chunk / "log"
+
+    # Check if chunk directory exists
+    chunk_dir = project_dir / "docs" / "chunks" / chunk
+    if not chunk_dir.exists():
+        click.echo(f"Error: Chunk '{chunk}' not found", err=True)
+        raise SystemExit(1)
+
+    # Check if log directory exists
+    if not log_dir.exists():
+        click.echo(f"No logs yet for chunk '{chunk}'. The work unit may not have started.", err=True)
+        raise SystemExit(1)
+
+    # Phase order for iteration
+    phase_order = [
+        WorkUnitPhase.GOAL,
+        WorkUnitPhase.PLAN,
+        WorkUnitPhase.IMPLEMENT,
+        WorkUnitPhase.REVIEW,
+        WorkUnitPhase.COMPLETE,
+    ]
+
+    def get_phase_log_files() -> list[tuple[WorkUnitPhase, pathlib.Path]]:
+        """Get list of existing phase log files in order."""
+        result = []
+        for phase in phase_order:
+            log_file = log_dir / f"{phase.value.lower()}.txt"
+            if log_file.exists():
+                result.append((phase, log_file))
+        return result
+
+    def display_phase_log(phase: WorkUnitPhase, log_file: pathlib.Path, show_header: bool = True):
+        """Display a phase log file."""
+        entries = parse_log_file(log_file)
+        if not entries:
+            return
+
+        # Show phase header
+        if show_header and entries:
+            header = format_phase_header(phase.value, entries[0].timestamp)
+            click.echo(f"\n{header}\n")
+
+        # Display entries
+        for entry in entries:
+            lines = format_entry(entry)
+            for line in lines:
+                click.echo(line)
+
+    # Basic mode: display all existing logs
+    phase_logs = get_phase_log_files()
+
+    if not phase_logs:
+        click.echo(f"No logs yet for chunk '{chunk}'. The work unit may not have started.", err=True)
+        raise SystemExit(1)
+
+    # Display existing phase logs
+    for phase, log_file in phase_logs:
+        display_phase_log(phase, log_file)
+
+    if not follow:
+        return
+
+    # Follow mode: stream new lines
+    try:
+        current_phase_idx = len(phase_logs) - 1
+        current_phase, current_log = phase_logs[current_phase_idx]
+
+        # Track file position
+        with open(current_log) as f:
+            f.seek(0, 2)  # Seek to end
+            file_pos = f.tell()
+
+        while True:
+            time.sleep(0.1)  # 100ms polling interval
+
+            # Check for new content in current log
+            try:
+                with open(current_log) as f:
+                    f.seek(file_pos)
+                    new_content = f.read()
+                    if new_content:
+                        file_pos = f.tell()
+                        # Parse and display new lines
+                        for line in new_content.strip().split("\n"):
+                            if line.strip():
+                                from orchestrator.log_parser import parse_log_line
+                                entry = parse_log_line(line)
+                                if entry:
+                                    lines = format_entry(entry)
+                                    for display_line in lines:
+                                        click.echo(display_line)
+            except FileNotFoundError:
+                pass
+
+            # Check for next phase log file
+            next_phase_idx = current_phase_idx + 1
+            if next_phase_idx < len(phase_order):
+                next_phase = phase_order[next_phase_idx]
+                next_log = log_dir / f"{next_phase.value.lower()}.txt"
+                if next_log.exists():
+                    # New phase started
+                    current_phase_idx = next_phase_idx
+                    current_phase = next_phase
+                    current_log = next_log
+
+                    # Show phase header
+                    entries = parse_log_file(next_log)
+                    if entries:
+                        header = format_phase_header(next_phase.value, entries[0].timestamp)
+                        click.echo(f"\n{header}\n")
+
+                    # Display any content already in the file
+                    for entry in entries:
+                        lines = format_entry(entry)
+                        for line in lines:
+                            click.echo(line)
+
+                    # Update file position
+                    with open(current_log) as f:
+                        f.seek(0, 2)
+                        file_pos = f.tell()
+
+    except KeyboardInterrupt:
+        click.echo("\n")  # Clean exit on Ctrl+C
+
+
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
 @cli.group()
 def friction():
