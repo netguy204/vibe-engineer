@@ -207,6 +207,26 @@ Use these slash commands for artifact management:
 - `/investigation-create` - Start a new investigation (or redirect to chunk if simple)
 - `/friction-log` - Capture a friction point for later pattern analysis
 
+## Creating Artifacts
+
+**CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command.
+
+| Artifact Type | Creation Command | Slash Command |
+|---------------|------------------|---------------|
+| Chunk | `ve chunk create <name>` | `/chunk-create` |
+| Investigation | `ve investigation create <name>` | `/investigation-create` |
+| Narrative | `ve narrative create <name>` | `/narrative-create` |
+| Subsystem | `ve subsystem create <name>` | `/subsystem-discover` |
+
+**Why this matters:**
+
+- Templates contain required YAML frontmatter with correct schema fields
+- Templates include structural guidance and placeholder content
+- Manually created files often miss required fields, causing validation errors and broken workflows
+- The creation commands handle directory structure, initial status, and cross-references
+
+If you encounter a situation where no creation command exists for an artifact type you need, ask the operator rather than creating files manually.
+
 ## Getting Started
 
 1. Read `docs/trunk/GOAL.md` to understand the project
