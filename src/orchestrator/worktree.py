@@ -62,6 +62,17 @@ class WorktreeManager:
         else:
             self._base_branch = base_branch or self._get_current_branch()
 
+    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
+    def _get_task_directory(self) -> Optional[Path]:
+        """Get the task directory if in task context mode.
+
+        In task context, task_info.root_dir is the task directory.
+        Returns None if not in task context.
+        """
+        if self.task_info and self.task_info.is_task_context:
+            return self.task_info.root_dir
+        return None
+
     def _get_current_branch(self) -> str:
         """Get the current git branch name.
 
@@ -421,7 +432,39 @@ class WorktreeManager:
                         f"Failed to create worktree for {repo_name}: {result.stderr}"
                     )
 
+        # Set up agent environment symlinks
+        self._setup_agent_environment_symlinks(work_dir)
+
         return work_dir
+
+    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
+    def _setup_agent_environment_symlinks(self, work_dir: Path) -> None:
+        """Create symlinks to task-level configuration in work/ directory.
+
+        Creates symlinks for:
+        - .ve-task.yaml -> task_directory/.ve-task.yaml
+        - CLAUDE.md -> task_directory/CLAUDE.md
+        - .claude/ -> task_directory/.claude/
+
+        Missing source files are skipped (not an error).
+
+        Args:
+            work_dir: The work/ directory where symlinks should be created
+        """
+        task_dir = self._get_task_directory()
+        if task_dir is None:
+            return
+
+        symlink_targets = [
+            (".ve-task.yaml", task_dir / ".ve-task.yaml"),
+            ("CLAUDE.md", task_dir / "CLAUDE.md"),
+            (".claude", task_dir / ".claude"),
+        ]
+
+        for link_name, target_path in symlink_targets:
+            link_path = work_dir / link_name
+            if target_path.exists() and not link_path.exists():
+                link_path.symlink_to(target_path)
 
     def remove_worktree(
         self,
@@ -516,9 +559,24 @@ class WorktreeManager:
                     text=True,
                 )
 
-        # Remove the work directory if it exists
+        # Clean up symlinks before removing work directory
         if work_dir.exists():
+            self._cleanup_agent_environment_symlinks(work_dir)
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    # Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
+    def _cleanup_agent_environment_symlinks(self, work_dir: Path) -> None:
+        """Remove symlinks from work/ directory.
+
+        Args:
+            work_dir: The work/ directory containing symlinks
+        """
+        symlink_names = [".ve-task.yaml", "CLAUDE.md", ".claude"]
+
+        for link_name in symlink_names:
+            link_path = work_dir / link_name
+            if link_path.is_symlink():
+                link_path.unlink()
 
     def _remove_worktree_from_repo(self, worktree_path: Path, repo_path: Path) -> None:
         """Remove a worktree from a repository.

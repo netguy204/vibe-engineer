@@ -8,153 +8,246 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extend the `WorktreeManager` class to create symlinks for task-level configuration files (`.ve-task.yaml`, `CLAUDE.md`, `.claude/`) when creating worktrees in task context mode.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Core strategy:**
+1. After creating worktrees for each repo under `work/`, create symlinks in the `work/` directory that point to task-level configuration files
+2. Symlinks point to the task directory (parent of `.ve/`), not the worktree content
+3. The symlinks are created immediately after worktree creation in `_create_task_context_worktrees()`
+4. Cleanup removes these symlinks when worktrees are removed
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Why symlinks in `work/` directory:**
+- The agent's working directory is `work/` (not individual repo worktrees)
+- The agent needs to see task-level `CLAUDE.md` for task-specific instructions
+- The agent needs to see `.ve-task.yaml` to detect task context
+- The `.claude/` directory provides task-level slash commands
+- These files live at the task directory level (e.g., `auth-token-work/CLAUDE.md`)
+- Without symlinks, agents would only see repo-specific `CLAUDE.md` files inside each worktree
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_task_agent_env/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Single-repo mode unchanged:**
+- When not in task context, the existing `worktree/` structure is used
+- Agents run directly in the worktree which has its own `CLAUDE.md`
+- No symlinks needed
+
+**Reference:** This chunk implements findings from the `orch_task_context` investigation (docs/investigations/orch_task_context/OVERVIEW.md).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of the orchestrator subsystem's worktree management. Extends `WorktreeManager` with symlink setup for task context agent environment. The subsystem is DOCUMENTED status, so this is new functionality rather than fixing deviations.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add tests for symlink creation in task context (TDD red phase)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write failing tests for the symlink behavior before implementing.
 
-Example:
+Location: `tests/test_orchestrator_worktree.py`
 
-### Step 1: Define the SegmentHeader struct
+Add a new test class `TestTaskContextSymlinks`:
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+```python
+class TestTaskContextSymlinks:
+    """Tests for symlink creation in task context mode."""
 
-Location: src/segment/format.rs
+    @pytest.fixture
+    def task_directory_with_config(self, tmp_path):
+        """Create a task directory with CLAUDE.md and .claude/ for testing."""
+        task_dir, external, projects = setup_task_directory(
+            tmp_path,
+            external_name="external",
+            project_names=["project_a"],
+        )
+        # Create task-level CLAUDE.md
+        (task_dir / "CLAUDE.md").write_text("# Task-level guidance\n")
+        # Create task-level .claude/ directory with a command
+        (task_dir / ".claude").mkdir()
+        (task_dir / ".claude" / "test-command.md").write_text("# Test command\n")
+        return {
+            "task_dir": task_dir,
+            "external": external,
+            "project_a": projects[0],
+        }
 
-### Step 2: Implement header serialization
+    def test_creates_ve_task_yaml_symlink(self, task_directory_with_config):
+        """Creates symlink to .ve-task.yaml in work/ directory."""
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+    def test_creates_claude_md_symlink(self, task_directory_with_config):
+        """Creates symlink to CLAUDE.md in work/ directory."""
 
-### Step 3: ...
+    def test_creates_claude_dir_symlink(self, task_directory_with_config):
+        """Creates symlink to .claude/ directory in work/ directory."""
 
----
+    def test_symlinks_point_to_task_directory(self, task_directory_with_config):
+        """Symlinks resolve to task directory files, not worktree files."""
 
-**BACKREFERENCE COMMENTS**
+    def test_symlinks_removed_on_worktree_cleanup(self, task_directory_with_config):
+        """Symlinks are cleaned up when worktree is removed."""
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+    def test_single_repo_mode_no_symlinks(self, git_repo):
+        """No symlinks created in single-repo mode."""
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+    def test_missing_claude_md_skipped(self, task_directory_with_config):
+        """Missing CLAUDE.md doesn't cause error, just skips that symlink."""
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+### Step 2: Add helper method to determine task directory from project_dir
+
+Add a method to `WorktreeManager` that resolves the task directory from the project_dir when in task context.
+
+Location: `src/orchestrator/worktree.py`
+
+```python
+def _get_task_directory(self) -> Optional[Path]:
+    """Get the task directory if in task context mode.
+
+    In task context, task_info.root_dir is the task directory.
+    Returns None if not in task context.
+    """
+    if self.task_info and self.task_info.is_task_context:
+        return self.task_info.root_dir
+    return None
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 3: Implement symlink creation in task context worktrees
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Modify `_create_task_context_worktrees()` to create symlinks after creating repo worktrees.
+
+Location: `src/orchestrator/worktree.py`
+
+Add a new private method:
+
+```python
+# Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
+def _setup_agent_environment_symlinks(self, work_dir: Path) -> None:
+    """Create symlinks to task-level configuration in work/ directory.
+
+    Creates symlinks for:
+    - .ve-task.yaml -> task_directory/.ve-task.yaml
+    - CLAUDE.md -> task_directory/CLAUDE.md
+    - .claude/ -> task_directory/.claude/
+
+    Missing source files are skipped (not an error).
+
+    Args:
+        work_dir: The work/ directory where symlinks should be created
+    """
+    task_dir = self._get_task_directory()
+    if task_dir is None:
+        return
+
+    symlink_targets = [
+        (".ve-task.yaml", task_dir / ".ve-task.yaml"),
+        ("CLAUDE.md", task_dir / "CLAUDE.md"),
+        (".claude", task_dir / ".claude"),
+    ]
+
+    for link_name, target_path in symlink_targets:
+        link_path = work_dir / link_name
+        if target_path.exists() and not link_path.exists():
+            link_path.symlink_to(target_path)
+```
+
+Modify `_create_task_context_worktrees()` to call this method:
+
+```python
+def _create_task_context_worktrees(self, chunk: str, repo_paths: list[Path]) -> Path:
+    """Create worktrees for multiple repos in task context mode."""
+    work_dir = self.get_work_directory(chunk)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    branch = self.get_branch_name(chunk)
+
+    for repo_path in repo_paths:
+        # ... existing worktree creation code ...
+
+    # Set up agent environment symlinks
+    self._setup_agent_environment_symlinks(work_dir)
+
+    return work_dir
+```
+
+### Step 4: Implement symlink cleanup
+
+Modify `_remove_task_context_worktrees()` to remove symlinks before removing the work directory.
+
+Location: `src/orchestrator/worktree.py`
+
+Add a new private method:
+
+```python
+# Chunk: docs/chunks/orch_task_agent_env - Task context agent environment symlinks
+def _cleanup_agent_environment_symlinks(self, work_dir: Path) -> None:
+    """Remove symlinks from work/ directory.
+
+    Args:
+        work_dir: The work/ directory containing symlinks
+    """
+    symlink_names = [".ve-task.yaml", "CLAUDE.md", ".claude"]
+
+    for link_name in symlink_names:
+        link_path = work_dir / link_name
+        if link_path.is_symlink():
+            link_path.unlink()
+```
+
+Modify `_remove_task_context_worktrees()` to call this before shutil.rmtree:
+
+```python
+def _remove_task_context_worktrees(
+    self, chunk: str, remove_branch: bool, repo_paths: list[Path]
+) -> None:
+    """Remove worktrees for multiple repos in task context mode."""
+    work_dir = self.get_work_directory(chunk)
+    # ... existing worktree removal code ...
+
+    # Clean up symlinks before removing work directory
+    if work_dir.exists():
+        self._cleanup_agent_environment_symlinks(work_dir)
+        shutil.rmtree(work_dir, ignore_errors=True)
+```
+
+### Step 5: Run tests and verify
+
+Run the new tests to ensure:
+1. Symlinks are created correctly in task context
+2. Symlinks point to the correct task directory files
+3. Symlinks are cleaned up on worktree removal
+4. Single-repo mode is unchanged
+
+```bash
+uv run pytest tests/test_orchestrator_worktree.py::TestTaskContextSymlinks -v
+```
+
+Also run the full worktree test suite to verify no regressions:
+
+```bash
+uv run pytest tests/test_orchestrator_worktree.py -v
+```
+
+### Step 6: Update code_paths in GOAL.md
+
+Update the chunk's GOAL.md frontmatter with the files touched:
+- `src/orchestrator/worktree.py`
+- `tests/test_orchestrator_worktree.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **orch_task_worktrees**: This chunk depends on the task context worktree structure created by `orch_task_worktrees`. That chunk introduced `_create_task_context_worktrees()` and the `work/` directory structure. This chunk extends that functionality with symlinks.
 
-If there are no dependencies, delete this section.
--->
+- **orch_task_detection**: This chunk uses `TaskContextInfo` which was introduced by `orch_task_detection`. The `WorktreeManager` already accepts `task_info` parameter.
+
+No external library dependencies - uses only Python's `pathlib.Path.symlink_to()`.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Relative vs absolute symlinks**: Using `symlink_to(target_path)` creates an absolute symlink. This is fine for local worktrees but could be an issue if worktrees are moved. **Mitigation**: Worktrees are always created fresh and not moved, so absolute symlinks are acceptable.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Symlink permissions on Windows**: Windows symlinks may require elevated permissions or developer mode. **Mitigation**: The orchestrator is primarily used on macOS/Linux. Document Windows limitations if needed.
+
+3. **Symlink resolution in git operations**: Git should ignore symlinks when staging/committing in the work directory (they point outside the repos). **Verification needed**: Confirm git doesn't try to add/track these symlinks in the worktree repos.
+
+4. **Existing files in work/ directory**: If a file already exists at the symlink path (e.g., stale state from crash), symlink creation would fail. **Mitigation**: Check `not link_path.exists()` before creating symlink. The cleanup method removes symlinks properly.
+
+5. **Agent detection of task context**: The agent needs to detect task context from the symlinked `.ve-task.yaml`. Since the symlink resolves to the real file, this should work transparently. **Verification needed**: Test that task context detection works from inside `work/` directory.
 
 ## Deviations
 
