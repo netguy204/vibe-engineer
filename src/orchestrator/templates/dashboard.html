@@ -260,6 +260,145 @@
         .process-status.NEEDS_ATTENTION { color: var(--accent-yellow); }
         .process-status.DONE { color: var(--accent-purple); }
 
+        /* Expandable tiles for RUNNING status */
+        .process-card.expandable {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .process-card.expandable:hover {
+            background-color: #1a4980;
+        }
+
+        .process-card.expanded {
+            background-color: #1a4980;
+        }
+
+        .expand-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: transform 0.2s;
+        }
+
+        .expand-button:hover {
+            color: var(--text-primary);
+        }
+
+        .expand-button.expanded {
+            transform: rotate(90deg);
+        }
+
+        .process-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .process-header-left {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* Log panel styles */
+        .log-panel {
+            display: none;
+            grid-column: 1 / -1;
+            background-color: #0a0a14;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 8px;
+            max-height: 400px;
+            overflow: hidden;
+        }
+
+        .log-panel.visible {
+            display: block;
+        }
+
+        .log-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .log-panel-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .log-panel-close {
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.25rem;
+            line-height: 1;
+            padding: 4px;
+        }
+
+        .log-panel-close:hover {
+            color: var(--text-primary);
+        }
+
+        .log-content {
+            padding: 12px;
+            height: 350px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .log-line {
+            margin: 0;
+            padding: 2px 0;
+        }
+
+        .log-line.header {
+            color: var(--accent-blue);
+            font-weight: 600;
+            margin-top: 8px;
+            margin-bottom: 4px;
+        }
+
+        .log-line.info {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .log-line.error {
+            color: var(--accent-red);
+        }
+
+        .log-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         /* Form Styles */
         .form-group {
             margin-bottom: 12px;
@@ -561,14 +700,30 @@
                         {% if running_units %}
                         <div class="section-heading">Running ({{ running_units|length }})</div>
                         {% for unit in running_units %}
-                        <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
-                            <div class="process-chunk">{{ unit.chunk }}</div>
-                            <div class="process-meta">
-                                <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
-                                <span>{{ unit.phase }}</span>
+                        <div class="process-card status-{{ unit.status }} expandable" data-chunk="{{ unit.chunk }}">
+                            <div class="process-header">
+                                <div class="process-header-left">
+                                    <div class="process-chunk">{{ unit.chunk }}</div>
+                                    <div class="process-meta">
+                                        <span class="process-status {{ unit.status }}">{{ unit.status }}</span>
+                                        <span>{{ unit.phase }}</span>
+                                    </div>
+                                </div>
+                                <button class="expand-button" title="View logs" aria-label="Expand log panel">▶</button>
                             </div>
                         </div>
                         {% endfor %}
+                        <!-- Log panel placeholder - inserted dynamically -->
+                        <div class="log-panel" id="log-panel">
+                            <div class="log-panel-header">
+                                <span class="log-panel-title">
+                                    <span class="log-spinner"></span>
+                                    <span id="log-panel-chunk">Log output</span>
+                                </span>
+                                <button class="log-panel-close" title="Close" aria-label="Close log panel">&times;</button>
+                            </div>
+                            <div class="log-content" id="log-content"></div>
+                        </div>
                         {% endif %}
 
                         {% if ready_units %}
@@ -876,6 +1031,191 @@
                 }
             });
         });
+
+        // ============================================================
+        // Log Streaming for Expandable Tiles
+        // ============================================================
+
+        let logWebSocket = null;
+        let expandedChunk = null;
+
+        function getLogPanel() {
+            return document.getElementById('log-panel');
+        }
+
+        function getLogContent() {
+            return document.getElementById('log-content');
+        }
+
+        function expandLogPanel(chunk) {
+            // Close any existing log stream first
+            if (expandedChunk && expandedChunk !== chunk) {
+                collapseLogPanel();
+            }
+
+            const panel = getLogPanel();
+            const logContent = getLogContent();
+            const chunkTitle = document.getElementById('log-panel-chunk');
+
+            if (!panel || !logContent) {
+                console.error('Log panel elements not found');
+                return;
+            }
+
+            // Clear previous content
+            logContent.innerHTML = '';
+            expandedChunk = chunk;
+
+            // Update title
+            if (chunkTitle) {
+                chunkTitle.textContent = chunk;
+            }
+
+            // Show the panel
+            panel.classList.add('visible');
+
+            // Mark the card as expanded
+            const card = document.querySelector('.process-card[data-chunk="' + chunk + '"]');
+            if (card) {
+                card.classList.add('expanded');
+                const btn = card.querySelector('.expand-button');
+                if (btn) {
+                    btn.classList.add('expanded');
+                }
+            }
+
+            // Open WebSocket connection to log stream
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws/log/' + encodeURIComponent(chunk);
+
+            try {
+                logWebSocket = new WebSocket(wsUrl);
+            } catch (e) {
+                console.error('Log WebSocket connection failed:', e);
+                appendLogLine('Connection failed: ' + e.message, 'error');
+                return;
+            }
+
+            logWebSocket.onopen = function() {
+                console.log('Log WebSocket connected for chunk:', chunk);
+            };
+
+            logWebSocket.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleLogMessage(message);
+                } catch (e) {
+                    console.error('Failed to parse log message:', e);
+                }
+            };
+
+            logWebSocket.onclose = function() {
+                console.log('Log WebSocket disconnected');
+            };
+
+            logWebSocket.onerror = function(error) {
+                console.error('Log WebSocket error:', error);
+            };
+        }
+
+        function collapseLogPanel() {
+            const panel = getLogPanel();
+            if (panel) {
+                panel.classList.remove('visible');
+            }
+
+            // Close WebSocket
+            if (logWebSocket) {
+                logWebSocket.close();
+                logWebSocket = null;
+            }
+
+            // Remove expanded state from card
+            if (expandedChunk) {
+                const card = document.querySelector('.process-card[data-chunk="' + expandedChunk + '"]');
+                if (card) {
+                    card.classList.remove('expanded');
+                    const btn = card.querySelector('.expand-button');
+                    if (btn) {
+                        btn.classList.remove('expanded');
+                    }
+                }
+            }
+
+            expandedChunk = null;
+        }
+
+        function handleLogMessage(message) {
+            switch (message.type) {
+                case 'log_line':
+                    const cssClass = message.is_header ? 'header' : '';
+                    appendLogLine(message.content, cssClass);
+                    break;
+
+                case 'info':
+                    appendLogLine(message.content, 'info');
+                    break;
+
+                case 'error':
+                    appendLogLine(message.content, 'error');
+                    break;
+
+                case 'completed':
+                    appendLogLine('--- Work unit completed ---', 'info');
+                    // Remove spinner when completed
+                    const spinner = document.querySelector('.log-spinner');
+                    if (spinner) {
+                        spinner.style.display = 'none';
+                    }
+                    break;
+            }
+        }
+
+        function appendLogLine(content, cssClass = '') {
+            const logContent = getLogContent();
+            if (!logContent) return;
+
+            const line = document.createElement('div');
+            line.className = 'log-line' + (cssClass ? ' ' + cssClass : '');
+            line.innerHTML = content;  // Content is already HTML-escaped by server
+            logContent.appendChild(line);
+
+            // Auto-scroll to bottom
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        // Set up click handlers for expandable tiles
+        document.querySelectorAll('.process-card.expandable').forEach(card => {
+            card.addEventListener('click', function(e) {
+                const chunk = this.dataset.chunk;
+
+                // Check if clicking the expand button or the card itself
+                if (expandedChunk === chunk) {
+                    // Already expanded - collapse
+                    collapseLogPanel();
+                } else {
+                    // Expand this tile
+                    expandLogPanel(chunk);
+                }
+            });
+        });
+
+        // Close button handler for log panel
+        const closeBtn = document.querySelector('.log-panel-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                collapseLogPanel();
+            });
+        }
+
+        // Prevent clicks inside log panel from bubbling to card
+        const logPanel = getLogPanel();
+        if (logPanel) {
+            logPanel.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
 
         // Initialize WebSocket connection
         connectWebSocket();

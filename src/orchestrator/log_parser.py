@@ -621,3 +621,73 @@ def format_log_entries(
         lines.extend(format_entry(entry, terminal_width))
 
     return lines
+
+
+# ============================================================================
+# HTML Formatting for Dashboard Display
+# ============================================================================
+
+
+def _escape_html(text: str) -> str:
+    """Escape HTML special characters.
+
+    Args:
+        text: Plain text to escape
+
+    Returns:
+        HTML-safe text
+    """
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
+
+
+def format_entry_for_html(entry: ParsedLogEntry, terminal_width: int = 100) -> list[str]:
+    """Format a log entry as HTML-safe strings for dashboard display.
+
+    Uses the same formatting logic as format_entry() but escapes HTML
+    special characters and preserves the visual symbols (unicode characters
+    don't need escaping).
+
+    Args:
+        entry: The parsed log entry
+        terminal_width: Width for text wrapping (default 100 for dashboard)
+
+    Returns:
+        List of HTML-escaped formatted lines
+    """
+    # Get the plain-text formatted lines
+    plain_lines = format_entry(entry, terminal_width)
+
+    # Escape HTML in each line
+    return [_escape_html(line) for line in plain_lines]
+
+
+def format_phase_header_for_html(phase: str, start_time: datetime) -> str:
+    """Format a phase transition header for HTML display.
+
+    Args:
+        phase: Phase name (e.g., 'IMPLEMENT')
+        start_time: When the phase started
+
+    Returns:
+        HTML-escaped header string
+    """
+    return _escape_html(format_phase_header(phase, start_time))
+
+
+def format_result_banner_for_html(entry: ParsedLogEntry) -> str:
+    """Format ResultMessage as a summary banner for HTML display.
+
+    Args:
+        entry: Parsed log entry with ResultInfo content
+
+    Returns:
+        HTML-escaped banner string
+    """
+    banner = format_result_banner(entry)
+    return _escape_html(banner) if banner else ""

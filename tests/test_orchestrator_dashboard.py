@@ -266,3 +266,150 @@ class TestDashboardWithData:
 
         assert response.status_code == 200
         assert "reason_chunk" in response.text
+
+
+class TestLogStreamWebSocket:
+    """Tests for WebSocket /ws/log/{chunk} endpoint."""
+
+    def test_log_stream_connects(self, client):
+        """Log stream WebSocket endpoint accepts connections."""
+        # Create a work unit first
+        client.post("/work-units", json={
+            "chunk": "stream_test",
+            "status": "RUNNING",
+            "phase": "IMPLEMENT",
+        })
+
+        with client.websocket_connect("/ws/log/stream_test") as websocket:
+            # Connection should succeed - should receive an info message
+            # about waiting for logs or existing log data
+            data = websocket.receive_json()
+            # Should be either 'info' (no logs yet) or 'log_line' (has logs)
+            assert data["type"] in ("info", "log_line")
+
+    def test_log_stream_chunk_not_found(self, client):
+        """Log stream returns error for non-existent chunk."""
+        with client.websocket_connect("/ws/log/nonexistent_chunk") as websocket:
+            data = websocket.receive_json()
+            assert data["type"] == "error"
+            assert "not found" in data["content"]
+
+    def test_log_stream_sends_existing_logs(self, client, tmp_path):
+        """Log stream sends existing log content."""
+        # Create a work unit
+        client.post("/work-units", json={
+            "chunk": "logs_test",
+            "status": "RUNNING",
+            "phase": "IMPLEMENT",
+        })
+
+        # Create a log file with test content
+        log_dir = tmp_path / ".ve" / "chunks" / "logs_test" / "log"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "implement.txt"
+        log_file.write_text(
+            "[2026-01-31T19:30:56.669473+00:00] AssistantMessage("
+            "content=[ToolUseBlock(id='toolu_test', name='Read', "
+            "input={'file_path': '/test.py'})])\n"
+        )
+
+        with client.websocket_connect("/ws/log/logs_test") as websocket:
+            # Should receive phase header
+            data = websocket.receive_json()
+            assert data["type"] == "log_line"
+            assert data.get("is_header") is True
+            assert "IMPLEMENT" in data["content"]
+
+            # Should receive the log entry
+            data = websocket.receive_json()
+            assert data["type"] == "log_line"
+            assert "Read" in data["content"]
+
+    def test_log_stream_no_logs_yet(self, client):
+        """Log stream sends info message when no logs exist."""
+        # Create a work unit without any logs
+        client.post("/work-units", json={
+            "chunk": "no_logs_chunk",
+            "status": "RUNNING",
+            "phase": "IMPLEMENT",
+        })
+
+        with client.websocket_connect("/ws/log/no_logs_chunk") as websocket:
+            data = websocket.receive_json()
+            assert data["type"] == "info"
+            assert "Waiting" in data["content"]
+
+
+class TestDashboardLogTiling:
+    """Tests for dashboard tile expansion UI."""
+
+    def test_running_tiles_have_expand_button(self, client):
+        """Running work unit tiles have expand button."""
+        # Create a running work unit
+        client.post("/work-units", json={
+            "chunk": "expandable_chunk",
+            "status": "RUNNING",
+            "phase": "IMPLEMENT",
+        })
+
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert "expandable_chunk" in response.text
+        # Check for expandable class and expand button
+        assert "expandable" in response.text
+        assert "expand-button" in response.text
+
+    def test_non_running_tiles_no_expand_button(self, client):
+        """Non-running work unit tiles do not have expand button."""
+        # Create work units in non-running states
+        client.post("/work-units", json={
+            "chunk": "ready_tile",
+            "status": "READY",
+            "phase": "PLAN",
+        })
+        client.post("/work-units", json={
+            "chunk": "done_tile",
+            "status": "DONE",
+            "phase": "COMPLETE",
+        })
+
+        response = client.get("/")
+
+        assert response.status_code == 200
+        # Ready and done tiles should not be expandable
+        # Count how many expand buttons there are
+        expand_button_count = response.text.count('class="expand-button"')
+        # Should be zero since no RUNNING work units
+        assert expand_button_count == 0
+
+    def test_log_panel_present_in_html(self, client):
+        """Log panel container is present in dashboard HTML."""
+        # Create a running work unit to trigger log panel rendering
+        client.post("/work-units", json={
+            "chunk": "panel_test",
+            "status": "RUNNING",
+            "phase": "IMPLEMENT",
+        })
+
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert 'id="log-panel"' in response.text
+        assert 'id="log-content"' in response.text
+        assert "log-panel-close" in response.text
+
+    def test_log_panel_not_present_without_running(self, client):
+        """Log panel container is not present when no running units."""
+        # Create only non-running work units
+        client.post("/work-units", json={
+            "chunk": "ready_only",
+            "status": "READY",
+            "phase": "PLAN",
+        })
+
+        response = client.get("/")
+
+        assert response.status_code == 200
+        # Log panel should not be rendered without running units
+        assert 'id="log-panel"' not in response.text
