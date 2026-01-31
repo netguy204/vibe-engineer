@@ -6,7 +6,7 @@ proposed_chunks:
       Create the docs/reviewers/ directory structure with baseline reviewer.
       Copy from prototypes/reviewers/baseline/. Establish METADATA.yaml schema
       with pydantic model. Baseline starts at observation trust level.
-    chunk_directory: reviewer_infrastructure
+    chunk_directory: reviewer_init_templates
     depends_on: []
   - prompt: |
       Create /chunk-review skill that implements the review process. Reads
