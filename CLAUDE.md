@@ -105,6 +105,7 @@ Use these slash commands for artifact management:
 - `/chunk-create` - Create a new chunk and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
+- `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references
 - `/cluster-rename` - Batch-rename chunks matching a prefix
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives

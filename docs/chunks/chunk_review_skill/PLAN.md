@@ -1,177 +1,237 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create the `/chunk-review` skill as a Jinja2 command template following the established pattern in `src/templates/commands/`. The skill will be a comprehensive prompt that guides an agent through the four-phase review process defined in the prototype at `docs/investigations/orchestrator_quality_assurance/prototypes/chunk-review.md`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The skill template will:
+1. Accept `--reviewer` flag (default: `baseline`) to select which reviewer configuration to use
+2. Guide the agent through context gathering, alignment review, decision making, and decision logging
+3. Produce structured YAML output suitable for orchestrator consumption in the downstream `orch_review_phase` chunk
+4. Append structured entries to the reviewer's `DECISION_LOG.md`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This chunk focuses on MVP scope: only final review mode (not incremental `/request-review`). The skill is a pure prompt template—no Python code changes are needed beyond ensuring `ve init` renders the new template.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunk_review_skill/GOAL.md)
-with references to the files that you expect to touch.
--->
+Following the template_system subsystem (STABLE), the template will use `.jinja2` suffix and include partials via `{% include %}` for the auto-generated header and common tips.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system to create a new command template. The template will follow the established pattern:
+  - File at `src/templates/commands/chunk-review.md.jinja2`
+  - Frontmatter with `description` field
+  - `{% set source_template = "..." %}` for self-identification
+  - `{% include "partials/..." %}` for header and tips
+  - Rendered by `ve init` to `.claude/commands/chunk-review.md`
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the skill template file
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/chunk-review.md.jinja2` with:
 
-Example:
+1. **Frontmatter** with description: "Review chunk implementation for alignment with documented intent"
 
-### Step 1: Define the SegmentHeader struct
+2. **Standard includes**:
+   - `{% set source_template = "chunk-review.md.jinja2" %}`
+   - `{% include "partials/auto-generated-header.md.jinja2" %}`
+   - `{% include "partials/common-tips.md.jinja2" %}`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **Arguments section** documenting:
+   - `--reviewer <name>` flag (default: `baseline`)
+   - Note that this is final review mode only (MVP scope)
 
-Location: src/segment/format.rs
+4. **Instructions section** with four phases adapted from prototype
 
-### Step 2: Implement header serialization
+Location: `src/templates/commands/chunk-review.md.jinja2`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 2: Implement Phase 1 - Context Gathering
 
-### Step 3: ...
+Write the instructions for Phase 1 that guide the agent to:
 
----
+1. Load reviewer configuration:
+   - Read `docs/reviewers/{reviewer}/METADATA.yaml` for trust level, domain scope, loop detection config
+   - Read `docs/reviewers/{reviewer}/PROMPT.md` for reviewer-specific instructions
+   - Read `docs/reviewers/{reviewer}/DECISION_LOG.md` for example decisions (few-shot context)
 
-**BACKREFERENCE COMMENTS**
+2. Identify the current chunk via `ve chunk list --current`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+3. Read chunk's GOAL.md to understand:
+   - Success criteria (what needs to be satisfied)
+   - Frontmatter for linked artifacts
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+4. Follow backreferences to gather broader context:
+   - If `narrative` set: Read `docs/narratives/{narrative}/OVERVIEW.md`
+   - If `investigation` set: Read `docs/investigations/{investigation}/OVERVIEW.md`
+   - If `subsystems` set: Read each `docs/subsystems/{id}/OVERVIEW.md` for invariants
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+5. Read chunk's PLAN.md to understand intended approach
 
-Format (place immediately before the symbol):
+Location: Phase 1 section of the template
+
+### Step 3: Implement Phase 2 - Alignment Review
+
+Write the instructions for Phase 2 that guide the agent to:
+
+1. For each success criterion in GOAL.md:
+   - Find the code that addresses it (using code_paths and code_references as hints)
+   - Assess whether it's implemented
+   - Check if implementation matches the spirit of the intent (not just the letter)
+
+2. For linked subsystems:
+   - Verify implementation follows documented patterns and invariants
+   - Flag deviations even if the code "works"
+
+3. Check for unhandled difficulties:
+   - Edge cases the goal didn't anticipate
+   - Implicit assumptions that should be explicit
+
+4. Consult example decisions from the reviewer's DECISION_LOG.md:
+   - Look for similar situations
+   - Use good examples to guide judgment
+   - Avoid patterns from bad examples
+
+Location: Phase 2 section of the template
+
+### Step 4: Implement Phase 3 - Decision Making
+
+Write the instructions for Phase 3 that guide the agent to choose ONE decision:
+
+**APPROVE** - Use when:
+- All success criteria satisfied
+- Implementation aligns with intent
+- Subsystem invariants respected
+- No architectural concerns
+
+Output format:
+```yaml
+decision: APPROVE
+mode: final
+iteration: {n}
+summary: "..."
+criteria_assessment:
+  - criterion: "..."
+    status: "satisfied"
+    evidence: "..."
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+**FEEDBACK** - Use when:
+- Misalignments are fixable
+- Agent is confident about what needs to change
+
+Output format:
+```yaml
+decision: FEEDBACK
+mode: final
+iteration: {n}
+summary: "..."
+issues:
+  - id: "issue-{uuid}"
+    location: "<file:line>"
+    concern: "..."
+    suggestion: "..."
+    severity: "architectural|functional|style"
+    confidence: "high|medium"
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**ESCALATE** - Use when:
+- Documented intent is ambiguous
+- Fix requires changes outside chunk scope
+- Architectural concerns needing operator judgment
+- Confidence is low and severity is high
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Output format:
+```yaml
+decision: ESCALATE
+mode: final
+iteration: {n}
+reason: "AMBIGUITY|SCOPE|ARCHITECTURE|LOW_CONFIDENCE"
+summary: "..."
+context:
+  questions: [...]
+```
+
+Location: Phase 3 section of the template
+
+### Step 5: Implement Phase 4 - Decision Logging
+
+Write the instructions for Phase 4 that guide the agent to:
+
+1. Append a structured entry to `docs/reviewers/{reviewer}/DECISION_LOG.md`
+
+2. Entry format:
+   ```markdown
+   ## {chunk_directory} - {timestamp}
+
+   **Mode:** final
+   **Iteration:** {n}
+   **Decision:** {APPROVE|FEEDBACK|ESCALATE}
+
+   ### Context Summary
+   - Goal: {one-line summary}
+   - Linked artifacts: {list}
+
+   ### Assessment
+   {key observations}
+
+   ### Decision Rationale
+   {why this decision}
+
+   ### Example Quality
+   - [ ] Good example (incorporate into future reviews)
+   - [ ] Bad example (avoid this pattern)
+   - [ ] Feedback: _______________
+   ```
+
+3. Ensure the YAML decision block is clearly separated (for orchestrator parsing)
+
+Location: Phase 4 section of the template
+
+### Step 6: Add skill to CLAUDE.md template
+
+Update `src/templates/claude/CLAUDE.md.jinja2` to include `/chunk-review` in the Available Commands section, so operators can discover it.
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 7: Render and verify
+
+1. Run `uv run ve init` to render the new template
+2. Verify `.claude/commands/chunk-review.md` exists with expected content
+3. Check that the skill appears in CLAUDE.md Available Commands
+
+### Step 8: Test the skill manually
+
+Perform a manual test by:
+1. Invoking `/chunk-review --reviewer baseline` on a completed chunk (e.g., `reviewer_infrastructure`)
+2. Verify that:
+   - Context gathering reads the expected files
+   - The decision is one of APPROVE/FEEDBACK/ESCALATE
+   - A properly formatted entry is appended to DECISION_LOG.md
+   - The YAML output block is parseable
+
+This is a manual integration test since the skill is a prompt template, not Python code.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **reviewer_infrastructure chunk**: Must be ACTIVE. Provides:
+  - `docs/reviewers/baseline/` directory structure
+  - `src/models.py#ReviewerMetadata` pydantic model for validating METADATA.yaml
+  - Baseline reviewer configuration (trust_level: observation, loop_detection defaults)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Decision log append atomicity**: Multiple concurrent reviews could race when appending to DECISION_LOG.md. For MVP this is acceptable since:
+   - The orchestrator will invoke reviews sequentially per reviewer
+   - Operators running manual reviews will see conflicts at commit time
+   - If this becomes a problem, a future chunk can add locking
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **YAML output parsing reliability**: The downstream `orch_review_phase` chunk will need to parse the YAML decision block. The template should make the output format unambiguous with clear delimiters (e.g., `---` before and after).
+
+3. **Iteration tracking without state**: The skill doesn't have access to iteration count (that's orchestrator state). For MVP, the skill outputs `iteration: 1` and the orchestrator will inject the correct count when invoking.
+
+4. **Loop detection without history**: Same-issue detection requires knowing what was flagged before. For MVP, this is deferred to the `orch_review_phase` chunk which will track iteration history and invoke loop detection.
+
+5. **Reviewer PROMPT.md interpretation**: The baseline PROMPT.md provides general guidance. The skill should instruct agents to read and follow it, but interpretation quality depends on the agent.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populate during implementation -->
