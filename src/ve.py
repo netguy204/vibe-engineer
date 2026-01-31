@@ -424,8 +424,9 @@ def _parse_status_filters(
 
 
 @chunk.command("list")
-@click.option("--latest", is_flag=True, help="Output only the current IMPLEMENTING chunk")
+@click.option("--current", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--last-active", is_flag=True, help="Output only the most recently completed ACTIVE chunk")
+@click.option("--recent", is_flag=True, help="Output the 10 most recently created ACTIVE chunks")
 @click.option(
     "--status",
     "status_filter",
@@ -442,7 +443,7 @@ def _parse_status_filters(
     help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
 )
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_chunks(latest, last_active, status_filter, future_flag, active_flag, implementing_flag, project_dir):
+def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
@@ -456,7 +457,7 @@ def list_chunks(latest, last_active, status_filter, future_flag, active_flag, im
     for the corresponding --status values.
 
     Note: --status filters and convenience flags are mutually exclusive
-    with --latest and --last-active.
+    with --current, --last-active, and --recent.
     """
     # Parse status filters
     status_set, error = _parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
@@ -466,13 +467,19 @@ def list_chunks(latest, last_active, status_filter, future_flag, active_flag, im
 
     # Check mutual exclusivity of output modes
     has_status_filter = status_set is not None
-    if latest and last_active:
-        click.echo("Error: --latest and --last-active are mutually exclusive. Cannot use both.", err=True)
+    # Count how many exclusive output modes are set
+    exclusive_modes = [current, last_active, recent]
+    exclusive_count = sum(1 for mode in exclusive_modes if mode)
+    if exclusive_count > 1:
+        click.echo(
+            "Error: --current, --last-active, and --recent are mutually exclusive. Cannot use more than one.",
+            err=True,
+        )
         raise SystemExit(1)
-    if has_status_filter and latest:
+    if has_status_filter and current:
         click.echo(
             "Error: Status filters (--status, --future, --active, --implementing) are "
-            "mutually exclusive with --latest.",
+            "mutually exclusive with --current.",
             err=True,
         )
         raise SystemExit(1)
@@ -483,16 +490,23 @@ def list_chunks(latest, last_active, status_filter, future_flag, active_flag, im
             err=True,
         )
         raise SystemExit(1)
+    if has_status_filter and recent:
+        click.echo(
+            "Error: Status filters (--status, --future, --active, --implementing) are "
+            "mutually exclusive with --recent.",
+            err=True,
+        )
+        raise SystemExit(1)
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_chunks(latest, last_active, status_set, project_dir)
+        _list_task_chunks(current, last_active, recent, status_set, project_dir)
         return
 
     # Single-repo mode - list from docs/chunks/
     chunks = Chunks(project_dir)
 
-    if latest:
+    if current:
         current_chunk = chunks.get_current_chunk()
         if current_chunk is None:
             click.echo("No implementing chunk found", err=True)
@@ -504,6 +518,13 @@ def list_chunks(latest, last_active, status_filter, future_flag, active_flag, im
             click.echo("No active tip chunk found", err=True)
             raise SystemExit(1)
         click.echo(f"docs/chunks/{active_chunk}")
+    elif recent:
+        recent_chunks = chunks.get_recent_active_chunks(limit=10)
+        if not recent_chunks:
+            click.echo("No active chunks found", err=True)
+            raise SystemExit(1)
+        for chunk_name in recent_chunks:
+            click.echo(f"docs/chunks/{chunk_name}")
     else:
         chunk_list = chunks.list_chunks()
         if not chunk_list:
@@ -676,21 +697,23 @@ def _format_grouped_artifact_list(
 
 
 def _list_task_chunks(
-    latest: bool,
+    current: bool,
     last_active: bool,
+    recent: bool,
     status_set: set[ChunkStatus] | None,
     task_dir: pathlib.Path,
 ):
     """Handle chunk listing in task directory (cross-repo mode).
 
     Args:
-        latest: If True, output only the current IMPLEMENTING chunk
+        current: If True, output only the current IMPLEMENTING chunk
         last_active: If True, output only the most recently completed ACTIVE chunk
+        recent: If True, output the 10 most recently created ACTIVE chunks
         status_set: If provided, filter to only chunks with matching status
         task_dir: Path to the task directory
     """
     try:
-        if latest:
+        if current:
             current_chunk, external_repo = get_current_task_chunk(task_dir)
             if current_chunk is None:
                 click.echo("No implementing chunk found", err=True)
@@ -708,6 +731,19 @@ def _list_task_chunks(
                 click.echo("No active tip chunk found", err=True)
                 raise SystemExit(1)
             click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
+        elif recent:
+            # For task context, get recent active chunks from the external artifacts repo
+            from task_utils import resolve_repo_directory, load_task_config
+
+            config = load_task_config(task_dir)
+            external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+            external_chunks = Chunks(external_path)
+            recent_chunks = external_chunks.get_recent_active_chunks(limit=10)
+            if not recent_chunks:
+                click.echo("No active chunks found", err=True)
+                raise SystemExit(1)
+            for chunk_name in recent_chunks:
+                click.echo(f"{config.external_artifact_repo}::docs/chunks/{chunk_name}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
             _format_grouped_artifact_list(grouped_data, "chunks", status_set)

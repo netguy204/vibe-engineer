@@ -120,7 +120,7 @@ completely in order:
    If the work is a bug fix, note this in the GOAL.md success criteria so that
    when implementation is complete, the fix can be verified.
 
-8. **Check for existing implementing chunk.** Run `ve chunk list --latest` to
+8. **Check for existing implementing chunk.** Run `ve chunk list --current` to
    check if there's already an IMPLEMENTING chunk.
 
    If there IS an existing IMPLEMENTING chunk, inform the user:

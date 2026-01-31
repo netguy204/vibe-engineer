@@ -129,29 +129,29 @@ class TestChunkListCLI:
         assert result.exit_code != 0
         assert "No chunks found" in result.output
 
-    def test_latest_returns_implementing_chunk(self, cli_runner, temp_project):
-        """--latest returns current IMPLEMENTING chunk path."""
+    def test_current_returns_implementing_chunk(self, cli_runner, temp_project):
+        """--current returns current IMPLEMENTING chunk path."""
         # Create a chunk
         cli_runner.invoke(
             cli,
             ["chunk", "create", "my-chunk", "--project-dir", str(temp_project)],
         )
 
-        # Get latest
+        # Get current
         result = cli_runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)],
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)],
         )
 
         assert result.exit_code == 0
         assert "my-chunk" in result.output
         assert "docs/chunks/" in result.output
 
-    def test_latest_no_implementing_chunk(self, cli_runner, temp_project):
-        """--latest reports no implementing chunk when none exists."""
+    def test_current_no_implementing_chunk(self, cli_runner, temp_project):
+        """--current reports no implementing chunk when none exists."""
         result = cli_runner.invoke(
             cli,
-            ["chunk", "list", "--latest", "--project-dir", str(temp_project)],
+            ["chunk", "list", "--current", "--project-dir", str(temp_project)],
         )
 
         assert result.exit_code != 0
