@@ -191,3 +191,202 @@ class AgentResult(BaseModel):
     session_id: Optional[str] = None  # Session ID for resuming
     question: Optional[dict] = None  # Question data if suspended
     error: Optional[str] = None  # Error message if failed
+
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass
+class TaskContextInfo:
+    """Information about task context for orchestrator operation.
+
+    In task context mode, the orchestrator runs from a task directory
+    (containing .ve-task.yaml) with multiple project repositories.
+    Chunks are read from an external artifacts repo and work affects
+    multiple project repos based on the chunk's dependents field.
+
+    In single-repo mode (no .ve-task.yaml), the orchestrator behaves
+    as before, with chunks located in the project's docs/chunks/.
+    """
+
+    is_task_context: bool
+    # The root directory for .ve/ placement (task_dir if task context, project_dir otherwise)
+    root_dir: Path
+    # External artifacts repo reference (org/repo format) - only set in task context
+    external_repo: Optional[str] = None
+    # Resolved filesystem path to external artifacts repo - only set in task context
+    external_repo_path: Optional[Path] = None
+    # List of project references (org/repo format) - only set in task context
+    projects: list[str] = field(default_factory=list)
+    # Resolved filesystem paths to project repos - only set in task context
+    project_paths: list[Path] = field(default_factory=list)
+
+
+def detect_task_context(directory: Path) -> TaskContextInfo:
+    """Detect whether the orchestrator is running in task context.
+
+    Checks for .ve-task.yaml in the given directory to determine if this is
+    a task directory (multi-repo mode) or a single project repo.
+
+    In task context:
+    - .ve/ is placed at the task directory level
+    - Chunks are read from the external artifacts repo
+    - Work unit scheduling reads dependents to determine affected repos
+
+    In single-repo mode:
+    - .ve/ is placed at the project directory level
+    - Chunks are read from the project's docs/chunks/
+
+    Args:
+        directory: Directory to check (typically cwd or project_dir)
+
+    Returns:
+        TaskContextInfo with detected context information
+    """
+    from task_utils import is_task_directory, load_task_config, resolve_repo_directory
+
+    directory = directory.resolve()
+
+    if not is_task_directory(directory):
+        # Single-repo mode
+        return TaskContextInfo(
+            is_task_context=False,
+            root_dir=directory,
+        )
+
+    # Task context mode - load config and resolve paths
+    try:
+        config = load_task_config(directory)
+    except FileNotFoundError:
+        # Shouldn't happen if is_task_directory returned True, but handle gracefully
+        return TaskContextInfo(
+            is_task_context=False,
+            root_dir=directory,
+        )
+
+    # Resolve external repo path
+    external_repo_path = None
+    try:
+        external_repo_path = resolve_repo_directory(directory, config.external_artifact_repo)
+    except FileNotFoundError:
+        pass  # External repo not accessible - will be handled by caller
+
+    # Resolve project paths
+    project_paths = []
+    for project_ref in config.projects:
+        try:
+            project_path = resolve_repo_directory(directory, project_ref)
+            project_paths.append(project_path)
+        except FileNotFoundError:
+            pass  # Project not accessible
+
+    return TaskContextInfo(
+        is_task_context=True,
+        root_dir=directory,
+        external_repo=config.external_artifact_repo,
+        external_repo_path=external_repo_path,
+        projects=config.projects,
+        project_paths=project_paths,
+    )
+
+
+def get_chunk_location(task_info: TaskContextInfo, chunk: str) -> Path:
+    """Get the filesystem path to a chunk's directory.
+
+    In task context mode, chunks are located in the external artifacts repo.
+    In single-repo mode, chunks are in the project's docs/chunks/.
+
+    Args:
+        task_info: Task context information
+        chunk: Chunk directory name
+
+    Returns:
+        Path to the chunk directory
+    """
+    if task_info.is_task_context and task_info.external_repo_path:
+        return task_info.external_repo_path / "docs" / "chunks" / chunk
+    else:
+        return task_info.root_dir / "docs" / "chunks" / chunk
+
+
+def get_chunk_dependents(chunk_path: Path) -> list[dict]:
+    """Get the dependents list from a chunk's GOAL.md frontmatter.
+
+    The dependents field lists artifacts in other repos that are affected
+    by this chunk, with format: {artifact_type, artifact_id, repo}.
+
+    Args:
+        chunk_path: Path to the chunk directory
+
+    Returns:
+        List of dependent dicts, or empty list if no dependents
+    """
+    import yaml
+
+    goal_path = chunk_path / "GOAL.md"
+    if not goal_path.exists():
+        return []
+
+    content = goal_path.read_text()
+
+    # Parse frontmatter
+    import re
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return []
+
+    frontmatter = yaml.safe_load(match.group(1)) or {}
+    dependents = frontmatter.get("dependents", [])
+
+    if dependents is None:
+        return []
+    if isinstance(dependents, list):
+        return dependents
+
+    return []
+
+
+def resolve_affected_repos(task_info: TaskContextInfo, chunk: str) -> list[Path]:
+    """Resolve the project repo paths affected by a chunk.
+
+    Reads the chunk's dependents field and maps repo references to
+    filesystem paths. Only returns repos that are accessible.
+
+    Args:
+        task_info: Task context information
+        chunk: Chunk directory name
+
+    Returns:
+        List of resolved project repo paths
+    """
+    from task_utils import resolve_repo_directory
+
+    if not task_info.is_task_context:
+        # Single-repo mode - only the current repo is affected
+        return [task_info.root_dir]
+
+    chunk_path = get_chunk_location(task_info, chunk)
+    dependents = get_chunk_dependents(chunk_path)
+
+    if not dependents:
+        # No dependents specified - use all project repos
+        return task_info.project_paths
+
+    # Collect unique repos from dependents
+    affected_repos: list[Path] = []
+    seen_repos: set[str] = set()
+
+    for dep in dependents:
+        repo_ref = dep.get("repo")
+        if not repo_ref or repo_ref in seen_repos:
+            continue
+        seen_repos.add(repo_ref)
+
+        try:
+            repo_path = resolve_repo_directory(task_info.root_dir, repo_ref)
+            affected_repos.append(repo_path)
+        except FileNotFoundError:
+            pass  # Repo not accessible
+
+    return affected_repos if affected_repos else task_info.project_paths

@@ -1,7 +1,4 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_scheduling - Worktree manager tests
-# Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit tests
-# Chunk: docs/chunks/orch_task_worktrees - Task context multi-repo worktree tests
 """Tests for the orchestrator worktree manager."""
 
 import subprocess
@@ -462,7 +459,6 @@ class TestCommitChanges:
         assert log_result.stdout.strip() == "feat: chunk my_feature_chunk"
 
 
-# Chunk: docs/chunks/orch_task_worktrees - Task context multi-repo worktree tests
 class TestMultiRepoWorktreeCreation:
     """Tests for multi-repo worktree creation in task context."""
 

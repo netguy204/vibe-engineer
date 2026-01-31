@@ -22,9 +22,12 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from orchestrator.models import (
     OrchestratorConfig,
     OrchestratorState,
+    TaskContextInfo,
     WorkUnit,
     WorkUnitPhase,
     WorkUnitStatus,
+    detect_task_context,
+    get_chunk_location,
 )
 from orchestrator.state import StateStore, get_default_db_path
 from orchestrator.websocket import (
@@ -54,6 +57,7 @@ def _get_jinja_env() -> Environment:
 _store: Optional[StateStore] = None
 _project_dir: Optional[Path] = None
 _started_at: Optional[datetime] = None
+_task_info: Optional[TaskContextInfo] = None
 
 
 def _get_store() -> StateStore:
@@ -61,6 +65,26 @@ def _get_store() -> StateStore:
     if _store is None:
         raise RuntimeError("State store not initialized")
     return _store
+
+
+def _get_chunk_directory(chunk: str) -> Path:
+    """Get the chunk directory path, respecting task context.
+
+    In task context mode, chunks are located in the external artifacts repo.
+    In single-repo mode, chunks are in the project's docs/chunks/.
+
+    Args:
+        chunk: Chunk directory name
+
+    Returns:
+        Path to the chunk directory
+    """
+    if _task_info and _task_info.is_task_context:
+        return get_chunk_location(_task_info, chunk)
+    elif _project_dir:
+        return _project_dir / "docs" / "chunks" / chunk
+    else:
+        raise RuntimeError("Project directory not initialized")
 
 
 # Error response helpers
@@ -388,6 +412,9 @@ async def inject_endpoint(request: Request) -> JSONResponse:
 
     Validates chunk exists, is in a valid state for injection, and determines
     initial phase from chunk state.
+
+    In task context mode, chunks are validated against the external artifacts repo.
+    In single-repo mode, chunks are validated against the project's docs/chunks/.
     """
     store = _get_store()
 
@@ -400,17 +427,19 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     if not chunk:
         return _error_response("Missing required field: chunk")
 
+    # Get chunk directory using task context (uses external repo in task context mode)
+    chunk_dir = _get_chunk_directory(chunk)
+
     # Validate chunk is injectable (exists and status-content consistent)
-    chunks_manager = Chunks(_project_dir)
+    # Use the chunk directory's parent parent (docs/) parent (repo root) for Chunks manager
+    chunk_repo_root = chunk_dir.parent.parent.parent
+    chunks_manager = Chunks(chunk_repo_root)
     validation_result = chunks_manager.validate_chunk_injectable(chunk)
 
     if not validation_result.success:
         # Return all validation errors
         error_message = "; ".join(validation_result.errors)
         return _error_response(error_message, status_code=400)
-
-    # Get the chunk directory for phase detection
-    chunk_dir = _project_dir / "docs" / "chunks" / chunk
 
     # Check if work unit already exists
     existing = store.get_work_unit(chunk)
@@ -641,11 +670,13 @@ async def attention_endpoint(request: Request) -> JSONResponse:
         # Compute time waiting in seconds
         time_waiting = (now - unit.updated_at).total_seconds()
 
-        # Get goal summary from chunk directory
+        # Get goal summary from chunk directory (uses task context if available)
         goal_summary = None
-        if _project_dir:
-            chunk_dir = _project_dir / "docs" / "chunks" / unit.chunk
+        try:
+            chunk_dir = _get_chunk_directory(unit.chunk)
             goal_summary = _get_goal_summary(chunk_dir)
+        except RuntimeError:
+            pass  # Project not initialized
 
         item = {
             **unit.model_dump_json_serializable(),
@@ -678,9 +709,11 @@ async def dashboard_endpoint(request: Request) -> HTMLResponse:
     for unit, blocks_count in attention_items:
         time_waiting = (now - unit.updated_at).total_seconds()
         goal_summary = None
-        if _project_dir:
-            chunk_dir = _project_dir / "docs" / "chunks" / unit.chunk
+        try:
+            chunk_dir = _get_chunk_directory(unit.chunk)
             goal_summary = _get_goal_summary(chunk_dir)
+        except RuntimeError:
+            pass  # Project not initialized
 
         attention_list.append({
             "chunk": unit.chunk,
@@ -1112,14 +1145,18 @@ def create_app(project_dir: Path) -> Starlette:
 
     Args:
         project_dir: The project directory for database location
+                     (or task directory in task context mode)
 
     Returns:
         Configured Starlette application
     """
-    global _store, _project_dir, _started_at
+    global _store, _project_dir, _started_at, _task_info
 
     _project_dir = project_dir
     _started_at = datetime.now(timezone.utc)
+
+    # Detect task context for chunk location resolution
+    _task_info = detect_task_context(project_dir)
 
     # Initialize state store
     db_path = get_default_db_path(project_dir)
