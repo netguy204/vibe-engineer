@@ -8,170 +8,287 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+We will refactor `src/ve.py` (4,523 lines) into a modular `src/cli/` package by:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Creating `src/cli/__init__.py`** as the main assembly point that defines the root `cli` Click group and imports command groups from submodules
+2. **Extracting each command group into its own file** - one file per major command group
+3. **Creating `src/cli/utils.py`** to hold shared utilities (validation helpers, common formatting functions)
+4. **Reducing `src/ve.py` to a thin entry point** that re-exports `cli` from the package
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The entry point in `pyproject.toml` remains `ve = "ve:cli"`, but `ve.py` will simply:
+```python
+from cli import cli  # noqa: F401
+```
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/cli_modularize/GOAL.md)
-with references to the files that you expect to touch.
--->
+This preserves all existing imports (`from ve import cli`) while enabling modular development.
+
+**Key patterns:**
+- Each command group file exports its group function (e.g., `chunk`, `narrative`)
+- `src/cli/__init__.py` imports these groups and adds them to the root `cli` using `cli.add_command()`
+- Shared code (validation, warnings, etc.) lives in `src/cli/utils.py`
+- Nested subgroups (e.g., `orch work-unit`, `reviewer decision/decisions`) stay within their parent module
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+This chunk touches multiple existing subsystems via backreference comments in `ve.py`:
+- **docs/subsystems/workflow_artifacts** - Many CLI commands
+- **docs/subsystems/template_system** - Template rendering in reviewer commands
+- **docs/subsystems/cross_repo_operations** - Task context handling
+- **docs/subsystems/cluster_analysis** - Cluster commands
+- **docs/subsystems/friction_tracking** - Friction commands
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+**Approach**: This is a pure structural refactoring. The subsystem backreference comments at module level will be moved to the appropriate submodule files. No subsystem patterns are being changed; we're just reorganizing the code structure.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create `src/cli/utils.py` with shared utilities
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Extract shared utilities from `ve.py` to `src/cli/utils.py`:
+- `validate_short_name()` - validates identifier short_name
+- `validate_ticket_id()` - validates ticket identifier
+- `validate_combined_chunk_name()` - validates chunk directory name length
+- `warn_task_project_context()` - emits warning when creating local artifacts in task context
 
-Example:
+These are used across multiple command groups.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/cli/utils.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Create `src/cli/__init__.py` skeleton
 
-Location: src/segment/format.rs
+Create the package init file with:
+- Import `click`
+- Define the root `cli` Click group
+- Import top-level commands (`init`, `validate`) directly
+- Space for importing and adding command groups
 
-### Step 2: Implement header serialization
+Location: `src/cli/__init__.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Create `src/cli/init_cmd.py` for top-level commands
 
-### Step 3: ...
+Extract the `init` and `validate` commands to their own module. These are direct commands on the root `cli` group.
 
----
+Location: `src/cli/init_cmd.py`
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Create `src/cli/chunk.py` - chunk command group
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Extract the `chunk` group and all its subcommands (lines ~221-1418):
+- `chunk create`
+- `chunk list`
+- `chunk complete`
+- `chunk list-proposed`
+- `chunk activate`
+- `chunk status`
+- `chunk overlap`
+- `chunk suggest-prefix`
+- `chunk backrefs`
+- `chunk cluster`
+- `chunk validate`
+- `chunk cluster-rename`
+- `chunk cluster-list`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Also extract helper functions used only by chunk commands:
+- `_start_task_chunk()`
+- `_start_task_chunks()`
+- `_parse_status_filters()`
+- `_format_grouped_artifact_list()`
+- `_list_task_chunks()`
+- `_format_proposed_chunks_by_source()`
+- `_format_grouped_proposed_chunks()`
+- `_list_task_proposed_chunks()`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Location: `src/cli/chunk.py`
 
-Format (place immediately before the symbol):
+### Step 5: Create `src/cli/narrative.py` - narrative command group
+
+Extract the `narrative` group and subcommands (lines ~1420-1755):
+- `narrative create`
+- `narrative list`
+- `narrative status`
+- `narrative compact`
+- `narrative update-refs`
+
+Also extract helper function:
+- `_start_task_narrative()`
+- `_list_task_narratives_cmd()`
+
+Location: `src/cli/narrative.py`
+
+### Step 6: Create `src/cli/task.py` - task command group
+
+Extract the `task` group and subcommand (lines ~1757-1793):
+- `task init`
+
+Location: `src/cli/task.py`
+
+### Step 7: Create `src/cli/subsystem.py` - subsystem command group
+
+Extract the `subsystem` group and subcommands (lines ~1795-2103):
+- `subsystem list`
+- `subsystem discover`
+- `subsystem validate`
+- `subsystem status`
+- `subsystem overlap`
+
+Also extract helper function:
+- `_list_task_subsystems()`
+- `_create_task_subsystem()`
+
+Location: `src/cli/subsystem.py`
+
+### Step 8: Create `src/cli/investigation.py` - investigation command group
+
+Extract the `investigation` group and subcommands (lines ~2105-2285):
+- `investigation create`
+- `investigation list`
+- `investigation status`
+
+Also extract helper functions:
+- `_create_task_investigation()`
+- `_list_task_investigations()`
+
+Location: `src/cli/investigation.py`
+
+### Step 9: Create `src/cli/external.py` - external command group
+
+Extract the `external` group and subcommand (lines ~2287-2505):
+- `external resolve`
+
+Also extract helper functions:
+- `_detect_artifact_type_from_id()`
+- `_resolve_external_task_directory()`
+- `_resolve_external_single_repo()`
+- `_display_resolve_result()`
+
+Location: `src/cli/external.py`
+
+### Step 10: Create `src/cli/artifact.py` - artifact command group
+
+Extract the `artifact` group and subcommands (lines ~2507-2621):
+- `artifact promote`
+- `artifact copy-external`
+- `artifact remove-external`
+
+Location: `src/cli/artifact.py`
+
+### Step 11: Create `src/cli/orch.py` - orchestrator command group
+
+Extract the `orch` group and all subcommands including the nested `work-unit` subgroup (lines ~2623-3718):
+- `orch start`
+- `orch stop`
+- `orch status`
+- `orch url`
+- `orch ps`
+- `work-unit create`, `work-unit status`, `work-unit show`, `work-unit list`, `work-unit delete`
+- `orch inject`
+- `orch queue`
+- `orch prioritize`
+- `orch config`
+- `orch attention`
+- `orch answer`
+- `orch conflicts`
+- `orch resolve`
+- `orch analyze`
+- `orch tail`
+
+Also extract helper functions:
+- `topological_sort_chunks()`
+- `read_chunk_dependencies()`
+- `validate_external_dependencies()`
+
+Location: `src/cli/orch.py`
+
+### Step 12: Create `src/cli/friction.py` - friction command group
+
+Extract the `friction` group and subcommands (lines ~3720-4065):
+- `friction log`
+- `friction list`
+- `friction analyze`
+
+Also extract helper function:
+- `_log_entry_task_context()`
+
+Location: `src/cli/friction.py`
+
+### Step 13: Create `src/cli/migration.py` - migration command group
+
+Extract the `migration` group and subcommands (lines ~4067-4212):
+- `migration create`
+- `migration status`
+- `migration list`
+- `migration pause`
+- `migration abandon`
+
+Location: `src/cli/migration.py`
+
+### Step 14: Create `src/cli/reviewer.py` - reviewer command group
+
+Extract the `reviewer` group with nested subgroups (lines ~4218-4523):
+- `reviewer decision create`
+- `reviewer decisions` (with --pending, --recent flags)
+- `reviewer decisions review`
+- `reviewer decisions list`
+
+Location: `src/cli/reviewer.py`
+
+### Step 15: Update `src/cli/__init__.py` to assemble all groups
+
+Update the init file to:
+- Import `init`, `validate` from `init_cmd` and add them
+- Import each command group module
+- Add each group to the root `cli` using `cli.add_command()`
+
+This is where the final assembly happens.
+
+### Step 16: Reduce `src/ve.py` to thin entry point
+
+Replace `src/ve.py` content with a simple re-export:
+```python
+"""Vibe Engineer CLI entry point.
+
+The CLI implementation lives in src/cli/. This module re-exports
+the main cli group to maintain backward compatibility with:
+- pyproject.toml entry point: ve = "ve:cli"
+- Test imports: from ve import cli
+"""
+from cli import cli  # noqa: F401
+
+if __name__ == "__main__":
+    cli()
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+This preserves the `from ve import cli` import pattern used by all tests.
+
+### Step 17: Run tests and verify
+
+Run the full test suite:
+```bash
+uv run pytest tests/
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Verify:
+- All 49 test files that import `from ve import cli` still work
+- `uv run ve --help` shows the same command structure
+- All commands function identically
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 18: Verify CLI help output
 
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Run `uv run ve --help` and compare to expected output. Ensure:
+- All command groups appear (chunk, narrative, task, subsystem, investigation, external, artifact, orch, friction, migration, reviewer)
+- Top-level commands appear (init, validate)
+- No duplicate or missing commands
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Import order**: Click commands must be defined before being added to groups. The import order in `__init__.py` matters.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Circular imports**: Care must be taken to avoid circular imports between `utils.py` and command modules. The utility module should have no dependencies on command modules.
+
+3. **Test compatibility**: All 49 test files use `from ve import cli`. The thin `ve.py` re-export approach should maintain this, but needs verification.
+
+4. **Subsystem backreferences**: The module-level subsystem comments in `ve.py` reference multiple subsystems. These need to be moved to the appropriate command submodules so they remain accurate.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
