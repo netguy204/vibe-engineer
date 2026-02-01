@@ -451,6 +451,77 @@ class TestIntegrityValidatorProposedChunks:
         # Should detect the malformed prefix
         assert any("Malformed" in e.message for e in result.errors)
 
+    def test_friction_valid_chunk_directory_passes(self, temp_project):
+        """Friction log with valid chunk_directory references passes validation."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        # Create friction log referencing chunk
+        write_friction_log(
+            temp_project,
+            proposed_chunks=[{"chunk_directory": "test_chunk"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+
+    def test_friction_invalid_chunk_directory_fails(self, temp_project):
+        """Friction log with stale chunk_directory reference fails with appropriate error."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create friction log referencing non-existent chunk
+        write_friction_log(
+            temp_project,
+            proposed_chunks=[{"chunk_directory": "nonexistent_chunk"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        assert "nonexistent_chunk" in result.errors[0].message
+        assert result.errors[0].link_type == "friction→chunk"
+        assert result.errors[0].source == "docs/trunk/FRICTION.md"
+        assert result.errors[0].target == "docs/chunks/nonexistent_chunk"
+
+    def test_friction_null_chunk_directory_passes(self, temp_project):
+        """Friction log with null chunk_directory (chunk not yet created) passes validation."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create friction log with proposed chunk that has no chunk_directory
+        write_friction_log(
+            temp_project,
+            proposed_chunks=[{}],  # No chunk_directory (chunk not yet created)
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+
+    def test_friction_malformed_chunk_directory_detected(self, temp_project):
+        """Friction log with docs/chunks/ prefix is detected as malformed."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create the actual chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        # Create friction log with malformed chunk_directory
+        write_friction_log(
+            temp_project,
+            # Malformed: includes docs/chunks/ prefix
+            proposed_chunks=[{"chunk_directory": "docs/chunks/test_chunk"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        # Should detect the malformed prefix
+        assert any("Malformed" in e.message for e in result.errors)
+        assert any(e.link_type == "friction→chunk" for e in result.errors)
+
 
 class TestIntegrityValidatorSubsystemChunkRefs:
     """Tests for subsystem -> chunk reference validation."""
