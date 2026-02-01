@@ -10,10 +10,8 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on:
-- reviewer_decisions_nudge
-created_after:
-- reviewer_decision_template
-- reviewer_remove_migration
+- cli_modularize
+created_after: ["cli_modularize", "reviewer_decisions_nudge"]
 ---
 
 <!--
@@ -233,27 +231,22 @@ VALIDATION:
 
 ## Minor Goal
 
-Refactor the monolithic `src/ve.py` CLI (4,500+ lines) into a modular `src/cli/` package structure. Each command group (chunk, narrative, orch, subsystem, etc.) becomes its own submodule, enabling agents to explore and modify specific CLI functionality without encountering token limits or losing context through grep-based navigation.
+Retain worktrees after work unit completion until explicitly removed by user action. Currently, the orchestrator automatically deletes worktrees in two scenarios that can cause data loss:
 
-This advances the project's goal of agent-friendly development by reducing cognitive load when working on CLI commands.
+1. **After successful completion**: Worktrees are removed immediately after merge in `_handle_completion()`
+2. **During orphan recovery**: When the daemon restarts and finds orphaned RUNNING work units, it deletes their worktrees in `_recover_from_crash()`
+
+The second case caused a critical data loss incident where `cli_modularize` had ~20 minutes of implementation work (creating `src/cli/` with 11 module files, refactoring 4,500 lines) that was lost when the COMPLETE phase got orphaned and the worktree was deleted on recovery.
+
+This chunk changes worktree lifecycle to require explicit user action for removal, providing a safety net for recovering work from failed or orphaned phases.
 
 ## Success Criteria
 
-- `src/cli/__init__.py` exists and exports the main `cli` Click group
-- Each major command group lives in its own file:
-  - `src/cli/chunk.py` - chunk command group
-  - `src/cli/narrative.py` - narrative command group
-  - `src/cli/orch.py` - orchestrator command group
-  - `src/cli/subsystem.py` - subsystem command group
-  - `src/cli/investigation.py` - investigation command group
-  - `src/cli/artifact.py` - artifact command group
-  - `src/cli/external.py` - external command group
-  - `src/cli/friction.py` - friction command group
-  - `src/cli/migration.py` - migration command group
-  - `src/cli/reviewer.py` - reviewer command group
-  - `src/cli/task.py` - task command group
-- Shared utilities (output formatting, common options, validation helpers) extracted to `src/cli/utils.py` or similar
-- `src/ve.py` reduced to a thin entry point that imports and assembles the CLI from the package
-- All existing CLI commands work identically (no behavioral changes)
-- `uv run pytest tests/` passes
-- `uv run ve --help` shows the same command structure as before
+- Worktrees are NOT automatically deleted after successful work unit completion
+- Worktrees are NOT automatically deleted during orphan recovery (`_recover_from_crash`)
+- New CLI command `ve orch worktree remove <chunk>` allows explicit worktree removal
+- New CLI command `ve orch worktree list` shows all retained worktrees with their status (completed, orphaned, active)
+- Dashboard shows worktree retention status and provides removal action
+- `ve orch worktree prune` command removes all worktrees for COMPLETED work units (batch cleanup)
+- Warning is logged when worktree count exceeds configurable threshold (default: 10)
+- Documentation updated to explain worktree retention behavior and cleanup workflow
