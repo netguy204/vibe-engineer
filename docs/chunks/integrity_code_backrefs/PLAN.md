@@ -1,177 +1,79 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extend the existing `_validate_code_backreferences` method in `src/integrity.py` to track and report line numbers for broken backreferences. The current implementation uses regex pattern matching with `finditer()` but only captures the matched chunk/subsystem ID, not the position within the file.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Key changes:
+1. **Track line numbers during scanning**: Iterate through file content line-by-line instead of using `finditer()` on the entire content, allowing us to track the line number for each match.
+2. **Extend error messages**: Include line number in the error's source field (e.g., `src/foo.py:42`) and message.
+3. **Add tests**: Verify that line numbers are correctly reported for broken backreferences.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Building on:
+- Existing `_validate_code_backreferences` method in `src/integrity.py`
+- Existing regex patterns `CHUNK_BACKREF_PATTERN` and `SUBSYSTEM_BACKREF_PATTERN` from `chunks.py`
+- Existing test patterns in `tests/test_integrity.py`
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/integrity_code_backrefs/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per `docs/trunk/TESTING_PHILOSOPHY.md`, tests will be written first (TDD approach).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for line number reporting
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_integrity.py` that verify:
+1. Error source includes line number (e.g., `src/test.py:3`)
+2. Error message mentions the line number
+3. Multiple errors in the same file report correct, distinct line numbers
 
-Example:
+These tests will fail initially since the current implementation doesn't track line numbers.
 
-### Step 1: Define the SegmentHeader struct
+Location: tests/test_integrity.py
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Modify _validate_code_backreferences to track line numbers
 
-Location: src/segment/format.rs
+Refactor the method to:
+1. Read file content and split into lines
+2. Iterate through lines with `enumerate()` to track line numbers (1-indexed)
+3. Apply regex patterns to each line instead of the entire content
+4. Include line number in `IntegrityError` source field as `{file_path}:{line_number}`
+5. Update error message to include "at line {N}"
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+The refactored approach:
+```python
+for line_num, line in enumerate(content.splitlines(), start=1):
+    match = CHUNK_BACKREF_PATTERN.match(line)
+    if match:
+        chunk_id = match.group(1)
+        chunk_refs_found += 1
+        if chunk_id not in self._chunk_names:
+            errors.append(IntegrityError(
+                source=f"{rel_path}:{line_num}",
+                target=f"docs/chunks/{chunk_id}",
+                link_type="code→chunk",
+                message=f"Code backreference to non-existent chunk '{chunk_id}' at line {line_num}",
+            ))
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: src/integrity.py
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Run tests and verify
+
+Run the test suite to verify:
+1. Previously failing tests now pass
+2. No regressions in existing tests
+3. The actual `ve validate` command outputs line numbers
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `integrity_validate` chunk must be complete (provides the base `_validate_code_backreferences` method)
+- Already satisfied: chunk is ACTIVE
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Pattern matching mode change**: The `CHUNK_BACKREF_PATTERN` and `SUBSYSTEM_BACKREF_PATTERN` use `re.MULTILINE` flag for matching `^` at line start. When switching to line-by-line iteration, we need to ensure the patterns still match correctly on individual lines (they should, since `^` will match at the start of each line string).
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

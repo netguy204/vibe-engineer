@@ -470,3 +470,58 @@ The PLAN.md was not filled in with an implementation sequence, but this is a min
 - [ ] Feedback: Implementation addressed all feedback from iteration 1
 
 ---
+
+## integrity_code_backrefs - 2026-01-31 12:30
+
+**Mode:** final
+**Iteration:** 1
+**Decision:** APPROVE
+
+### Context Summary
+- Goal: Validate that code backreferences (`# Chunk:` and `# Subsystem:` comments) point to existing artifacts, extending `ve validate` to catch orphaned backreferences with file path and line number reporting
+- Linked artifacts: investigation: referential_integrity, depends_on: integrity_validate
+
+### Assessment
+
+The implementation fully satisfies all four success criteria:
+
+1. **Chunk backreference validation** ✓
+   - `_validate_code_backreferences` (lines 393-457 in `src/integrity.py`) scans Python files line-by-line
+   - Uses `CHUNK_BACKREF_PATTERN.match(line)` to detect `# Chunk:` comments
+   - Reports `IntegrityError` when referenced chunk doesn't exist in `_chunk_names` set
+   - Test: `test_invalid_chunk_backref_fails`
+
+2. **Subsystem backreference validation** ✓
+   - Same method handles `SUBSYSTEM_BACKREF_PATTERN.match(line)` for `# Subsystem:` comments
+   - Reports errors when subsystem not in `_subsystem_names` set
+   - Test: `test_invalid_subsystem_backref_fails`
+
+3. **Line number reporting** ✓
+   - Error source field uses `{rel_path}:{line_num}` format (e.g., `src/test.py:3`)
+   - Error message includes "at line {N}" text
+   - Uses `enumerate(content.splitlines(), start=1)` for 1-indexed line numbers
+   - Tests: `test_error_includes_line_number_in_source`, `test_error_message_includes_line_number`, `test_subsystem_backref_error_includes_line_number`
+
+4. **Test coverage for orphaned backreferences** ✓
+   - 7 tests in `TestIntegrityValidatorCodeBackrefs` class cover all scenarios
+   - Additional test `test_multiple_errors_report_distinct_line_numbers` verifies distinct line tracking
+   - All 32 tests pass
+
+The implementation follows the PLAN.md approach exactly: line-by-line iteration instead of `finditer()` on entire content, preserving 1-indexed line numbers. The refactored pattern matching correctly handles `^` at line start since each individual line string naturally starts at position 0.
+
+### Decision Rationale
+
+All success criteria are satisfied with comprehensive test coverage. The implementation:
+- Extends rather than duplicates the existing `integrity_validate` chunk's work
+- Uses existing regex patterns from `chunks.py`
+- Follows TDD approach per TESTING_PHILOSOPHY.md (tests written first)
+- Produces clear, actionable error messages with precise locations
+
+No subsystem invariants to check (no subsystems declared). No architectural concerns—this is a straightforward extension of existing validation infrastructure.
+
+### Example Quality
+- [ ] Good example (incorporate into future reviews)
+- [ ] Bad example (avoid this pattern)
+- [ ] Feedback: _______________
+
+---
