@@ -2,6 +2,7 @@
 description: Migrate legacy CLAUDE.md to use magic markers for VE-managed content.
 ---
 
+
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 

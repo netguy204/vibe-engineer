@@ -1,5 +1,6 @@
 """Tests for the template_system module."""
 # Subsystem: docs/subsystems/template_system - Template rendering system
+# Chunk: docs/chunks/template_unified_module - Template system test suite
 
 import pathlib
 import pytest
@@ -1323,3 +1324,141 @@ class TestMigrateManagedClaudeMdSlashCommand:
         if raw_braces > 0:
             # Should be in code blocks
             assert "```" in result
+
+
+# Chunk: docs/chunks/integrity_validate_fix_command - Validate-fix slash command tests
+class TestValidateFixSlashCommand:
+    """Tests for validate-fix slash command template."""
+
+    def test_template_renders_without_errors(self):
+        """validate-fix template renders without Jinja2 errors."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Basic structure checks
+        assert "## Overview" in result
+        assert "## Error Classification" in result
+        assert "## Instructions" in result
+
+    def test_template_includes_auto_generated_header(self):
+        """validate-fix template includes auto-generated header."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        assert "AUTO-GENERATED FILE" in result
+        assert "DO NOT EDIT DIRECTLY" in result
+
+    def test_template_documents_auto_fixable_errors(self):
+        """validate-fix template documents auto-fixable error types."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should document malformed paths
+        assert "Malformed" in result
+        assert "chunk_directory" in result
+        assert "docs/chunks/" in result
+
+        # Should document missing bidirectional links
+        assert "proposed_chunks" in result
+
+        # Should document missing code backrefs
+        assert "code_references" in result
+        assert "# Chunk:" in result
+
+    def test_template_documents_unfixable_errors(self):
+        """validate-fix template documents unfixable error types."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should document non-existent artifact references
+        assert "non-existent" in result.lower() or "does not exist" in result
+        assert "human" in result.lower()
+
+    def test_template_documents_max_iteration_limit(self):
+        """validate-fix template documents max iteration limit."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should mention iteration limit
+        assert "10" in result
+        assert "iteration" in result.lower()
+
+    def test_template_documents_no_git_operations(self):
+        """validate-fix template notes it doesn't perform git operations."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should mention no git/commit operations per DEC-005
+        assert "git" in result.lower() or "commit" in result.lower()
+
+    def test_template_includes_fix_instructions(self):
+        """validate-fix template includes specific fix instructions."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should include YAML examples for fixes
+        assert "```yaml" in result
+
+        # Should include code examples for backrefs
+        assert "```python" in result or "```bash" in result
+
+    def test_template_no_jinja_remnants(self):
+        """validate-fix template renders without Jinja2 syntax in output."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # No unrendered Jinja control tags
+        assert "{%" not in result
+
+        # Check {{ }} - should be escaped in code examples only
+        raw_braces = result.count("{{")
+        if raw_braces > 0:
+            # Should be in code blocks
+            assert "```" in result
+
+    def test_template_documents_termination_conditions(self):
+        """validate-fix template documents when to stop iterating."""
+        from template_system import render_template
+
+        result = render_template(
+            "commands",
+            "validate-fix.md.jinja2",
+        )
+
+        # Should mention success/termination conditions
+        assert "terminate" in result.lower() or "exit" in result.lower() or "stop" in result.lower()
+
+        # Should mention reporting results
+        assert "report" in result.lower() or "results" in result.lower()

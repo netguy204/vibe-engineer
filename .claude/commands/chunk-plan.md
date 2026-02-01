@@ -2,6 +2,7 @@
 description: Create a chunk PLAN.md file containing the technical breakdown for the work in that chunk's GOAL.md file.
 ---
 
+
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 

@@ -1,3 +1,4 @@
+<!-- Chunk: docs/chunks/progressive_disclosure_refactor - Extracted artifact documentation -->
 # VE Artifact Types Reference
 
 Beyond chunks (the core unit of work), VE supports several artifact types for different scenarios.

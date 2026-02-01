@@ -1,4 +1,5 @@
 """Tests for the Project class."""
+# Chunk: docs/chunks/project_init_command - Tests for Project class, init(), and idempotency
 
 from chunks import Chunks
 from project import Project, InitResult
@@ -240,6 +241,7 @@ class TestProjectInitReviewers:
         assert "docs/reviewers/baseline/DECISION_LOG.md" in result.created
 
 
+# Chunk: docs/chunks/claudemd_magic_markers - Test suite for marker detection, preservation, and edge cases
 class TestMagicMarkers:
     """Tests for CLAUDE.md magic marker functionality."""
 

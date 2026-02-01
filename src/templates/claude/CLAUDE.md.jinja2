@@ -1,3 +1,4 @@
+{# Chunk: docs/chunks/progressive_disclosure_refactor - Slim CLAUDE.md template with signpost pattern #}
 <!-- VE:MANAGED:START -->
 # Vibe Engineering Workflow
 
@@ -30,6 +31,7 @@ To understand recent work, use `ve chunk list --current` to find the currently I
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
+{# Chunk: docs/chunks/cluster_naming_guidance - Naming convention guidance section #}
 ### Chunk Naming Conventions
 
 Name chunks by the **initiative** they advance, not the artifact type or action verb. Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes: `chunk_`, `fix_`, `cli_`, `api_`, `util_`.
@@ -56,6 +58,7 @@ Exploratory documents for understanding before acting. **Read when**: diagnosing
 
 See: `docs/trunk/ARTIFACTS.md#investigations`
 
+{# Chunk: docs/chunks/spec_docs_update - Subsystems section and /subsystem-discover command #}
 ### Subsystems (`docs/subsystems/`)
 
 Emergent architectural patterns. **Read when**: implementing patterns that might already exist, or when code backreferences mention a subsystem.
@@ -68,6 +71,7 @@ Accumulative ledger for pain points. **Read when**: capturing friction, or when 
 
 See: `docs/trunk/ARTIFACTS.md#friction-log`
 
+{# Chunk: docs/chunks/claudemd_external_prompt - External artifact guidance in CLAUDE.md #}
 ### External Artifacts
 
 Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
@@ -105,6 +109,7 @@ Use these slash commands for artifact management:
 - `/chunk-create` - Create a new chunk and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
+{# Chunk: docs/chunks/chunk_review_skill - Added /chunk-review to Available Commands #}
 - `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references
 - `/cluster-rename` - Batch-rename chunks matching a prefix
@@ -113,7 +118,9 @@ Use these slash commands for artifact management:
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation
 - `/friction-log` - Capture a friction point
+- `/validate-fix` - Iteratively fix validation errors until clean
 
+{# Chunk: docs/chunks/template_artifact_guidance - Creating Artifacts section with artifact creation guidance #}
 ## Creating Artifacts
 
 **CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command.
@@ -140,6 +147,7 @@ If you encounter a situation where no creation command exists for an artifact ty
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
 
+{# Chunk: docs/chunks/learning_philosophy_docs - Learning Philosophy section for natural progression #}
 ## Learning Philosophy
 
 You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
