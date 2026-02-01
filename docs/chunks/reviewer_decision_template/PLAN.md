@@ -8,153 +8,86 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extracts the inline string template from `src/ve.py` (lines 4502-4529) into a proper Jinja2 template at `src/templates/review/decision.md.jinja2`. This follows the established template system subsystem pattern where:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. All templates are rendered through `template_system.render_template()`
+2. Template files use `.jinja2` suffix for editor syntax highlighting
+3. Templates receive context via keyword arguments
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decision_template/GOAL.md)
-with references to the files that you expect to touch.
--->
+The refactoring is straightforward:
+- Create a new template collection `review` with the decision template
+- Modify `ve.py` to import and use `render_template("review", "decision.md.jinja2", criteria=criteria)`
+- Ensure existing tests pass (no functional change to output)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system
+  subsystem to render decision files. The current inline string building in `ve.py`
+  is a deviation from the template system's invariant that "all templates must be
+  rendered through the template system." This chunk resolves that deviation by
+  migrating to `render_template()`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the decision template file
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/review/decision.md.jinja2` that renders the same output as
+the current inline string building in `ve.py`.
 
-Example:
+The template will accept a single context variable:
+- `criteria`: list of strings (success criteria from chunk GOAL.md)
 
-### Step 1: Define the SegmentHeader struct
+The template must produce:
+1. YAML frontmatter with null decision/summary/operator_review fields
+2. "## Criteria Assessment" section
+3. For each criterion: a numbered heading with Status/Evidence template
+4. Fallback HTML comment when criteria list is empty
+5. "## Feedback Items" section with guidance comment
+6. "## Escalation Reason" section with guidance comment
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/templates/review/decision.md.jinja2`
 
-Location: src/segment/format.rs
+### Step 2: Update ve.py to use the template
 
-### Step 2: Implement header serialization
+Modify the `decision_create` command in `src/ve.py` to:
+1. Import `render_template` from `template_system`
+2. Replace the inline string building (lines 4500-4529) with:
+   ```python
+   content = render_template("review", "decision.md.jinja2", criteria=criteria)
+   ```
+3. Write `content` to the decision file
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Add chunk backreference comment:
+```python
+# Subsystem: docs/subsystems/template_system - Uses render_template for decision files
+# Chunk: docs/chunks/reviewer_decision_template - Decision file template extraction
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/ve.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Verify existing tests pass
+
+Run the existing tests in `tests/test_reviewer_decision_create.py` to confirm
+no functional changes occurred. The tests already verify:
+- File created at correct path
+- Valid frontmatter with null fields
+- Criteria assessment sections present
+- Handles chunks with no success criteria
+
+No new tests are needed since the output is identical (per Testing Philosophy:
+"We verify templates render without error and files are created, but don't
+assert on template prose").
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. The template system subsystem is already STABLE and provides all needed
+infrastructure (`render_template`, Jinja2 environment with collection support).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+**Low risk**: The template extraction is mechanical. The primary risk is subtle
+whitespace differences between the inline string and the Jinja2 template output.
+Existing tests will catch any significant differences in structure.
 
 ## Deviations
 
