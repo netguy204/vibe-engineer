@@ -153,6 +153,93 @@ class TestProjectInitChunks:
         assert "docs/chunks/" not in result.created
 
 
+class TestProjectInitReviewers:
+    """Tests for Project.init() baseline reviewer creation."""
+
+    def test_init_creates_reviewers_directory(self, temp_project):
+        """init() creates docs/reviewers/baseline/ directory."""
+        project = Project(temp_project)
+        project.init()
+        reviewers_dir = temp_project / "docs" / "reviewers" / "baseline"
+        assert reviewers_dir.exists()
+        assert reviewers_dir.is_dir()
+
+    def test_init_creates_reviewer_files(self, temp_project):
+        """init() creates all baseline reviewer files."""
+        project = Project(temp_project)
+        project.init()
+        reviewers_dir = temp_project / "docs" / "reviewers" / "baseline"
+        expected_files = ["METADATA.yaml", "PROMPT.md", "DECISION_LOG.md"]
+        for filename in expected_files:
+            assert (reviewers_dir / filename).exists(), f"Missing {filename}"
+
+    def test_init_reports_reviewer_files_created(self, temp_project):
+        """init() reports reviewer files in the created list."""
+        project = Project(temp_project)
+        result = project.init()
+        # Check that reviewer files are reported
+        reviewer_files = [
+            "docs/reviewers/baseline/METADATA.yaml",
+            "docs/reviewers/baseline/PROMPT.md",
+            "docs/reviewers/baseline/DECISION_LOG.md",
+        ]
+        for file in reviewer_files:
+            assert file in result.created, f"Expected {file} in created list"
+
+    def test_init_reviewer_metadata_has_content(self, temp_project):
+        """init() creates METADATA.yaml with expected content."""
+        project = Project(temp_project)
+        project.init()
+        metadata_path = temp_project / "docs" / "reviewers" / "baseline" / "METADATA.yaml"
+        content = metadata_path.read_text()
+        # Check for key YAML fields
+        assert "name: baseline" in content
+        assert "trust_level: observation" in content
+        assert "loop_detection:" in content
+        assert "created_at:" in content
+
+    def test_init_reviewer_prompt_has_content(self, temp_project):
+        """init() creates PROMPT.md with expected content."""
+        project = Project(temp_project)
+        project.init()
+        prompt_path = temp_project / "docs" / "reviewers" / "baseline" / "PROMPT.md"
+        content = prompt_path.read_text()
+        # Check for key content
+        assert "Baseline Reviewer Prompt" in content
+        assert "APPROVE" in content
+        assert "FEEDBACK" in content
+        assert "ESCALATE" in content
+
+    def test_init_reviewer_decision_log_has_content(self, temp_project):
+        """init() creates DECISION_LOG.md with expected structure."""
+        project = Project(temp_project)
+        project.init()
+        log_path = temp_project / "docs" / "reviewers" / "baseline" / "DECISION_LOG.md"
+        content = log_path.read_text()
+        # Check for key content
+        assert "Decision Log: baseline" in content
+        assert "No decisions recorded yet" in content
+
+    def test_init_skips_existing_reviewer_files(self, temp_project):
+        """init() skips existing reviewer files (idempotent/preserves decision logs)."""
+        project = Project(temp_project)
+
+        # Create reviewer dir with custom METADATA.yaml before init
+        reviewers_dir = temp_project / "docs" / "reviewers" / "baseline"
+        reviewers_dir.mkdir(parents=True)
+        custom_content = "# Custom METADATA\nname: custom_baseline"
+        (reviewers_dir / "METADATA.yaml").write_text(custom_content)
+
+        result = project.init()
+
+        # Custom content should be preserved (file skipped)
+        assert (reviewers_dir / "METADATA.yaml").read_text() == custom_content
+        assert "docs/reviewers/baseline/METADATA.yaml" in result.skipped
+        # Other files should be created
+        assert "docs/reviewers/baseline/PROMPT.md" in result.created
+        assert "docs/reviewers/baseline/DECISION_LOG.md" in result.created
+
+
 class TestMagicMarkers:
     """Tests for CLAUDE.md magic marker functionality."""
 

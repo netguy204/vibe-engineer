@@ -6,6 +6,7 @@
 
 import pathlib
 from dataclasses import dataclass, field
+from datetime import date
 from typing import NamedTuple
 
 from chunks import Chunks
@@ -214,6 +215,37 @@ class Project:
 
         return result
 
+    # Subsystem: docs/subsystems/template_system - Uses render_to_directory
+    # Chunk: docs/chunks/reviewer_init_templates - Reviewer template initialization
+    def _init_reviewers(self) -> InitResult:
+        """Initialize baseline reviewer from templates.
+
+        Creates docs/reviewers/baseline/ directory with METADATA.yaml, PROMPT.md,
+        and DECISION_LOG.md. Uses overwrite=False to preserve existing reviewer
+        configuration and decision logs.
+        """
+        result = InitResult()
+        reviewers_dir = self.project_dir / "docs" / "reviewers" / "baseline"
+
+        # Use render_to_directory with overwrite=False to preserve user content
+        context = TemplateContext()
+        today_str = date.today().isoformat()
+        render_result = render_to_directory(
+            "reviewers/baseline",
+            reviewers_dir,
+            context=context,
+            overwrite=False,
+            today=today_str,
+        )
+
+        # Map RenderResult paths to relative path strings for InitResult
+        for path in render_result.created:
+            result.created.append(f"docs/reviewers/baseline/{path.name}")
+        for path in render_result.skipped:
+            result.skipped.append(f"docs/reviewers/baseline/{path.name}")
+
+        return result
+
     def _init_gitignore(self) -> InitResult:
         """Ensure .gitignore excludes VE runtime files.
 
@@ -309,7 +341,7 @@ class Project:
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
-        Creates trunk documents, Claude commands, and CLAUDE.md.
+        Creates trunk documents, Claude commands, CLAUDE.md, and baseline reviewer.
         Idempotent: skips files that already exist.
         """
         result = InitResult()
@@ -320,6 +352,7 @@ class Project:
             self._init_claude_md(),
             self._init_narratives(),
             self._init_chunks(),
+            self._init_reviewers(),
             self._init_gitignore(),
         ]:
             result.created.extend(sub_result.created)
