@@ -1,177 +1,138 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add CLI commands for the operator review workflow that enables trust graduation. The implementation follows these patterns:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **CLI structure**: Add a `reviewer` command group with nested `decisions` group. The `review` command will be a subcommand under `decisions`, following the existing pattern for nested CLI groups (like `ve chunk list`, `ve chunk create`).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **YAML frontmatter manipulation**: Use PyYAML to parse and update decision file frontmatter. The existing pattern in models.py (`DecisionFrontmatter`) provides the schema; we just need to serialize the updated `operator_review` field back to the file.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decisions_review_cli/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Union type serialization**: The `operator_review` field uses a discriminated union (`"good"` | `"bad"` | `{feedback: "<message>"}`). When writing:
+   - String literals `good`/`bad` → write as literal YAML string
+   - Feedback map → write as YAML map with `feedback` key
 
-## Subsystem Considerations
+4. **Pending decisions**: Add `--pending` flag to the existing `ve reviewer decisions` list command (from reviewer_decisions_list_cli) to filter for decisions where `operator_review` is null.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+5. **Path resolution**: Accept working-directory-relative paths per the success criteria. Resolve paths relative to the current working directory, then validate that the resolved path points to a valid decision file.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per DEC-005 (Commands do not prescribe git operations), the CLI will not include any git commit steps.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for review command
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_reviewer_decisions_review.py` with tests covering:
 
-Example:
+1. `ve reviewer decisions review <path> good` updates operator_review to "good"
+2. `ve reviewer decisions review <path> bad` updates operator_review to "bad"
+3. `ve reviewer decisions review <path> --feedback "message"` updates operator_review to `{feedback: "message"}`
+4. Command fails with appropriate error for non-existent path
+5. Command fails for invalid path (not a decision file)
+6. Path argument works with working-directory-relative paths
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_reviewer_decisions_review.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write failing tests for --pending flag
 
-Location: src/segment/format.rs
+Add tests to `tests/test_reviewer_decisions_review.py` (or a shared test file) covering:
 
-### Step 2: Implement header serialization
+1. `ve reviewer decisions --pending` lists only decisions with null operator_review
+2. `--pending` excludes decisions marked "good", "bad", or with feedback
+3. `--pending` with no pending decisions outputs appropriate message
+4. `--pending` combined with `--reviewer` flag filters by reviewer
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_reviewer_decisions_review.py`
 
-### Step 3: ...
+### Step 3: Add reviewer CLI group to ve.py
 
----
+Add the command group structure to `src/ve.py`:
 
-**BACKREFERENCE COMMENTS**
+```python
+@cli.group()
+def reviewer():
+    """Reviewer commands"""
+    pass
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+@reviewer.group()
+def decisions():
+    """Reviewer decision commands"""
+    pass
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The `decisions` group will house both the `review` command (this chunk) and the aggregation command (reviewer_decisions_list_cli chunk).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/ve.py`
+
+### Step 4: Implement helper function for reading/writing decision frontmatter
+
+Create a helper in `src/reviewers.py` (or add to an appropriate module) that:
+
+1. Parses a decision file's YAML frontmatter
+2. Validates it against `DecisionFrontmatter` model
+3. Updates the `operator_review` field
+4. Writes back preserving the markdown body
+
+Use the same pattern as other frontmatter-manipulating code in the codebase (e.g., chunk status updates).
+
+Location: `src/reviewers.py` (new file)
+
+### Step 5: Implement the review command
+
+Add `ve reviewer decisions review` command that:
+
+1. Takes a positional `path` argument (required)
+2. Takes a positional `verdict` argument for good/bad (mutually exclusive with --feedback)
+3. Takes optional `--feedback` flag for the feedback variant
+4. Resolves the path relative to working directory
+5. Validates the file exists and is a decision file
+6. Updates the `operator_review` field in frontmatter
+7. Outputs confirmation message
+
+Command signature:
+```
+ve reviewer decisions review <path> [good|bad]
+ve reviewer decisions review <path> --feedback "<message>"
+```
+
+Location: `src/ve.py`
+
+### Step 6: Implement --pending flag on decisions command
+
+Note: The `ve reviewer decisions --recent N` command is implemented in reviewer_decisions_list_cli. This step adds the `--pending` flag to that command. If reviewer_decisions_list_cli is not yet implemented, add the `--pending` functionality as part of a minimal `decisions` list command.
+
+The `--pending` flag:
+1. Filters decisions where `operator_review` is null
+2. Works with existing `--reviewer` flag to filter by reviewer
+3. Outputs the same format as the aggregation command (path, decision, summary)
+
+Location: `src/ve.py`
+
+### Step 7: Run tests and verify
+
+Run `uv run pytest tests/test_reviewer_decisions_review.py` to verify all tests pass.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **reviewer_decision_schema** (ACTIVE): Provides `DecisionFrontmatter` model with the union-typed `operator_review` field
+- **PyYAML**: Already a project dependency for YAML parsing
+- **Click**: Already a project dependency for CLI framework
 
-If there are no dependencies, delete this section.
--->
+Note: `reviewer_decisions_list_cli` (FUTURE) implements the `--recent N` aggregation. The `--pending` flag in this chunk may be added to that command, or we implement a minimal version here if reviewer_decisions_list_cli is not yet active.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Coordination with reviewer_decisions_list_cli**: The `--pending` flag logically belongs on the `ve reviewer decisions` list command. If that command doesn't exist yet, we either:
+   - Implement a minimal version here (just `--pending`, no `--recent`)
+   - Wait for reviewer_decisions_list_cli to complete first
+   - Accept that `--pending` is a separate command (`ve reviewer decisions pending`)
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   Resolution: Check if the command exists at implementation time. If not, implement `--pending` as a standalone subcommand that can be refactored when the list command arrives.
+
+2. **YAML frontmatter round-tripping**: Need to preserve YAML comments and formatting when rewriting files. ruamel.yaml is better for this than PyYAML, but adds a dependency.
+
+   Resolution: Use PyYAML for now; we don't preserve comments in frontmatter. This matches existing patterns in the codebase.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION, not at planning time. -->
