@@ -24,6 +24,9 @@ from models import (
     LoopDetectionConfig,
     ReviewerStats,
     ReviewerMetadata,
+    ReviewerDecision,
+    FeedbackReview,
+    DecisionFrontmatter,
 )
 
 
@@ -1017,3 +1020,179 @@ class TestReviewerMetadataIntegration:
         assert metadata.loop_detection.max_iterations == 3
         assert metadata.forked_from is None
         assert metadata.stats.reviews_completed == 0
+
+
+# Chunk: docs/chunks/reviewer_decision_schema - Per-file decision schema tests
+class TestReviewerDecision:
+    """Tests for ReviewerDecision enum."""
+
+    def test_all_values_accepted(self):
+        """All ReviewerDecision values are valid."""
+        assert ReviewerDecision.APPROVE == "APPROVE"
+        assert ReviewerDecision.FEEDBACK == "FEEDBACK"
+        assert ReviewerDecision.ESCALATE == "ESCALATE"
+
+    def test_enum_has_exactly_three_values(self):
+        """ReviewerDecision has exactly three values."""
+        assert len(ReviewerDecision) == 3
+
+
+class TestFeedbackReview:
+    """Tests for FeedbackReview model."""
+
+    def test_valid_feedback_parses_successfully(self):
+        """Valid feedback string parses correctly."""
+        review = FeedbackReview(feedback="The reviewer was too strict here")
+        assert review.feedback == "The reviewer was too strict here"
+
+    def test_empty_feedback_rejected(self):
+        """Empty feedback string is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FeedbackReview(feedback="")
+        assert "feedback cannot be empty" in str(exc_info.value)
+
+    def test_whitespace_feedback_rejected(self):
+        """Whitespace-only feedback is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FeedbackReview(feedback="   ")
+        assert "feedback cannot be empty" in str(exc_info.value)
+
+    def test_missing_feedback_rejected(self):
+        """Missing feedback field is rejected."""
+        with pytest.raises(ValidationError):
+            FeedbackReview()
+
+
+class TestDecisionFrontmatter:
+    """Tests for DecisionFrontmatter model."""
+
+    def test_empty_frontmatter_parses_successfully(self):
+        """Frontmatter with all None values parses correctly (template state)."""
+        frontmatter = DecisionFrontmatter()
+        assert frontmatter.decision is None
+        assert frontmatter.summary is None
+        assert frontmatter.operator_review is None
+
+    def test_valid_decision_values_accepted(self):
+        """All valid decision values are accepted."""
+        for decision in ReviewerDecision:
+            frontmatter = DecisionFrontmatter(decision=decision)
+            assert frontmatter.decision == decision
+
+    def test_decision_accepts_string_values(self):
+        """Decision field accepts string values that match enum."""
+        frontmatter = DecisionFrontmatter(decision="APPROVE")
+        assert frontmatter.decision == ReviewerDecision.APPROVE
+
+        frontmatter = DecisionFrontmatter(decision="FEEDBACK")
+        assert frontmatter.decision == ReviewerDecision.FEEDBACK
+
+        frontmatter = DecisionFrontmatter(decision="ESCALATE")
+        assert frontmatter.decision == ReviewerDecision.ESCALATE
+
+    def test_invalid_decision_value_rejected(self):
+        """Invalid decision value is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            DecisionFrontmatter(decision="INVALID")
+        assert "decision" in str(exc_info.value).lower()
+
+    def test_lowercase_decision_rejected(self):
+        """Lowercase decision values are rejected (case-sensitive enum)."""
+        with pytest.raises(ValidationError):
+            DecisionFrontmatter(decision="approve")
+
+    def test_operator_review_good_accepted(self):
+        """operator_review: good is accepted."""
+        frontmatter = DecisionFrontmatter(operator_review="good")
+        assert frontmatter.operator_review == "good"
+
+    def test_operator_review_bad_accepted(self):
+        """operator_review: bad is accepted."""
+        frontmatter = DecisionFrontmatter(operator_review="bad")
+        assert frontmatter.operator_review == "bad"
+
+    def test_operator_review_feedback_dict_accepted(self):
+        """operator_review: {feedback: "message"} is accepted."""
+        frontmatter = DecisionFrontmatter(
+            operator_review={"feedback": "The reviewer was too strict"}
+        )
+        assert isinstance(frontmatter.operator_review, FeedbackReview)
+        assert frontmatter.operator_review.feedback == "The reviewer was too strict"
+
+    def test_operator_review_empty_feedback_rejected(self):
+        """operator_review: {feedback: ""} is rejected (empty feedback)."""
+        with pytest.raises(ValidationError) as exc_info:
+            DecisionFrontmatter(operator_review={"feedback": ""})
+        assert "feedback cannot be empty" in str(exc_info.value)
+
+    def test_operator_review_whitespace_feedback_rejected(self):
+        """operator_review: {feedback: "   "} is rejected (whitespace-only feedback)."""
+        with pytest.raises(ValidationError) as exc_info:
+            DecisionFrontmatter(operator_review={"feedback": "   "})
+        assert "feedback cannot be empty" in str(exc_info.value)
+
+    def test_invalid_operator_review_string_rejected(self):
+        """operator_review with invalid string value is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            DecisionFrontmatter(operator_review="invalid")
+        # Should fail validation for not matching "good", "bad", or FeedbackReview
+        assert "operator_review" in str(exc_info.value).lower()
+
+    def test_full_frontmatter_parses_successfully(self):
+        """Full frontmatter with all fields parses correctly."""
+        frontmatter = DecisionFrontmatter(
+            decision=ReviewerDecision.APPROVE,
+            summary="Implementation meets all success criteria",
+            operator_review="good",
+        )
+        assert frontmatter.decision == ReviewerDecision.APPROVE
+        assert frontmatter.summary == "Implementation meets all success criteria"
+        assert frontmatter.operator_review == "good"
+
+    def test_frontmatter_with_feedback_review_parses_successfully(self):
+        """Frontmatter with FeedbackReview operator_review parses correctly."""
+        frontmatter = DecisionFrontmatter(
+            decision=ReviewerDecision.FEEDBACK,
+            summary="Minor style issues found",
+            operator_review=FeedbackReview(feedback="Good catch on the style issues"),
+        )
+        assert frontmatter.decision == ReviewerDecision.FEEDBACK
+        assert frontmatter.summary == "Minor style issues found"
+        assert isinstance(frontmatter.operator_review, FeedbackReview)
+        assert frontmatter.operator_review.feedback == "Good catch on the style issues"
+
+
+class TestDecisionFrontmatterIntegration:
+    """Integration tests for decision template parsing."""
+
+    def test_decision_template_parses_successfully(self):
+        """The prototype decision template parses as DecisionFrontmatter."""
+        import yaml
+        from pathlib import Path
+
+        template_path = Path(
+            "docs/investigations/reviewer_log_concurrency/prototypes/decision_template.md"
+        )
+        if not template_path.exists():
+            pytest.skip("Decision template prototype not found")
+
+        # Read the file and extract frontmatter
+        content = template_path.read_text()
+        if not content.startswith("---"):
+            pytest.fail("Decision template should start with YAML frontmatter")
+
+        # Extract frontmatter between --- markers
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            pytest.fail("Decision template should have YAML frontmatter between --- markers")
+
+        frontmatter_text = parts[1]
+        data = yaml.safe_load(frontmatter_text)
+
+        # Parse with the model
+        frontmatter = DecisionFrontmatter(**data)
+
+        # Template should have all null values
+        assert frontmatter.decision is None
+        assert frontmatter.summary is None
+        assert frontmatter.operator_review is None
