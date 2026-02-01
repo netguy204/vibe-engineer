@@ -867,6 +867,62 @@ The implementation follows the PLAN.md approach exactly: detect external chunks 
 
 ---
 
+## reviewer_decisions_list_cli - 2026-01-31 12:30
+
+**Mode:** final
+**Iteration:** 1
+**Decision:** APPROVE
+
+### Context Summary
+- Goal: Add `ve reviewer decisions --recent N` CLI command to aggregate curated decisions for few-shot context
+- Linked artifacts: investigation: reviewer_log_concurrency; depends_on: reviewer_decision_schema
+
+### Assessment
+
+The implementation fully satisfies all seven success criteria from GOAL.md:
+
+**Core Implementation (src/ve.py lines 4209-4307):**
+
+1. **Command exists**: `@reviewer.command("decisions")` with `--recent` as required option
+2. **Accepts --reviewer flag**: Uses default "baseline", parameter aliased to `reviewer_name`
+3. **Filters to curated only**: Checks `decision.operator_review is None` and continues to skip
+4. **Outputs all required fields**: Path, Decision, Summary, Operator review all formatted
+5. **Sorted by recency**: Uses `os.path.getmtime()` with `reverse=True` sort
+6. **Working-directory-relative paths**: Uses `filepath.relative_to(project_dir)` for agent-readable paths
+7. **Matches prototype format**: Output aligns with `prototypes/fewshot_output_example.md`:
+   - `## {path}` headings for progressive discovery via Read tool
+   - `- **Decision**: {value}` format for structured fields
+   - Handles both string ("good"/"bad") and FeedbackReview map formats
+
+**Test Coverage (tests/test_reviewer_decisions.py):**
+- 18 tests across 6 test classes covering all requirements
+- All tests pass in 0.63s
+- Covers: command existence, filtering, output format, sorting, boundary conditions, operator_review variants
+
+**Code Backreference:** Present at line 4210
+
+The implementation follows the PLAN.md sequence exactly and adheres to existing CLI patterns (DEC-001, DEC-005).
+
+### Decision Rationale
+
+All seven success criteria are satisfied:
+1. ✅ `ve reviewer decisions --recent N` command exists
+2. ✅ Accepts `--reviewer` flag (default: baseline)
+3. ✅ Filters to only decisions where `operator_review` is not null
+4. ✅ Outputs path, decision, summary, operator_review for each entry
+5. ✅ Output sorted by recency (most recent first)
+6. ✅ Paths are working-directory-relative for Read tool usage
+7. ✅ Output format matches prototype reference
+
+The implementation enables reviewers to get few-shot context from curated decisions, which is the key value proposition identified in the investigation.
+
+### Example Quality
+- [ ] Good example (incorporate into future reviews)
+- [ ] Bad example (avoid this pattern)
+- [ ] Feedback: _______________
+
+---
+
 ## integrity_validate_fix_command - 2026-01-31 23:59
 
 **Mode:** final
