@@ -14,6 +14,9 @@ proposed_chunks:
   - prompt: "Rename ve chunk list --latest to --current and add --recent flag showing 10 most recent ACTIVE chunks. Update CLAUDE.md template and any other docs referencing --latest."
     chunk_directory: chunk_list_flags
     depends_on: []
+  - prompt: "Add Jinja2 templates for progressive disclosure documents (ORCHESTRATOR.md, ARTIFACTS.md, EXTERNAL.md) so they get installed during ve init"
+    chunk_directory: disclosure_trunk_templates
+    depends_on: [0]
 created_after: ["orch_task_context"]
 ---
 

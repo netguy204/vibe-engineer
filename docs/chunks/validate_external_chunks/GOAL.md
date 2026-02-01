@@ -17,6 +17,8 @@ code_references:
     implements: "Test helper for creating external chunk fixtures"
   - ref: tests/test_integrity.py#TestIntegrityValidatorExternalChunks
     implements: "Test coverage for external chunk validation scenarios"
+  - ref: src/ve.py#validate
+    implements: "External chunk skip reporting in verbose output"
 narrative: null
 investigation: null
 subsystems:

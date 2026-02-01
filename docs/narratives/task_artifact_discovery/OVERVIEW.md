@@ -1,5 +1,5 @@
 ---
-status: COMPLETE
+status: COMPLETED
 advances_trunk_goal: "Required Properties: Must support multi-repository workflows"
 proposed_chunks:
   - prompt: "Remove external artifact pinning. Always resolve to HEAD, remove ve sync command, remove pinned_sha from ExternalArtifactRef model."
@@ -12,6 +12,8 @@ proposed_chunks:
     chunk_directory: claudemd_migrate_managed
   - prompt: "Update CLAUDE.md template to prompt agents to use `ve external resolve` when they encounter external.yaml references."
     chunk_directory: claudemd_external_prompt
+  - prompt: "Enhance `ve external resolve` to output local filesystem path and directory listing alongside content, making it a single-command solution for agents needing to work with external artifacts."
+    chunk_directory: external_resolve_enhance
 created_after: []
 ---
 

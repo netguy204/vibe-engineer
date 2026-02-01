@@ -1,5 +1,5 @@
 ---
-status: COMPLETE
+status: COMPLETED
 advances_trunk_goal: 'Required Properties: It must be possible to perform the workflow
   outside the context of a Git repository.'
 proposed_chunks:

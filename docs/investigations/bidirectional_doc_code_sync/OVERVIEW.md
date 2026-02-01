@@ -1,7 +1,17 @@
 ---
 status: ONGOING
 trigger: "Team feedback revealed gap between document-oriented workflow and code-first discovery preferences"
-proposed_chunks: []
+proposed_chunks:
+  - prompt: "Create scratchpad storage infrastructure at ~/.vibe/scratchpad/ for personal work notes outside git"
+    chunk_directory: scratchpad_storage
+  - prompt: "Rewrite chunk commands to use scratchpad storage instead of in-repo docs/chunks/"
+    chunk_directory: scratchpad_chunk_commands
+  - prompt: "Implement cross-project scratchpad queries via ve scratchpad list for 'What am I working on?' use case"
+    chunk_directory: scratchpad_cross_project
+  - prompt: "Rewrite narrative commands to use scratchpad storage instead of in-repo docs/narratives/"
+    chunk_directory: scratchpad_narrative_commands
+  - prompt: "Create /migrate-managed-claude-md slash command to migrate legacy CLAUDE.md to use magic markers"
+    chunk_directory: claudemd_migrate_managed
 created_after: ["semantic_bugfix_documentation"]
 ---
 

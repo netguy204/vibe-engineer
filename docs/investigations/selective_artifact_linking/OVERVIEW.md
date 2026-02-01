@@ -6,6 +6,8 @@ proposed_chunks:
     chunk_directory: selective_artifact_friction
   - prompt: "Add ve artifact remove-external command: Remove artifact's external.yaml from a project and update dependents list in external repo for consistency"
     chunk_directory: remove_external_ref
+  - prompt: "Add --projects flag to task artifact creation commands for selective project linking"
+    chunk_directory: selective_project_linking
 created_after: ["friction_log_artifact"]
 ---
 

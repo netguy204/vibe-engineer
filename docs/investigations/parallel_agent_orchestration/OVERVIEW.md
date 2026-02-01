@@ -14,6 +14,20 @@ proposed_chunks:
     chunk_directory: orch_conflict_oracle
   - prompt: "Orchestrator dashboard: web UI with WebSocket updates, attention queue view, process grid"
     chunk_directory: orch_dashboard
+  - prompt: "Defer git worktree creation until work can actually begin execution"
+    chunk_directory: deferred_worktree_creation
+  - prompt: "Add TCP port support to orchestrator daemon for direct browser access"
+    chunk_directory: orch_tcp_port
+  - prompt: "Forward AskUserQuestion tool calls from background agents to the attention queue"
+    chunk_directory: orch_question_forward
+  - prompt: "Transition chunk status from FUTURE to IMPLEMENTING on inject before running agent phases"
+    chunk_directory: orch_activate_on_inject
+  - prompt: "Verify chunk is ACTIVE status before commit/merge, resume if incomplete"
+    chunk_directory: orch_verify_active
+  - prompt: "Configure background agents to have access to slash command skills"
+    chunk_directory: orch_agent_skills
+  - prompt: "Add injection-time validation to ensure chunks are in valid state before dispatch"
+    chunk_directory: orch_inject_validate
 created_after: ["task_agent_experience", "xr_vibe_integration"]
 ---
 

@@ -22,6 +22,9 @@ proposed_chunks:
       Track iteration count, auto-escalate after max_iterations.
     chunk_directory: orch_review_phase
     depends_on: [1]
+  - prompt: "Create the docs/reviewers/ directory structure with the baseline reviewer entity"
+    chunk_directory: reviewer_infrastructure
+    depends_on: []
 created_after: ["selective_artifact_linking"]
 ---
 
