@@ -67,6 +67,7 @@ from validation import validate_identifier
 from cluster_analysis import check_cluster_size, format_cluster_warning
 from chunks import get_chunk_prefix
 from artifact_ordering import ArtifactIndex, ArtifactType
+from template_system import render_template
 
 
 def validate_short_name(short_name: str) -> list[str]:
@@ -4220,6 +4221,7 @@ def reviewer():
     pass
 
 
+# Chunk: docs/chunks/reviewer_decision_create_cli - Decision subgroup under reviewer for decision file commands
 @reviewer.group()
 def decision():
     """Decision file commands"""
@@ -4462,6 +4464,7 @@ def list_decisions(recent, reviewer_name, project_dir):
         click.echo()
 
 
+# Chunk: docs/chunks/reviewer_decision_create_cli - Creates decision file with frontmatter and criteria assessment template
 @decision.command("create")
 @click.argument("chunk_id")
 @click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
@@ -4497,42 +4500,16 @@ def create_decision(chunk_id, reviewer_name, iteration, project_dir):
     # Get success criteria from chunk GOAL.md
     criteria = chunks.get_success_criteria(chunk_id)
 
-    # Build decision file content
-    # Frontmatter with null values (decision/summary filled by reviewer, operator_review by operator)
-    frontmatter_content = """---
-decision: null  # APPROVE | FEEDBACK | ESCALATE
-summary: null   # One-sentence rationale
-operator_review: null  # DO NOT SET - reserved for operator curation
----
-
-"""
-
-    # Build criteria assessment section
-    body_content = "## Criteria Assessment\n\n"
-
-    if criteria:
-        for i, criterion in enumerate(criteria, 1):
-            body_content += f"### Criterion {i}: {criterion}\n\n"
-            body_content += "- **Status**: satisfied | gap | unclear\n"
-            body_content += "- **Evidence**: [What implementation evidence supports this assessment]\n\n"
-    else:
-        body_content += "<!-- No success criteria found in chunk GOAL.md -->\n\n"
-
-    # Add feedback and escalation sections (to be filled as needed)
-    body_content += """## Feedback Items
-
-<!-- For FEEDBACK decisions only. Delete section if APPROVE. -->
-
-## Escalation Reason
-
-<!-- For ESCALATE decisions only. Delete section if APPROVE/FEEDBACK. -->
-"""
+    # Subsystem: docs/subsystems/template_system - Uses render_template for decision files
+    # Chunk: docs/chunks/reviewer_decision_template - Decision file template extraction
+    # Render decision file content from template
+    content = render_template("review", "decision.md.jinja2", criteria=criteria)
 
     # Create parent directories if needed
     decisions_dir.mkdir(parents=True, exist_ok=True)
 
     # Write the decision file
-    decision_file.write_text(frontmatter_content + body_content)
+    decision_file.write_text(content)
 
     click.echo(f"Created {decision_file.relative_to(project_dir)}")
 

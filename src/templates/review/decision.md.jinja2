@@ -1,0 +1,23 @@
+---
+decision: null  # APPROVE | FEEDBACK | ESCALATE
+summary: null   # One-sentence rationale
+operator_review: null  # DO NOT SET - reserved for operator curation
+---
+
+## Criteria Assessment
+
+{% if criteria %}{% for criterion in criteria %}### Criterion {{ loop.index }}: {{ criterion }}
+
+- **Status**: satisfied | gap | unclear
+- **Evidence**: [What implementation evidence supports this assessment]
+
+{% endfor %}{% else %}<!-- No success criteria found in chunk GOAL.md -->
+
+{% endif %}## Feedback Items
+
+<!-- For FEEDBACK decisions only. Delete section if APPROVE. -->
+
+## Escalation Reason
+
+<!-- For ESCALATE decisions only. Delete section if APPROVE/FEEDBACK. -->
+
