@@ -1,12 +1,14 @@
 """Referential integrity validation for VE artifacts.
 
 # Chunk: docs/chunks/integrity_validate - Core referential integrity validation module
+# Chunk: docs/chunks/validate_external_chunks - External chunk detection and skipping
 
 This module provides project-wide validation of artifact references:
 - Chunk outbound references (to narratives, investigations, subsystems, friction entries)
 - Code backreferences (# Chunk: and # Subsystem: comments pointing to artifacts)
 - Proposed chunks in narratives, investigations, and friction log
 - Bidirectional consistency checking
+- External chunk handling (skip validation, validated in home repo)
 """
 
 from __future__ import annotations
@@ -17,8 +19,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from chunks import Chunks, CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
+from external_refs import is_external_artifact
 from friction import Friction
 from investigations import Investigations
+from models import ArtifactType
 from narratives import Narratives
 from subsystems import Subsystems
 
@@ -58,6 +62,7 @@ class IntegrityResult:
     files_scanned: int = 0
     chunk_backrefs_found: int = 0
     subsystem_backrefs_found: int = 0
+    external_chunks_skipped: int = 0
 
 
 # Chunk: docs/chunks/integrity_validate - Core integrity validator class
@@ -80,7 +85,8 @@ class IntegrityValidator:
         self.friction = Friction(self.project_dir)
 
         # Build in-memory index of existing artifacts
-        self._chunk_names: set[str] = set()
+        self._chunk_names: set[str] = set()  # Local chunks (with GOAL.md)
+        self._external_chunk_names: set[str] = set()  # External chunks (with external.yaml)
         self._narrative_names: set[str] = set()
         self._investigation_names: set[str] = set()
         self._subsystem_names: set[str] = set()
@@ -95,8 +101,27 @@ class IntegrityValidator:
         self._chunk_code_files: dict[str, set[str]] = {}
 
     def _build_artifact_index(self) -> None:
-        """Build in-memory index of all existing artifacts."""
-        self._chunk_names = set(self.chunks.enumerate_chunks())
+        """Build in-memory index of all existing artifacts.
+
+        Separates local chunks (with GOAL.md) from external chunks (with external.yaml).
+        External chunks are pointers to canonical artifacts in other repositories and
+        are skipped during validation (validated in their home repository).
+        """
+        # Separate local and external chunks
+        all_chunk_names = self.chunks.enumerate_chunks()
+        local_chunks: set[str] = set()
+        external_chunks: set[str] = set()
+
+        for chunk_name in all_chunk_names:
+            chunk_path = self.chunks.chunk_dir / chunk_name
+            if is_external_artifact(chunk_path, ArtifactType.CHUNK):
+                external_chunks.add(chunk_name)
+            else:
+                local_chunks.add(chunk_name)
+
+        self._chunk_names = local_chunks
+        self._external_chunk_names = external_chunks
+
         self._narrative_names = set(self.narratives.enumerate_narratives())
         self._investigation_names = set(self.investigations.enumerate_investigations())
         self._subsystem_names = set(self.subsystems.enumerate_subsystems())
@@ -106,6 +131,7 @@ class IntegrityValidator:
             entries = self.friction.parse_entries()
             self._friction_entry_ids = {e.id for e in entries}
 
+    # Chunk: docs/chunks/integrity_bidirectional - Builds reverse index for narrative/investigation→chunk lookups
     def _build_parent_chunk_index(self) -> None:
         """Build reverse index of which chunks each parent artifact lists.
 
@@ -145,6 +171,7 @@ class IntegrityValidator:
             else:
                 self._investigation_chunks[investigation_name] = set()
 
+    # Chunk: docs/chunks/integrity_bidirectional - Builds reverse index mapping chunks to referenced file paths
     def _build_chunk_code_index(self) -> None:
         """Build reverse index of which files each chunk references.
 
@@ -243,8 +270,10 @@ class IntegrityValidator:
             files_scanned=files_scanned,
             chunk_backrefs_found=chunk_backrefs_found,
             subsystem_backrefs_found=subsystem_backrefs_found,
+            external_chunks_skipped=len(self._external_chunk_names),
         )
 
+    # Chunk: docs/chunks/integrity_bidirectional - Bidirectional checks for chunk↔narrative and chunk↔investigation
     def _validate_chunk_outbound(
         self, chunk_name: str
     ) -> tuple[list[IntegrityError], list[IntegrityWarning]]:
@@ -487,6 +516,8 @@ class IntegrityValidator:
 
         return errors
 
+    # Chunk: docs/chunks/integrity_code_backrefs - Line-by-line scanning with line number tracking
+    # Chunk: docs/chunks/integrity_bidirectional - Extended with code↔chunk bidirectional warnings
     def _validate_code_backreferences(
         self,
     ) -> tuple[list[IntegrityError], list[IntegrityWarning], int, int, int]:
@@ -526,7 +557,11 @@ class IntegrityValidator:
                 if match:
                     chunk_refs_found += 1
                     chunk_id = match.group(1)
-                    if chunk_id not in self._chunk_names:
+                    # Check both local and external chunks - external chunks are valid
+                    # targets for code backreferences (their directory exists locally)
+                    is_local_chunk = chunk_id in self._chunk_names
+                    is_external_chunk = chunk_id in self._external_chunk_names
+                    if not is_local_chunk and not is_external_chunk:
                         errors.append(
                             IntegrityError(
                                 source=f"{rel_path}:{line_num}",
@@ -535,8 +570,9 @@ class IntegrityValidator:
                                 message=f"Code backreference to non-existent chunk '{chunk_id}' at line {line_num}",
                             )
                         )
-                    else:
-                        # Bidirectional check: does chunk's code_references include this file?
+                    elif is_local_chunk:
+                        # Bidirectional check only for local chunks
+                        # (external chunks don't have GOAL.md with code_references)
                         chunk_code_files = self._chunk_code_files.get(chunk_id, set())
                         # Match on file path (str(rel_path))
                         if str(rel_path) not in chunk_code_files:
@@ -548,6 +584,7 @@ class IntegrityValidator:
                                     message=f"Code backreference to chunk '{chunk_id}' at line {line_num} but chunk's code_references does not include this file",
                                 )
                             )
+                    # External chunks: no bidirectional check (validated in home repo)
 
                 # Check for subsystem backreferences
                 match = SUBSYSTEM_BACKREF_PATTERN.match(line)

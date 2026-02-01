@@ -153,6 +153,7 @@ def init(project_dir):
 
 
 # Chunk: docs/chunks/integrity_validate - Project-wide referential integrity validation
+# Chunk: docs/chunks/validate_external_chunks - External chunk skip reporting in verbose output
 @cli.command()
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed statistics")
@@ -176,6 +177,8 @@ def validate(project_dir, verbose, strict):
     if verbose:
         click.echo("Scanning artifacts...")
         click.echo(f"  Chunks: {result.chunks_scanned}")
+        if result.external_chunks_skipped > 0:
+            click.echo(f"  External chunks skipped: {result.external_chunks_skipped}")
         click.echo(f"  Narratives: {result.narratives_scanned}")
         click.echo(f"  Investigations: {result.investigations_scanned}")
         click.echo(f"  Subsystems: {result.subsystems_scanned}")
