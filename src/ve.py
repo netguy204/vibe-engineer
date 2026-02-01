@@ -4212,9 +4212,16 @@ def abandon_migration(migration_type, project_dir):
 
 # Reviewer agent commands
 # Chunk: docs/chunks/reviewer_decisions_list_cli - Few-shot decision aggregation CLI
+# Chunk: docs/chunks/reviewer_decision_create_cli - Reviewer CLI group for reviewer agent operations
 @cli.group()
 def reviewer():
     """Reviewer agent commands."""
+    pass
+
+
+@reviewer.group()
+def decision():
+    """Decision file commands"""
     pass
 
 
@@ -4308,6 +4315,81 @@ def list_decisions(recent, reviewer_name, project_dir):
             click.echo(f"  - feedback: {decision.operator_review.feedback}")
 
         click.echo()
+
+
+@decision.command("create")
+@click.argument("chunk_id")
+@click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
+@click.option("--iteration", default=1, type=int, help="Review iteration (default: 1)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def create_decision(chunk_id, reviewer_name, iteration, project_dir):
+    """Create a decision file for reviewing a chunk.
+
+    Creates a decision file at docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md
+    with frontmatter and criteria assessment template derived from the chunk's GOAL.md.
+    """
+    chunks = Chunks(project_dir)
+
+    # Validate chunk exists
+    chunk_name = chunks.resolve_chunk_id(chunk_id)
+    if chunk_name is None:
+        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        raise SystemExit(1)
+
+    # Build decision file path
+    decisions_dir = project_dir / "docs" / "reviewers" / reviewer_name / "decisions"
+    decision_file = decisions_dir / f"{chunk_name}_{iteration}.md"
+
+    # Check if decision file already exists
+    if decision_file.exists():
+        click.echo(
+            f"Error: Decision file already exists at {decision_file.relative_to(project_dir)}. "
+            f"Use --iteration {iteration + 1} for a new review iteration.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    # Get success criteria from chunk GOAL.md
+    criteria = chunks.get_success_criteria(chunk_id)
+
+    # Build decision file content
+    # Frontmatter with null values (to be filled by reviewer)
+    frontmatter_content = """---
+decision: null  # APPROVE | FEEDBACK | ESCALATE
+summary: null   # One-sentence rationale
+operator_review: null  # "good" | "bad" | { feedback: "<message>" }
+---
+
+"""
+
+    # Build criteria assessment section
+    body_content = "## Criteria Assessment\n\n"
+
+    if criteria:
+        for i, criterion in enumerate(criteria, 1):
+            body_content += f"### Criterion {i}: {criterion}\n\n"
+            body_content += "- **Status**: satisfied | gap | unclear\n"
+            body_content += "- **Evidence**: [What implementation evidence supports this assessment]\n\n"
+    else:
+        body_content += "<!-- No success criteria found in chunk GOAL.md -->\n\n"
+
+    # Add feedback and escalation sections (to be filled as needed)
+    body_content += """## Feedback Items
+
+<!-- For FEEDBACK decisions only. Delete section if APPROVE. -->
+
+## Escalation Reason
+
+<!-- For ESCALATE decisions only. Delete section if APPROVE/FEEDBACK. -->
+"""
+
+    # Create parent directories if needed
+    decisions_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write the decision file
+    decision_file.write_text(frontmatter_content + body_content)
+
+    click.echo(f"Created {decision_file.relative_to(project_dir)}")
 
 
 if __name__ == "__main__":

@@ -8,170 +8,127 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk implements a CLI command to instantiate decision file templates for the reviewer agent. The design follows patterns established in the investigation (docs/investigations/reviewer_log_concurrency):
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **CLI Command Structure**: Add a new `reviewer` CLI group with `decision create` subcommand following Click patterns used throughout the codebase (see `ve.py`).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Template Rendering**: Generate decision files by dynamically building content from the chunk's GOAL.md success criteria, rather than using a static Jinja2 template. This allows the criteria assessment section to reflect the actual success criteria from the target chunk.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decision_create_cli/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Validation**: Verify the chunk exists before creating the decision file. If chunk doesn't exist, error with helpful message.
+
+4. **File Path Convention**: `docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md` as specified in the investigation.
+
+5. **Schema Usage**: Use the `DecisionFrontmatter` model from `src/models.py` (created by the `reviewer_decision_schema` chunk) to ensure the generated frontmatter is valid.
+
+Per DEC-005, this command does not prescribe git operations.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are directly relevant to this chunk. The reviewer infrastructure is not yet documented as a subsystem.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for the CLI command
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_reviewer_decision_create.py` with tests for:
+- Command creates decision file at correct path
+- Command accepts `--reviewer` flag (default: baseline)
+- Command accepts `--iteration` flag (default: 1)
+- Command errors if chunk doesn't exist
+- Created file has valid frontmatter with null decision/summary/operator_review
+- Created file body contains criteria assessment sections derived from chunk's GOAL.md
 
-Example:
+Location: `tests/test_reviewer_decision_create.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add `reviewer` CLI group to ve.py
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a new Click group for reviewer commands following the pattern of other groups (chunk, narrative, investigation, etc.).
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+@cli.group()
+def reviewer():
+    """Reviewer commands"""
+    pass
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/ve.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Add `decision` subgroup under `reviewer`
+
+The command structure is `ve reviewer decision create <chunk>`, so we need a nested group:
+
+```python
+@reviewer.group()
+def decision():
+    """Decision file commands"""
+    pass
+```
+
+Location: `src/ve.py`
+
+### Step 4: Implement the `create` command
+
+Add the `create` command under the `decision` group:
+
+```python
+@decision.command("create")
+@click.argument("chunk_id")
+@click.option("--reviewer", default="baseline", help="Reviewer name (default: baseline)")
+@click.option("--iteration", default=1, type=int, help="Review iteration (default: 1)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def create_decision(chunk_id, reviewer, iteration, project_dir):
+    ...
+```
+
+The implementation should:
+1. Validate chunk exists using `Chunks.resolve_chunk_id()`
+2. Parse chunk's GOAL.md to extract success criteria
+3. Build the decision file content with:
+   - YAML frontmatter (decision: null, summary: null, operator_review: null)
+   - Criteria assessment template with sections for each success criterion
+4. Create parent directories if needed
+5. Write the file to `docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md`
+6. Output the created file path
+
+Location: `src/ve.py`
+
+### Step 5: Create helper to extract success criteria from GOAL.md
+
+Add a helper function to parse a chunk's GOAL.md and extract the success criteria list. This can be placed in `src/chunks.py` or kept inline in `ve.py`.
+
+The extraction should:
+1. Read the GOAL.md content
+2. Find the `## Success Criteria` section
+3. Extract bullet points as individual criteria strings
+4. Handle the case where no criteria section exists
+
+Location: `src/chunks.py` (add method `get_success_criteria(chunk_id)`)
+
+### Step 6: Verify tests pass
+
+Run `uv run pytest tests/test_reviewer_decision_create.py` to ensure all tests pass.
+
+### Step 7: Update GOAL.md code_paths
+
+Update the chunk GOAL.md frontmatter with the files created/modified:
+- `src/ve.py` - CLI command implementation
+- `src/chunks.py` - Success criteria extraction helper
+- `tests/test_reviewer_decision_create.py` - Tests
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **reviewer_decision_schema** (ACTIVE): Provides `DecisionFrontmatter`, `ReviewerDecision`, and `FeedbackReview` models in `src/models.py`. The directory structure `docs/reviewers/baseline/decisions/` was also created by this chunk.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Success criteria parsing**: GOAL.md success criteria may have varied formatting (numbered lists, bullet points, etc.). The extraction logic needs to be robust. Start simple (look for bullet points under `## Success Criteria`) and handle common variations.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Iteration collision**: If a decision file already exists for the given chunk and iteration, should we error or overwrite? The conservative choice is to error and suggest incrementing the iteration.
+
+3. **Reviewer validation**: Should we validate that the reviewer exists (has a METADATA.yaml)? The investigation suggests yes, but start simple and add validation if needed.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

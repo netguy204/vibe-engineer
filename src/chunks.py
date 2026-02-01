@@ -388,6 +388,50 @@ class Chunks:
             return None
         return self.chunk_dir / chunk_name / "GOAL.md"
 
+    # Chunk: docs/chunks/reviewer_decision_create_cli - Extracts success criteria from GOAL.md
+    def get_success_criteria(self, chunk_id: str) -> list[str]:
+        """Extract success criteria from a chunk's GOAL.md.
+
+        Finds the `## Success Criteria` section and extracts bullet points.
+
+        Args:
+            chunk_id: The chunk ID to extract criteria from.
+
+        Returns:
+            List of success criteria strings. Empty list if chunk not found
+            or no criteria section exists.
+        """
+        goal_path = self.get_chunk_goal_path(chunk_id)
+        if goal_path is None or not goal_path.exists():
+            return []
+
+        content = goal_path.read_text()
+
+        # Find the Success Criteria section
+        # Match "## Success Criteria" and extract until the next ## or end of file
+        criteria_match = re.search(
+            r"## Success Criteria\s*\n(.*?)(?=\n## |\Z)",
+            content,
+            re.DOTALL | re.IGNORECASE
+        )
+
+        if not criteria_match:
+            return []
+
+        criteria_section = criteria_match.group(1)
+
+        # Extract bullet points (lines starting with - or *)
+        criteria = []
+        for line in criteria_section.split("\n"):
+            line = line.strip()
+            if line.startswith("- ") or line.startswith("* "):
+                # Remove the bullet prefix
+                criterion = line[2:].strip()
+                if criterion:
+                    criteria.append(criterion)
+
+        return criteria
+
     # Chunk: docs/chunks/chunk_overlap_command - Extracts and parses YAML frontmatter from GOAL.md
     def parse_chunk_frontmatter(self, chunk_id: str) -> ChunkFrontmatter | None:
         """Parse YAML frontmatter from a chunk's GOAL.md.
