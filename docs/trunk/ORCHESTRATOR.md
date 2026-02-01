@@ -1,3 +1,4 @@
+<!-- Chunk: docs/chunks/progressive_disclosure_refactor - Extracted orchestrator reference documentation -->
 # Orchestrator Reference
 
 The orchestrator (`ve orch`) manages parallel chunk execution across multiple git worktrees. It automates scheduling, attention routing, and conflict detection for concurrent workstreams.

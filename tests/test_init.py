@@ -1,4 +1,5 @@
 """Tests for the 've init' CLI command."""
+# Chunk: docs/chunks/project_init_command - CLI integration tests for 've init'
 
 import pathlib
 import tempfile

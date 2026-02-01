@@ -30,6 +30,7 @@ To understand recent work, use `ve chunk list --current` to find the currently I
 3. **Implement** - Write the code
 4. **Complete** - Update code references and mark done
 
+
 ### Chunk Naming Conventions
 
 Name chunks by the **initiative** they advance, not the artifact type or action verb. Good prefixes are domain concepts that group related work: `ordering_`, `taskdir_`, `template_`. Avoid generic prefixes: `chunk_`, `fix_`, `cli_`, `api_`, `util_`.
@@ -56,6 +57,7 @@ Exploratory documents for understanding before acting. **Read when**: diagnosing
 
 See: `docs/trunk/ARTIFACTS.md#investigations`
 
+
 ### Subsystems (`docs/subsystems/`)
 
 Emergent architectural patterns. **Read when**: implementing patterns that might already exist, or when code backreferences mention a subsystem.
@@ -67,6 +69,7 @@ See: `docs/trunk/ARTIFACTS.md#subsystems`
 Accumulative ledger for pain points. **Read when**: capturing friction, or when friction patterns suggest work.
 
 See: `docs/trunk/ARTIFACTS.md#friction-log`
+
 
 ### External Artifacts
 
@@ -105,6 +108,7 @@ Use these slash commands for artifact management:
 - `/chunk-create` - Create a new chunk and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
+
 - `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references
 - `/cluster-rename` - Batch-rename chunks matching a prefix
@@ -113,6 +117,8 @@ Use these slash commands for artifact management:
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation
 - `/friction-log` - Capture a friction point
+- `/validate-fix` - Iteratively fix validation errors until clean
+
 
 ## Creating Artifacts
 
@@ -139,6 +145,7 @@ If you encounter a situation where no creation command exists for an artifact ty
 1. Read `docs/trunk/GOAL.md` to understand the project
 2. Check `docs/chunks/` for recent and in-progress work
 3. Use `/chunk-create` to start new work
+
 
 ## Learning Philosophy
 

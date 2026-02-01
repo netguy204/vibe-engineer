@@ -1,4 +1,5 @@
 """Tests for cluster rename functionality."""
+# Chunk: docs/chunks/cluster_rename - Test suite for cluster rename
 
 import subprocess
 

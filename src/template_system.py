@@ -1,6 +1,7 @@
 """Template system module - unified Jinja2 template rendering."""
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/template_unified_module - Core template system implementation
 
 import pathlib
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ from constants import template_dir
 
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/template_lang_agnostic - Simplified config (removed is_ve_source_repo)
 # Chunk: docs/chunks/cluster_subsystem_prompt - cluster_subsystem_threshold configuration field
 @dataclass
 class VeConfig:
@@ -35,6 +37,7 @@ class VeConfig:
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/template_lang_agnostic - Config loader (no is_ve_source_repo)
 # Chunk: docs/chunks/cluster_subsystem_prompt - Load cluster_subsystem_threshold from config
 def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
     """Load .ve-config.yaml from project root.

@@ -134,6 +134,7 @@ def cli():
     pass
 
 
+# Chunk: docs/chunks/project_init_command - CLI init command implementation
 @cli.command()
 @click.option("--project-dir", type=click.Path(path_type=pathlib.Path), default=".")
 def init(project_dir):

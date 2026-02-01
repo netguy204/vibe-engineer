@@ -2,6 +2,7 @@
 description: Consolidate multiple chunks into a narrative to reduce backreference clutter.
 ---
 
+
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
