@@ -220,9 +220,9 @@ class Project:
     def _init_reviewers(self) -> InitResult:
         """Initialize baseline reviewer from templates.
 
-        Creates docs/reviewers/baseline/ directory with METADATA.yaml, PROMPT.md,
-        and DECISION_LOG.md. Uses overwrite=False to preserve existing reviewer
-        configuration and decision logs.
+        Creates docs/reviewers/baseline/ directory with METADATA.yaml and
+        PROMPT.md. Uses overwrite=False to preserve existing reviewer
+        configuration.
         """
         result = InitResult()
         reviewers_dir = self.project_dir / "docs" / "reviewers" / "baseline"

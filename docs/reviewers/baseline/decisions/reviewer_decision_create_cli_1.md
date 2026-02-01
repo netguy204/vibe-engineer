@@ -2,7 +2,11 @@
 decision: APPROVE
 summary: 'APPROVE: Add CLI command `ve reviewer decision create <chunk>` to instantiate
   decision templates for the reviewer agent'
-operator_review: good
+operator_review:
+  feedback: |
+    the agent built up the decision template in the ve.py file using string
+    concatenation instead of using the template subsystem. you should have
+    encouraged it down the more maintainable path of using templates.
 ---
 
 ## Assessment
