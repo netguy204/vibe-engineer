@@ -1,6 +1,7 @@
 """Tests for referential integrity validation.
 
 # Chunk: docs/chunks/integrity_validate - Tests for integrity validation module
+# Chunk: docs/chunks/validate_external_chunks - Tests for external chunk validation behavior
 """
 
 import pathlib
@@ -572,6 +573,7 @@ class TestIntegrityValidatorSubsystemChunkRefs:
         assert result.errors[0].link_type == "subsystem→chunk"
 
 
+# Chunk: docs/chunks/integrity_code_backrefs - Tests for line number tracking in backreference errors
 class TestIntegrityValidatorCodeBackrefs:
     """Tests for code backreference validation."""
 
@@ -840,6 +842,7 @@ class TestIntegrityValidatorCLI:
         assert "Scanning artifacts" in result.output
 
 
+# Chunk: docs/chunks/integrity_bidirectional - Tests for bidirectional consistency warnings
 class TestIntegrityValidatorBidirectional:
     """Tests for bidirectional consistency warnings."""
 
@@ -1025,3 +1028,147 @@ class TestIntegrityValidatorBidirectional:
         )
         assert result.exit_code == 1
         assert "Validation failed" in result.output
+
+
+def write_external_chunk(chunk_path: pathlib.Path, repo: str = "acme/ext-repo", artifact_id: str | None = None):
+    """Helper to write an external chunk (external.yaml instead of GOAL.md).
+
+    External chunks are pointers to canonical artifacts in other repositories.
+    They contain only external.yaml, not GOAL.md.
+
+    Args:
+        chunk_path: Path to the chunk directory.
+        repo: External repository reference in org/repo format.
+        artifact_id: Artifact ID in the external repo. Defaults to chunk_path.name.
+    """
+    import yaml
+
+    chunk_path.mkdir(parents=True, exist_ok=True)
+    external_yaml_path = chunk_path / "external.yaml"
+
+    if artifact_id is None:
+        artifact_id = chunk_path.name
+
+    data = {
+        "artifact_type": "chunk",
+        "artifact_id": artifact_id,
+        "repo": repo,
+        "track": "main",
+    }
+
+    with open(external_yaml_path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+
+class TestIntegrityValidatorExternalChunks:
+    """Tests for external chunk validation behavior."""
+
+    def test_project_with_only_external_chunks_passes(self, temp_project):
+        """A project with only external chunks (no local chunks) passes validation."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create external chunk (external.yaml, no GOAL.md)
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external_feature"
+        write_external_chunk(external_chunk_path)
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.errors) == 0
+        # External chunks should be skipped, not counted in chunks_scanned
+        assert result.chunks_scanned == 0
+        assert result.external_chunks_skipped == 1
+
+    def test_mixed_local_and_external_chunks(self, temp_project):
+        """Mixed local and external chunks: only local chunks are validated."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create local chunk
+        local_chunk_path = temp_project / "docs" / "chunks" / "local_feature"
+        local_chunk_path.mkdir(parents=True)
+        write_chunk_goal(local_chunk_path)
+
+        # Create external chunk
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external_feature"
+        write_external_chunk(external_chunk_path)
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.chunks_scanned == 1  # Only local chunk
+        assert result.external_chunks_skipped == 1
+
+    def test_external_chunks_skipped_count_reported(self, temp_project):
+        """Multiple external chunks are all counted in skipped count."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create multiple external chunks
+        for name in ["xr_feature_a", "xr_feature_b", "xr_feature_c"]:
+            external_chunk_path = temp_project / "docs" / "chunks" / name
+            write_external_chunk(external_chunk_path)
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.chunks_scanned == 0
+        assert result.external_chunks_skipped == 3
+
+    def test_local_chunk_with_error_still_fails_with_external_present(self, temp_project):
+        """Local chunk errors are still reported even when external chunks exist."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create local chunk with invalid reference
+        local_chunk_path = temp_project / "docs" / "chunks" / "local_broken"
+        local_chunk_path.mkdir(parents=True)
+        write_chunk_goal(local_chunk_path, narrative="nonexistent_narrative")
+
+        # Create external chunk
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external"
+        write_external_chunk(external_chunk_path)
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        assert "nonexistent_narrative" in result.errors[0].message
+        assert result.chunks_scanned == 1  # Only local chunk
+        assert result.external_chunks_skipped == 1
+
+    def test_cli_verbose_shows_external_chunks_skipped(self, runner, temp_project):
+        """CLI --verbose output shows external chunks skipped count."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create external chunk
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external"
+        write_external_chunk(external_chunk_path)
+
+        result = runner.invoke(
+            cli, ["validate", "--verbose", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "External chunks skipped: 1" in result.output
+
+    def test_code_backref_to_external_chunk_passes(self, temp_project):
+        """Code backreference to an external chunk directory should pass.
+
+        External chunks exist as directories with external.yaml, so code can
+        still reference them. The validation should recognize that the chunk
+        directory exists (even if it's external).
+        """
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create external chunk
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_feature"
+        write_external_chunk(external_chunk_path)
+
+        # Create source file with backreference to the external chunk
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n# Chunk: docs/chunks/xr_feature - External feature\n'
+        )
+
+        result = validate_integrity(temp_project)
+        # External chunk directories should be recognized in the chunk index
+        # so code backreferences to them should not produce errors
+        assert result.success
+        assert len(result.errors) == 0
+        assert result.chunk_backrefs_found == 1
