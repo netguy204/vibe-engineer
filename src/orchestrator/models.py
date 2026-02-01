@@ -7,8 +7,10 @@
 These models define the data contract between CLI, daemon, and SQLite.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
@@ -114,6 +116,8 @@ class WorkUnit(BaseModel):
     # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     # Track how many times the reviewer was nudged to call the ReviewDecision tool
     review_nudge_count: int = 0
+    # Chunk: docs/chunks/orch_worktree_retain - Flag to retain worktree after completion
+    retain_worktree: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -147,6 +151,7 @@ class WorkUnit(BaseModel):
             "explicit_deps": self.explicit_deps,
             "review_iterations": self.review_iterations,
             "review_nudge_count": self.review_nudge_count,
+            "retain_worktree": self.retain_worktree,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -214,6 +219,33 @@ class ReviewToolDecision(BaseModel):
     reason: Optional[str] = None  # Reason for ESCALATE decisions
 
 
+# Chunk: docs/chunks/orch_worktree_retain - WorktreeInfo for worktree listing
+@dataclass
+class WorktreeInfo:
+    """Information about a git worktree for the worktree list endpoint.
+
+    Used to display worktrees in the CLI and dashboard with their status.
+    """
+
+    chunk: str  # Chunk name this worktree is for
+    path: str  # Filesystem path to the worktree
+    status: str  # Status: "active", "retained", "orphaned", "completed"
+    work_unit_status: Optional[WorkUnitStatus] = None  # Work unit status if known
+    retain_worktree: bool = False  # Whether marked for retention
+    created_at: Optional[datetime] = None  # When the worktree was created
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable dict representation."""
+        return {
+            "chunk": self.chunk,
+            "path": self.path,
+            "status": self.status,
+            "work_unit_status": self.work_unit_status.value if self.work_unit_status else None,
+            "retain_worktree": self.retain_worktree,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 # Chunk: docs/chunks/orch_question_forward - Stores suspended=True and question data when hook fires
 class AgentResult(BaseModel):
     """Result from running an agent phase.
@@ -263,10 +295,6 @@ class ReviewResult(BaseModel):
     issues: list[ReviewIssue] = []  # Issues found (for FEEDBACK decisions)
     reason: Optional[str] = None  # Escalation reason (for ESCALATE decisions)
     iteration: int = 1  # Current review iteration number
-
-
-from dataclasses import dataclass, field
-from pathlib import Path
 
 
 # Chunk: docs/chunks/orch_task_detection - Task context detection data model and functions
