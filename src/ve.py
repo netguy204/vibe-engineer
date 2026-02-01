@@ -26,7 +26,7 @@ from investigations import Investigations
 from narratives import Narratives
 from project import Project
 from subsystems import Subsystems
-from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus, ArtifactType
+from models import SubsystemStatus, InvestigationStatus, ChunkStatus, NarrativeStatus, ArtifactType, DecisionFrontmatter, FeedbackReview
 from task_init import TaskInit
 from task_utils import (
     is_task_directory,
@@ -4204,6 +4204,106 @@ def abandon_migration(migration_type, project_dir):
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+
+# Reviewer agent commands
+# Chunk: docs/chunks/reviewer_decisions_list_cli - Few-shot decision aggregation CLI
+@cli.group()
+def reviewer():
+    """Reviewer agent commands."""
+    pass
+
+
+@reviewer.command("decisions")
+@click.option("--recent", type=int, required=True, help="Number of recent curated decisions to show")
+@click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def list_decisions(recent, reviewer_name, project_dir):
+    """List recent curated decisions for few-shot context.
+
+    Outputs decisions that have operator_review set (curated examples) in a format
+    suitable for few-shot learning. Decisions are sorted by modification time with
+    most recent first.
+    """
+    import os
+    import yaml
+
+    # Build path to decisions directory
+    decisions_path = project_dir / "docs" / "reviewers" / reviewer_name / "decisions"
+
+    if not decisions_path.exists():
+        # No decisions directory - just return empty (not an error)
+        return
+
+    # Collect and parse decision files
+    decision_files = list(decisions_path.glob("*.md"))
+    if not decision_files:
+        return
+
+    curated_decisions = []
+
+    for filepath in decision_files:
+        try:
+            content = filepath.read_text()
+
+            # Parse frontmatter (content between first two --- lines)
+            if not content.startswith("---"):
+                continue
+
+            parts = content.split("---", 2)
+            if len(parts) < 3:
+                continue
+
+            frontmatter_text = parts[1].strip()
+            frontmatter_data = yaml.safe_load(frontmatter_text)
+
+            if frontmatter_data is None:
+                continue
+
+            # Validate with Pydantic model
+            decision = DecisionFrontmatter(**frontmatter_data)
+
+            # Skip non-curated decisions (operator_review is None)
+            if decision.operator_review is None:
+                continue
+
+            # Get modification time for sorting
+            mtime = os.path.getmtime(filepath)
+
+            curated_decisions.append((filepath, decision, mtime))
+
+        except (yaml.YAMLError, ValueError) as e:
+            # Skip files with parse errors, optionally warn
+            click.echo(f"Warning: Skipping {filepath.name}: {e}", err=True)
+            continue
+
+    # Sort by modification time (newest first)
+    curated_decisions.sort(key=lambda x: x[2], reverse=True)
+
+    # Limit to --recent N
+    curated_decisions = curated_decisions[:recent]
+
+    # Output each decision in the expected format
+    for filepath, decision, _mtime in curated_decisions:
+        # Calculate working-directory-relative path
+        try:
+            rel_path = filepath.relative_to(project_dir)
+        except ValueError:
+            rel_path = filepath
+
+        click.echo(f"## {rel_path}")
+        click.echo()
+        click.echo(f"- **Decision**: {decision.decision.value if decision.decision else 'None'}")
+        click.echo(f"- **Summary**: {decision.summary or ''}")
+
+        # Format operator_review based on type
+        if isinstance(decision.operator_review, str):
+            click.echo(f"- **Operator review**: {decision.operator_review}")
+        elif isinstance(decision.operator_review, FeedbackReview):
+            click.echo("- **Operator review**:")
+            click.echo(f"  - feedback: {decision.operator_review.feedback}")
+
+        click.echo()
 
 
 if __name__ == "__main__":
