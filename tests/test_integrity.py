@@ -670,6 +670,93 @@ class TestIntegrityValidatorCodeBackrefs:
         assert result.success
         assert result.files_scanned == 0
 
+    def test_error_includes_line_number_in_source(self, temp_project):
+        """Code backreference error includes line number in source field."""
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        # Backreference on line 3
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'
+            "\n"
+            "# Chunk: docs/chunks/nonexistent_chunk - Test chunk\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        # Source should include line number
+        assert result.errors[0].source == "src/test.py:3"
+
+    def test_error_message_includes_line_number(self, temp_project):
+        """Code backreference error message mentions the line number."""
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'
+            "\n"
+            "# Chunk: docs/chunks/nonexistent_chunk - Test chunk\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        # Message should mention line number
+        assert "line 3" in result.errors[0].message
+
+    def test_multiple_errors_report_distinct_line_numbers(self, temp_project):
+        """Multiple broken backreferences report correct distinct line numbers."""
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        # Two broken backreferences at different line numbers
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'  # line 1
+            "\n"  # line 2
+            "# Chunk: docs/chunks/nonexistent_a - First\n"  # line 3
+            "def foo():\n"  # line 4
+            "    pass\n"  # line 5
+            "\n"  # line 6
+            "# Chunk: docs/chunks/nonexistent_b - Second\n"  # line 7
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 2
+
+        # Check that errors have distinct line numbers
+        sources = {e.source for e in result.errors}
+        assert "src/test.py:3" in sources
+        assert "src/test.py:7" in sources
+
+        # Check messages include line numbers
+        messages = [e.message for e in result.errors]
+        assert any("line 3" in m for m in messages)
+        assert any("line 7" in m for m in messages)
+
+    def test_subsystem_backref_error_includes_line_number(self, temp_project):
+        """Subsystem backreference error includes line number."""
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'  # line 1
+            "\n"  # line 2
+            "\n"  # line 3
+            "# Subsystem: docs/subsystems/nonexistent - Test\n"  # line 4
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        assert result.errors[0].source == "src/test.py:4"
+        assert "line 4" in result.errors[0].message
+
 
 class TestIntegrityValidatorMultipleErrors:
     """Tests for multiple error detection."""

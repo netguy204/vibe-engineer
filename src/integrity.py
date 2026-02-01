@@ -396,7 +396,7 @@ class IntegrityValidator:
         """Validate code backreference comments point to existing artifacts.
 
         Scans source files for # Chunk: and # Subsystem: comments and validates
-        that referenced artifacts exist.
+        that referenced artifacts exist. Reports line numbers for broken references.
 
         Returns:
             (errors, warnings, files_scanned, chunk_refs_found, subsystem_refs_found)
@@ -422,33 +422,37 @@ class IntegrityValidator:
 
             rel_path = file_path.relative_to(self.project_dir)
 
-            # Find chunk backreferences
-            for match in CHUNK_BACKREF_PATTERN.finditer(content):
-                chunk_refs_found += 1
-                chunk_id = match.group(1)
-                if chunk_id not in self._chunk_names:
-                    errors.append(
-                        IntegrityError(
-                            source=str(rel_path),
-                            target=f"docs/chunks/{chunk_id}",
-                            link_type="code→chunk",
-                            message=f"Code backreference to non-existent chunk '{chunk_id}'",
+            # Iterate line-by-line to track line numbers (1-indexed)
+            for line_num, line in enumerate(content.splitlines(), start=1):
+                # Check for chunk backreferences
+                match = CHUNK_BACKREF_PATTERN.match(line)
+                if match:
+                    chunk_refs_found += 1
+                    chunk_id = match.group(1)
+                    if chunk_id not in self._chunk_names:
+                        errors.append(
+                            IntegrityError(
+                                source=f"{rel_path}:{line_num}",
+                                target=f"docs/chunks/{chunk_id}",
+                                link_type="code→chunk",
+                                message=f"Code backreference to non-existent chunk '{chunk_id}' at line {line_num}",
+                            )
                         )
-                    )
 
-            # Find subsystem backreferences
-            for match in SUBSYSTEM_BACKREF_PATTERN.finditer(content):
-                subsystem_refs_found += 1
-                subsystem_id = match.group(1)
-                if subsystem_id not in self._subsystem_names:
-                    errors.append(
-                        IntegrityError(
-                            source=str(rel_path),
-                            target=f"docs/subsystems/{subsystem_id}",
-                            link_type="code→subsystem",
-                            message=f"Code backreference to non-existent subsystem '{subsystem_id}'",
+                # Check for subsystem backreferences
+                match = SUBSYSTEM_BACKREF_PATTERN.match(line)
+                if match:
+                    subsystem_refs_found += 1
+                    subsystem_id = match.group(1)
+                    if subsystem_id not in self._subsystem_names:
+                        errors.append(
+                            IntegrityError(
+                                source=f"{rel_path}:{line_num}",
+                                target=f"docs/subsystems/{subsystem_id}",
+                                link_type="code→subsystem",
+                                message=f"Code backreference to non-existent subsystem '{subsystem_id}' at line {line_num}",
+                            )
                         )
-                    )
 
         return errors, warnings, files_scanned, chunk_refs_found, subsystem_refs_found
 
