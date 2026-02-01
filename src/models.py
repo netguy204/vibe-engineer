@@ -776,3 +776,52 @@ class ReviewerMetadata(BaseModel):
         if not v or not v.strip():
             raise ValueError("name cannot be empty")
         return v
+
+
+# Chunk: docs/chunks/reviewer_decision_schema - Per-file decision schema
+class ReviewerDecision(StrEnum):
+    """Decision outcomes for reviewer decision files.
+
+    Each per-file decision record captures the reviewer's assessment:
+    - APPROVE: Implementation meets documented intent; proceed to completion
+    - FEEDBACK: Issues found that need addressing; implementor should fix and re-review
+    - ESCALATE: Cannot decide; ambiguity requires operator intervention
+    """
+
+    APPROVE = "APPROVE"
+    FEEDBACK = "FEEDBACK"
+    ESCALATE = "ESCALATE"
+
+
+# Chunk: docs/chunks/reviewer_decision_schema - Per-file decision schema
+class FeedbackReview(BaseModel):
+    """Structured feedback variant for operator review.
+
+    Used when the operator wants to provide a detailed message rather than
+    just marking the decision as "good" or "bad".
+    """
+
+    feedback: str
+
+    @field_validator("feedback")
+    @classmethod
+    def validate_feedback(cls, v: str) -> str:
+        """Validate that feedback is not empty or whitespace-only."""
+        if not v or not v.strip():
+            raise ValueError("feedback cannot be empty")
+        return v
+
+
+# Chunk: docs/chunks/reviewer_decision_schema - Per-file decision schema
+class DecisionFrontmatter(BaseModel):
+    """Frontmatter schema for per-file reviewer decision files.
+
+    Located at: docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md
+
+    All fields are nullable to support template instantiation where the
+    reviewer fills in values after creation.
+    """
+
+    decision: ReviewerDecision | None = None
+    summary: str | None = None
+    operator_review: Literal["good", "bad"] | FeedbackReview | None = None

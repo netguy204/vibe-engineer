@@ -8,153 +8,118 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk implements the foundational schema layer for the per-file reviewer decision system. The design follows the investigation findings in `docs/investigations/reviewer_log_concurrency/OVERVIEW.md`, which established:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Per-file decisions at `docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md`
+2. Union-typed operator review field: `Union[Literal["good", "bad"], FeedbackReview]`
+3. Structured frontmatter with decision, summary, and operator_review fields
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The implementation follows existing patterns in `src/models.py` for pydantic model definitions, particularly the pattern used by `ReviewerMetadata` and related reviewer models added in the `reviewer_infrastructure` chunk.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decision_schema/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Strategy:**
+- Add new pydantic models to `src/models.py` alongside existing reviewer models (TrustLevel, ReviewerMetadata, etc.)
+- Create the decisions directory structure under baseline reviewer
+- Write tests following TESTING_PHILOSOPHY.md - focusing on validation behavior (rejection of invalid inputs) rather than trivial storage assertions
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk IMPLEMENTS new reviewer decision models following the existing workflow artifact patterns. The models follow the established conventions in `src/models.py` for StrEnum-based status types, frontmatter models, and field validation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define the ReviewerDecision enum
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a StrEnum representing valid decision outcomes for a reviewer decision file.
 
-Example:
+Location: `src/models.py`
 
-### Step 1: Define the SegmentHeader struct
+Values:
+- `APPROVE` - Implementation meets documented intent
+- `FEEDBACK` - Issues found that need addressing
+- `ESCALATE` - Cannot decide, requires operator intervention
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+This mirrors the existing `ReviewDecision` enum in `src/orchestrator/models.py` but is for decision file frontmatter rather than orchestrator routing.
 
-Location: src/segment/format.rs
+### Step 2: Define the FeedbackReview model
 
-### Step 2: Implement header serialization
+Create a pydantic model for the structured feedback variant of operator review.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/models.py`
 
-### Step 3: ...
+Fields:
+- `feedback: str` - The operator's feedback message (required, non-empty)
+
+Validation:
+- Reject empty or whitespace-only feedback
+
+### Step 3: Define the DecisionFrontmatter model
+
+Create the main pydantic model for decision file frontmatter.
+
+Location: `src/models.py`
+
+Fields:
+- `decision: ReviewerDecision | None` - The reviewer's decision (nullable for templates)
+- `summary: str | None` - One-sentence rationale (nullable for templates)
+- `operator_review: Union[Literal["good", "bad"], FeedbackReview] | None` - Operator's review (nullable until reviewed)
+
+Validation:
+- Accept `None` for all fields (decision files start as templates)
+- When `decision` is provided, validate it's a valid `ReviewerDecision`
+- When `operator_review` is provided:
+  - Accept string literals `"good"` or `"bad"`
+  - Accept dict/object with `feedback` field (parsed as `FeedbackReview`)
+
+### Step 4: Write tests for DecisionFrontmatter validation
+
+Location: `tests/test_models.py`
+
+Test cases:
+- Empty frontmatter (all None) parses successfully
+- Valid decision values accepted
+- Invalid decision values rejected
+- `operator_review: good` and `operator_review: bad` accepted
+- `operator_review: {feedback: "message"}` accepted
+- `operator_review: {feedback: ""}` rejected (empty feedback)
+- Invalid `operator_review` types rejected
+
+### Step 5: Create the decisions directory
+
+Create the directory structure for per-file decisions.
+
+Location: `docs/reviewers/baseline/decisions/`
+
+Add a `.gitkeep` file to ensure the empty directory is tracked in git.
+
+### Step 6: Add integration test for decision template parsing
+
+Add a test that validates the prototype decision template from the investigation can be parsed by the model.
+
+Location: `tests/test_models.py`
+
+Test:
+- Parse the YAML frontmatter from `docs/investigations/reviewer_log_concurrency/prototypes/decision_template.md`
+- Verify it parses successfully as `DecisionFrontmatter`
+- Verify all fields default to None (as expected for a template)
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+When implementing, add chunk backreferences to new models:
+```python
+# Chunk: docs/chunks/reviewer_decision_schema - Per-file decision schema
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **reviewer_infrastructure**: The reviewer metadata models (`TrustLevel`, `ReviewerMetadata`, etc.) must exist in `src/models.py` - these are already present.
+- **pydantic**: Already a project dependency for model validation.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Union type discrimination**: Pydantic should handle the `Union[Literal["good", "bad"], FeedbackReview]` type naturally, discriminating by whether the value is a string or dict. Verify this works correctly in tests.
+- **Nullable fields for templates**: Decision files start as templates with all null values. Ensure the model accepts this state without requiring a separate "template" model.
 
 ## Deviations
 
