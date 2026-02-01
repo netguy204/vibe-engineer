@@ -56,7 +56,7 @@ subsystems:
   - subsystem_id: template_system
     relationship: uses
 created_after: ["task_aware_investigations", "task_aware_subsystem_cmds"]
-investigation: docs/investigations/task_agent_experience
+investigation: task_agent_experience
 ---
 
 # Chunk Goal

@@ -3,22 +3,22 @@ status: SOLVED
 trigger: "Bidirectional links between artifacts rely on developer caution; no mechanical guarantee of referential integrity"
 proposed_chunks:
   - prompt: "Add `ve validate` command that runs referential integrity validation across all artifacts and code backreferences"
-    chunk_directory: docs/chunks/integrity_validate
+    chunk_directory: integrity_validate
     depends_on: []
   - prompt: "Validate code backreferences point to existing artifacts (# Chunk: and # Subsystem: comments)"
-    chunk_directory: docs/chunks/integrity_code_backrefs
+    chunk_directory: integrity_code_backrefs
     depends_on: [0]
   - prompt: "Validate proposed_chunks references in narratives, investigations, and friction log"
-    chunk_directory: docs/chunks/integrity_proposed_chunks
+    chunk_directory: integrity_proposed_chunks
     depends_on: [0]
   - prompt: "Add bidirectional consistency warnings (chunk→parent without parent→chunk)"
-    chunk_directory: docs/chunks/integrity_bidirectional
+    chunk_directory: integrity_bidirectional
     depends_on: [0, 1, 2]
   - prompt: "Fix existing 18 integrity violations in current codebase"
-    chunk_directory: docs/chunks/integrity_fix_existing
+    chunk_directory: integrity_fix_existing
     depends_on: [0]
   - prompt: "Add /validate-fix slash command that iteratively runs validation and fixes errors until all checks pass"
-    chunk_directory: docs/chunks/integrity_validate_fix_command
+    chunk_directory: integrity_validate_fix_command
     depends_on: [0, 1, 2, 3]
 created_after: ["claudemd_progressive_disclosure"]
 ---
