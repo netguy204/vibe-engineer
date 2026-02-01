@@ -18,6 +18,7 @@ def write_chunk_goal(
     subsystems: list[dict] | None = None,
     friction_entries: list[dict] | None = None,
     depends_on: list[str] | None = None,
+    code_references: list[dict] | None = None,
 ):
     """Helper to write a chunk GOAL.md with optional outbound references."""
     goal_path = chunk_path / "GOAL.md"
@@ -28,8 +29,15 @@ def write_chunk_goal(
         "ticket: null",
         "parent_chunk: null",
         "code_paths: []",
-        "code_references: []",
     ]
+
+    if code_references:
+        frontmatter_lines.append("code_references:")
+        for ref in code_references:
+            frontmatter_lines.append(f"  - ref: {ref['ref']}")
+            frontmatter_lines.append(f"    implements: \"{ref.get('implements', 'Implementation')}\"")
+    else:
+        frontmatter_lines.append("code_references: []")
 
     if narrative:
         frontmatter_lines.append(f"narrative: {narrative}")
@@ -830,3 +838,190 @@ class TestIntegrityValidatorCLI:
         assert result.exit_code == 0
         assert "Chunks: 1" in result.output
         assert "Scanning artifacts" in result.output
+
+
+class TestIntegrityValidatorBidirectional:
+    """Tests for bidirectional consistency warnings."""
+
+    def test_chunk_narrative_bidirectional_warning(self, temp_project):
+        """Chunk references narrative but narrative's proposed_chunks doesn't list chunk → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create narrative WITHOUT this chunk in proposed_chunks
+        narrative_path = temp_project / "docs" / "narratives" / "test_narrative"
+        narrative_path.mkdir(parents=True)
+        write_narrative_overview(narrative_path, proposed_chunks=[])  # Empty - no chunk listed
+
+        # Create chunk referencing the narrative
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, narrative="test_narrative")
+
+        result = validate_integrity(temp_project)
+        # Should pass (no errors) but have warnings
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔narrative"
+        assert "test_narrative" in result.warnings[0].message
+        assert "proposed_chunks" in result.warnings[0].message
+
+    def test_chunk_narrative_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create narrative WITH this chunk in proposed_chunks
+        narrative_path = temp_project / "docs" / "narratives" / "test_narrative"
+        narrative_path.mkdir(parents=True)
+        write_narrative_overview(
+            narrative_path,
+            proposed_chunks=[{"chunk_directory": "test_chunk"}],
+        )
+
+        # Create chunk referencing the narrative
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, narrative="test_narrative")
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_chunk_investigation_bidirectional_warning(self, temp_project):
+        """Chunk references investigation but investigation doesn't list chunk → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create investigation WITHOUT this chunk in proposed_chunks
+        investigation_path = temp_project / "docs" / "investigations" / "test_investigation"
+        investigation_path.mkdir(parents=True)
+        write_investigation_overview(investigation_path, proposed_chunks=[])  # Empty
+
+        # Create chunk referencing the investigation
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, investigation="test_investigation")
+
+        result = validate_integrity(temp_project)
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔investigation"
+        assert "test_investigation" in result.warnings[0].message
+        assert "proposed_chunks" in result.warnings[0].message
+
+    def test_chunk_investigation_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create investigation WITH this chunk in proposed_chunks
+        investigation_path = temp_project / "docs" / "investigations" / "test_investigation"
+        investigation_path.mkdir(parents=True)
+        write_investigation_overview(
+            investigation_path,
+            proposed_chunks=[{"chunk_directory": "test_chunk"}],
+        )
+
+        # Create chunk referencing the investigation
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, investigation="test_investigation")
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_code_chunk_bidirectional_warning(self, temp_project):
+        """Code has # Chunk: backref but chunk's code_references doesn't reference that file → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITHOUT code_references to src/test.py
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, code_references=[])  # Empty - no code refs
+
+        # Create source file with backreference to the chunk
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n# Chunk: docs/chunks/test_chunk - Test chunk\n'
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "code↔chunk"
+        assert "test_chunk" in result.warnings[0].message
+        assert "code_references" in result.warnings[0].message
+
+    def test_code_chunk_bidirectional_valid(self, temp_project):
+        """Code backref and chunk code_reference both exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITH code_references to src/test.py
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            code_references=[{"ref": "src/test.py#TestClass", "implements": "Test logic"}],
+        )
+
+        # Create source file with backreference to the chunk
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n# Chunk: docs/chunks/test_chunk - Test chunk\n'
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_code_chunk_bidirectional_matches_file_path_only(self, temp_project):
+        """File path match is sufficient even if symbols differ."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk with code_references to src/test.py#ClassName::method
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            code_references=[{"ref": "src/test.py#ClassName::method", "implements": "Method impl"}],
+        )
+
+        # Create source file with backreference (module level, not method level)
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n# Chunk: docs/chunks/test_chunk - Module level ref\n'
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        # No warning - file path match is sufficient
+        assert len(result.warnings) == 0
+
+    def test_strict_mode_promotes_bidirectional_warnings(self, runner, temp_project):
+        """CLI --strict flag promotes warnings to errors."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create narrative WITHOUT this chunk in proposed_chunks
+        narrative_path = temp_project / "docs" / "narratives" / "test_narrative"
+        narrative_path.mkdir(parents=True)
+        write_narrative_overview(narrative_path, proposed_chunks=[])
+
+        # Create chunk referencing the narrative
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, narrative="test_narrative")
+
+        # Without --strict: should pass (exit 0) with warnings
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower() or "Warning" in result.output
+
+        # With --strict: should fail (exit 1) because warnings become errors
+        result = runner.invoke(
+            cli, ["validate", "--strict", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert "Validation failed" in result.output
