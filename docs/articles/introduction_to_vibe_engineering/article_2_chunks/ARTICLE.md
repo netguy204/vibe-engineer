@@ -82,23 +82,34 @@ status: DRAFTING
 
 Discovering plan mode was a breakthrough for me. It made the scope of work I could reliably tackle with agents increase by easily a factor of three. And it became what I did all the time.
 
-But here's the thing about agents: they're stateless. Every session starts empty. The agent can explore — grep around, read files, build up context — but if that exploration finds only code, it won't understand the forces that shaped it. You'll see the symptoms: the agent does what you asked but invents worthless features along the way, ignores architectural patterns, reinvents things that already exist. It's operating without intent.
+But after the plan was implemented, I was faced with an unsatifying decision: All of that reasoning was now "in the code" — but was it really? The plan and the chat session that created it had semantic value: *why* we made certain choices, *what* we considered and rejected, *how* the pieces fit together. The code captured the outcome, not the thinking. It felt wrong to throw the plan away, but hard to justify keeping it when so much had been duplicated.
 
-The problem was, once the plan was implemented, all of that detail in the plan was now in the code. There's still some semantic value uniquely in the plan but it's surrounded by stuff we've now duplicated into the code which makes it hard to justify committing the plan.
+I realized the plan was actually two things tangled together: the *why* (intent, constraints, decisions) and the *how* (implementation steps, file changes, execution order). The *how* becomes redundant once the code exists. The *why* stays valuable forever — but only if future agents can find it.
 
-So one of the first decisions I made when designing the vibe engineering workflow was to split these two components into separate files. The "why" lives in a file I named GOAL.md, and the "how" lives in a file I named PLAN.md. I commit both to the repository in a way that makes them easily discoverable by agents.
-
-Because the goal is typically what an agent needs to learn the gestalt of something it's looking at, it tends to be the only file the agent bothers to read. But sometimes the agent needs to get into the weeds of the decision making, and it will refer to the plan. Because the agent is free to read only what it needs to understand it's next task we prevent overwhelm.
+So I split them. The "why" lives in a file I named GOAL.md. The "how" lives in PLAN.md. I commit both, but the GOAL is the one that matters long-term. It's what agents read to understand intent. The PLAN is there if they need implementation details, but most of the time they don't. (See sidebar: *How Agents Build Context*.)
 
 ### The Insight
 
-The act of creating a chunk is no more difficult than the act of creating a plan. We start by giving `/chunk-create` a rough direction of what we want to do. The agent uses a CLI to instantiate GOAL and PLAN templates and then folds your rough direction into the GOAL. The template guides the agent to explore the broader context and ask you clarifying questions about the intended outcome. When the command completes, you'll have a GOAL file that future agents will recognize and follow.
+The act of creating a chunk is no more difficult than the act of creating a plan. We start by giving `/chunk-create` a rough direction of what we want to do. The agent uses a CLI to instantiate GOAL and PLAN templates and then folds your rough direction into the GOAL. The template guides the agent to explore the broader context and ask you clarifying questions about the intended outcome. When the command completes, you'll have a GOAL file full of rich "why" and "why not" judgements that future agents will recognize and follow..
 
-Then `/chunk-plan` instructs the agent to do a detailed implementation analysis given the code. The agent will fold its learnings into the PLAN template and add some forward references to the GOAL to the code that will help it finish up later.
+Then `/chunk-plan` instructs the agent to do a detailed implementation analysis given the code. This is where the agent does the deap exploration of the existing relevant code (and their backreferenced chunks) and builds exactly what the implementing agent will need to know to realize your vision while maintaining your previous judgements. The agent will fold its learnings into the PLAN template.
 
-Now, your planning process took two steps but required no additional work. You gained a distilled semantic understanding of the change that you can commit to used by all future agents.
+Now, your planning process took two steps but required no additional work. You gained a distilled semantic understanding of the change that you can commit to used by all future agents and you gained a PLAN that incorporated your judgements from earlier chunks.
 
-Does this actually work? I analyzed 318 orchestrator transcripts to find out. When agents encounter a backreference and choose to follow it, they read:
+Does this actually work? I analyzed 318 orchestrator transcripts to find out. (What's an orchestrator? A future article will cover that.)
+
+The data tells two stories. First, *how often* agents follow backreferences depends on what phase they're in:
+
+| Phase | Followthrough Rate |
+|-------|-------------------|
+| Plan | 62% |
+| Complete | 39% |
+| Review | 38% |
+| Implement | 23% |
+
+During planning, agents actively gather context — they follow most backreferences they encounter. By implementation, they're heads-down coding. The 23% rate might look low, but it's intentional: the PLAN already contains the context they need. Do your thinking in planning, do your coding in implementation.
+
+Second, *what* agents read when they do follow:
 
 | Pattern | Frequency |
 |---------|-----------|
@@ -106,25 +117,62 @@ Does this actually work? I analyzed 318 orchestrator transcripts to find out. Wh
 | GOAL first, then PLAN | 26% |
 | PLAN.md only | 16% |
 
-84% of the time, agents read the GOAL — the *why* — either alone or before consulting the PLAN. During implementation, that jumps to 70% GOAL-only. The agent grabs the intent and moves on. During planning and review, they're more exploratory and consult both files.
+84% of follows include the GOAL — agents reach for the *why* first. The PLAN is there when they need implementation details, but most of the time they don't.
 
 The two-file split isn't overhead. It's the natural structure agents already want.
 
 ### The Resolution
 
-The beauty of retaining the *why* is you can refer back to it explicitly. "Hey, we're debugging what we did in this chunk" — and you just reference the chunk. You don't need to explain the setup, how you got there, or what the scope was. All of that lives in the chunk.
+One beauty of retaining the *why* is you can refer back to it explicitly as your prompting the next chunk of work. "Hey, we're debugging what we did in this chunk" — and you just reference the chunk. You don't need to explain the setup, how you got there, or what the scope was. All of that lives in the chunk.
 
-This is a huge unlock for picking up work a prior agent left behind. For that bug in production you didn't see until three days later when the code was finally deployed. The medical record is there. The next surgeon reads it.
+This is a huge unlock for picking up work a prior agent left behind. For that bug in production you didn't see until three days later when the code was finally deployed. The medical record is there. The next surgeon can primte itself by reading it.
 
 But chunks do more than solve amnesia. They hold the shape.
 
-I think of chunk GOALs as tent-poles and stakes — points of judgment that help the sprawling fabric of code keep its intended form. An agent working on one section of the tent can see the poles and stakes nearby without needing to understand the whole structure. They work locally, but aligned.
+I think of chunk GOALs as tent-poles and stakes. They are points of judgment that help the sprawling fabric of code keep its intended form. An agent working on one section of the tent can see the poles and stakes nearby without needing to understand the whole structure. They work locally, but aligned.
 
-Every chunk you write is a page in your onboarding wiki that you never have to explain again. Future agents discover it through backreferences in the code — they trace from implementation to intent, exploring as needed. They follow backreferences about 18-35% of the time, and that's healthy. They're not reading everything; they're finding relevant context when they need it. The tent-poles are there when the agent reaches for them.
+Every chunk you write is like another page in your onboarding wiki that you never have to explain again. Future agents discover it through backreferences in the code — they trace from implementation to intent, exploring as needed. They're not reading everything; they're finding relevant context when they need it. The wiki page is there when the agent needs its insights.
+Thank you. 
+Your one-time effort compounds into institutional memory. As the tent gets bigger it gets more poles and stakes. The shape holds and everyone feels a little safer running around inside.
 
-Your one-time effort compounds into institutional memory. The tent gets more stakes. The shape holds better.
+Does this sound like more work? It isn't. I didn't add documentation to my workflow. I just found a way to producively keep the documentation my prompting was creating around. The act of scoping the work *was* the act of documenting it. No extra cost. The overhead I'd always resisted turned out to be work I was already doing — I just wasn't saving it.
 
-And here's what I keep coming back to: I didn't add documentation to my workflow. I just kept the assignment around. The act of scoping the work *was* the act of documenting it. No extra cost. The overhead I'd always resisted turned out to be work I was already doing — I just wasn't saving it.
+---
+
+## Sidebar: How Agents Build Context
+
+Agents are built on LLMs, and LLMs are stateless functions. All an LLM can use to generate its next response is the payload in the API request — there's no persistent memory between sessions.
+
+This payload typically includes:
+- **System prompt** — instructions from the agent developer (and things you provide via CLAUDE.md and skill definitions)
+- **Conversation history** — the back-and-forth so far, including tool call results
+- **The latest user message** — what you just asked
+
+When you start a fresh session, conversation history is empty. The agent has only the system prompt to work with. But, what distinguishes an agent from old-school ChatGPT is agents can *build* context by exploring. They grep around, read files, and accumulate understanding through tool calls. Each result goes into conversation history, expanding what the agent knows.
+
+This is all is part of the emerging discipline of **context engineering** — designing what goes into that payload so agents arrive informed and stay focused.
+
+The problem: if the agent's exploration finds only code, it won't understand the forces that shaped it. You end up with a surgeon obsessed with the symptoms but ignorant of the medical history. The end result is the agent does what you asked but also hallucinates worthless features, ignores architectural patterns, and reinvents things that already exist. It's operating brilliantly on what's there but without the intent that caused it to be there.
+
+**How chunks help:** When agents explore, backreferences in the code point them to chunk GOALs. Instead of inferring intent from implementation, they can read it directly. The context they build includes *why*, not just *what*.
+
+Here's a real example from this project's codebase:
+
+```python
+# Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
+def is_parent_of(parent: str, child: str) -> bool:
+    # ... validation and file matching ...
+
+    # Check if child's symbol starts with parent's symbol followed by ::
+    # e.g., "Bar::baz" starts with "Bar::" making "Bar" a parent
+    return child_symbol.startswith(parent_symbol + "::")
+```
+
+Without context, this looks like an arbitrary choice. Why `::` instead of `.`? Why string prefix matching instead of AST comparison?
+
+The GOAL.md explains: the `::` separator was chosen specifically so overlap detection between chunks can work through simple string operations. If chunk A references `foo.py#Bar` and chunk B references `foo.py#Bar::baz`, containment is computable via `startswith()` — no parsing required.
+
+The agent reading this code now understands the design force behind it. The choice isn't arbitrary; it's load-bearing.
 
 ---
 
