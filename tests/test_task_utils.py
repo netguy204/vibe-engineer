@@ -128,6 +128,7 @@ class TestLoadExternalRef:
 
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/accept_full_artifact_paths - Unit tests for resolve_project_ref
 class TestResolveProjectRef:
     """Tests for resolve_project_ref."""
 

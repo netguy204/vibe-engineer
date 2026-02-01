@@ -151,6 +151,68 @@ def init(project_dir):
         click.echo(f"Warning: {warning}", err=True)
 
 
+# Chunk: docs/chunks/integrity_validate - Project-wide referential integrity validation
+@cli.command()
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed statistics")
+@click.option("--strict", is_flag=True, help="Treat warnings as errors")
+def validate(project_dir, verbose, strict):
+    """Validate referential integrity across all artifacts.
+
+    Checks that all cross-artifact references are valid:
+    - Chunk references to narratives, investigations, subsystems, friction entries
+    - Code backreferences (# Chunk: and # Subsystem: comments)
+    - Proposed chunks in narratives, investigations, and friction log
+
+    Returns non-zero exit code if errors are found.
+    """
+    from integrity import IntegrityValidator
+
+    validator = IntegrityValidator(project_dir)
+    result = validator.validate()
+
+    # Show statistics if verbose
+    if verbose:
+        click.echo("Scanning artifacts...")
+        click.echo(f"  Chunks: {result.chunks_scanned}")
+        click.echo(f"  Narratives: {result.narratives_scanned}")
+        click.echo(f"  Investigations: {result.investigations_scanned}")
+        click.echo(f"  Subsystems: {result.subsystems_scanned}")
+        click.echo("Scanning code backreferences...")
+        click.echo(f"  Files scanned: {result.files_scanned}")
+        click.echo(f"  Chunk backrefs: {result.chunk_backrefs_found}")
+        click.echo(f"  Subsystem backrefs: {result.subsystem_backrefs_found}")
+        click.echo("")
+
+    # Report errors
+    for error in result.errors:
+        click.echo(f"Error: [{error.link_type}] {error.source} -> {error.target}", err=True)
+        click.echo(f"       {error.message}", err=True)
+
+    # Report warnings
+    for warning in result.warnings:
+        prefix = "Error" if strict else "Warning"
+        click.echo(f"{prefix}: [{warning.link_type}] {warning.source} -> {warning.target}", err=True)
+        click.echo(f"       {warning.message}", err=True)
+
+    # Summary
+    error_count = len(result.errors)
+    warning_count = len(result.warnings)
+
+    if strict:
+        error_count += warning_count
+        warning_count = 0
+
+    if error_count > 0:
+        click.echo(f"\nValidation failed: {error_count} error(s) found", err=True)
+        raise SystemExit(1)
+
+    if warning_count > 0:
+        click.echo(f"Validation passed with {warning_count} warning(s)")
+    else:
+        click.echo("Validation passed")
+
+
 @cli.group()
 def chunk():
     """Chunk commands"""
@@ -920,6 +982,7 @@ def activate(chunk_id, project_dir):
         click.echo(f"Activated docs/chunks/{activated}")
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk status command using strip_artifact_path_prefix
 @chunk.command()
 @click.argument("chunk_id")
 @click.argument("new_status", required=False, default=None)
@@ -974,6 +1037,7 @@ def status(chunk_id, new_status, project_dir):
 
 
 # Chunk: docs/chunks/chunk_overlap_command - CLI command for finding overlapping chunks
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk overlap command using strip_artifact_path_prefix
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1026,6 +1090,7 @@ def overlap(chunk_id, project_dir):
 
 
 # Chunk: docs/chunks/cluster_prefix_suggest - CLI command for prefix suggestion
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI suggest-prefix command using strip_artifact_path_prefix
 @chunk.command("suggest-prefix")
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1169,6 +1234,9 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/chunk_validate - CLI command for chunk validation
+# Chunk: docs/chunks/orch_inject_validate - --injectable flag for injection validation
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk validate command using strip_artifact_path_prefix
+# Chunk: docs/chunks/task_chunk_validation - CLI command with task context detection
 @chunk.command()
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -1839,6 +1907,7 @@ def _create_task_subsystem(task_dir: pathlib.Path, short_name: str, projects_inp
         click.echo(f"Created reference in {project_ref}: {subsystem_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/bidirectional_refs - Subsystem validate CLI command for chunk ref validation
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -2261,6 +2330,7 @@ def resolve(local_artifact_id, main_only, secondary_only, goal_only, plan_only, 
         )
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Artifact type detection using normalize_artifact_path
 def _detect_artifact_type_from_id(project_path: pathlib.Path, local_artifact_id: str) -> tuple[ArtifactType, str]:
     """Detect artifact type by searching for the artifact in project directories.
 
@@ -2467,6 +2537,7 @@ def promote(artifact_path, new_name, project_dir):
     click.echo(f"Created external reference: {external_yaml_path}")
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - CLI copy-external command using flexible path normalization
 @artifact.command("copy-external")
 @click.argument("artifact_path")
 @click.argument("target_project")

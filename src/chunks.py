@@ -57,6 +57,7 @@ class SuggestPrefixResult:
 
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_chunk_validation - Result dataclass for resolved chunk locations
 @dataclass
 class ChunkLocation:
     """Result of resolving a chunk's location.
@@ -434,6 +435,7 @@ class Chunks:
                 errors.append(f"{loc}: {msg}")
             return None, errors
 
+    # Chunk: docs/chunks/task_chunk_validation - Parse frontmatter from cached content strings
     def _parse_frontmatter_from_content(self, content: str) -> ChunkFrontmatter | None:
         """Parse YAML frontmatter from GOAL.md content string.
 
@@ -458,6 +460,7 @@ class Chunks:
         except (yaml.YAMLError, ValidationError):
             return None
 
+    # Chunk: docs/chunks/task_chunk_validation - External chunk resolution via task context
     def resolve_chunk_location(
         self, chunk_id: str, task_dir: pathlib.Path | None = None
     ) -> ChunkLocation | None:
@@ -729,6 +732,7 @@ class Chunks:
     # Chunk: docs/chunks/chunk_validate - Status, code_references, subsystem, investigation, and narrative validation
     # Chunk: docs/chunks/bidirectional_refs - Extended to include subsystem reference validation
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed ChunkStatus and frontmatter.code_references
+    # Chunk: docs/chunks/task_chunk_validation - Task-context awareness for validation
     def validate_chunk_complete(
         self,
         chunk_id: str | None = None,
@@ -922,6 +926,7 @@ class Chunks:
 
         return []
 
+    # Chunk: docs/chunks/task_chunk_validation - Cross-project code reference validation
     def _validate_symbol_exists_with_context(
         self,
         ref: str,
@@ -1311,6 +1316,7 @@ class Chunks:
         return errors
 
     # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+    # Chunk: docs/chunks/orch_inject_validate - Injection-time chunk validation
     def validate_chunk_injectable(self, chunk_id: str) -> ValidationResult:
         """Validate that a chunk is ready for injection into the orchestrator work pool.
 
@@ -1384,6 +1390,7 @@ class Chunks:
         )
 
 
+# Chunk: docs/chunks/orch_inject_validate - Detect populated vs template-only PLAN.md
 def plan_has_content(plan_path: pathlib.Path) -> bool:
     """Check if PLAN.md has actual content beyond the template.
 

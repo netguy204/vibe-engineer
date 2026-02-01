@@ -397,6 +397,7 @@ class TestSuccessOutput:
         assert result.exit_code == 0
 
 
+# Chunk: docs/chunks/chunk_validate - Test coverage for symbolic reference validation
 class TestSymbolicReferenceValidation:
     """Tests for symbolic code_references validation with warnings."""
 
@@ -674,6 +675,7 @@ code_references: []
         assert result.exit_code == 0
 
 
+# Chunk: docs/chunks/chunk_validate - Test coverage for investigation reference validation
 class TestInvestigationRefValidation:
     """Tests for investigation reference validation in 've chunk validate'."""
 
@@ -801,6 +803,7 @@ proposed_chunks: []
 
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
+# Chunk: docs/chunks/task_chunk_validation - External chunk validation tests
 class TestExternalChunkValidation:
     """Tests for validating external chunks from project context."""
 
@@ -930,6 +933,7 @@ pinned: {pinned_sha}
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
 
+# Chunk: docs/chunks/task_chunk_validation - Task context and cross-project code reference validation tests
 class TestTaskContextValidation:
     """Tests for validating chunks with cross-project code references in task context."""
 
@@ -1080,6 +1084,7 @@ Test chunk content.
         assert result.exit_code == 0
 
 
+# Chunk: docs/chunks/task_chunk_validation - Project context partial validation tests
 class TestProjectContextPartialValidation:
     """Tests for partial validation when running from project context (not task)."""
 
@@ -1206,6 +1211,7 @@ Test chunk content.
         assert "skip" in result.output.lower() or "cross-project" in result.output.lower()
 
 
+# Chunk: docs/chunks/chunk_validate - Test coverage for narrative reference validation
 class TestNarrativeRefValidation:
     """Tests for narrative reference validation in 've chunk validate'."""
 
