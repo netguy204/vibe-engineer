@@ -133,7 +133,7 @@ restore 600+ references), we focused on **module-level chunk references** that
 identify distinct features. This provides meaningful traceability without the
 clutter of per-function annotations.
 
-### References Restored (81 total: 15 in source, 66 in tests)
+### References Restored (81 total: 15 in source, 66 in tests; 3 later superseded by orch_reviewer_decision_mcp)
 
 | File | Chunks Restored | Rationale |
 |------|-----------------|-----------|
@@ -142,7 +142,7 @@ clutter of per-function annotations.
 | `src/artifact_ordering.py` | `ordering_active_only`, `external_chunk_causal` | Distinct features beyond core ordering |
 | `src/cluster_analysis.py` | `cluster_subsystem_prompt` | Cluster warnings are a distinct feature |
 | `src/external_resolve.py` | `external_resolve_all_types` | Multi-type support was a distinct expansion |
-| `src/orchestrator/agent.py` | `orch_question_forward`, `orch_sandbox_enforcement` | Distinct safety and routing features |
+| `src/orchestrator/agent.py` | ~~`orch_question_forward`, `orch_sandbox_enforcement`~~ | ~~Distinct safety and routing features~~ - *Superseded by `orch_reviewer_decision_mcp`* |
 | `src/orchestrator/api.py` | `orch_dashboard`, `orch_conflict_oracle` | User-facing features beyond core API |
 | `src/orchestrator/models.py` | `orch_attention_queue` | Attention queue is a distinct feature |
 
@@ -187,3 +187,14 @@ debugging context. Categories:
    whether a failing test reveals a bug or is itself outdated. Added 66 chunk
    references across 24 test files, focusing on files that test specific features
    (orchestrator, task-aware commands, friction, symbols, etc.).
+
+### Later Supersessions
+
+The following chunk backreferences added by this chunk were later superseded by subsequent work:
+
+| File | Original Chunks | Superseded By | Date |
+|------|-----------------|---------------|------|
+| `src/orchestrator/agent.py` | `orch_question_forward`, `orch_sandbox_enforcement` | `orch_reviewer_decision_mcp` | 2026-01-31 |
+| `tests/test_orchestrator_agent.py` | `orch_question_forward`, `orch_sandbox_enforcement` | `orch_reviewer_decision_mcp` | 2026-01-31 |
+
+The `orch_reviewer_decision_mcp` chunk migrated from `query()` to `ClaudeSDKClient`, added the ReviewDecision MCP tool, and significantly restructured both files. The new backreferences reflect the substantial rewrite rather than the incremental features added by the original chunks.

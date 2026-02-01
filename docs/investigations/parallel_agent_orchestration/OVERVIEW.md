@@ -323,6 +323,6 @@ The orchestrator invokes existing slash commands rather than hardcoding prompts:
 - Skills (`.claude/skills/SKILL.md`) are autonomously invoked by Claude based on context
 - Slash commands (`.claude/commands/foo.md`) are explicitly invoked via `/foo`
 
-**Implementation:** All methods that create `ClaudeAgentOptions` (`run_phase`, `run_commit`, `resume_for_active_status`) include `setting_sources=["project"]`.
+**Implementation:** All methods that create `ClaudeAgentOptions` (`run_phase`, `resume_for_active_status`) include `setting_sources=["project"]`. Note: `run_commit` was removed as the orchestrator now uses `WorktreeManager.commit_changes()` for mechanical commits.
 
 **Rationale:** Orchestrator agents should have access to project-defined skills and commands to maintain consistency with manual workflows. User-level settings are excluded to ensure reproducible behavior across environments.

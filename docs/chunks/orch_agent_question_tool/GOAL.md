@@ -9,8 +9,8 @@ code_paths:
 code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Removed _is_error_result() heuristic call - SDK is_error flag is authoritative"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_commit
-    implements: "Removed _is_error_result() heuristic call - SDK is_error flag is authoritative"
+  # NOTE: AgentRunner::run_commit was removed by orch_reviewer_decision_mcp chunk
+  # The orchestrator scheduler now uses WorktreeManager.commit_changes() for mechanical commits
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Removed _is_error_result() heuristic call - SDK is_error flag is authoritative"
   - ref: tests/test_orchestrator_agent.py#TestErrorDetectionRemoval

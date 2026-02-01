@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Callable
 
-from claude_agent_sdk import query
+from claude_agent_sdk import (
+    query,  # Keep for backwards compatibility in deprecated methods
+    ClaudeSDKClient,
+    tool,
+    create_sdk_mcp_server,
+)
 from claude_agent_sdk.types import (
     ClaudeAgentOptions,
     AssistantMessage,
@@ -22,6 +27,7 @@ from claude_agent_sdk.types import (
     SyncHookJSONOutput,
     HookMatcher,
     HookContext,
+    McpSdkServerConfig,
 )
 
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -43,6 +49,73 @@ PHASE_SKILL_FILES = {
 }
 
 
+# Chunk: docs/chunks/orch_reviewer_decision_mcp - ReviewDecision MCP tool
+# Define ReviewDecision tool using the @tool decorator
+@tool(
+    "ReviewDecision",
+    "Submit the final review decision for the implementation",
+    {
+        "type": "object",
+        "properties": {
+            "decision": {
+                "type": "string",
+                "enum": ["APPROVE", "FEEDBACK", "ESCALATE"],
+                "description": "The review decision",
+            },
+            "summary": {
+                "type": "string",
+                "description": "Brief summary of the review findings",
+            },
+            "criteria_assessment": {
+                "type": "array",
+                "description": "Optional structured assessment of success criteria",
+                "items": {"type": "object"},
+            },
+            "issues": {
+                "type": "array",
+                "description": "List of issues for FEEDBACK decisions",
+                "items": {"type": "object"},
+            },
+            "reason": {
+                "type": "string",
+                "description": "Reason for ESCALATE decisions",
+            },
+        },
+        "required": ["decision", "summary"],
+    },
+)
+async def review_decision_tool(args: dict) -> dict:
+    """Handle ReviewDecision tool calls from the reviewer agent.
+
+    The actual decision capture happens via the PreToolUse hook which fires
+    before this handler. This handler just returns a confirmation message
+    so the agent knows its tool call succeeded.
+    """
+    decision = args.get("decision", "UNKNOWN")
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": f"Review decision '{decision}' recorded successfully.",
+            }
+        ]
+    }
+
+
+def create_orchestrator_mcp_server() -> McpSdkServerConfig:
+    """Create MCP server with orchestrator tools.
+
+    Returns:
+        MCP server configuration suitable for ClaudeAgentOptions.mcp_servers
+    """
+    return create_sdk_mcp_server(
+        name="orchestrator",
+        version="1.0.0",
+        tools=[review_decision_tool],
+    )
+
+
+# Chunk: docs/chunks/orch_sandbox_enforcement - Sandbox violation detection logic
 def _is_sandbox_violation(
     command: str,
     host_repo_path: Path,
@@ -129,6 +202,7 @@ def _is_sandbox_violation(
     return (False, None)
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - Hook configuration merging
 def _merge_hooks(
     *hook_configs: dict[str, list[HookMatcher]],
 ) -> dict[str, list[HookMatcher]]:
@@ -152,6 +226,7 @@ def _merge_hooks(
     return merged
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - PreToolUse hook for sandbox isolation
 def create_sandbox_enforcement_hook(
     host_repo_path: Path,
     worktree_path: Path,
@@ -206,6 +281,7 @@ def create_sandbox_enforcement_hook(
     return {"PreToolUse": [hook_matcher]}
 
 
+# Chunk: docs/chunks/orch_question_forward - PreToolUse hook for intercepting AskUserQuestion calls
 def create_question_intercept_hook(
     on_question: Callable[[dict], None],
 ) -> dict[str, list[HookMatcher]]:
@@ -336,10 +412,12 @@ def create_review_decision_hook(
             },
         )
 
-    # Build the hook matcher for ReviewDecision tool
-    # The tool name may have various capitalizations, so we match case-insensitively
+    # Build the hook matcher for ReviewDecision MCP tool
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Match MCP tool naming convention
+    # MCP tools are named mcp__<server>__<tool>, so the full name is
+    # mcp__orchestrator__ReviewDecision. We match case-insensitively.
     hook_matcher: HookMatcher = {
-        "matcher": re.compile(r"^ReviewDecision$", re.IGNORECASE),
+        "matcher": re.compile(r"^mcp__orchestrator__ReviewDecision$", re.IGNORECASE),
         "hooks": [hook_handler],
         "timeout": None,
     }
@@ -375,6 +453,7 @@ class AgentRunner:
     The agent runs in the chunk's worktree directory.
     """
 
+    # Chunk: docs/chunks/orch_sandbox_enforcement - Store host_repo_path for sandbox enforcement
     def __init__(self, project_dir: Path):
         """Initialize the agent runner.
 
@@ -423,7 +502,8 @@ class AgentRunner:
 
         return skill_content
 
-    # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+    # Chunk: docs/chunks/orch_question_forward - Accepts question_callback and configures hook to capture questions
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Migrate to ClaudeSDKClient for hooks and MCP tools
     async def run_phase(
         self,
         chunk: str,
@@ -436,6 +516,11 @@ class AgentRunner:
         review_decision_callback: Optional[Callable[[ReviewToolDecision], None]] = None,
     ) -> AgentResult:
         """Run a single phase for a chunk.
+
+        Uses ClaudeSDKClient for agent execution, which enables:
+        - Hooks for intercepting tool calls (AskUserQuestion, ReviewDecision)
+        - Custom MCP tools (ReviewDecision for REVIEW phase)
+        - Session continuity for resume
 
         Args:
             chunk: Chunk name
@@ -493,8 +578,7 @@ class AgentRunner:
 
         # Track captured question data for building result
         captured_question: dict | None = None
-        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-        # Track captured review decision from ReviewDecision tool call
+        # Track captured review decision from ReviewDecision MCP tool call
         captured_review_decision: ReviewToolDecision | None = None
 
         # Start with sandbox hooks
@@ -510,9 +594,9 @@ class AgentRunner:
             question_hooks = create_question_intercept_hook(on_question)
             all_hooks = _merge_hooks(all_hooks, question_hooks)
 
-        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+        # Chunk: docs/chunks/orch_reviewer_decision_mcp - Hook for ReviewDecision MCP tool
         if review_decision_callback:
-            # Create hook that intercepts ReviewDecision tool calls
+            # Create hook that intercepts ReviewDecision MCP tool calls
             def on_review_decision(decision_data: ReviewToolDecision) -> None:
                 nonlocal captured_review_decision
                 captured_review_decision = decision_data
@@ -522,6 +606,14 @@ class AgentRunner:
             all_hooks = _merge_hooks(all_hooks, review_hooks)
 
         options.hooks = all_hooks
+
+        # Chunk: docs/chunks/orch_reviewer_decision_mcp - Add MCP server for REVIEW phase
+        # The ReviewDecision tool is only needed during REVIEW phase
+        if phase == WorkUnitPhase.REVIEW:
+            mcp_server = create_orchestrator_mcp_server()
+            options.mcp_servers = {"orchestrator": mcp_server}
+            # Allow the ReviewDecision MCP tool
+            options.allowed_tools.append("mcp__orchestrator__ReviewDecision")
 
         # Handle resume with answer
         if resume_session_id:
@@ -535,34 +627,42 @@ class AgentRunner:
         result_text: Optional[str] = None
         completed = False
 
+        # Chunk: docs/chunks/orch_reviewer_decision_mcp - Use ClaudeSDKClient instead of query()
+        # ClaudeSDKClient supports hooks and custom MCP tools, unlike query()
         try:
-            async for message in query(prompt=prompt, options=options):
-                # Log message if callback provided
-                if log_callback:
-                    log_callback(message)
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(prompt)
+                async for message in client.receive_response():
+                    # Log message if callback provided
+                    if log_callback:
+                        log_callback(message)
 
-                # Capture session_id from init messages
-                if isinstance(message, dict):
-                    if message.get("type") == "init":
-                        session_id = message.get("session_id")
+                    # Capture session_id from init messages
+                    if isinstance(message, dict):
+                        if message.get("type") == "init":
+                            session_id = message.get("session_id")
 
-                # Check for result message (completion)
-                if isinstance(message, ResultMessage):
-                    # Check if the result indicates an error using SDK's is_error flag
-                    # The is_error flag is authoritative - we do not parse result text
-                    result_text = getattr(message, "result", None)
-                    is_error = getattr(message, "is_error", False)
+                    # Check for result message (completion)
+                    if isinstance(message, ResultMessage):
+                        # Check if the result indicates an error using SDK's is_error flag
+                        # The is_error flag is authoritative - we do not parse result text
+                        result_text = getattr(message, "result", None)
+                        is_error = getattr(message, "is_error", False)
 
-                    if is_error:
-                        error = result_text or "Agent returned error"
-                    else:
-                        completed = True
+                        if is_error:
+                            error = result_text or "Agent returned error"
+                        else:
+                            completed = True
 
-                # Track assistant messages for session_id
-                if isinstance(message, AssistantMessage):
-                    # Session ID might be in metadata
-                    if hasattr(message, "session_id"):
-                        session_id = message.session_id
+                        # ResultMessage may contain session_id
+                        if hasattr(message, "session_id") and message.session_id:
+                            session_id = message.session_id
+
+                    # Track assistant messages for session_id
+                    if isinstance(message, AssistantMessage):
+                        # Session ID might be in metadata
+                        if hasattr(message, "session_id") and message.session_id:
+                            session_id = message.session_id
 
         except Exception as e:
             error = str(e)
@@ -577,7 +677,6 @@ class AgentRunner:
             )
 
         # Build result
-        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
         if error:
             return AgentResult(
                 completed=False,
@@ -594,97 +693,11 @@ class AgentRunner:
                 review_decision=captured_review_decision,
             )
 
-    async def run_commit(
-        self,
-        chunk: str,
-        worktree_path: Path,
-        log_callback: Optional[callable] = None,
-    ) -> AgentResult:
-        """Run the /chunk-commit skill to commit changes with proper conventional commit message.
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Removed deprecated run_commit() method
+    # The orchestrator scheduler now uses WorktreeManager.commit_changes() for
+    # mechanical commits instead of the agent-based approach.
 
-        .. deprecated::
-            The orchestrator scheduler now uses WorktreeManager.commit_changes() for
-            mechanical commits instead of this agent-based approach. This method is
-            kept for potential manual use cases or debugging, but may be removed in
-            a future version.
-
-        Args:
-            chunk: Chunk name (for logging)
-            worktree_path: Path to the worktree
-            log_callback: Optional callback for logging messages
-
-        Returns:
-            AgentResult with outcome of the commit
-        """
-        # Load the chunk-commit skill content (more task-specific than generic commit)
-        commit_skill_path = self.project_dir / ".claude" / "commands" / "chunk-commit.md"
-        if not commit_skill_path.exists():
-            # Fall back to a simple commit instruction if skill doesn't exist
-            prompt = f"Please commit all changes for chunk {chunk} with a proper conventional commit message describing what was done."
-        else:
-            prompt = _load_skill_content(commit_skill_path)
-
-        env = os.environ.copy()
-        env["GIT_DIR"] = str(worktree_path / ".git")
-        env["GIT_WORK_TREE"] = str(worktree_path)
-
-        options = ClaudeAgentOptions(
-            cwd=str(worktree_path),
-            permission_mode="bypassPermissions",
-            max_turns=20,  # Commits should be quick
-            setting_sources=["project"],  # Enable project-level skills/commands
-            env=env,  # Restrict git operations to worktree
-        )
-
-        sandbox_hooks = create_sandbox_enforcement_hook(
-            host_repo_path=self.host_repo_path,
-            worktree_path=worktree_path,
-        )
-        options.hooks = sandbox_hooks
-
-        session_id: Optional[str] = None
-        error: Optional[str] = None
-        completed = False
-
-        try:
-            async for message in query(prompt=prompt, options=options):
-                if log_callback:
-                    log_callback(message)
-
-                if isinstance(message, dict):
-                    if message.get("type") == "init":
-                        session_id = message.get("session_id")
-
-                if isinstance(message, ResultMessage):
-                    result_text = getattr(message, "result", None)
-                    is_error = getattr(message, "is_error", False)
-
-                    if is_error:
-                        error = result_text or "Commit returned error"
-                    else:
-                        completed = True
-
-                if isinstance(message, AssistantMessage):
-                    if hasattr(message, "session_id"):
-                        session_id = message.session_id
-
-        except Exception as e:
-            error = str(e)
-
-        if error:
-            return AgentResult(
-                completed=False,
-                suspended=False,
-                session_id=session_id,
-                error=error,
-            )
-        else:
-            return AgentResult(
-                completed=completed,
-                suspended=False,
-                session_id=session_id,
-            )
-
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Migrate to ClaudeSDKClient
     async def resume_for_active_status(
         self,
         chunk: str,
@@ -696,6 +709,9 @@ class AgentRunner:
 
         Called when /chunk-complete finished but the GOAL.md status was not
         updated to ACTIVE. This resumes the session with a targeted reminder.
+
+        Uses ClaudeSDKClient for agent execution, which enables hooks (e.g.,
+        sandbox enforcement) to work properly.
 
         Args:
             chunk: Chunk name
@@ -739,27 +755,34 @@ class AgentRunner:
         error: Optional[str] = None
         completed = False
 
+        # Use ClaudeSDKClient for session management and hooks support
         try:
-            async for message in query(prompt=prompt, options=options):
-                if log_callback:
-                    log_callback(message)
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(prompt)
+                async for message in client.receive_response():
+                    if log_callback:
+                        log_callback(message)
 
-                if isinstance(message, dict):
-                    if message.get("type") == "init":
-                        new_session_id = message.get("session_id")
+                    if isinstance(message, dict):
+                        if message.get("type") == "init":
+                            new_session_id = message.get("session_id")
 
-                if isinstance(message, ResultMessage):
-                    result_text = getattr(message, "result", None)
-                    is_error = getattr(message, "is_error", False)
+                    if isinstance(message, ResultMessage):
+                        result_text = getattr(message, "result", None)
+                        is_error = getattr(message, "is_error", False)
 
-                    if is_error:
-                        error = result_text or "Resume returned error"
-                    else:
-                        completed = True
+                        if is_error:
+                            error = result_text or "Resume returned error"
+                        else:
+                            completed = True
 
-                if isinstance(message, AssistantMessage):
-                    if hasattr(message, "session_id"):
-                        new_session_id = message.session_id
+                        # ResultMessage may contain session_id
+                        if hasattr(message, "session_id") and message.session_id:
+                            new_session_id = message.session_id
+
+                    if isinstance(message, AssistantMessage):
+                        if hasattr(message, "session_id") and message.session_id:
+                            new_session_id = message.session_id
 
         except Exception as e:
             error = str(e)

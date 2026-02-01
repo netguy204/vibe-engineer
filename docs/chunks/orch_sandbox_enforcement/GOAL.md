@@ -16,8 +16,6 @@ code_references:
     implements: "Store host_repo_path for sandbox enforcement"
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Sandbox hook, git environment, and prompt hardening integration"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_commit
-    implements: "Sandbox hook and git environment for commit operations"
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Sandbox hook and git environment for resume operations"
   - ref: tests/test_orchestrator_agent.py#TestSandboxViolationDetection

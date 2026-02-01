@@ -193,6 +193,11 @@ and `resume_for_active_status()`.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
--->
+**Post-implementation note** (added during reference resolution):
+
+The `run_commit()` method referenced in Step 2 above was subsequently removed by the
+`orch_reviewer_decision_mcp` chunk. That chunk migrated to using `WorktreeManager.commit_changes()`
+for mechanical commits instead of the agent-based approach. The heuristic error detection removal
+in `run_commit()` is no longer applicable since the method was deprecated and removed.
+
+The changes in `run_phase()` and `resume_for_active_status()` remain intact and valid.

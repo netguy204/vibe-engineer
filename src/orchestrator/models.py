@@ -184,7 +184,7 @@ class OrchestratorConfig(BaseModel):
     Controls agent scheduling behavior.
     """
 
-    max_agents: int = 2  # Maximum concurrent agents
+    max_agents: int = 4  # Maximum concurrent agents
     dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
     max_completion_retries: int = 2  # Max retries for ACTIVE status verification
 
@@ -212,6 +212,7 @@ class ReviewToolDecision(BaseModel):
     reason: Optional[str] = None  # Reason for ESCALATE decisions
 
 
+# Chunk: docs/chunks/orch_question_forward - Stores suspended=True and question data when hook fires
 class AgentResult(BaseModel):
     """Result from running an agent phase.
 

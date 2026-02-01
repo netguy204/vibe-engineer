@@ -9,8 +9,6 @@ code_paths:
 code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "setting_sources=['project'] configuration for phase execution enabling project-level skills"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_commit
-    implements: "setting_sources=['project'] configuration for commit phase enabling project-level skills"
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "setting_sources=['project'] configuration for session resume enabling project-level skills"
   - ref: tests/test_orchestrator_agent.py#TestSettingSourcesConfiguration

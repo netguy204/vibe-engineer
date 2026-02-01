@@ -1,7 +1,9 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_reviewer_decision_mcp - Updated tests for ClaudeSDKClient migration
 """Tests for the orchestrator agent runner."""
 
 import pytest
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,11 +15,90 @@ from orchestrator.agent import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
+    create_orchestrator_mcp_server,
+    review_decision_tool,
     _load_skill_content,
     _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
+
+
+class MockClaudeSDKClient:
+    """Mock for ClaudeSDKClient that supports async context manager pattern.
+
+    This mock simulates the ClaudeSDKClient behavior:
+    - Async context manager (__aenter__/__aexit__)
+    - query() method to send prompts
+    - receive_response() async iterator for messages
+    """
+    # Class-level storage for test introspection
+    last_instance = None
+    all_instances = []
+
+    def __init__(self, options=None):
+        self.options = options
+        self._messages = []
+        self._exception = None
+        self._query_prompt = None
+        # Store instance for test introspection
+        MockClaudeSDKClient.last_instance = self
+        MockClaudeSDKClient.all_instances.append(self)
+
+    @classmethod
+    def reset(cls):
+        """Reset class-level state between tests."""
+        cls.last_instance = None
+        cls.all_instances = []
+
+    def set_messages(self, messages):
+        """Configure messages to yield from receive_response()."""
+        self._messages = messages
+
+    def set_exception(self, exc):
+        """Configure an exception to raise during receive_response()."""
+        self._exception = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    async def query(self, prompt):
+        """Record the query prompt."""
+        self._query_prompt = prompt
+
+    async def receive_response(self):
+        """Yield configured messages or raise configured exception."""
+        if self._exception:
+            raise self._exception
+        for msg in self._messages:
+            yield msg
+
+
+def create_mock_claude_sdk_client(messages=None, exception=None):
+    """Factory to create a configured MockClaudeSDKClient.
+
+    Args:
+        messages: List of messages to yield from receive_response()
+        exception: Exception to raise during receive_response()
+
+    Returns:
+        A MockClaudeSDKClient class that can be used with patch()
+    """
+    # Reset class-level state
+    MockClaudeSDKClient.reset()
+
+    class ConfiguredMock(MockClaudeSDKClient):
+        def __init__(self, options=None):
+            super().__init__(options)
+            if messages:
+                self._messages = messages
+            if exception:
+                self._exception = exception
+
+    return ConfiguredMock
 
 
 @pytest.fixture
@@ -108,22 +189,19 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            # Verbose success with "Failed to" phrase - should still be success
-            mock_result.result = (
-                "Successfully completed the implementation. "
-                "Note: Failed to find optional file X, proceeded without it."
-            )
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        # Verbose success with "Failed to" phrase - should still be success
+        mock_result.result = (
+            "Successfully completed the implementation. "
+            "Note: Failed to find optional file X, proceeded without it."
+        )
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -146,22 +224,19 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            # Verbose success with "Error:" phrase - should still be success
-            mock_result.result = (
-                "Implementation complete. Error: 0 found. "
-                "All tests passing."
-            )
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        # Verbose success with "Error:" phrase - should still be success
+        mock_result.result = (
+            "Implementation complete. Error: 0 found. "
+            "All tests passing."
+        )
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -179,21 +254,18 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = (
-                "Task completed. Could not find optional dependency, "
-                "using fallback approach which worked fine."
-            )
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = (
+            "Task completed. Could not find optional dependency, "
+            "using fallback approach which worked fine."
+        )
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -215,18 +287,15 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Something went wrong"
-            mock_result.is_error = True  # SDK says it's an error
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Something went wrong"
+        mock_result.is_error = True  # SDK says it's an error
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -288,19 +357,15 @@ class TestAgentRunnerPhaseExecution:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        # Mock the query function to return a ResultMessage
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -318,14 +383,8 @@ class TestAgentRunnerPhaseExecution:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        # Mock the query function to raise an error
-        with patch("orchestrator.agent.query") as mock_query:
-            async def mock_async_iter(*args, **kwargs):
-                raise Exception("Test error")
-                yield  # Make it a generator
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(exception=Exception("Test error"))
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -344,19 +403,15 @@ class TestAgentRunnerPhaseExecution:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        # Mock the query function to return an error result via SDK flag
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Unknown slash command: foo"
-            mock_result.is_error = True  # SDK indicates this is an error
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Unknown slash command: foo"
+        mock_result.is_error = True  # SDK indicates this is an error
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -383,63 +438,28 @@ class TestSettingSourcesConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
                 worktree_path=worktree_path,
             )
 
-            # Verify query was called with options containing setting_sources
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing setting_sources
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.setting_sources == ["project"]
 
-    @pytest.mark.asyncio
-    async def test_run_commit_includes_setting_sources(self, project_dir, tmp_path):
-        """run_commit passes setting_sources=['project'] to options."""
-        runner = AgentRunner(project_dir)
-        worktree_path = tmp_path / "worktree"
-        worktree_path.mkdir()
-
-        # Create chunk-commit skill file
-        commit_skill = project_dir / ".claude" / "commands" / "chunk-commit.md"
-        commit_skill.write_text("---\ndescription: Commit\n---\n\nCommit changes.")
-
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
-
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
-
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
-            await runner.run_commit(
-                chunk="test_chunk",
-                worktree_path=worktree_path,
-            )
-
-            # Verify query was called with options containing setting_sources
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
-            assert options.setting_sources == ["project"]
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Removed run_commit test
+    # run_commit() method was removed as deprecated
 
     @pytest.mark.asyncio
     async def test_resume_for_active_status_includes_setting_sources(
@@ -450,28 +470,24 @@ class TestSettingSourcesConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.resume_for_active_status(
                 chunk="test_chunk",
                 worktree_path=worktree_path,
                 session_id="test-session-id",
             )
 
-            # Verify query was called with options containing setting_sources
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing setting_sources
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.setting_sources == ["project"]
 
 
@@ -516,6 +532,7 @@ class TestLogCallback:
         assert (log_dir / "implement.txt").exists()
 
 
+# Chunk: docs/chunks/orch_question_forward - Unit tests for hook creation and question extraction
 class TestQuestionInterceptHook:
     """Tests for AskUserQuestion interception hook."""
 
@@ -639,6 +656,7 @@ class TestQuestionInterceptHook:
         assert "Agent asked a question" in captured[0]["question"]
 
 
+# Chunk: docs/chunks/orch_question_forward - Unit tests for run_phase with question callback
 class TestRunPhaseWithQuestionCallback:
     """Tests for run_phase with question callback."""
 
@@ -649,18 +667,15 @@ class TestRunPhaseWithQuestionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             # Provide a question callback
             captured = []
             await runner.run_phase(
@@ -670,10 +685,9 @@ class TestRunPhaseWithQuestionCallback:
                 question_callback=lambda q: captured.append(q),
             )
 
-            # Verify query was called with options containing hooks
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
 
@@ -684,18 +698,15 @@ class TestRunPhaseWithQuestionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             # No question callback
             await runner.run_phase(
                 chunk="test_chunk",
@@ -703,10 +714,9 @@ class TestRunPhaseWithQuestionCallback:
                 worktree_path=worktree_path,
             )
 
-            # Verify query was called with options containing only sandbox hook
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing only sandbox hook
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             # Sandbox hook should always be present
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
@@ -726,26 +736,21 @@ class TestRunPhaseWithQuestionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        # We need to patch query in a way that:
-        # 1. Captures the options passed to query (which includes our hook)
-        # 2. Simulates the hook being called by the SDK
-        # 3. Returns appropriate messages
-
-        saved_options = None
         captured_questions = []
 
-        with patch("orchestrator.agent.query") as mock_query:
-            async def mock_async_iter(prompt, options):
-                nonlocal saved_options
-                saved_options = options
+        # Create a custom mock that simulates the SDK calling our hook
+        class HookSimulatingMock(MockClaudeSDKClient):
+            def __init__(self, options=None):
+                super().__init__(options)
+                self._messages = [{"type": "init", "session_id": "test-session-123"}]
 
-                # Simulate receiving an init message with session_id
+            async def receive_response(self):
+                # Yield the init message first
                 yield {"type": "init", "session_id": "test-session-123"}
 
-                # Now, simulate the SDK calling our hook when AskUserQuestion is used
-                # In the real SDK, this would happen automatically
-                if options.hooks and "PreToolUse" in options.hooks:
-                    for matcher in options.hooks["PreToolUse"]:
+                # Simulate the SDK calling our hook when AskUserQuestion is used
+                if self.options and self.options.hooks and "PreToolUse" in self.options.hooks:
+                    for matcher in self.options.hooks["PreToolUse"]:
                         if matcher["matcher"] == "AskUserQuestion":
                             hook_handler = matcher["hooks"][0]
                             hook_input = {
@@ -770,8 +775,8 @@ class TestRunPhaseWithQuestionCallback:
 
                 # Don't yield any more messages - the hook stopped the loop
 
-            mock_query.side_effect = mock_async_iter
-
+        MockClaudeSDKClient.reset()
+        with patch("orchestrator.agent.ClaudeSDKClient", HookSimulatingMock):
             # Run with question callback
             result = await runner.run_phase(
                 chunk="test_chunk",
@@ -781,9 +786,9 @@ class TestRunPhaseWithQuestionCallback:
             )
 
             # Verify the hook was configured
-            assert saved_options is not None
-            assert saved_options.hooks is not None
-            assert "PreToolUse" in saved_options.hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            assert MockClaudeSDKClient.last_instance.options.hooks is not None
+            assert "PreToolUse" in MockClaudeSDKClient.last_instance.options.hooks
 
             # Verify result is suspended with question data
             assert result.suspended is True
@@ -797,6 +802,7 @@ class TestRunPhaseWithQuestionCallback:
             assert captured_questions[0]["question"] == "Which approach?"
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - Unit tests for sandbox violation detection
 class TestSandboxViolationDetection:
     """Tests for _is_sandbox_violation helper function."""
 
@@ -941,6 +947,7 @@ class TestSandboxViolationDetection:
         assert "outside worktree" in reason
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - Unit tests for hook merging
 class TestMergeHooks:
     """Tests for _merge_hooks helper function."""
 
@@ -974,6 +981,7 @@ class TestMergeHooks:
         assert "PostToolUse" in merged
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - Unit tests for sandbox enforcement hook
 class TestSandboxEnforcementHook:
     """Tests for sandbox enforcement hook creation."""
 
@@ -1037,6 +1045,7 @@ class TestSandboxEnforcementHook:
         assert result["decision"] == "allow"
 
 
+# Chunk: docs/chunks/orch_sandbox_enforcement - Integration tests for AgentRunner sandbox
 class TestAgentRunnerSandboxIntegration:
     """Tests for sandbox integration in AgentRunner."""
 
@@ -1052,28 +1061,24 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
                 worktree_path=worktree_path,
             )
 
-            # Verify query was called with options containing hooks
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
             # Should have Bash matcher for sandbox enforcement
@@ -1087,18 +1092,15 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -1106,10 +1108,9 @@ class TestAgentRunnerSandboxIntegration:
                 question_callback=lambda q: None,
             )
 
-            # Verify query was called with options containing both hooks
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing both hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
             matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
@@ -1124,27 +1125,23 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
                 worktree_path=worktree_path,
             )
 
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.env is not None
             assert options.env["GIT_DIR"] == str(worktree_path / ".git")
             assert options.env["GIT_WORK_TREE"] == str(worktree_path)
@@ -1156,66 +1153,29 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
                 worktree_path=worktree_path,
             )
 
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            prompt = call_kwargs["prompt"]
+            assert MockClaudeSDKClient.last_instance is not None
+            prompt = MockClaudeSDKClient.last_instance._query_prompt
             assert "SANDBOX RULES" in prompt
             assert "isolated git worktree" in prompt
             assert "NEVER use `cd` with absolute paths" in prompt
 
-    @pytest.mark.asyncio
-    async def test_run_commit_configures_sandbox_hook(self, project_dir, tmp_path):
-        """run_commit includes sandbox hook."""
-        runner = AgentRunner(project_dir)
-        worktree_path = tmp_path / "worktree"
-        worktree_path.mkdir()
-
-        # Create chunk-commit skill file
-        commit_skill = project_dir / ".claude" / "commands" / "chunk-commit.md"
-        commit_skill.write_text("---\ndescription: Commit\n---\n\nCommit changes.")
-
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
-
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
-
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
-            await runner.run_commit(
-                chunk="test_chunk",
-                worktree_path=worktree_path,
-            )
-
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
-            assert options.hooks is not None
-            assert "PreToolUse" in options.hooks
-            matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
-            assert "Bash" in matchers
+    # Chunk: docs/chunks/orch_reviewer_decision_mcp - Removed run_commit test
+    # run_commit() method was removed as deprecated
 
     @pytest.mark.asyncio
     async def test_resume_for_active_status_configures_sandbox_hook(self, project_dir, tmp_path):
@@ -1224,27 +1184,23 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.resume_for_active_status(
                 chunk="test_chunk",
                 worktree_path=worktree_path,
                 session_id="test-session-id",
             )
 
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
             matchers = [h["matcher"] for h in options.hooks["PreToolUse"]]
@@ -1264,8 +1220,9 @@ class TestReviewDecisionHook:
         assert len(hooks["PreToolUse"]) == 1
 
         hook_matcher = hooks["PreToolUse"][0]
-        # Matcher is a regex pattern for case-insensitive matching
-        assert hook_matcher["matcher"].pattern == "^ReviewDecision$"
+        # Matcher is a regex pattern for case-insensitive MCP tool name matching
+        # Chunk: docs/chunks/orch_reviewer_decision_mcp - Updated to MCP tool naming
+        assert hook_matcher["matcher"].pattern == "^mcp__orchestrator__ReviewDecision$"
         assert hook_matcher["hooks"] is not None
         assert len(hook_matcher["hooks"]) == 1
 
@@ -1283,7 +1240,7 @@ class TestReviewDecisionHook:
             "transcript_path": "/tmp/transcript",
             "cwd": "/tmp/work",
             "hook_event_name": "PreToolUse",
-            "tool_name": "ReviewDecision",
+            "tool_name": "mcp__orchestrator__ReviewDecision",
             "tool_input": {
                 "decision": "APPROVE",
                 "summary": "Implementation meets all requirements",
@@ -1316,7 +1273,7 @@ class TestReviewDecisionHook:
             "transcript_path": "/tmp/transcript",
             "cwd": "/tmp/work",
             "hook_event_name": "PreToolUse",
-            "tool_name": "ReviewDecision",
+            "tool_name": "mcp__orchestrator__ReviewDecision",
             "tool_input": {
                 "decision": "FEEDBACK",
                 "summary": "Missing error handling",
@@ -1351,7 +1308,7 @@ class TestReviewDecisionHook:
             "transcript_path": "/tmp/transcript",
             "cwd": "/tmp/work",
             "hook_event_name": "PreToolUse",
-            "tool_name": "ReviewDecision",
+            "tool_name": "mcp__orchestrator__ReviewDecision",
             "tool_input": {
                 "decision": "ESCALATE",
                 "summary": "Cannot determine correct behavior",
@@ -1377,7 +1334,7 @@ class TestReviewDecisionHook:
             "transcript_path": "/tmp/transcript",
             "cwd": "/tmp/work",
             "hook_event_name": "PreToolUse",
-            "tool_name": "ReviewDecision",
+            "tool_name": "mcp__orchestrator__ReviewDecision",
             "tool_input": {
                 "decision": "APPROVE",
                 "summary": "All good",
@@ -1400,18 +1357,15 @@ class TestRunPhaseWithReviewDecisionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             # Provide a review_decision callback
             captured = []
             await runner.run_phase(
@@ -1421,17 +1375,17 @@ class TestRunPhaseWithReviewDecisionCallback:
                 review_decision_callback=lambda d: captured.append(d),
             )
 
-            # Verify query was called with options containing hooks
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
 
             # Find the ReviewDecision matcher (it's a regex pattern)
+            # Chunk: docs/chunks/orch_reviewer_decision_mcp - Updated to MCP tool naming
             matchers = options.hooks["PreToolUse"]
             has_review_hook = any(
-                hasattr(h["matcher"], "pattern") and h["matcher"].pattern == "^ReviewDecision$"
+                hasattr(h["matcher"], "pattern") and h["matcher"].pattern == "^mcp__orchestrator__ReviewDecision$"
                 for h in matchers
             )
             assert has_review_hook
@@ -1445,14 +1399,15 @@ class TestRunPhaseWithReviewDecisionCallback:
 
         captured_decisions = []
 
-        with patch("orchestrator.agent.query") as mock_query:
-            async def mock_async_iter(prompt, options):
-                # Simulate receiving an init message with session_id
+        # Create a custom mock that simulates the SDK calling our hook
+        class HookSimulatingMock(MockClaudeSDKClient):
+            async def receive_response(self):
+                # Yield the init message first
                 yield {"type": "init", "session_id": "test-session-123"}
 
                 # Simulate the SDK calling our hook when ReviewDecision is used
-                if options.hooks and "PreToolUse" in options.hooks:
-                    for matcher in options.hooks["PreToolUse"]:
+                if self.options and self.options.hooks and "PreToolUse" in self.options.hooks:
+                    for matcher in self.options.hooks["PreToolUse"]:
                         if hasattr(matcher["matcher"], "pattern"):
                             hook_handler = matcher["hooks"][0]
                             hook_input = {
@@ -1460,7 +1415,7 @@ class TestRunPhaseWithReviewDecisionCallback:
                                 "transcript_path": "/tmp/transcript",
                                 "cwd": str(worktree_path),
                                 "hook_event_name": "PreToolUse",
-                                "tool_name": "ReviewDecision",
+                                "tool_name": "mcp__orchestrator__ReviewDecision",
                                 "tool_input": {
                                     "decision": "APPROVE",
                                     "summary": "All tests pass",
@@ -1473,10 +1428,11 @@ class TestRunPhaseWithReviewDecisionCallback:
                 mock_result = MagicMock(spec=ResultMessage)
                 mock_result.result = "Review complete"
                 mock_result.is_error = False
+                mock_result.session_id = None
                 yield mock_result
 
-            mock_query.side_effect = mock_async_iter
-
+        MockClaudeSDKClient.reset()
+        with patch("orchestrator.agent.ClaudeSDKClient", HookSimulatingMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -1500,18 +1456,15 @@ class TestRunPhaseWithReviewDecisionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        with patch("orchestrator.agent.query") as mock_query:
-            from orchestrator.agent import ResultMessage
+        from orchestrator.agent import ResultMessage
 
-            mock_result = MagicMock(spec=ResultMessage)
-            mock_result.result = "Success"
-            mock_result.is_error = False
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
 
-            async def mock_async_iter(*args, **kwargs):
-                yield mock_result
-
-            mock_query.return_value = mock_async_iter()
-
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -1520,10 +1473,9 @@ class TestRunPhaseWithReviewDecisionCallback:
                 review_decision_callback=lambda d: None,
             )
 
-            # Verify query was called with options containing all hooks
-            mock_query.assert_called_once()
-            call_kwargs = mock_query.call_args.kwargs
-            options = call_kwargs["options"]
+            # Verify ClaudeSDKClient was called with options containing all hooks
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
             assert options.hooks is not None
             assert "PreToolUse" in options.hooks
 
@@ -1536,6 +1488,91 @@ class TestRunPhaseWithReviewDecisionCallback:
                     matcher_types.append(m["matcher"])
 
             # Should have Bash (sandbox), AskUserQuestion (question), and ReviewDecision
+            # Chunk: docs/chunks/orch_reviewer_decision_mcp - Updated to MCP tool naming
             assert "Bash" in matcher_types
             assert "AskUserQuestion" in matcher_types
-            assert "^ReviewDecision$" in matcher_types
+            assert "^mcp__orchestrator__ReviewDecision$" in matcher_types
+
+
+# Chunk: docs/chunks/orch_reviewer_decision_mcp - Tests for MCP server configuration
+class TestMCPServerConfiguration:
+    """Tests for MCP server configuration during REVIEW phase."""
+
+    def test_create_orchestrator_mcp_server(self):
+        """create_orchestrator_mcp_server returns valid MCP server config."""
+        server_config = create_orchestrator_mcp_server()
+
+        # Should return a dict with 'type': 'sdk'
+        assert isinstance(server_config, dict)
+        assert server_config.get("type") == "sdk"
+        assert server_config.get("name") == "orchestrator"
+        assert "instance" in server_config
+
+    def test_review_decision_tool_is_decorated(self):
+        """review_decision_tool is a decorated SdkMcpTool."""
+        from claude_agent_sdk import SdkMcpTool
+
+        # The @tool decorator creates an SdkMcpTool
+        assert isinstance(review_decision_tool, SdkMcpTool)
+        assert review_decision_tool.name == "ReviewDecision"
+        assert "decision" in review_decision_tool.input_schema["required"]
+        assert "summary" in review_decision_tool.input_schema["required"]
+
+    @pytest.mark.asyncio
+    async def test_run_phase_review_configures_mcp_server(self, project_dir, tmp_path):
+        """REVIEW phase includes MCP server for ReviewDecision tool."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        from orchestrator.agent import ResultMessage
+
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
+
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.REVIEW,
+                worktree_path=worktree_path,
+                review_decision_callback=lambda d: None,
+            )
+
+            # Verify ClaudeSDKClient was called with mcp_servers containing orchestrator
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
+            assert options.mcp_servers is not None
+            assert "orchestrator" in options.mcp_servers
+            # Should also allow the MCP tool
+            assert "mcp__orchestrator__ReviewDecision" in options.allowed_tools
+
+    @pytest.mark.asyncio
+    async def test_run_phase_non_review_no_mcp_server(self, project_dir, tmp_path):
+        """Non-REVIEW phases do not include MCP server."""
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        from orchestrator.agent import ResultMessage
+
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "Success"
+        mock_result.is_error = False
+        mock_result.session_id = None
+
+        MockClient = create_mock_claude_sdk_client(messages=[mock_result])
+        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+            await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.PLAN,  # Not REVIEW
+                worktree_path=worktree_path,
+            )
+
+            # Verify ClaudeSDKClient was called without mcp_servers
+            assert MockClaudeSDKClient.last_instance is not None
+            options = MockClaudeSDKClient.last_instance.options
+            # mcp_servers should be empty or not set
+            assert not options.mcp_servers or "orchestrator" not in options.mcp_servers

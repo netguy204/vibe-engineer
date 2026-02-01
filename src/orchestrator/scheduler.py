@@ -560,6 +560,7 @@ class Scheduler:
                     f"(phase={unit.phase.value}, priority={unit.priority})"
                 )
 
+    # Chunk: docs/chunks/orch_question_forward - Provides question_callback to run_phase for forwarding
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -659,6 +660,7 @@ class Scheduler:
                 if chunk in self._running_agents:
                     del self._running_agents[chunk]
 
+    # Chunk: docs/chunks/orch_question_forward - Transitions work unit to NEEDS_ATTENTION with question as attention_reason
     async def _handle_agent_result(
         self,
         work_unit: WorkUnit,

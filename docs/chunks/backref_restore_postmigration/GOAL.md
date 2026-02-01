@@ -15,8 +15,6 @@ code_references:
     implements: "Chunk backref for ordering_active_only - Status-aware tip filtering tests"
   - ref: tests/test_external_resolve.py
     implements: "Chunk backref for external_resolve_all_types - Multi-artifact-type resolution tests"
-  - ref: tests/test_orchestrator_agent.py
-    implements: "Chunk backrefs for orch_question_forward and orch_sandbox_enforcement - Agent tests"
   - ref: tests/test_orchestrator_dashboard.py
     implements: "Chunk backref for orch_dashboard - Dashboard integration tests"
   - ref: tests/test_orchestrator_oracle.py

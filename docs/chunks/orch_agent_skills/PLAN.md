@@ -41,29 +41,23 @@ options = ClaudeAgentOptions(
 )
 ```
 
-### Step 2: Add setting_sources to ClaudeAgentOptions in run_commit
-
-Apply the same change to the `run_commit` method's options.
-
-Location: src/orchestrator/agent.py
-
-### Step 3: Add setting_sources to ClaudeAgentOptions in resume_for_active_status
+### Step 2: Add setting_sources to ClaudeAgentOptions in resume_for_active_status
 
 Apply the same change to the `resume_for_active_status` method's options.
 
 Location: src/orchestrator/agent.py
 
-### Step 4: Add tests verifying setting_sources configuration
+### Step 3: Add tests verifying setting_sources configuration
 
 Write tests that verify:
-1. The `ClaudeAgentOptions` passed to `query()` includes `setting_sources=["project"]`
-2. This is consistent across all methods that create options (`run_phase`, `run_commit`, `resume_for_active_status`)
+1. The `ClaudeAgentOptions` passed to `ClaudeSDKClient` includes `setting_sources=["project"]`
+2. This is consistent across all methods that create options (`run_phase`, `resume_for_active_status`)
 
 These tests will mock the `query()` function and capture the options passed to it.
 
 Location: tests/test_orchestrator_agent.py
 
-### Step 5: Update documentation
+### Step 4: Update documentation
 
 Add a brief note to the investigation design document about which SDK configuration enables skill access, for future reference.
 

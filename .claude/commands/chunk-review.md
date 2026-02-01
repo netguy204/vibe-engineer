@@ -76,7 +76,17 @@ For each success criterion in GOAL.md, assess:
 
 ### Phase 3: Decision Making
 
-Based on your review, take ONE of these actions:
+Based on your review, take ONE of these actions.
+
+**IMPORTANT: You MUST call the `ReviewDecision` tool to submit your final decision.**
+
+The ReviewDecision tool accepts:
+- `decision`: One of "APPROVE", "FEEDBACK", or "ESCALATE"
+- `summary`: A brief summary of your review findings
+- `issues`: (For FEEDBACK) List of issues with location, concern, and suggestion
+- `reason`: (For ESCALATE) The reason for escalation
+
+Calling this tool is required. If you complete the review without calling it, you will be prompted to call it.
 
 #### APPROVE
 
@@ -190,6 +200,9 @@ context:
 
 After completing all phases:
 
-1. Display the YAML decision block prominently (this is what downstream tools will parse)
-2. Confirm the decision log entry was appended
-3. If FEEDBACK or ESCALATE, summarize what the implementer or operator should do next
+1. **REQUIRED: Call the `ReviewDecision` tool** with your decision, summary, and any issues/reason
+2. Display the YAML decision block for human reference
+3. Confirm the decision log entry was appended
+4. If FEEDBACK or ESCALATE, summarize what the implementer or operator should do next
+
+**Do NOT complete the review without calling the ReviewDecision tool.** The tool call is how the orchestrator receives your decision.
