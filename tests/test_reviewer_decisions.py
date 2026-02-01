@@ -482,3 +482,197 @@ class TestReviewerDecisionsOperatorReviewVariants:
         assert result.exit_code == 0
         assert "**Operator review**:" in result.output
         assert "feedback: Good escalation" in result.output
+
+
+class TestReviewerDecisionsNudge:
+    """Tests for the nudge message that prompts agents to read full decision context.
+
+    Chunk: docs/chunks/reviewer_decisions_nudge - Nudge agents toward detailed decision files
+    """
+
+    def test_nudge_appears_for_feedback_review(self, runner, reviewer_decisions_dir, initialized_project):
+        """Decisions with FeedbackReview operator_review include nudge message."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "feedback_chunk_1",
+            "FEEDBACK",
+            "Decision with detailed feedback",
+            operator_review={"feedback": "Should have been APPROVE - the validation is handled upstream."},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Nudge message should appear
+        assert "NOTE TO AGENT:" in result.output
+        assert "Read the full decision context if this may be relevant to your current review:" in result.output
+        assert "docs/reviewers/baseline/decisions/feedback_chunk_1.md" in result.output
+
+    def test_nudge_not_present_for_good_operator_review(self, runner, reviewer_decisions_dir, initialized_project):
+        """Decisions with simple 'good' operator_review do NOT include nudge."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "good_chunk_1",
+            "APPROVE",
+            "Simple good decision",
+            operator_review="good",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Operator review should be shown
+        assert "**Operator review**: good" in result.output
+        # But nudge should NOT appear
+        assert "NOTE TO AGENT:" not in result.output
+
+    def test_nudge_not_present_for_bad_operator_review(self, runner, reviewer_decisions_dir, initialized_project):
+        """Decisions with simple 'bad' operator_review do NOT include nudge."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "bad_chunk_1",
+            "APPROVE",
+            "Simple bad decision",
+            operator_review="bad",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Operator review should be shown
+        assert "**Operator review**: bad" in result.output
+        # But nudge should NOT appear
+        assert "NOTE TO AGENT:" not in result.output
+
+    def test_nudge_format_exact(self, runner, reviewer_decisions_dir, initialized_project):
+        """Verify exact format of the nudge message."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "exact_format_chunk_1",
+            "ESCALATE",
+            "Testing exact format",
+            operator_review={"feedback": "Detailed corrective feedback here"},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Check exact format
+        expected_nudge = "NOTE TO AGENT: Read the full decision context if this may be relevant to your current review: docs/reviewers/baseline/decisions/exact_format_chunk_1.md"
+        assert expected_nudge in result.output
+
+    def test_nudge_appears_after_operator_review(self, runner, reviewer_decisions_dir, initialized_project):
+        """Nudge appears on its own line after the operator review line."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "order_chunk_1",
+            "FEEDBACK",
+            "Testing line order",
+            operator_review={"feedback": "Detailed feedback for ordering test"},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Find positions - nudge should come after operator review
+        operator_review_pos = result.output.find("feedback: Detailed feedback for ordering test")
+        nudge_pos = result.output.find("NOTE TO AGENT:")
+
+        assert operator_review_pos != -1, "Operator review should be in output"
+        assert nudge_pos != -1, "Nudge should be in output"
+        assert nudge_pos > operator_review_pos, "Nudge should appear after operator review"
+
+    def test_nudge_per_decision_with_feedback(self, runner, reviewer_decisions_dir, initialized_project):
+        """Each decision with FeedbackReview gets its own nudge."""
+        import time
+
+        # Create two decisions with feedback
+        write_decision_file(
+            reviewer_decisions_dir,
+            "feedback_a_1",
+            "FEEDBACK",
+            "First feedback decision",
+            operator_review={"feedback": "First detailed feedback"},
+        )
+        time.sleep(0.05)
+
+        write_decision_file(
+            reviewer_decisions_dir,
+            "feedback_b_1",
+            "ESCALATE",
+            "Second feedback decision",
+            operator_review={"feedback": "Second detailed feedback"},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "10", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Both nudges should appear with correct paths
+        assert "docs/reviewers/baseline/decisions/feedback_a_1.md" in result.output
+        assert "docs/reviewers/baseline/decisions/feedback_b_1.md" in result.output
+        # Should have two NOTE TO AGENT instances
+        assert result.output.count("NOTE TO AGENT:") == 2
+
+    def test_mixed_decisions_only_feedback_gets_nudge(self, runner, reviewer_decisions_dir, initialized_project):
+        """Mixed decisions: only FeedbackReview decisions get nudges."""
+        import time
+
+        # Create a mix of good, bad, and feedback decisions
+        write_decision_file(
+            reviewer_decisions_dir,
+            "mix_good_1",
+            "APPROVE",
+            "Good decision",
+            operator_review="good",
+        )
+        time.sleep(0.05)
+
+        write_decision_file(
+            reviewer_decisions_dir,
+            "mix_bad_1",
+            "APPROVE",
+            "Bad decision",
+            operator_review="bad",
+        )
+        time.sleep(0.05)
+
+        write_decision_file(
+            reviewer_decisions_dir,
+            "mix_feedback_1",
+            "FEEDBACK",
+            "Feedback decision",
+            operator_review={"feedback": "This one should get the nudge"},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "10", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # All three decisions should appear
+        assert "mix_good_1.md" in result.output
+        assert "mix_bad_1.md" in result.output
+        assert "mix_feedback_1.md" in result.output
+
+        # But only one nudge (for the feedback decision)
+        assert result.output.count("NOTE TO AGENT:") == 1
+        assert "docs/reviewers/baseline/decisions/mix_feedback_1.md" in result.output

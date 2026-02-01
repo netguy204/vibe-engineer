@@ -4228,6 +4228,8 @@ def decision():
     pass
 
 
+# Chunk: docs/chunks/reviewer_use_decision_files - --recent flag for few-shot context retrieval
+# Chunk: docs/chunks/reviewer_decisions_list_cli - Few-shot decision aggregation CLI
 @reviewer.group(invoke_without_command=True)
 @click.option("--pending", is_flag=True, help="List only decisions with null operator_review")
 @click.option("--recent", type=int, default=None, help="Show N most recent curated decisions")
@@ -4315,6 +4317,9 @@ def decisions(ctx, pending, recent, reviewer_filter, project_dir):
             elif isinstance(decision.operator_review, FeedbackReview):
                 click.echo("- **Operator review**:")
                 click.echo(f"  - feedback: {decision.operator_review.feedback}")
+                # Chunk: docs/chunks/reviewer_decisions_nudge - Nudge agents toward detailed decision files
+                click.echo()
+                click.echo(f"NOTE TO AGENT: Read the full decision context if this may be relevant to your current review: {rel_path}")
             click.echo()
 
     elif ctx.invoked_subcommand is None:

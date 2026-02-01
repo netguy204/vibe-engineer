@@ -8,7 +8,7 @@ code_paths:
 code_references:
   - ref: src/ve.py#reviewer
     implements: "CLI command group for reviewer agent commands"
-  - ref: src/ve.py#list_decisions
+  - ref: src/ve.py#decisions
     implements: "Core logic for listing curated decisions with --recent N and --reviewer options"
   - ref: tests/test_reviewer_decisions.py
     implements: "Comprehensive test suite for reviewer decisions CLI command"
