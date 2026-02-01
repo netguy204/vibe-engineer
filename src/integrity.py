@@ -86,6 +86,14 @@ class IntegrityValidator:
         self._subsystem_names: set[str] = set()
         self._friction_entry_ids: set[str] = set()
 
+        # Bidirectional consistency indexes (populated during validation)
+        # Maps narrative_name -> set of chunk directories listed in its proposed_chunks
+        self._narrative_chunks: dict[str, set[str]] = {}
+        # Maps investigation_name -> set of chunk directories listed in its proposed_chunks
+        self._investigation_chunks: dict[str, set[str]] = {}
+        # Maps chunk_name -> set of file paths referenced in its code_references
+        self._chunk_code_files: dict[str, set[str]] = {}
+
     def _build_artifact_index(self) -> None:
         """Build in-memory index of all existing artifacts."""
         self._chunk_names = set(self.chunks.enumerate_chunks())
@@ -98,6 +106,67 @@ class IntegrityValidator:
             entries = self.friction.parse_entries()
             self._friction_entry_ids = {e.id for e in entries}
 
+    def _build_parent_chunk_index(self) -> None:
+        """Build reverse index of which chunks each parent artifact lists.
+
+        Populates:
+        - _narrative_chunks: Maps narrative_name -> set of chunk_directories
+        - _investigation_chunks: Maps investigation_name -> set of chunk_directories
+        """
+        # Index narrative → chunks
+        for narrative_name in self._narrative_names:
+            frontmatter = self.narratives.parse_narrative_frontmatter(narrative_name)
+            if frontmatter and frontmatter.proposed_chunks:
+                chunk_dirs: set[str] = set()
+                for proposed in frontmatter.proposed_chunks:
+                    if proposed.chunk_directory:
+                        # Normalize by stripping prefix if present
+                        chunk_dir = proposed.chunk_directory
+                        if chunk_dir.startswith("docs/chunks/"):
+                            chunk_dir = chunk_dir[len("docs/chunks/"):]
+                        chunk_dirs.add(chunk_dir)
+                self._narrative_chunks[narrative_name] = chunk_dirs
+            else:
+                self._narrative_chunks[narrative_name] = set()
+
+        # Index investigation → chunks
+        for investigation_name in self._investigation_names:
+            frontmatter = self.investigations.parse_investigation_frontmatter(investigation_name)
+            if frontmatter and frontmatter.proposed_chunks:
+                chunk_dirs = set()
+                for proposed in frontmatter.proposed_chunks:
+                    if proposed.chunk_directory:
+                        # Normalize by stripping prefix if present
+                        chunk_dir = proposed.chunk_directory
+                        if chunk_dir.startswith("docs/chunks/"):
+                            chunk_dir = chunk_dir[len("docs/chunks/"):]
+                        chunk_dirs.add(chunk_dir)
+                self._investigation_chunks[investigation_name] = chunk_dirs
+            else:
+                self._investigation_chunks[investigation_name] = set()
+
+    def _build_chunk_code_index(self) -> None:
+        """Build reverse index of which files each chunk references.
+
+        Populates _chunk_code_files: Maps chunk_name -> set of file paths.
+        Extracts file path from code_references (format: {file_path}#{symbol}).
+        """
+        for chunk_name in self._chunk_names:
+            frontmatter = self.chunks.parse_chunk_frontmatter(chunk_name)
+            if frontmatter and frontmatter.code_references:
+                file_paths: set[str] = set()
+                for ref in frontmatter.code_references:
+                    # Extract file path from ref (format: file_path or file_path#symbol)
+                    ref_str = ref.ref
+                    if "#" in ref_str:
+                        file_path = ref_str.split("#")[0]
+                    else:
+                        file_path = ref_str
+                    file_paths.add(file_path)
+                self._chunk_code_files[chunk_name] = file_paths
+            else:
+                self._chunk_code_files[chunk_name] = set()
+
     def validate(self) -> IntegrityResult:
         """Run full referential integrity validation.
 
@@ -109,6 +178,10 @@ class IntegrityValidator:
 
         # Build index of existing artifacts
         self._build_artifact_index()
+
+        # Build bidirectional consistency indexes
+        self._build_parent_chunk_index()
+        self._build_chunk_code_index()
 
         # Statistics
         chunks_scanned = 0
@@ -202,6 +275,18 @@ class IntegrityValidator:
                         message=f"Narrative '{frontmatter.narrative}' does not exist",
                     )
                 )
+            else:
+                # Bidirectional check: does narrative's proposed_chunks include this chunk?
+                narrative_chunks = self._narrative_chunks.get(frontmatter.narrative, set())
+                if chunk_name not in narrative_chunks:
+                    warnings.append(
+                        IntegrityWarning(
+                            source=f"docs/chunks/{chunk_name}/GOAL.md",
+                            target=f"docs/narratives/{frontmatter.narrative}/OVERVIEW.md",
+                            link_type="chunk↔narrative",
+                            message=f"Chunk references narrative '{frontmatter.narrative}' but narrative's proposed_chunks does not list this chunk",
+                        )
+                    )
 
         # Validate investigation reference
         if frontmatter.investigation:
@@ -214,6 +299,18 @@ class IntegrityValidator:
                         message=f"Investigation '{frontmatter.investigation}' does not exist",
                     )
                 )
+            else:
+                # Bidirectional check: does investigation's proposed_chunks include this chunk?
+                investigation_chunks = self._investigation_chunks.get(frontmatter.investigation, set())
+                if chunk_name not in investigation_chunks:
+                    warnings.append(
+                        IntegrityWarning(
+                            source=f"docs/chunks/{chunk_name}/GOAL.md",
+                            target=f"docs/investigations/{frontmatter.investigation}/OVERVIEW.md",
+                            link_type="chunk↔investigation",
+                            message=f"Chunk references investigation '{frontmatter.investigation}' but investigation's proposed_chunks does not list this chunk",
+                        )
+                    )
 
         # Validate subsystem references
         if frontmatter.subsystems:
@@ -438,6 +535,19 @@ class IntegrityValidator:
                                 message=f"Code backreference to non-existent chunk '{chunk_id}' at line {line_num}",
                             )
                         )
+                    else:
+                        # Bidirectional check: does chunk's code_references include this file?
+                        chunk_code_files = self._chunk_code_files.get(chunk_id, set())
+                        # Match on file path (str(rel_path))
+                        if str(rel_path) not in chunk_code_files:
+                            warnings.append(
+                                IntegrityWarning(
+                                    source=f"{rel_path}:{line_num}",
+                                    target=f"docs/chunks/{chunk_id}/GOAL.md",
+                                    link_type="code↔chunk",
+                                    message=f"Code backreference to chunk '{chunk_id}' at line {line_num} but chunk's code_references does not include this file",
+                                )
+                            )
 
                 # Check for subsystem backreferences
                 match = SUBSYSTEM_BACKREF_PATTERN.match(line)
