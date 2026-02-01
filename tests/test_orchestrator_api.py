@@ -363,6 +363,7 @@ class TestStatusHistoryEndpoint:
         assert response.status_code == 404
 
 
+# Chunk: docs/chunks/orch_inject_validate - Inject endpoint validation tests
 class TestInjectEndpointValidation:
     """Tests for POST /work-units/inject endpoint with validation."""
 

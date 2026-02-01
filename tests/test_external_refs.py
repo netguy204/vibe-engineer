@@ -417,6 +417,7 @@ class TestArtifactDirName:
         assert ARTIFACT_DIR_NAME[ArtifactType.SUBSYSTEM] == "subsystems"
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Unit tests for normalize_artifact_path
 class TestNormalizeArtifactPath:
     """Tests for normalize_artifact_path utility."""
 
@@ -562,6 +563,7 @@ class TestNormalizeArtifactPath:
         assert result == (ArtifactType.CHUNK, "foo")
 
 
+# Chunk: docs/chunks/accept_full_artifact_paths - Unit tests for strip_artifact_path_prefix
 class TestStripArtifactPathPrefix:
     """Tests for strip_artifact_path_prefix utility."""
 

@@ -324,6 +324,90 @@ This is a clear, fixable gap - run `ve init` to regenerate the skill file.
 
 ---
 
+## integrity_validate - 2026-01-31 23:55
+
+**Mode:** final
+**Iteration:** 1
+**Decision:** FEEDBACK
+
+### Context Summary
+- Goal: Add `ve validate` command that runs referential integrity validation across all artifacts and code backreferences
+- Linked artifacts: investigation: referential_integrity
+
+### Assessment
+The chunk is marked as IMPLEMENTING but contains no implementation code. Key observations:
+
+1. **No CLI command exists**: Running `ve validate` returns "No such command 'validate'"
+2. **Empty PLAN.md**: The plan file contains only template content, no implementation steps
+3. **Prototype exists but not integrated**: The investigation at `docs/investigations/referential_integrity/` contains a working prototype in `prototypes/file_validator.py` (~430 lines) that builds an in-memory reference graph, validates 12 link types, and runs in ~300ms. This prototype is not integrated into the CLI.
+4. **No tests**: No test coverage for the validate command
+5. **Unrelated test failure**: `test_create_scheduler_defaults` expects `max_agents=2` but gets `4` (pre-existing, not caused by this chunk)
+
+The worktree appears to contain changes from multiple chunks (orch_reviewer_decision_mcp, new chunk GOALs, investigation content), but the actual `ve validate` implementation has not been started.
+
+### Decision Rationale
+Zero success criteria are satisfied. This is not a case of misalignment or partial implementation - the implementation work simply hasn't been done yet. The chunk is correctly scoped (prototype proves feasibility), but the transition from prototype to production CLI command has not occurred.
+
+**To complete this chunk, the implementer needs to:**
+1. Run `/chunk-plan` to create implementation steps based on the prototype
+2. Implement the `ve validate` CLI command in `src/ve.py`
+3. Create a validator module (or integrate into existing validation.py)
+4. Add tests covering all 12 link types identified in the investigation
+5. Verify performance meets <1 second target
+
+### Example Quality
+- [ ] Good example (incorporate into future reviews)
+- [ ] Bad example (avoid this pattern)
+- [ ] Feedback: Reviewing unimplemented work - clear feedback needed
+
+---
+
+## integrity_validate - 2026-01-31 (Re-review)
+
+**Mode:** final
+**Iteration:** 2
+**Decision:** APPROVE
+
+### Context Summary
+- Goal: Add `ve validate` command that runs referential integrity validation across all artifacts and code backreferences
+- Linked artifacts: investigation: referential_integrity
+
+### Assessment
+
+The implementation is now complete and comprehensive:
+
+1. **CLI command exists**: `ve validate` is implemented in `src/ve.py` with `--verbose` and `--strict` flags
+2. **All link types validated**: The implementation covers all 11 actionable link types identified in the investigation:
+   - Chunk outbound: narrative, investigation, subsystems, friction_entries, depends_on
+   - Code backreferences: # Chunk: and # Subsystem: comments
+   - Parent→chunk: narrative→chunk, investigation→chunk, friction→chunk (proposed_chunks)
+   - Subsystem→chunk references
+3. **Error messages are clear and actionable**: Each error includes source file, target reference, link type, and human-readable message
+4. **Non-zero exit code**: Returns exit code 1 when errors are found
+5. **Performance**: Completes in ~0.29s (well under 1 second target)
+6. **Test coverage**: 28 tests covering all validation scenarios across 6 test classes
+
+The validator correctly detects real integrity violations in the current codebase (pre-existing issues from before this chunk), confirming it works as intended.
+
+### Decision Rationale
+
+All six success criteria are satisfied:
+1. ✅ `ve validate` command exists and can be invoked from CLI
+2. ✅ Validates all artifact link types identified in the investigation
+3. ✅ Returns non-zero exit code when errors are found
+4. ✅ Outputs clear, actionable error messages identifying source and target of broken links
+5. ✅ Completes in <1 second for typical project sizes (0.29s for 179 chunks)
+6. ✅ Tests cover the validation logic (28 tests)
+
+The implementation follows the investigation's recommended approach (file-based validation, no database) and reuses existing patterns (frontmatter parsers, backref patterns).
+
+### Example Quality
+- [ ] Good example (incorporate into future reviews)
+- [ ] Bad example (avoid this pattern)
+- [ ] Feedback: _______________
+
+---
+
 ## reviewer_init_templates - 2026-02-01 00:15
 
 **Mode:** final
