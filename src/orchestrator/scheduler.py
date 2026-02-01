@@ -5,6 +5,7 @@
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification before commit/merge
 # Chunk: docs/chunks/orch_task_detection - Scheduler factory with task_info parameter
+# Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -67,6 +68,7 @@ class VerificationResult:
     error: Optional[str] = None
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Refactored to use Chunks class for frontmatter parsing
 def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
     """Verify that a chunk's GOAL.md has status: ACTIVE.
 
@@ -160,6 +162,7 @@ def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
             store.update_work_unit(unit)
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Activate target chunk in worktree, displacing any existing IMPLEMENTING chunk
 def activate_chunk_in_worktree(
     worktree_path: Path,
     target_chunk: str,
@@ -219,6 +222,7 @@ def activate_chunk_in_worktree(
     return displaced_chunk
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Restore a displaced chunk back to IMPLEMENTING before merge
 def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
     """Restore a displaced chunk back to IMPLEMENTING status.
 
@@ -250,6 +254,7 @@ def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
     update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
 
 
+# Chunk: docs/chunks/orch_review_phase - Creates REVIEW_FEEDBACK.md with reviewer feedback for implementer
 def create_review_feedback_file(
     worktree_path: Path,
     chunk: str,
@@ -303,6 +308,7 @@ The implementer should address the issues above before the next review cycle.
     return feedback_path
 
 
+# Chunk: docs/chunks/orch_review_phase - Parse YAML decision block from /chunk-review skill output
 def parse_review_decision(agent_output: str) -> Optional[ReviewResult]:
     """Parse the YAML decision block from the /chunk-review skill output.
 
@@ -370,6 +376,7 @@ def parse_review_decision(agent_output: str) -> Optional[ReviewResult]:
     return None
 
 
+# Chunk: docs/chunks/orch_review_phase - Load reviewer config for loop detection settings
 def load_reviewer_config(project_dir: Path, reviewer: str = "baseline") -> dict:
     """Load reviewer configuration from METADATA.yaml.
 
@@ -413,6 +420,7 @@ def load_reviewer_config(project_dir: Path, reviewer: str = "baseline") -> dict:
         return defaults
 
 
+# Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
 class Scheduler:
     """Manages work unit scheduling and agent dispatch.
 
@@ -535,7 +543,7 @@ class Scheduler:
         """Recover from a previous daemon crash.
 
         - Mark RUNNING work units as READY
-        - Clean up orphaned worktrees
+        - Clean up orphaned worktrees (respecting retain_worktree flag)
         """
         logger.info("Checking for recovery from previous crash...")
 
@@ -550,16 +558,41 @@ class Scheduler:
             unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(unit)
 
-        # Clean up orphaned worktrees
-        orphaned = self.worktree_manager.cleanup_orphaned_worktrees()
-        for chunk in orphaned:
+        # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+        # Detect orphaned worktrees but do NOT remove them automatically.
+        # This preserves uncommitted work that would otherwise be lost.
+        worktrees = self.worktree_manager.list_worktrees()
+        retained_count = 0
+        orphaned_count = 0
+
+        for chunk in worktrees:
             unit = self.store.get_work_unit(chunk)
-            if unit is None or unit.status != WorkUnitStatus.RUNNING:
-                logger.info(f"Removing orphaned worktree for {chunk}")
-                try:
-                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
-                except WorktreeError as e:
-                    logger.warning(f"Failed to remove orphaned worktree: {e}")
+            if unit is not None and unit.status == WorkUnitStatus.RUNNING:
+                # Active agent - skip counting
+                continue
+            if unit is not None and unit.retain_worktree:
+                retained_count += 1
+                logger.info(f"Found retained worktree for {chunk}")
+            else:
+                # No work unit, or work unit without retain_worktree
+                orphaned_count += 1
+                logger.info(f"Found orphaned worktree for {chunk}")
+
+        total_retained = retained_count + orphaned_count
+        if total_retained > 0:
+            logger.warning(
+                f"Found {total_retained} retained worktrees ({retained_count} retained, "
+                f"{orphaned_count} orphaned). Use 've orch worktree list' to view and "
+                f"'ve orch worktree prune' to clean up."
+            )
+
+        # Check warning threshold
+        if total_retained > self.config.worktree_warning_threshold:
+            logger.warning(
+                f"Worktree count ({total_retained}) exceeds threshold "
+                f"({self.config.worktree_warning_threshold}). Consider running "
+                f"'ve orch worktree prune' to free up disk space."
+            )
 
     async def _dispatch_tick(self) -> None:
         """Execute one dispatch cycle.
@@ -610,6 +643,8 @@ class Scheduler:
 
     # Chunk: docs/chunks/orch_question_forward - Provides question_callback to run_phase for forwarding
     # Chunk: docs/chunks/reviewer_decision_tool - Sets up review_decision_callback for REVIEW phase
+    # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast RUNNING status when work unit is dispatched
+    # Chunk: docs/chunks/orch_activate_on_inject - Integration of chunk activation after worktree creation
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -771,6 +806,8 @@ class Scheduler:
                 work_unit, "Agent ended in unknown state"
             )
 
+    # Chunk: docs/chunks/orch_blocked_lifecycle - Calls _unblock_dependents after work unit transitions to DONE
+    # Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk before merge when work unit completes
     async def _advance_phase(self, work_unit: WorkUnit) -> None:
         """Advance a work unit to the next phase.
 
@@ -866,6 +903,7 @@ class Scheduler:
             logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
 
             # Check for uncommitted changes that need to be committed
+            # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
             if self.worktree_manager.has_uncommitted_changes(chunk):
                 logger.info(f"Uncommitted changes detected for {chunk}, committing")
                 try:
@@ -887,48 +925,59 @@ class Scheduler:
                 )
                 restore_displaced_chunk(worktree_path, work_unit.displaced_chunk)
 
-            # Remove the worktree (must be done before merge)
-            try:
-                self.worktree_manager.remove_worktree(chunk, remove_branch=False)
-            except WorktreeError as e:
-                logger.warning(f"Failed to remove worktree for {chunk}: {e}")
-
-            # Merge the branch back to base if it has changes
-            try:
-                if self.worktree_manager.has_changes(chunk):
-                    logger.info(
-                        f"Merging {chunk} branch back to "
-                        f"{self.worktree_manager.base_branch}"
-                    )
-                    self.worktree_manager.merge_to_base(chunk, delete_branch=True)
-                else:
-                    logger.info(f"No changes in {chunk}, skipping merge")
-                    # Clean up the empty branch
-                    branch = self.worktree_manager.get_branch_name(chunk)
-                    if self.worktree_manager._branch_exists(branch):
-                        import subprocess
-                        subprocess.run(
-                            ["git", "branch", "-d", branch],
-                            cwd=self.project_dir,
-                            capture_output=True,
-                        )
-            except WorktreeError as e:
-                logger.error(f"Failed to merge {chunk} to base: {e}")
-                # Mark as needs attention instead of done
-                reason = f"Merge to base failed: {e}"
-                work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
-                work_unit.attention_reason = reason
-                work_unit.updated_at = datetime.now(timezone.utc)
-                self.store.update_work_unit(work_unit)
-
-                # Broadcast via WebSocket so dashboard updates
-                await broadcast_attention_update("added", work_unit.chunk, reason)
-                await broadcast_work_unit_update(
-                    chunk=work_unit.chunk,
-                    status=work_unit.status.value,
-                    phase=work_unit.phase.value,
+            # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+            # If retain_worktree is set, skip worktree removal and merge.
+            # The worktree stays on its branch for debugging/inspection.
+            # Use `ve orch prune` to clean up retained worktrees later.
+            if work_unit.retain_worktree:
+                logger.info(
+                    f"Retaining worktree for {chunk} at {worktree_path} "
+                    f"(branch: {self.worktree_manager.get_branch_name(chunk)})"
                 )
-                return
+                # Skip worktree removal and merge - leave everything in place
+            else:
+                # Remove the worktree (must be done before merge)
+                try:
+                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+                except WorktreeError as e:
+                    logger.warning(f"Failed to remove worktree for {chunk}: {e}")
+
+                # Merge the branch back to base if it has changes
+                try:
+                    if self.worktree_manager.has_changes(chunk):
+                        logger.info(
+                            f"Merging {chunk} branch back to "
+                            f"{self.worktree_manager.base_branch}"
+                        )
+                        self.worktree_manager.merge_to_base(chunk, delete_branch=True)
+                    else:
+                        logger.info(f"No changes in {chunk}, skipping merge")
+                        # Clean up the empty branch
+                        branch = self.worktree_manager.get_branch_name(chunk)
+                        if self.worktree_manager._branch_exists(branch):
+                            import subprocess
+                            subprocess.run(
+                                ["git", "branch", "-d", branch],
+                                cwd=self.project_dir,
+                                capture_output=True,
+                            )
+                except WorktreeError as e:
+                    logger.error(f"Failed to merge {chunk} to base: {e}")
+                    # Mark as needs attention instead of done
+                    reason = f"Merge to base failed: {e}"
+                    work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+                    work_unit.attention_reason = reason
+                    work_unit.updated_at = datetime.now(timezone.utc)
+                    self.store.update_work_unit(work_unit)
+
+                    # Broadcast via WebSocket so dashboard updates
+                    await broadcast_attention_update("added", work_unit.chunk, reason)
+                    await broadcast_work_unit_update(
+                        chunk=work_unit.chunk,
+                        status=work_unit.status.value,
+                        phase=work_unit.phase.value,
+                    )
+                    return
 
             work_unit.status = WorkUnitStatus.DONE
             work_unit.session_id = None
@@ -1120,6 +1169,7 @@ class Scheduler:
 
         # The next dispatch tick will trigger fresh analysis
 
+    # Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock when blockers complete
     def _unblock_dependents(self, completed_chunk: str) -> None:
         """Unblock work units that were blocked by a now-completed chunk.
 
@@ -1343,6 +1393,7 @@ class Scheduler:
                 f"Review escalated: {review_result.reason or review_result.summary}",
             )
 
+    # Chunk: docs/chunks/orch_attention_reason - Setting attention_reason when marking work unit as NEEDS_ATTENTION
     async def _mark_needs_attention(
         self,
         work_unit: WorkUnit,

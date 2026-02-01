@@ -776,8 +776,28 @@
                         {% endif %}
 
                         {% if done_units %}
-                        <div class="section-heading">Done ({{ done_units|length }})</div>
-                        {% for unit in done_units %}
+                        {% set retained_units = done_units|selectattr('retain_worktree')|list %}
+                        {% set completed_units = done_units|rejectattr('retain_worktree')|list %}
+
+                        {% if retained_units %}
+                        <div class="section-heading">Retained ({{ retained_units|length }})</div>
+                        {% for unit in retained_units %}
+                        <div class="process-card status-DONE retained" data-chunk="{{ unit.chunk }}">
+                            <div class="process-chunk">{{ unit.chunk }}</div>
+                            <div class="process-meta">
+                                <span class="process-status DONE" style="color: var(--accent-yellow);">RETAINED</span>
+                                <span>{{ unit.phase }}</span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                                Worktree preserved • <a href="#" class="prune-link" data-chunk="{{ unit.chunk }}" style="color: var(--accent-blue); text-decoration: none;">Prune</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if completed_units %}
+                        <div class="section-heading">Done ({{ completed_units|length }})</div>
+                        {% for unit in completed_units %}
                         <div class="process-card status-{{ unit.status }}" data-chunk="{{ unit.chunk }}">
                             <div class="process-chunk">{{ unit.chunk }}</div>
                             <div class="process-meta">
@@ -786,6 +806,7 @@
                             </div>
                         </div>
                         {% endfor %}
+                        {% endif %}
                         {% endif %}
 
                         {% if not work_units %}
@@ -1216,6 +1237,40 @@
                 e.stopPropagation();
             });
         }
+
+        // Prune link click handlers for retained worktrees
+        document.querySelectorAll('.prune-link').forEach(link => {
+            link.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const chunk = this.dataset.chunk;
+                if (!confirm(`Prune retained worktree for "${chunk}"?\n\nThis will merge any changes back to the base branch and remove the worktree.`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/work-units/${encodeURIComponent(chunk)}/prune`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({}),
+                    });
+
+                    if (response.ok) {
+                        showToast(`Pruned worktree for ${chunk}`, 'success');
+                        // Reload to refresh the view
+                        setTimeout(() => window.location.reload(), 500);
+                    } else {
+                        const data = await response.json();
+                        showToast(`Error: ${data.error || data.reason || 'Unknown error'}`, 'error');
+                    }
+                } catch (error) {
+                    showToast(`Error: ${error.message}`, 'error');
+                }
+            });
+        });
 
         // Initialize WebSocket connection
         connectWebSocket();

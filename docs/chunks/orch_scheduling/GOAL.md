@@ -68,13 +68,13 @@ code_references:
     implements: "Phase detection logic for inject command"
   - ref: src/orchestrator/daemon.py#_run_daemon_async
     implements: "Async daemon runner with scheduler integration"
-  - ref: src/ve.py#orch_inject
+  - ref: src/cli/orch.py#orch_inject
     implements: "ve orch inject CLI command"
-  - ref: src/ve.py#orch_queue
+  - ref: src/cli/orch.py#orch_queue
     implements: "ve orch queue CLI command"
-  - ref: src/ve.py#orch_prioritize
+  - ref: src/cli/orch.py#orch_prioritize
     implements: "ve orch prioritize CLI command"
-  - ref: src/ve.py#orch_config
+  - ref: src/cli/orch.py#orch_config
     implements: "ve orch config CLI command"
   - ref: src/orchestrator/__init__.py
     implements: "Package exports for scheduling layer components"

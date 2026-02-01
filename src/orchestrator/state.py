@@ -30,7 +30,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 10
+    CURRENT_VERSION = 11
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -102,6 +102,7 @@ class StateStore:
             8: self._migrate_v8,
             9: self._migrate_v9,
             10: self._migrate_v10,
+            11: self._migrate_v11,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -172,6 +173,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_attention_reason - Database migration adding attention_reason column
     def _migrate_v4(self) -> None:
         """Add attention_reason field for NEEDS_ATTENTION diagnosis."""
         self.connection.executescript(
@@ -181,6 +183,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_activate_on_inject - Database migration adding displaced_chunk column
     def _migrate_v5(self) -> None:
         """Add displaced_chunk field for tracking displaced IMPLEMENTING chunks."""
         self.connection.executescript(
@@ -248,6 +251,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_review_phase - Schema migration adding review_iterations column
     def _migrate_v9(self) -> None:
         """Add review_iterations field for tracking review cycles.
 
@@ -276,6 +280,21 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+    def _migrate_v11(self) -> None:
+        """Add retain_worktree field for preserving worktrees after completion.
+
+        When retain_worktree is True, the worktree is not removed when the work unit
+        transitions to DONE. This allows debugging/inspection of completed work.
+        Use `ve orch prune` to clean up retained worktrees.
+        """
+        self.connection.executescript(
+            """
+            -- Add retain_worktree column (0 = False, 1 = True)
+            ALTER TABLE work_units ADD COLUMN retain_worktree INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -286,6 +305,7 @@ class StateStore:
 
     # CRUD Operations
 
+    # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit creation
     def create_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Create a new work unit.
 
@@ -308,8 +328,8 @@ class StateStore:
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
                      conflict_verdicts, conflict_override, explicit_deps, review_iterations,
-                     review_nudge_count, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     review_nudge_count, retain_worktree, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -328,6 +348,7 @@ class StateStore:
                     1 if work_unit.explicit_deps else 0,
                     work_unit.review_iterations,
                     work_unit.review_nudge_count,
+                    1 if work_unit.retain_worktree else 0,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -359,6 +380,7 @@ class StateStore:
 
         return self._row_to_work_unit(row)
 
+    # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit update
     def update_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Update an existing work unit.
 
@@ -386,7 +408,8 @@ class StateStore:
                 priority = ?, session_id = ?, completion_retries = ?,
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                 conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
-                review_iterations = ?, review_nudge_count = ?, updated_at = ?
+                review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
+                updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -405,6 +428,7 @@ class StateStore:
                 1 if work_unit.explicit_deps else 0,
                 work_unit.review_iterations,
                 work_unit.review_nudge_count,
+                1 if work_unit.retain_worktree else 0,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -613,6 +637,7 @@ class StateStore:
         cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
         return [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
+    # Chunk: docs/chunks/orch_blocked_lifecycle - Query for work units blocked by a specific chunk
     def list_blocked_by_chunk(self, chunk: str) -> list[WorkUnit]:
         """Get work units that have the given chunk in their blocked_by list.
 
@@ -639,6 +664,8 @@ class StateStore:
 
     # Helper methods
 
+    # Chunk: docs/chunks/orch_attention_reason - Reading attention_reason from database with fallback
+    # Chunk: docs/chunks/orch_activate_on_inject - Handle displaced_chunk column in row-to-model conversion
     def _row_to_work_unit(self, row: sqlite3.Row) -> WorkUnit:
         """Convert a database row to a WorkUnit model."""
         blocked_by = json.loads(row["blocked_by"]) if row["blocked_by"] else []
@@ -707,6 +734,12 @@ class StateStore:
         except (IndexError, KeyError):
             review_nudge_count = 0
 
+        # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+        try:
+            retain_worktree = bool(row["retain_worktree"]) if row["retain_worktree"] is not None else False
+        except (IndexError, KeyError):
+            retain_worktree = False
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -724,6 +757,7 @@ class StateStore:
             explicit_deps=explicit_deps,
             review_iterations=review_iterations,
             review_nudge_count=review_nudge_count,
+            retain_worktree=retain_worktree,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

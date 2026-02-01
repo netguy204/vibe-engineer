@@ -591,6 +591,7 @@ class TestExplicitDepsPersistence:
         assert serialized["explicit_deps"] is True
 
 
+# Chunk: docs/chunks/orch_blocked_lifecycle - Unit tests for list_blocked_by_chunk query method
 class TestListBlockedByChunk:
     """Tests for list_blocked_by_chunk method."""
 
@@ -673,3 +674,82 @@ class TestListBlockedByChunk:
         results = store.list_blocked_by_chunk("any_chunk")
 
         assert results == []
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+class TestRetainWorktreePersistence:
+    """Tests for retain_worktree field persistence."""
+
+    def test_stores_retain_worktree_true(self, store):
+        """retain_worktree=True is stored correctly."""
+        now = datetime.now(timezone.utc)
+
+        unit = WorkUnit(
+            chunk="retained_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            retain_worktree=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+        store.create_work_unit(unit)
+        retrieved = store.get_work_unit("retained_chunk")
+
+        assert retrieved.retain_worktree is True
+
+    def test_retain_worktree_false_by_default(self, store, sample_work_unit):
+        """retain_worktree is False by default."""
+        store.create_work_unit(sample_work_unit)
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+
+        assert retrieved.retain_worktree is False
+
+    def test_updates_retain_worktree(self, store, sample_work_unit):
+        """retain_worktree can be updated."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update with retain_worktree
+        sample_work_unit.retain_worktree = True
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        assert retrieved.retain_worktree is True
+
+    def test_retain_worktree_preserved_in_list(self, store):
+        """retain_worktree is included when listing work units."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="retained_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.RUNNING,
+            retain_worktree=True,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        units = store.list_work_units()
+
+        assert len(units) == 1
+        assert units[0].retain_worktree is True
+
+    def test_retain_worktree_roundtrip(self, store, sample_work_unit):
+        """retain_worktree survives database roundtrip correctly."""
+        # Create with retain_worktree=True
+        sample_work_unit.retain_worktree = True
+        store.create_work_unit(sample_work_unit)
+
+        # Retrieve and verify
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        assert retrieved.retain_worktree is True
+
+        # Update to False
+        retrieved.retain_worktree = False
+        retrieved.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(retrieved)
+
+        # Retrieve again and verify
+        final = store.get_work_unit(sample_work_unit.chunk)
+        assert final.retain_worktree is False

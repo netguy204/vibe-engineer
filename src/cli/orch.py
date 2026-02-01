@@ -6,6 +6,7 @@ Commands for managing the orchestrator daemon and work units.
 # Chunk: docs/chunks/cli_modularize - Orchestrator CLI commands
 # Chunk: docs/chunks/orch_tcp_port - ve orch start with --port and --host options
 # Chunk: docs/chunks/orch_url_command - ve orch url command for getting orchestrator endpoint
+# Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
 
 import pathlib
 
@@ -333,6 +334,7 @@ def work_unit_delete(chunk, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/explicit_deps_batch_inject - Kahn's algorithm for topological sorting of chunks by dependency order
 def topological_sort_chunks(
     chunks: list[str],
     dependencies: dict[str, list[str] | None],
@@ -404,6 +406,7 @@ def topological_sort_chunks(
     return result
 
 
+# Chunk: docs/chunks/explicit_deps_batch_inject - Read depends_on from chunk GOAL.md frontmatter for dependency graph construction
 def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -> dict[str, list[str] | None]:
     """Read depends_on from chunk frontmatter for all specified chunks.
 
@@ -436,6 +439,7 @@ def read_chunk_dependencies(project_dir: pathlib.Path, chunk_names: list[str]) -
     return dependencies
 
 
+# Chunk: docs/chunks/explicit_deps_batch_inject - Validate that dependencies outside the batch exist as work units
 def validate_external_dependencies(
     client,
     batch_chunks: set[str],
@@ -488,9 +492,11 @@ def validate_external_dependencies(
 @click.argument("chunks", nargs=-1, required=True)
 @click.option("--phase", type=str, default=None, help="Override initial phase (GOAL, PLAN, IMPLEMENT)")
 @click.option("--priority", type=int, default=0, help="Scheduling priority (higher = more urgent)")
+# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+@click.option("--retain", is_flag=True, help="Retain worktree after completion for debugging")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def orch_inject(chunks, phase, priority, json_output, project_dir):
+def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
     """Inject one or more chunks into the orchestrator work pool.
 
     Accepts multiple chunk arguments: ve orch inject chunk_a chunk_b chunk_c
@@ -499,6 +505,9 @@ def orch_inject(chunks, phase, priority, json_output, project_dir):
     depends_on declarations and injected in dependency order (dependencies first).
     Chunks with non-empty depends_on have their work units created with blocked_by
     populated and explicit_deps=True.
+
+    Use --retain to preserve the worktree after completion for debugging.
+    Retained worktrees can be cleaned up with `ve orch prune`.
     """
     from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
@@ -536,6 +545,9 @@ def orch_inject(chunks, phase, priority, json_output, project_dir):
             body = {"chunk": chunk, "priority": priority}
             if phase:
                 body["phase"] = phase
+            # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+            if retain:
+                body["retain_worktree"] = True
 
             # Set blocked_by and explicit_deps based on depends_on value
             # - None: Dependencies unknown (consult oracle) -> explicit_deps omitted/False
@@ -556,8 +568,9 @@ def orch_inject(chunks, phase, priority, json_output, project_dir):
                 if deps:
                     blocked_info = f" blocked_by={deps}"
                 priority_info = f" priority={result.get('priority', priority)}"
+                retain_info = " retain=True" if retain else ""
                 click.echo(
-                    f"Injected: {result['chunk']} [{result['phase']}]{priority_info}{blocked_info}"
+                    f"Injected: {result['chunk']} [{result['phase']}]{priority_info}{blocked_info}{retain_info}"
                 )
 
         # Final output
@@ -1109,3 +1122,271 @@ def orch_tail(chunk, follow, project_dir):
 
     except KeyboardInterrupt:
         click.echo("\n")  # Clean exit on Ctrl+C
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Worktree management subgroup
+@orch.group("worktree")
+def worktree():
+    """Worktree management commands.
+
+    Commands for listing, inspecting, and cleaning up retained worktrees.
+    Worktrees created with --retain are preserved after completion for
+    debugging and inspection. Use these commands to manage them.
+    """
+    pass
+
+
+@worktree.command("list")
+@click.option("--status", "status_filter", default=None, help="Filter by status (active, completed, retained, orphaned)")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def worktree_list(status_filter, json_output, project_dir):
+    """List all worktrees with their status.
+
+    Shows worktrees with their current status:
+    - active: Agent is currently running in this worktree
+    - retained: Work unit completed with --retain flag, worktree preserved
+    - orphaned: No active work unit, worktree exists (may contain uncommitted work)
+    - completed: Work unit done, worktree still exists (will be cleaned up)
+
+    Examples:
+        ve orch worktree list               # List all worktrees
+        ve orch worktree list --status retained  # Only show retained worktrees
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json as json_module
+
+    client = create_client(project_dir)
+    try:
+        result = client._request("GET", "/worktrees")
+        worktrees = result.get("worktrees", [])
+
+        # Filter by status if requested
+        if status_filter:
+            worktrees = [w for w in worktrees if w.get("status") == status_filter]
+
+        if json_output:
+            click.echo(json_module.dumps({"worktrees": worktrees, "count": len(worktrees)}, indent=2))
+        else:
+            if not worktrees:
+                click.echo("No worktrees found")
+                return
+
+            click.echo(f"{'CHUNK':<30} {'STATUS':<12} {'PATH'}")
+            click.echo("-" * 80)
+            for w in worktrees:
+                chunk = w.get("chunk", "?")
+                status = w.get("status", "?")
+                path = w.get("path", "?")
+                click.echo(f"{chunk:<30} {status:<12} {path}")
+
+            click.echo(f"\nTotal: {len(worktrees)} worktree(s)")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+@worktree.command("remove")
+@click.argument("chunk")
+@click.option("--keep-branch", is_flag=True, help="Keep the git branch after removing worktree")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def worktree_remove(chunk, keep_branch, json_output, project_dir):
+    """Remove a worktree without merging.
+
+    Removes the worktree directory and optionally the branch.
+    WARNING: This does NOT merge changes back to base. Any uncommitted
+    or unmerged changes will be lost.
+
+    Use 've orch prune' instead if you want to merge changes before cleanup.
+
+    Examples:
+        ve orch worktree remove my_chunk         # Remove worktree and branch
+        ve orch worktree remove my_chunk --keep-branch  # Keep the branch
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json as json_module
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    client = create_client(project_dir)
+    try:
+        params = {"remove_branch": "false" if keep_branch else "true"}
+        result = client._request("DELETE", f"/worktrees/{chunk}", params=params)
+
+        if json_output:
+            click.echo(json_module.dumps(result, indent=2))
+        else:
+            status = result.get("status", "unknown")
+            if status == "removed":
+                branch_msg = " (branch kept)" if keep_branch else " (branch removed)"
+                click.echo(f"Removed worktree for {chunk}{branch_msg}")
+            elif status == "error":
+                click.echo(f"Error removing worktree: {result.get('error', 'unknown')}", err=True)
+                raise SystemExit(1)
+            else:
+                click.echo(f"Unexpected status: {status}", err=True)
+                raise SystemExit(1)
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+@worktree.command("prune")
+@click.option("--dry-run", is_flag=True, help="Show what would be pruned without doing it")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def worktree_prune(dry_run, json_output, project_dir):
+    """Prune all retained worktrees.
+
+    Finds all DONE work units with retain_worktree=True and prunes them,
+    merging changes back to base and cleaning up the worktrees and branches.
+
+    This is equivalent to 've orch prune --all'.
+
+    Examples:
+        ve orch worktree prune            # Prune all retained worktrees
+        ve orch worktree prune --dry-run  # Show what would be pruned
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json as json_module
+
+    client = create_client(project_dir)
+    try:
+        result = client._request(
+            "POST",
+            "/work-units/prune",
+            json={"dry_run": dry_run},
+        )
+        results = result.get("results", [])
+
+        if json_output:
+            click.echo(json_module.dumps({"results": results}, indent=2))
+        else:
+            if dry_run:
+                click.echo("Dry run - would prune:")
+            else:
+                click.echo("Pruned:")
+
+            if not results:
+                click.echo("  (none)")
+            else:
+                for r in results:
+                    status = r.get("status", "unknown")
+                    chunk_name = r.get("chunk", "unknown")
+                    if status == "pruned" or status == "would_prune":
+                        click.echo(f"  {chunk_name}: merged and cleaned up")
+                    elif status == "skipped":
+                        click.echo(f"  {chunk_name}: skipped - {r.get('reason', 'unknown')}")
+                    elif status == "error":
+                        click.echo(f"  {chunk_name}: error - {r.get('error', 'unknown')}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+@orch.command("prune")
+@click.argument("chunk", required=False)
+@click.option("--all", "prune_all", is_flag=True, help="Prune all retained worktrees")
+@click.option("--dry-run", is_flag=True, help="Show what would be pruned without doing it")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
+    """Clean up retained worktrees from completed work units.
+
+    Retained worktrees (created with --retain flag) are not automatically cleaned
+    up on completion. Use this command to merge and remove them.
+
+    When a chunk is specified, only that chunk's worktree is pruned.
+    Use --all to prune all retained worktrees from DONE work units.
+
+    The prune operation will:
+    1. Merge any uncommitted changes
+    2. Merge the branch back to base
+    3. Remove the worktree and branch
+    4. Clear the retain_worktree flag
+
+    Examples:
+        ve orch prune my_chunk        # Prune specific chunk
+        ve orch prune --all           # Prune all retained worktrees
+        ve orch prune --all --dry-run # Show what would be pruned
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+    import json as json_module
+
+    if not chunk and not prune_all:
+        click.echo("Error: Specify a chunk or use --all to prune all retained worktrees", err=True)
+        raise SystemExit(1)
+
+    # Normalize chunk path if provided
+    if chunk:
+        chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    client = create_client(project_dir)
+    try:
+        if chunk:
+            # Prune single chunk
+            result = client._request(
+                "POST",
+                f"/work-units/{chunk}/prune",
+                json={"dry_run": dry_run},
+            )
+            results = [result]
+        else:
+            # Prune all retained worktrees
+            result = client._request(
+                "POST",
+                "/work-units/prune",
+                json={"dry_run": dry_run},
+            )
+            results = result.get("results", [])
+
+        if json_output:
+            click.echo(json_module.dumps({"results": results}, indent=2))
+        else:
+            if dry_run:
+                click.echo("Dry run - would prune:")
+            else:
+                click.echo("Pruned:")
+
+            if not results:
+                click.echo("  (none)")
+            else:
+                for r in results:
+                    status = r.get("status", "unknown")
+                    chunk_name = r.get("chunk", "unknown")
+                    if status == "pruned" or status == "would_prune":
+                        click.echo(f"  {chunk_name}: merged and cleaned up")
+                    elif status == "skipped":
+                        click.echo(f"  {chunk_name}: skipped - {r.get('reason', 'unknown')}")
+                    elif status == "error":
+                        click.echo(f"  {chunk_name}: error - {r.get('error', 'unknown')}")
+
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()

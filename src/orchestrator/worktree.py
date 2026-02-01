@@ -940,6 +940,8 @@ class WorktreeManager:
         with a standard message format. Used by the orchestrator to commit
         changes after the COMPLETE phase without involving an agent.
 
+        # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
+
         Args:
             chunk: Chunk name
 

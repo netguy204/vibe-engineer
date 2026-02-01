@@ -730,6 +730,7 @@ class TestAnswerEndpoint:
         assert "Invalid JSON" in response.json()["error"]
 
 
+# Chunk: docs/chunks/orch_blocked_lifecycle - Unit tests for SERIALIZE status transition and attention_reason clearing
 class TestResolveConflictEndpoint:
     """Tests for POST /work-units/{chunk}/resolve endpoint."""
 
@@ -820,6 +821,7 @@ class TestResolveConflictEndpoint:
         assert response.status_code == 404
 
 
+# Chunk: docs/chunks/orch_blocked_lifecycle - Integration test for full blocked lifecycle flow
 class TestBlockedLifecycleIntegration:
     """Integration tests for the full blocked work unit lifecycle.
 
@@ -1325,3 +1327,194 @@ Details about doing the thing.
         assert data["blocked_by"] == ["pending_chunk"]
         # explicit_deps flag should be preserved
         assert data["explicit_deps"] is True
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+class TestRetainWorktreeInject:
+    """Tests for retain_worktree flag in inject endpoint."""
+
+    @pytest.fixture
+    def client_with_chunks(self, tmp_path):
+        """Create app with a chunk directory structure."""
+        # Create chunk directory
+        chunk_dir = tmp_path / "docs" / "chunks" / "retain_test"
+        chunk_dir.mkdir(parents=True)
+        goal_file = chunk_dir / "GOAL.md"
+        goal_file.write_text("""---
+status: FUTURE
+ticket: null
+---
+
+# Test chunk for retain_worktree
+""")
+        app = create_app(tmp_path)
+        return TestClient(app)
+
+    def test_inject_with_retain_worktree_true(self, client_with_chunks):
+        """Inject with retain_worktree=True sets the flag."""
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "retain_test",
+            "retain_worktree": True,
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["retain_worktree"] is True
+
+    def test_inject_without_retain_worktree_defaults_to_false(self, client_with_chunks):
+        """Inject without retain_worktree defaults to False."""
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "retain_test",
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["retain_worktree"] is False
+
+    def test_inject_with_invalid_retain_worktree_returns_error(self, client_with_chunks):
+        """Inject with invalid retain_worktree returns error."""
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "retain_test",
+            "retain_worktree": "not_a_boolean",
+        })
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "retain_worktree must be a boolean" in data["error"]
+
+
+class TestPruneEndpoints:
+    """Tests for prune endpoints."""
+
+    def test_prune_nonexistent_chunk_returns_not_found(self, client):
+        """Pruning nonexistent chunk returns 404."""
+        response = client.post("/work-units/nonexistent/prune", json={})
+
+        assert response.status_code == 404
+
+    def test_prune_non_done_chunk_returns_skipped(self, client):
+        """Pruning a non-DONE work unit returns skipped status."""
+        # Create a READY work unit
+        client.post("/work-units", json={
+            "chunk": "ready_chunk",
+            "status": "READY",
+        })
+
+        response = client.post("/work-units/ready_chunk/prune", json={})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "skipped"
+        assert "not DONE" in data["reason"]
+
+    def test_prune_done_without_retain_returns_skipped(self, client):
+        """Pruning a DONE work unit without retain_worktree returns skipped."""
+        # Create a DONE work unit without retain_worktree
+        client.post("/work-units", json={
+            "chunk": "done_chunk",
+            "status": "DONE",
+        })
+
+        response = client.post("/work-units/done_chunk/prune", json={})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "skipped"
+        assert "retain_worktree" in data["reason"]
+
+    def test_prune_all_dry_run(self, client):
+        """Prune all with dry_run shows what would be pruned."""
+        # Create work units - one with retain_worktree, one without
+        client.post("/work-units", json={
+            "chunk": "retained_done",
+            "status": "DONE",
+        })
+        # Update to set retain_worktree (simulating injection with --retain)
+        client.patch("/work-units/retained_done", json={
+            "retain_worktree": True,
+        })
+
+        client.post("/work-units", json={
+            "chunk": "normal_done",
+            "status": "DONE",
+        })
+
+        response = client.post("/work-units/prune", json={"dry_run": True})
+
+        assert response.status_code == 200
+        data = response.json()
+        results = data["results"]
+        # Only the retained chunk should be listed
+        assert len(results) == 1
+        assert results[0]["chunk"] == "retained_done"
+        assert results[0]["status"] == "would_prune"
+
+    def test_prune_all_empty_when_no_retained(self, client):
+        """Prune all returns empty when no retained worktrees."""
+        # Create a DONE work unit without retain_worktree
+        client.post("/work-units", json={
+            "chunk": "normal_done",
+            "status": "DONE",
+        })
+
+        # Use dry_run to avoid needing git functionality
+        response = client.post("/work-units/prune", json={"dry_run": True})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["results"] == []
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Worktree list and remove endpoints
+class TestWorktreeEndpoints:
+    """Tests for worktree management endpoints."""
+
+    @pytest.fixture
+    def git_repo(self, tmp_path):
+        """Create a git repository for testing."""
+        import subprocess
+        # Initialize git repo
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        # Create initial commit so HEAD exists
+        (tmp_path / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        return tmp_path
+
+    @pytest.fixture
+    def git_client(self, git_repo):
+        """Create a test client with a git repository."""
+        app = create_app(git_repo)
+        return TestClient(app)
+
+    def test_list_worktrees_empty(self, git_client):
+        """List worktrees returns empty list when no worktrees exist."""
+        response = git_client.get("/worktrees")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["worktrees"] == []
+        assert data["count"] == 0
+
+    def test_remove_worktree_nonexistent(self, git_client):
+        """Removing nonexistent worktree returns 404."""
+        response = git_client.delete("/worktrees/nonexistent_chunk")
+
+        assert response.status_code == 404

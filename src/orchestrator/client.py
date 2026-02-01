@@ -327,6 +327,43 @@ class OrchestratorClient:
             json={"other_chunk": other_chunk, "verdict": verdict},
         )
 
+    # Chunk: docs/chunks/orch_worktree_retain - Prune retained worktrees
+    def prune_work_unit(self, chunk: str, dry_run: bool = False) -> dict:
+        """Prune a retained worktree.
+
+        Merges the worktree changes back to base and removes the worktree/branch.
+        Only works on DONE work units with retain_worktree=True.
+
+        Args:
+            chunk: Chunk name
+            dry_run: If True, don't actually prune, just report what would be pruned
+
+        Returns:
+            Prune result with status
+        """
+        return self._request(
+            "POST",
+            f"/work-units/{chunk}/prune",
+            json={"dry_run": dry_run},
+        )
+
+    def prune_all_work_units(self, dry_run: bool = False) -> dict:
+        """Prune all retained worktrees.
+
+        Finds all DONE work units with retain_worktree=True and prunes them.
+
+        Args:
+            dry_run: If True, don't actually prune, just report what would be pruned
+
+        Returns:
+            Dict with results list
+        """
+        return self._request(
+            "POST",
+            "/work-units/prune",
+            json={"dry_run": dry_run},
+        )
+
 
 def create_client(project_dir: Path, timeout: float = 10.0) -> OrchestratorClient:
     """Create an orchestrator client.

@@ -1,9 +1,50 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+  - src/orchestrator/scheduler.py
+  - src/orchestrator/worktree.py
+  - src/orchestrator/models.py
+  - src/orchestrator/api.py
+  - src/cli/orch.py
+  - src/orchestrator/templates/dashboard.html
+  - tests/test_orchestrator_worktree.py
+  - tests/test_orchestrator_scheduler.py
+  - docs/trunk/ORCHESTRATOR.md
+code_references:
+  - ref: src/orchestrator/models.py#WorkUnit
+    implements: "Work unit model with retain_worktree field for worktree retention"
+  - ref: src/orchestrator/models.py#OrchestratorConfig
+    implements: "Config model with worktree_warning_threshold field"
+  - ref: src/orchestrator/models.py#WorktreeInfo
+    implements: "Data model for worktree listing with status information"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_recover_from_crash
+    implements: "Orphan recovery that preserves worktrees instead of deleting them"
+  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+    implements: "Worktree retention logic on completion based on retain_worktree flag"
+  - ref: src/orchestrator/api.py#inject_endpoint
+    implements: "API endpoint with retain_worktree parameter support"
+  - ref: src/orchestrator/api.py#list_worktrees_endpoint
+    implements: "GET /worktrees endpoint returning worktree status information"
+  - ref: src/orchestrator/api.py#remove_worktree_endpoint
+    implements: "DELETE /worktrees/{chunk} endpoint for explicit worktree removal"
+  - ref: src/orchestrator/api.py#prune_work_unit_endpoint
+    implements: "POST /work-units/{chunk}/prune for merging and cleaning retained worktree"
+  - ref: src/orchestrator/api.py#prune_all_endpoint
+    implements: "POST /work-units/prune for batch cleanup of retained worktrees"
+  - ref: src/cli/orch.py#worktree
+    implements: "CLI subgroup for worktree management commands"
+  - ref: src/cli/orch.py#worktree_list
+    implements: "CLI command to list worktrees with status"
+  - ref: src/cli/orch.py#worktree_remove
+    implements: "CLI command to remove worktree without merging"
+  - ref: src/cli/orch.py#worktree_prune
+    implements: "CLI command to prune all retained worktrees"
+  - ref: src/cli/orch.py#orch_prune
+    implements: "CLI command to prune specific or all retained worktrees"
+  - ref: src/cli/orch.py#orch_inject
+    implements: "CLI inject command with --retain flag support"
 narrative: null
 investigation: null
 subsystems: []
@@ -11,9 +52,10 @@ friction_entries: []
 bug_type: null
 depends_on:
 - cli_modularize
-created_after: ["cli_modularize", "reviewer_decisions_nudge"]
+created_after:
+- cli_modularize
+- reviewer_decisions_nudge
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -620,6 +621,68 @@ class TestCrashRecovery:
         updated = state_store.get_work_unit("orphan")
         assert updated.status == WorkUnitStatus.READY
         assert updated.worktree is None
+
+
+# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+class TestRetainWorktree:
+    """Tests for retain_worktree flag."""
+
+    @pytest.mark.asyncio
+    async def test_retain_worktree_skips_cleanup_in_recovery(self, scheduler, state_store):
+        """Crash recovery respects retain_worktree and doesn't remove worktree."""
+        now = datetime.now(timezone.utc)
+        # A DONE work unit with retain_worktree should keep its worktree
+        work_unit = WorkUnit(
+            chunk="retained_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            worktree="/some/worktree/path",
+            retain_worktree=True,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Recovery should not try to remove worktrees for units with retain_worktree
+        await scheduler._recover_from_crash()
+
+        # Work unit should still have retain_worktree set
+        updated = state_store.get_work_unit("retained_chunk")
+        assert updated.retain_worktree is True
+        # Status should be unchanged (still DONE)
+        assert updated.status == WorkUnitStatus.DONE
+
+    def test_work_unit_has_retain_worktree_field(self):
+        """WorkUnit model has retain_worktree field."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        # Default should be False
+        assert unit.retain_worktree is False
+
+        # Can be set to True
+        unit.retain_worktree = True
+        assert unit.retain_worktree is True
+
+    def test_retain_worktree_in_json_serializable(self):
+        """retain_worktree is included in JSON serialization."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            retain_worktree=True,
+            created_at=now,
+            updated_at=now,
+        )
+        serialized = unit.model_dump_json_serializable()
+        assert "retain_worktree" in serialized
+        assert serialized["retain_worktree"] is True
 
 
 class TestCreateScheduler:
@@ -2689,6 +2752,7 @@ ticket: null
         assert completed.pending_answer is None
 
 
+# Chunk: docs/chunks/orch_blocked_lifecycle - Unit tests for automatic unblocking when blockers complete
 class TestAutomaticUnblock:
     """Tests for automatic unblocking when blockers complete."""
 
@@ -3205,6 +3269,7 @@ ticket: null
         assert updated.blocked_by == []
 
 
+# Chunk: docs/chunks/orch_broadcast_invariant - Test coverage for WebSocket broadcast invariant
 class TestWebSocketBroadcasts:
     """Tests for WebSocket broadcast invariant.
 

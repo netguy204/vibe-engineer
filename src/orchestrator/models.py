@@ -82,6 +82,7 @@ class WorkUnitStatus(StrEnum):
     DONE = "DONE"  # Work unit completed
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Added displaced_chunk field to track displaced IMPLEMENTING chunks
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 

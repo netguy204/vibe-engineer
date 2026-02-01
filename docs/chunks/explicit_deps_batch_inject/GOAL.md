@@ -10,13 +10,13 @@ code_paths:
 code_references:
   - ref: src/models.py#ChunkFrontmatter
     implements: "Added depends_on field to chunk frontmatter model for parsing dependency declarations"
-  - ref: src/ve.py#topological_sort_chunks
+  - ref: src/cli/orch.py#topological_sort_chunks
     implements: "Kahn's algorithm for topological sorting of chunks by dependency order"
-  - ref: src/ve.py#read_chunk_dependencies
+  - ref: src/cli/orch.py#read_chunk_dependencies
     implements: "Read depends_on from chunk GOAL.md frontmatter for dependency graph construction"
-  - ref: src/ve.py#validate_external_dependencies
+  - ref: src/cli/orch.py#validate_external_dependencies
     implements: "Validate that dependencies outside the batch exist as work units"
-  - ref: src/ve.py#orch_inject
+  - ref: src/cli/orch.py#orch_inject
     implements: "CLI command extended to accept multiple chunks and inject in dependency order"
   - ref: src/orchestrator/api.py#inject_endpoint
     implements: "API endpoint extended to accept blocked_by and explicit_deps parameters"

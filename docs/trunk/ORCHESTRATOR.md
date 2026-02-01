@@ -14,6 +14,71 @@ The orchestrator (`ve orch`) manages parallel chunk execution across multiple gi
 | `ve orch answer <chunk>` | Answer a question from a work unit |
 | `ve orch resolve <chunk>` | Resolve a conflict verdict |
 | `ve orch work-unit delete <chunk>` | Remove a work unit |
+| `ve orch worktree list` | List all retained worktrees |
+| `ve orch worktree prune` | Clean up retained worktrees |
+
+## Worktree Retention
+
+<!-- Chunk: docs/chunks/orch_worktree_retain - Worktree retention documentation -->
+
+By default, worktrees are removed after work unit completion. Use the `--retain` flag to preserve worktrees for debugging or inspection:
+
+```bash
+# Inject with worktree retention
+ve orch inject my_chunk --retain
+```
+
+Retained worktrees are preserved after the work unit completes (DONE status). This is useful when:
+- Debugging agent behavior after completion
+- Inspecting generated code before merge
+- Recovering from failed phases (uncommitted work is preserved)
+
+### Managing Retained Worktrees
+
+```bash
+# List all worktrees with their status
+ve orch worktree list
+
+# Status meanings:
+# - active: Agent is currently running
+# - retained: Work unit DONE, worktree preserved with --retain
+# - orphaned: Worktree exists but no active/retained work unit
+# - completed: Work unit DONE, worktree not retained (will be cleaned)
+
+# Remove a specific worktree (without merging changes)
+ve orch worktree remove my_chunk
+
+# Prune all retained worktrees (merges changes and cleans up)
+ve orch worktree prune
+ve orch worktree prune --dry-run  # Preview what would be pruned
+```
+
+### Prune vs Remove
+
+- **Prune** (`ve orch prune` or `ve orch worktree prune`): Merges any uncommitted changes back to the base branch, then removes the worktree and branch. Safe operation that preserves work.
+
+- **Remove** (`ve orch worktree remove`): Deletes the worktree immediately without merging. Use with caution - any uncommitted changes are lost.
+
+### Worktree Count Warning
+
+The orchestrator logs a warning when the number of retained worktrees exceeds the configured threshold (default: 10). This helps prevent disk space issues:
+
+```bash
+# Check current threshold
+ve orch config
+
+# Update threshold
+ve orch config --worktree-threshold 20
+```
+
+### Recovery Workflow
+
+If an agent crashes or a phase fails, the worktree is preserved (not automatically deleted). To recover work:
+
+1. Check worktree status: `ve orch worktree list`
+2. Navigate to the worktree: `cd .ve/chunks/<chunk>/worktree`
+3. Review and commit any uncommitted changes
+4. Prune to merge changes: `ve orch prune <chunk>`
 
 ## Creating and Submitting FUTURE Chunks
 

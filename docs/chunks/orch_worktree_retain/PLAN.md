@@ -8,170 +8,311 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk changes the orchestrator's worktree lifecycle from automatic cleanup to explicit user-controlled removal. The key insight is that worktrees are valuable work artifacts that should be preserved until the user explicitly removes them.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Current behavior (problematic):**
+1. `scheduler.py#_advance_phase()` removes worktrees immediately after successful merge
+2. `scheduler.py#_recover_from_crash()` removes orphaned worktrees on daemon restart
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**New behavior (safe):**
+1. Worktrees are retained after completion (merge succeeds, worktree stays)
+2. Worktrees are retained during orphan recovery (logged, not deleted)
+3. New CLI commands provide explicit worktree management
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_worktree_retain/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Strategy:**
+- Remove the `remove_worktree()` call from `_advance_phase()` after successful completion
+- Remove the `remove_worktree()` call from `_recover_from_crash()` for orphaned worktrees
+- Add new API endpoints for worktree listing and removal
+- Add new CLI commands under `ve orch worktree` subgroup
+- Add worktree count tracking and warning threshold via config
+- Update dashboard to show worktree status
+
+This follows the existing patterns in `src/cli/orch.py` for CLI subgroups and `src/orchestrator/api.py` for new endpoints.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS new functionality
+  (worktree retention) within the orchestrator subsystem. The worktree management logic
+  is already part of the orchestrator pattern; this chunk extends it with retention
+  behavior and CLI/API exposure.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write tests for worktree retention behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Following TDD, write failing tests for:
+- Worktrees NOT removed after successful completion
+- Worktrees NOT removed during orphan recovery
+- Worktree list API returns correct status (completed, orphaned, active)
+- Worktree removal API removes specific worktree
+- Worktree prune removes all completed worktrees
+- Warning logged when worktree count exceeds threshold
 
-Example:
+Location: `tests/test_orchestrator_worktree.py`, `tests/test_orchestrator_scheduler.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add WorktreeInfo model for worktree metadata
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Create a model to represent worktree status information:
+- `chunk`: Chunk name
+- `path`: Path to worktree
+- `status`: "active" | "completed" | "orphaned"
+- `work_unit_status`: Optional[WorkUnitStatus] - linked work unit status if exists
+- `created_at`: Timestamp from worktree directory mtime
 
-Location: src/segment/format.rs
+Location: `src/orchestrator/models.py`
 
-### Step 2: Implement header serialization
+### Step 3: Extend WorktreeManager with list_worktrees_with_status()
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add method to list all worktrees with their status:
+- "active": Work unit exists and is RUNNING
+- "completed": Work unit exists and is DONE
+- "orphaned": No work unit exists for this worktree, or work unit is not RUNNING/DONE
 
-### Step 3: ...
+This method needs access to the StateStore to check work unit status.
 
----
+Location: `src/orchestrator/worktree.py`
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Add worktree count threshold to OrchestratorConfig
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add new config field:
+- `worktree_warning_threshold: int = 10` (default 10)
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+This is stored in the config table and can be updated via `ve orch config`.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Location: `src/orchestrator/models.py`
 
-Format (place immediately before the symbol):
+### Step 5: Remove automatic worktree deletion from _advance_phase()
+
+In `scheduler.py#_advance_phase()`, remove the `remove_worktree()` call that happens
+after successful merge. The worktree should remain for potential recovery.
+
+The specific code to remove is:
+```python
+# Remove the worktree (must be done before merge)
+try:
+    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+except WorktreeError as e:
+    logger.warning(f"Failed to remove worktree for {chunk}: {e}")
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+**Note:** The worktree must still be removed before `merge_to_base()` because git
+cannot merge while a worktree references the branch. The new approach:
+1. Call `remove_worktree(chunk, remove_branch=False)` before merge (keep branch)
+2. After successful merge, delete the branch but leave the worktree directory
+3. The worktree directory remains as an "orphaned" artifact until explicit cleanup
+
+Wait - this approach has a problem. Once we call `git worktree remove`, the directory
+is either deleted or becomes a regular directory (not a git worktree). We need a
+different approach:
+
+**Revised approach:**
+1. After successful completion, do NOT remove the worktree at all
+2. The `merge_to_base()` method handles this by first removing the worktree, then merging
+3. We need to refactor: separate the "remove worktree for merge" step from cleanup
+4. Alternative: Keep worktree directory as a non-git archive for recovery
+
+Actually, looking more carefully at the code:
+- `merge_to_base()` is called from `_advance_phase()`
+- Before `merge_to_base()`, the code calls `remove_worktree()`
+- The worktree MUST be removed before merge because git prevents merging a checked-out branch
+
+So the retention needs to happen differently:
+1. Keep the `.ve/chunks/<chunk>/` directory structure
+2. Remove the worktree proper (required for merge)
+3. But preserve log files and potentially a snapshot of the work
+
+For this chunk's scope (recovering work from failed phases), we should:
+1. NOT remove `.ve/chunks/<chunk>/` directory after completion (currently removed by `remove_worktree`)
+2. The `worktree/` subdirectory will be removed (required for merge)
+3. Logs remain in `log/` subdirectory
+4. Add a new `prune` command to clean up completed chunk directories
+
+Wait, looking at `remove_worktree()`:
+```python
+def _remove_single_repo_worktree(self, chunk: str, remove_branch: bool) -> None:
+    worktree_path = self.get_worktree_path(chunk)  # .ve/chunks/<chunk>/worktree
+    # ... removes just the worktree, not the parent directory
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+So the directory structure `.ve/chunks/<chunk>/` with `log/` already survives!
+The issue in the incident was the worktree removal during `_recover_from_crash()`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Let me re-read the goal more carefully:
+1. Worktrees deleted after completion in `_handle_completion()` - this is actually fine since logs remain
+2. Worktrees deleted during `_recover_from_crash()` - THIS is the problem
+
+The incident: `cli_modularize` had work in the worktree that wasn't committed. When
+the COMPLETE phase orphaned and the daemon restarted, `_recover_from_crash()` deleted
+the worktree with all the uncommitted changes.
+
+**Actual fix:**
+1. In `_recover_from_crash()`, do NOT delete orphaned worktrees - just log their presence
+2. Add CLI commands to manually clean up worktrees after recovery
+3. The worktree after completion is fine to remove (work is merged)
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 6: Remove automatic worktree deletion from _recover_from_crash()
+
+In `scheduler.py#_recover_from_crash()`, change the behavior:
+- Still mark RUNNING work units as READY (they'll retry)
+- Do NOT delete orphaned worktrees
+- Instead, log a warning about retained worktrees and their count
+- If count exceeds threshold, log additional warning
+
+Current code to modify:
+```python
+# Clean up orphaned worktrees
+orphaned = self.worktree_manager.cleanup_orphaned_worktrees()
+for chunk in orphaned:
+    unit = self.store.get_work_unit(chunk)
+    if unit is None or unit.status != WorkUnitStatus.RUNNING:
+        logger.info(f"Removing orphaned worktree for {chunk}")
+        try:
+            self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+        except WorktreeError as e:
+            logger.warning(f"Failed to remove orphaned worktree: {e}")
+```
+
+New behavior:
+```python
+# Detect orphaned worktrees but do NOT remove them automatically
+orphaned = self.worktree_manager.list_worktrees()
+if orphaned:
+    logger.warning(
+        f"Found {len(orphaned)} retained worktrees. "
+        f"Use 've orch worktree list' to view and 've orch worktree prune' to clean up."
+    )
+    if len(orphaned) > self.config.worktree_warning_threshold:
+        logger.warning(
+            f"Worktree count ({len(orphaned)}) exceeds threshold "
+            f"({self.config.worktree_warning_threshold}). Consider pruning."
+        )
+```
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 7: Add worktree list API endpoint
+
+Add `GET /worktrees` endpoint that returns all worktrees with status:
+- Calls `WorktreeManager.list_worktrees()`
+- For each worktree, looks up work unit status to determine state
+- Returns JSON array with chunk, path, status, work_unit_status
+
+Location: `src/orchestrator/api.py`
+
+### Step 8: Add worktree remove API endpoint
+
+Add `DELETE /worktrees/{chunk}` endpoint:
+- Validates worktree exists
+- Removes worktree and optionally branch
+- Returns success/failure
+
+Location: `src/orchestrator/api.py`
+
+### Step 9: Add worktree prune API endpoint
+
+Add `POST /worktrees/prune` endpoint:
+- Removes all worktrees for DONE work units
+- Returns list of pruned chunks and count
+
+Location: `src/orchestrator/api.py`
+
+### Step 10: Add ve orch worktree subgroup to CLI
+
+Create new subgroup under `orch`:
+```python
+@orch.group("worktree")
+def worktree():
+    """Worktree management commands."""
+    pass
+```
+
+Location: `src/cli/orch.py`
+
+### Step 11: Add ve orch worktree list command
+
+Implement `ve orch worktree list`:
+- Calls the worktree list API
+- Displays table: CHUNK, STATUS, WORKTREE_PATH
+- Optionally filter by status with `--status` flag
+
+Location: `src/cli/orch.py`
+
+### Step 12: Add ve orch worktree remove command
+
+Implement `ve orch worktree remove <chunk>`:
+- Calls the worktree remove API
+- Reports success/failure
+- Option `--keep-branch` to preserve branch
+
+Location: `src/cli/orch.py`
+
+### Step 13: Add ve orch worktree prune command
+
+Implement `ve orch worktree prune`:
+- Calls the worktree prune API
+- Reports list of pruned worktrees and count
+- Requires confirmation or `--yes` flag
+
+Location: `src/cli/orch.py`
+
+### Step 14: Update ve orch config for worktree threshold
+
+Extend `ve orch config` to show and update `worktree_warning_threshold`:
+- `ve orch config` shows current threshold
+- `ve orch config --worktree-threshold N` updates it
+
+Location: `src/cli/orch.py`
+
+### Step 15: Update dashboard worktree display
+
+Add worktree count and status to dashboard:
+- Show count of retained worktrees
+- Show warning indicator if count exceeds threshold
+- Link to cleanup documentation or action
+
+Location: `src/orchestrator/templates/dashboard.html`
+
+### Step 16: Update ORCHESTRATOR.md documentation
+
+Document the new worktree retention behavior:
+- Explain why worktrees are retained
+- Document `ve orch worktree list/remove/prune` commands
+- Explain the warning threshold and how to configure it
+- Add recovery workflow for accessing orphaned worktree content
+
+Location: `docs/trunk/ORCHESTRATOR.md`
+
+### Step 17: Run all tests and verify behavior
+
+- Run `uv run pytest tests/test_orchestrator_*.py`
+- Verify all new tests pass
+- Verify existing tests still pass
+- Manual test: inject chunk, complete it, verify worktree retained
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `cli_modularize` chunk must be complete (this chunk depends on the modular CLI structure)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Disk space**: Retained worktrees consume disk space. Mitigation: warning threshold
+   and prune command make it easy to clean up. Document recommended cleanup frequency.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Git worktree limits**: Git has a soft limit on worktrees. The warning threshold
+   (default 10) should keep us well under any practical limits.
+
+3. **Branch name collisions**: After pruning a worktree, the branch may still exist
+   (if `--keep-branch` was used). Re-injecting the same chunk would fail. Mitigation:
+   by default remove branch during prune; document the edge case.
+
+4. **Multi-repo worktrees**: The task context mode creates worktrees across multiple
+   repos. The prune logic must handle both `worktree/` and `work/<repo>/` structures.
+   Use `WorktreeManager.is_task_context()` to detect and handle appropriately.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
