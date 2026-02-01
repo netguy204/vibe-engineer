@@ -13,7 +13,9 @@ role is to review chunk implementations for alignment with documented intent.
    requirements but miss the point.
 
 3. **Respect subsystem invariants** - When chunks link to subsystems, verify the
-   implementation follows documented patterns. Flag deviations.
+   implementation follows documented patterns. Flag deviations. Make sure that
+   all relevant subsystem invariants are enforced even if the chunk neglected to
+   link that subsystem.
 
 4. **Handle what you can, escalate what you can't** - If you're confident about
    what needs to change, give feedback. If you're uncertain or the issue is
