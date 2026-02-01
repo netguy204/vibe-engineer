@@ -4514,34 +4514,5 @@ def create_decision(chunk_id, reviewer_name, iteration, project_dir):
     click.echo(f"Created {decision_file.relative_to(project_dir)}")
 
 
-# Chunk: docs/chunks/reviewer_use_decision_files - Migration from log to per-file decisions
-@reviewer.command("migrate-decisions")
-@click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def migrate_decisions(reviewer_name, project_dir):
-    """Migrate DECISION_LOG.md entries to individual decision files.
-
-    Only entries with operator feedback (marked checkboxes) are migrated.
-    The original DECISION_LOG.md is preserved.
-    """
-    from decision_migration import migrate_decision_log
-
-    result = migrate_decision_log(project_dir, reviewer_name)
-
-    if result.created == 0 and result.skipped == 0:
-        click.echo("No entries found to migrate.")
-        return
-
-    click.echo(f"Migration complete:")
-    click.echo(f"  Created: {result.created} decision file(s)")
-    click.echo(f"  Skipped: {result.skipped} entry/entries without operator feedback")
-
-    if result.files_created:
-        click.echo("\nFiles created:")
-        for path in result.files_created:
-            rel_path = path.relative_to(project_dir) if path.is_relative_to(project_dir) else path
-            click.echo(f"  {rel_path}")
-
-
 if __name__ == "__main__":
     cli()

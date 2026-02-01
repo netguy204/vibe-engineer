@@ -170,7 +170,7 @@ class TestProjectInitReviewers:
         project = Project(temp_project)
         project.init()
         reviewers_dir = temp_project / "docs" / "reviewers" / "baseline"
-        expected_files = ["METADATA.yaml", "PROMPT.md", "DECISION_LOG.md"]
+        expected_files = ["METADATA.yaml", "PROMPT.md"]
         for filename in expected_files:
             assert (reviewers_dir / filename).exists(), f"Missing {filename}"
 
@@ -182,7 +182,6 @@ class TestProjectInitReviewers:
         reviewer_files = [
             "docs/reviewers/baseline/METADATA.yaml",
             "docs/reviewers/baseline/PROMPT.md",
-            "docs/reviewers/baseline/DECISION_LOG.md",
         ]
         for file in reviewer_files:
             assert file in result.created, f"Expected {file} in created list"
@@ -211,16 +210,6 @@ class TestProjectInitReviewers:
         assert "FEEDBACK" in content
         assert "ESCALATE" in content
 
-    def test_init_reviewer_decision_log_has_content(self, temp_project):
-        """init() creates DECISION_LOG.md with expected structure."""
-        project = Project(temp_project)
-        project.init()
-        log_path = temp_project / "docs" / "reviewers" / "baseline" / "DECISION_LOG.md"
-        content = log_path.read_text()
-        # Check for key content
-        assert "Decision Log: baseline" in content
-        assert "No decisions recorded yet" in content
-
     def test_init_skips_existing_reviewer_files(self, temp_project):
         """init() skips existing reviewer files (idempotent/preserves decision logs)."""
         project = Project(temp_project)
@@ -238,7 +227,6 @@ class TestProjectInitReviewers:
         assert "docs/reviewers/baseline/METADATA.yaml" in result.skipped
         # Other files should be created
         assert "docs/reviewers/baseline/PROMPT.md" in result.created
-        assert "docs/reviewers/baseline/DECISION_LOG.md" in result.created
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Test suite for marker detection, preservation, and edge cases

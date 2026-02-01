@@ -4,30 +4,14 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/commands/chunk-review.md.jinja2
-- src/decision_migration.py
 - src/ve.py
 - src/reviewers.py
-- tests/test_decision_migration.py
 - tests/test_chunk_review_skill.py
 code_references:
-  - ref: src/decision_migration.py#ParsedEntry
-    implements: "Data model for parsed DECISION_LOG.md entries"
-  - ref: src/decision_migration.py#MigrationResult
-    implements: "Result type tracking migration counts and created files"
-  - ref: src/decision_migration.py#parse_entry
-    implements: "Parses individual DECISION_LOG.md entry format"
-  - ref: src/decision_migration.py#split_log_entries
-    implements: "Splits log file into individual entry strings"
-  - ref: src/decision_migration.py#migrate_decision_log
-    implements: "Main migration logic from log to per-file decisions"
   - ref: src/ve.py#decisions
     implements: "Added --recent flag for few-shot context retrieval"
-  - ref: src/ve.py#migrate_decisions
-    implements: "CLI command for 've reviewer migrate-decisions'"
   - ref: src/templates/commands/chunk-review.md.jinja2
     implements: "Updated skill template using per-file decision workflow"
-  - ref: tests/test_decision_migration.py
-    implements: "Tests for migration parsing and file creation"
   - ref: tests/test_chunk_review_skill.py
     implements: "Tests verifying skill template uses new decision commands"
 narrative: null
