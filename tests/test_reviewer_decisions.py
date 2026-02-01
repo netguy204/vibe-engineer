@@ -78,14 +78,15 @@ class TestReviewerDecisionsCommandExists:
         assert "--reviewer" in result.output
         assert "--project-dir" in result.output
 
-    def test_decisions_command_requires_recent(self, runner, initialized_project):
-        """--recent option is required."""
+    def test_decisions_without_options_shows_help(self, runner, initialized_project):
+        """Without options, shows help text."""
         result = runner.invoke(
             cli,
             ["reviewer", "decisions", "--project-dir", str(initialized_project)],
         )
-        assert result.exit_code != 0
-        assert "--recent" in result.output or "Missing option" in result.output
+        # Without --recent or --pending, should show help
+        assert result.exit_code == 0
+        assert "--recent" in result.output or "--pending" in result.output
 
 
 class TestReviewerDecisionsFiltering:

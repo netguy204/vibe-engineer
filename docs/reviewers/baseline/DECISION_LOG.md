@@ -1140,3 +1140,68 @@ The implementation follows the PLAN.md approach exactly, respects DEC-005 (no gi
 - [ ] Feedback: Final chunk of investigation - completes the integrity validation toolchain
 
 ---
+
+## reviewer_use_decision_files - 2026-01-31 23:59
+
+**Mode:** final
+**Iteration:** 1
+**Decision:** APPROVE
+
+### Context Summary
+- Goal: Update the chunk-review skill to use the new per-file decision system instead of appending to DECISION_LOG.md, making concurrent reviews conflict-free
+- Linked artifacts: investigation: reviewer_log_concurrency; depends_on: reviewer_decision_create_cli, reviewer_decisions_list_cli, reviewer_decisions_review_cli
+
+### Assessment
+
+The implementation comprehensively addresses all 8 success criteria:
+
+**1. Reviewer skill calls `ve reviewer decision create`** ✓
+- Phase 4 in `chunk-review.md.jinja2` (lines 171-175): Explicit instruction to run the command before writing decision
+
+**2. Reviewer skill calls `ve reviewer decisions --recent 10`** ✓
+- Phase 1 in `chunk-review.md.jinja2` (lines 28-32): "Load curated example decisions" section with CLI command
+
+**3. Reviewer fills in decision template** ✓
+- Phase 4 (lines 177-204): Structured template format with `decision:`, `summary:`, `operator_review:` fields
+
+**4. No more appends to DECISION_LOG.md** ✓
+- Phase 4 rewritten entirely—no mention of appending to shared log
+- Test `test_phase_4_no_longer_appends_to_decision_log` passes
+
+**5. Reviewer prompt references decision files** ✓
+- Phase 2 (lines 73-76): "Consult curated example decisions (loaded in Phase 1)"
+
+**6. Migration preserves operator feedback** ✓
+- `src/decision_migration.py`: `_detect_operator_feedback()` parses [x] Good/Bad/Feedback checkboxes
+- 14 decision files migrated with `operator_review: good` preserved
+- 25 tests in `test_decision_migration.py` all pass
+
+**7. Migrated decisions appear in few-shot context** ✓
+- `ve reviewer decisions --recent 5` outputs curated decisions immediately
+- Progressive discovery format per investigation design
+
+**8. Concurrent reviews produce no conflicts** ✓
+- Per-file storage at `docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md`
+- `TestConcurrentReviewsNoConflicts` class verifies file independence
+
+**CLI command added:** `ve reviewer migrate-decisions --reviewer baseline`
+- Preserves original DECISION_LOG.md
+- Reports migration count (created/skipped)
+- All 2229 tests pass with no regressions
+
+### Decision Rationale
+
+All success criteria are satisfied. The implementation:
+- Follows the PLAN.md sequence (TDD → migration script → CLI → skill template → regenerate → run migration)
+- Uses existing CLI patterns (click groups, --project-dir)
+- Respects DEC-005 (no prescribed git operations)
+- Completes the reviewer_log_concurrency investigation's proposed_chunks[4]
+
+The migration from shared DECISION_LOG.md to per-file decisions eliminates the concurrent-write merge conflict problem entirely while preserving all calibration value from operator-reviewed decisions.
+
+### Example Quality
+- [ ] Good example (incorporate into future reviews)
+- [ ] Bad example (avoid this pattern)
+- [ ] Feedback: _______________
+
+---

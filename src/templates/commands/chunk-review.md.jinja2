@@ -2,6 +2,7 @@
 description: Review chunk implementation for alignment with documented intent
 ---
 {# Chunk: docs/chunks/chunk_review_skill - Complete chunk-review skill template with four-phase review workflow #}
+{# Chunk: docs/chunks/reviewer_use_decision_files - Updated to use per-file decision system #}
 {% set source_template = "chunk-review.md.jinja2" %}
 {% include "partials/auto-generated-header.md.jinja2" %}
 ## Tips
@@ -23,23 +24,28 @@ You are acting as a code reviewer—a "trusted lieutenant" for the operator. You
 1. **Load reviewer configuration** from `docs/reviewers/{reviewer}/`:
    - Read `METADATA.yaml` for trust level, domain scope, and loop detection settings
    - Read `PROMPT.md` for reviewer-specific instructions and personality
-   - Read `DECISION_LOG.md` for example decisions (use as few-shot context)
 
-2. **Identify the current chunk** by running `ve chunk list --current`
+2. **Load curated example decisions** for few-shot context:
+   - Run `ve reviewer decisions --recent 10 --reviewer {reviewer}` to get operator-curated decisions
+   - These decisions have been marked "good", "bad", or given feedback by the operator
+   - Use good examples to guide judgment; avoid patterns from bad examples
+   - Read individual decision files for more detail if needed
 
-3. **Read the chunk's GOAL.md** to understand:
+3. **Identify the current chunk** by running `ve chunk list --current`
+
+4. **Read the chunk's GOAL.md** to understand:
    - The problem this chunk solves
    - Success criteria that must be satisfied
    - Frontmatter for linked artifacts (`narrative`, `investigation`, `subsystems`, `friction_entries`)
 
-4. **Follow backreferences** to gather broader context:
+5. **Follow backreferences** to gather broader context:
    - If `narrative` is set: Read `docs/narratives/{narrative}/OVERVIEW.md`
    - If `investigation` is set: Read `docs/investigations/{investigation}/OVERVIEW.md`
    - If `subsystems` is set: Read each `docs/subsystems/{subsystem_id}/OVERVIEW.md` for invariants
 
-5. **Read the chunk's PLAN.md** to understand the intended implementation approach
+6. **Read the chunk's PLAN.md** to understand the intended implementation approach
 
-6. **Examine the implementation**:
+7. **Examine the implementation**:
    - Use `code_paths` from GOAL.md frontmatter as hints
    - Read the relevant source files
    - If needed, use `git diff` from branch point to see all changes
@@ -64,7 +70,7 @@ For each success criterion in GOAL.md, assess:
    - Edge cases the goal didn't anticipate?
    - Implicit assumptions that should be explicit?
 
-5. **Consult example decisions** from the reviewer's DECISION_LOG.md:
+5. **Consult curated example decisions** (loaded in Phase 1):
    - Have similar situations been reviewed before?
    - What was the decision? Was it marked good/bad by operator?
    - Let good examples guide judgment; avoid patterns from bad examples
@@ -160,36 +166,44 @@ context:
 ---
 ```
 
-### Phase 4: Decision Logging
+### Phase 4: Record Decision
 
-**Always** append a structured entry to `docs/reviewers/{reviewer}/DECISION_LOG.md`:
+1. **Create the decision file** by running:
+   ```bash
+   ve reviewer decision create <chunk> --reviewer {reviewer}
+   ```
+   This creates a decision file at `docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md` with a template to fill in.
 
-```markdown
-## {chunk_directory} - {YYYY-MM-DD HH:MM}
+2. **Fill in the decision file**:
+   - Open the created file
+   - Set the `decision:` field to your decision (APPROVE, FEEDBACK, or ESCALATE)
+   - Set the `summary:` field to a one-sentence summary of your findings
+   - Fill in the Criteria Assessment section for each success criterion
+   - If FEEDBACK: fill in the Feedback Items section with issues to address
+   - If ESCALATE: fill in the Escalation Reason section with questions for operator
 
-**Mode:** final
-**Iteration:** 1
-**Decision:** {APPROVE|FEEDBACK|ESCALATE}
+3. **Decision file format** (for reference):
+   ```yaml
+   ---
+   decision: APPROVE  # APPROVE | FEEDBACK | ESCALATE
+   summary: "All success criteria satisfied, implementation follows documented patterns"
+   operator_review: null  # Will be set by operator during curation
+   ---
 
-### Context Summary
-- Goal: {one-line summary of what the chunk accomplishes}
-- Linked artifacts: {list of narrative, investigation, subsystems if any}
+   ## Criteria Assessment
 
-### Assessment
-{Key observations from your review - what did you find?}
+   ### Criterion 1: [Success criterion text]
+   - **Status**: satisfied | gap | unclear
+   - **Evidence**: [Implementation evidence]
 
-### Decision Rationale
-{Why you chose this decision - what was the determining factor?}
+   ## Feedback Items
+   <!-- For FEEDBACK decisions only -->
 
-### Example Quality
-- [ ] Good example (incorporate into future reviews)
-- [ ] Bad example (avoid this pattern)
-- [ ] Feedback: _______________
+   ## Escalation Reason
+   <!-- For ESCALATE decisions only -->
+   ```
 
----
-```
-
-**Important:** The YAML decision block (from Phase 3) must be clearly separated and parseable. Use `---` delimiters before and after the YAML block when outputting it.
+**Important:** Each review creates a separate decision file. This allows concurrent reviews in separate worktrees without merge conflicts.
 
 ## Final Output
 
@@ -197,7 +211,7 @@ After completing all phases:
 
 1. **REQUIRED: Call the `ReviewDecision` tool** with your decision, summary, and any issues/reason
 2. Display the YAML decision block for human reference
-3. Confirm the decision log entry was appended
+3. Confirm the decision file was created and filled in
 4. If FEEDBACK or ESCALATE, summarize what the implementer or operator should do next
 
 **Do NOT complete the review without calling the ReviewDecision tool.** The tool call is how the orchestrator receives your decision.

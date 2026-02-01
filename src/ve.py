@@ -4228,15 +4228,19 @@ def decision():
 
 @reviewer.group(invoke_without_command=True)
 @click.option("--pending", is_flag=True, help="List only decisions with null operator_review")
+@click.option("--recent", type=int, default=None, help="Show N most recent curated decisions")
 @click.option("--reviewer", "reviewer_filter", type=str, default=None, help="Filter by reviewer name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.pass_context
-def decisions(ctx, pending, reviewer_filter, project_dir):
+def decisions(ctx, pending, recent, reviewer_filter, project_dir):
     """Reviewer decision commands.
 
     When invoked with --pending, lists decisions that need operator review.
+    When invoked with --recent N, lists N most recent curated decisions.
     Otherwise, use subcommands like 'review' to interact with decisions.
     """
+    import os
+    import yaml
     from reviewers import Reviewers
 
     # If invoked without a subcommand and --pending flag is set
@@ -4256,6 +4260,61 @@ def decisions(ctx, pending, reviewer_filter, project_dir):
             if info.frontmatter.summary:
                 click.echo(f"    Summary: {info.frontmatter.summary}")
             click.echo()
+
+    # If invoked without a subcommand and --recent is set
+    elif ctx.invoked_subcommand is None and recent is not None:
+        # Use reviewer_filter if provided, otherwise default to "baseline"
+        reviewer_name = reviewer_filter if reviewer_filter else "baseline"
+        decisions_path = project_dir / "docs" / "reviewers" / reviewer_name / "decisions"
+
+        if not decisions_path.exists():
+            return
+
+        decision_files = list(decisions_path.glob("*.md"))
+        if not decision_files:
+            return
+
+        curated_decisions = []
+        for filepath in decision_files:
+            try:
+                content = filepath.read_text()
+                if not content.startswith("---"):
+                    continue
+                parts = content.split("---", 2)
+                if len(parts) < 3:
+                    continue
+                frontmatter_text = parts[1].strip()
+                frontmatter_data = yaml.safe_load(frontmatter_text)
+                if frontmatter_data is None:
+                    continue
+                decision = DecisionFrontmatter(**frontmatter_data)
+                if decision.operator_review is None:
+                    continue
+                mtime = os.path.getmtime(filepath)
+                curated_decisions.append((filepath, decision, mtime))
+            except (yaml.YAMLError, ValueError) as e:
+                click.echo(f"Warning: Skipping {filepath.name}: {e}", err=True)
+                continue
+
+        curated_decisions.sort(key=lambda x: x[2], reverse=True)
+        curated_decisions = curated_decisions[:recent]
+
+        for filepath, decision, _mtime in curated_decisions:
+            try:
+                rel_path = filepath.relative_to(project_dir)
+            except ValueError:
+                rel_path = filepath
+            click.echo(f"## {rel_path}")
+            click.echo()
+            click.echo(f"- **Decision**: {decision.decision.value if decision.decision else 'None'}")
+            click.echo(f"- **Summary**: {decision.summary or ''}")
+            if isinstance(decision.operator_review, str):
+                click.echo(f"- **Operator review**: {decision.operator_review}")
+            elif isinstance(decision.operator_review, FeedbackReview):
+                click.echo("- **Operator review**:")
+                click.echo(f"  - feedback: {decision.operator_review.feedback}")
+            click.echo()
+
     elif ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -4476,6 +4535,35 @@ operator_review: null  # "good" | "bad" | { feedback: "<message>" }
     decision_file.write_text(frontmatter_content + body_content)
 
     click.echo(f"Created {decision_file.relative_to(project_dir)}")
+
+
+# Chunk: docs/chunks/reviewer_use_decision_files - Migration from log to per-file decisions
+@reviewer.command("migrate-decisions")
+@click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def migrate_decisions(reviewer_name, project_dir):
+    """Migrate DECISION_LOG.md entries to individual decision files.
+
+    Only entries with operator feedback (marked checkboxes) are migrated.
+    The original DECISION_LOG.md is preserved.
+    """
+    from decision_migration import migrate_decision_log
+
+    result = migrate_decision_log(project_dir, reviewer_name)
+
+    if result.created == 0 and result.skipped == 0:
+        click.echo("No entries found to migrate.")
+        return
+
+    click.echo(f"Migration complete:")
+    click.echo(f"  Created: {result.created} decision file(s)")
+    click.echo(f"  Skipped: {result.skipped} entry/entries without operator feedback")
+
+    if result.files_created:
+        click.echo("\nFiles created:")
+        for path in result.files_created:
+            rel_path = path.relative_to(project_dir) if path.is_relative_to(project_dir) else path
+            click.echo(f"  {rel_path}")
 
 
 if __name__ == "__main__":
