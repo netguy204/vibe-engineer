@@ -273,3 +273,33 @@ When creating a FUTURE chunk and immediately injecting it, the PLAN.md created b
 **Impact**: Medium
 
 note: resolved by docs/chunks/orch_plan_merge_conflict
+
+### F017: 2026-01-31 [orchestrator] Stale logs persist after chunk deletion
+
+After deleting a chunk and re-injecting it, the logs from the previous run were still present. This caused the logging tail to not follow the logs correctly because it picked up the old log file. The chunk delete command should remove everything about the chunk (including logs, worktree artifacts, etc.) so re-injection starts from a truly clean slate.
+
+**Impact**: Medium
+
+### F018: 2026-01-31 [orchestrator] Orchestrator config does not persist across restarts
+
+Orchestrator configuration (e.g., parallelism settings) does not persist across restarts. Adjusting settings like max parallel workers requires re-specifying them each time the orchestrator is started. The config should be saved so that changes apply to all future runs without needing to pass flags repeatedly.
+
+**Impact**: Medium
+
+### F019: 2026-01-31 [orchestrator] Chunk delete+re-inject loses worktree state
+
+When deleting a chunk work unit and re-injecting it at a later phase (e.g., REVIEW), a fresh worktree is created from main. But the original implementation work existed in the now-deleted worktree/branch. The re-injected work unit starts REVIEW phase with an empty worktree that has no implementation to review. The delete command should either: (1) preserve the branch/worktree state for potential re-injection, or (2) only allow re-injection at GOAL phase to ensure state consistency.
+
+**Impact**: Medium
+
+### F020: 2026-01-31 [orchestrator] Manual DONE status doesn't trigger auto-unblock
+
+After manually resolving a NEEDS_ATTENTION work unit (merge conflict) and setting status to DONE via 've orch work-unit status X DONE', dependent work units remained BLOCKED. The scheduler didn't re-evaluate blocked work units after the manual status change. Required manually setting each dependent work unit to READY. The auto-unblock logic only runs when the scheduler itself completes a work unit through normal flow, not when status is changed externally.
+
+**Impact**: Medium
+
+### F021: 2026-01-31 [orchestrator] Orchestrator rejects HISTORICAL terminal state
+
+The orchestrator insists that chunks exit as ACTIVE, but bug fix chunks can legitimately exit as HISTORICAL. When a bug chunk is completed and marked HISTORICAL (because the fix is now part of the codebase and the chunk represents past work), the orchestrator treats this as an error. The orchestrator should allow any terminal state (ACTIVE or HISTORICAL) as valid completion.
+
+**Impact**: Medium

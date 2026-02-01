@@ -112,6 +112,52 @@ class SchedulerError(Exception):
     pass
 
 
+# Chunk: docs/chunks/orch_manual_done_unblock - Module-level function for unblocking dependents
+def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
+    """Unblock work units that were blocked by a now-completed chunk.
+
+    This module-level function is called when a work unit transitions to DONE,
+    either through the scheduler's normal flow or via manual API intervention.
+    For each work unit that has the completed chunk in its blocked_by list:
+    1. Remove the completed chunk from blocked_by
+    2. If blocked_by becomes empty and status is BLOCKED or NEEDS_ATTENTION,
+       transition to READY and clear attention_reason
+
+    Args:
+        store: The StateStore instance to use for querying and updating work units
+        completed_chunk: The chunk name that just completed
+    """
+    # Find all work units that have completed_chunk in their blocked_by
+    blocked_units = store.list_blocked_by_chunk(completed_chunk)
+
+    for unit in blocked_units:
+        # Remove the completed chunk from blocked_by
+        if completed_chunk in unit.blocked_by:
+            unit.blocked_by.remove(completed_chunk)
+            unit.updated_at = datetime.now(timezone.utc)
+
+            # If no more blockers and status is BLOCKED or NEEDS_ATTENTION,
+            # transition to READY. Work units can be in NEEDS_ATTENTION when
+            # they encountered a conflict that required serialization - once
+            # the blocker completes, they should automatically become READY.
+            if not unit.blocked_by and unit.status in (
+                WorkUnitStatus.BLOCKED,
+                WorkUnitStatus.NEEDS_ATTENTION,
+            ):
+                logger.info(
+                    f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
+                )
+                unit.status = WorkUnitStatus.READY
+                unit.attention_reason = None  # Clear stale reason
+            else:
+                logger.info(
+                    f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "
+                    f"(remaining: {unit.blocked_by})"
+                )
+
+            store.update_work_unit(unit)
+
+
 def activate_chunk_in_worktree(
     worktree_path: Path,
     target_chunk: str,
@@ -1074,44 +1120,13 @@ class Scheduler:
     def _unblock_dependents(self, completed_chunk: str) -> None:
         """Unblock work units that were blocked by a now-completed chunk.
 
-        Called when a work unit transitions to DONE. For each work unit that
-        has the completed chunk in its blocked_by list:
-        1. Remove the completed chunk from blocked_by
-        2. If blocked_by becomes empty and status is BLOCKED or NEEDS_ATTENTION,
-           transition to READY and clear attention_reason
+        This is a thin wrapper around the module-level unblock_dependents function,
+        kept for backward compatibility within the Scheduler class.
 
         Args:
             completed_chunk: The chunk name that just completed
         """
-        # Find all work units that have completed_chunk in their blocked_by
-        blocked_units = self.store.list_blocked_by_chunk(completed_chunk)
-
-        for unit in blocked_units:
-            # Remove the completed chunk from blocked_by
-            if completed_chunk in unit.blocked_by:
-                unit.blocked_by.remove(completed_chunk)
-                unit.updated_at = datetime.now(timezone.utc)
-
-                # If no more blockers and status is BLOCKED or NEEDS_ATTENTION,
-                # transition to READY. Work units can be in NEEDS_ATTENTION when
-                # they encountered a conflict that required serialization - once
-                # the blocker completes, they should automatically become READY.
-                if not unit.blocked_by and unit.status in (
-                    WorkUnitStatus.BLOCKED,
-                    WorkUnitStatus.NEEDS_ATTENTION,
-                ):
-                    logger.info(
-                        f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
-                    )
-                    unit.status = WorkUnitStatus.READY
-                    unit.attention_reason = None  # Clear stale reason
-                else:
-                    logger.info(
-                        f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "
-                        f"(remaining: {unit.blocked_by})"
-                    )
-
-                self.store.update_work_unit(unit)
+        unblock_dependents(self.store, completed_chunk)
 
     # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     async def _handle_review_result(

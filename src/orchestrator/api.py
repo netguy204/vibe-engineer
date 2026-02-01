@@ -38,6 +38,8 @@ from orchestrator.websocket import (
     get_manager,
 )
 from orchestrator.worktree import WorktreeManager
+# Chunk: docs/chunks/orch_manual_done_unblock - Import for unblocking dependents on manual DONE
+from orchestrator.scheduler import unblock_dependents
 from orchestrator.log_parser import (
     format_entry_for_html,
     format_phase_header_for_html,
@@ -288,6 +290,11 @@ async def update_work_unit_endpoint(request: Request) -> JSONResponse:
             )
         elif old_status == WorkUnitStatus.NEEDS_ATTENTION:
             await broadcast_attention_update("resolved", chunk)
+
+    # Chunk: docs/chunks/orch_manual_done_unblock - Unblock dependents when manually set to DONE
+    # When status transitions to DONE via API, unblock any dependent work units
+    if old_status != WorkUnitStatus.DONE and updated.status == WorkUnitStatus.DONE:
+        unblock_dependents(store, chunk)
 
     return JSONResponse(updated.model_dump_json_serializable())
 
@@ -1146,6 +1153,10 @@ async def retry_merge_endpoint(request: Request):
         status=updated.status.value,
         phase=updated.phase.value,
     )
+
+    # Chunk: docs/chunks/orch_manual_done_unblock - Unblock dependents after successful merge retry
+    # After a successful merge marks the work unit as DONE, unblock any dependent work units
+    unblock_dependents(store, chunk)
 
     # Check if form submission for redirect
     content_type = request.headers.get("content-type", "")

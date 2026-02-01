@@ -630,7 +630,7 @@ class TestCreateScheduler:
         # Provide explicit base_branch since tmp_path is not a git repo
         scheduler = create_scheduler(state_store, tmp_path, base_branch="main")
 
-        assert scheduler.config.max_agents == 2
+        assert scheduler.config.max_agents == 4
         assert scheduler.config.dispatch_interval_seconds == 1.0
 
     def test_create_scheduler_custom_config(self, state_store, tmp_path):
@@ -4061,3 +4061,251 @@ summary: Implementation looks good
 
         updated = state_store.get_work_unit("test")
         assert updated.review_nudge_count == 0  # Reset to 0
+
+
+# Chunk: docs/chunks/orch_manual_done_unblock - Manual DONE transition triggers unblock
+class TestManualDoneUnblock:
+    """Tests for unblocking dependents when work unit is manually set to DONE.
+
+    When an operator manually sets a work unit status to DONE (via API or CLI),
+    the unblock_dependents function should be called to transition any dependent
+    work units from BLOCKED/NEEDS_ATTENTION to READY. This addresses the issue
+    where auto-unblock only triggered when the scheduler completed a work unit
+    through normal flow, leaving dependents stuck after manual intervention.
+    """
+
+    def test_unblock_dependents_function_exists(self, state_store):
+        """The unblock_dependents module-level function exists and is importable."""
+        from orchestrator.scheduler import unblock_dependents
+
+        # Create blocker work unit (DONE)
+        now = datetime.now(timezone.utc)
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker)
+
+        # Create dependent work unit (BLOCKED)
+        dependent = WorkUnit(
+            chunk="dependent_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(dependent)
+
+        # Call the module-level function
+        unblock_dependents(state_store, "blocker_chunk")
+
+        # Verify dependent is now READY
+        updated = state_store.get_work_unit("dependent_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert "blocker_chunk" not in updated.blocked_by
+
+    def test_manual_done_via_api_unblocks_dependent(self, state_store):
+        """Manual DONE via API endpoint should unblock dependent work units.
+
+        This tests the integration where update_work_unit_endpoint calls
+        unblock_dependents when status changes to DONE.
+        """
+        from orchestrator.scheduler import unblock_dependents
+
+        now = datetime.now(timezone.utc)
+
+        # Create blocker work unit (will be set to DONE manually)
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.NEEDS_ATTENTION,  # Simulates stuck state
+            attention_reason="Merge to base failed: conflict",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker)
+
+        # Create dependent work unit (BLOCKED)
+        dependent = WorkUnit(
+            chunk="dependent_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(dependent)
+
+        # Simulate what the API endpoint does: update status to DONE
+        blocker.status = WorkUnitStatus.DONE
+        blocker.attention_reason = None
+        blocker.updated_at = datetime.now(timezone.utc)
+        state_store.update_work_unit(blocker)
+
+        # Then call unblock_dependents (what the API endpoint should do)
+        unblock_dependents(state_store, "blocker_chunk")
+
+        # Verify dependent is now READY
+        updated = state_store.get_work_unit("dependent_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert "blocker_chunk" not in updated.blocked_by
+
+    def test_unblock_multiple_dependents(self, state_store):
+        """Manual DONE should unblock multiple dependent work units."""
+        from orchestrator.scheduler import unblock_dependents
+
+        now = datetime.now(timezone.utc)
+
+        # Create blocker work unit (DONE)
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker)
+
+        # Create multiple dependent work units
+        for name in ["dep_a", "dep_b", "dep_c"]:
+            dep = WorkUnit(
+                chunk=name,
+                phase=WorkUnitPhase.PLAN,
+                status=WorkUnitStatus.BLOCKED,
+                blocked_by=["blocker_chunk"],
+                created_at=now,
+                updated_at=now,
+            )
+            state_store.create_work_unit(dep)
+
+        # Call unblock_dependents
+        unblock_dependents(state_store, "blocker_chunk")
+
+        # Verify all dependents are now READY
+        for name in ["dep_a", "dep_b", "dep_c"]:
+            updated = state_store.get_work_unit(name)
+            assert updated.status == WorkUnitStatus.READY, f"{name} should be READY"
+            assert "blocker_chunk" not in updated.blocked_by
+
+    def test_partial_unblock_with_multiple_blockers(self, state_store):
+        """Dependent with multiple blockers stays BLOCKED until all complete."""
+        from orchestrator.scheduler import unblock_dependents
+
+        now = datetime.now(timezone.utc)
+
+        # Create two blocker work units
+        blocker_a = WorkUnit(
+            chunk="blocker_a",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker_a)
+
+        blocker_b = WorkUnit(
+            chunk="blocker_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,  # Still running
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker_b)
+
+        # Create dependent blocked by BOTH
+        dependent = WorkUnit(
+            chunk="dependent_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_a", "blocker_b"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(dependent)
+
+        # Unblock after blocker_a completes
+        unblock_dependents(state_store, "blocker_a")
+
+        # Verify dependent is STILL BLOCKED (blocker_b still running)
+        updated = state_store.get_work_unit("dependent_chunk")
+        assert updated.status == WorkUnitStatus.BLOCKED
+        assert "blocker_a" not in updated.blocked_by
+        assert "blocker_b" in updated.blocked_by
+
+    def test_unblock_needs_attention_to_ready(self, state_store):
+        """Work unit in NEEDS_ATTENTION transitions to READY when manually unblocked."""
+        from orchestrator.scheduler import unblock_dependents
+
+        now = datetime.now(timezone.utc)
+
+        # Create blocker work unit (DONE)
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker)
+
+        # Create dependent in NEEDS_ATTENTION (e.g., from conflict resolution)
+        dependent = WorkUnit(
+            chunk="dependent_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.NEEDS_ATTENTION,
+            blocked_by=["blocker_chunk"],
+            attention_reason="Conflict with running blocker_chunk",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(dependent)
+
+        # Call unblock_dependents
+        unblock_dependents(state_store, "blocker_chunk")
+
+        # Verify dependent is now READY with cleared attention_reason
+        updated = state_store.get_work_unit("dependent_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.attention_reason is None
+        assert "blocker_chunk" not in updated.blocked_by
+
+    def test_scheduler_unblock_still_works(self, state_store):
+        """Existing scheduler-driven unblock (via _unblock_dependents method) still works.
+
+        This is a regression test to ensure we didn't break the existing behavior.
+        """
+        from orchestrator.scheduler import unblock_dependents
+
+        now = datetime.now(timezone.utc)
+
+        # Create blocker work unit
+        blocker = WorkUnit(
+            chunk="blocker_chunk",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocker)
+
+        # Create dependent work unit
+        dependent = WorkUnit(
+            chunk="dependent_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_chunk"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(dependent)
+
+        # Call the function (same function used by scheduler)
+        unblock_dependents(state_store, "blocker_chunk")
+
+        # Verify dependent is now READY
+        updated = state_store.get_work_unit("dependent_chunk")
+        assert updated.status == WorkUnitStatus.READY

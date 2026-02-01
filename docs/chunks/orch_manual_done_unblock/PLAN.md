@@ -8,170 +8,91 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The `_unblock_dependents` method in the scheduler already handles unblocking when a work unit transitions to DONE. The problem is that this method is only called from `_advance_phase` within the scheduler's internal flow. When a work unit status is manually set to DONE via the API (e.g., after `/orchestrator-investigate` resolves a merge conflict), `_unblock_dependents` is never called.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The solution is to extract `_unblock_dependents` to a module-level function and call it from:
+1. The existing `_advance_phase` location (via a thin wrapper for backward compatibility)
+2. The `update_work_unit_endpoint` in `api.py` when status changes to DONE
+3. The `retry_merge_endpoint` in `api.py` after a successful merge retry
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_manual_done_unblock/GOAL.md)
-with references to the files that you expect to touch.
--->
+This follows the existing pattern where the scheduler's internal logic is kept in `scheduler.py` but exposed for API use when needed.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator**: This chunk IMPLEMENTS additional triggering points for the existing unblock logic. The subsystem already defines the unblock behavior pattern (removing chunks from `blocked_by` and transitioning BLOCKED/NEEDS_ATTENTION to READY). This chunk extends where that logic is invoked, not how it works.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing test for manual DONE transition via API
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write a test that:
+1. Creates two work units: `blocker_chunk` (DONE) and `dependent_chunk` (BLOCKED with `blocked_by=["blocker_chunk"]`)
+2. Simulates what happens when `blocker_chunk` transitions to DONE via API (not scheduler)
+3. Asserts that `dependent_chunk` should transition to READY with `blocked_by=[]`
 
-Example:
+This test will fail because the API doesn't call unblock logic.
 
-### Step 1: Define the SegmentHeader struct
+Location: tests/test_orchestrator_scheduler.py (new test class `TestManualDoneUnblock`)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Extract `_unblock_dependents` to module-level function
 
-Location: src/segment/format.rs
+Move the existing `_unblock_dependents` logic from `Scheduler._unblock_dependents` to a module-level function `unblock_dependents(store: StateStore, completed_chunk: str)` that:
+1. Takes the StateStore and completed chunk name as parameters
+2. Contains the existing unblock logic (find blocked work units, remove from blocked_by, transition BLOCKED/NEEDS_ATTENTION to READY)
+3. Is synchronous (the existing method is sync)
 
-### Step 2: Implement header serialization
+Keep `Scheduler._unblock_dependents` as a thin wrapper that calls the module-level function for backward compatibility.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: src/orchestrator/scheduler.py
 
-### Step 3: ...
+### Step 3: Add unblock call to `update_work_unit_endpoint`
 
----
+In `api.py`, modify `update_work_unit_endpoint` to call `unblock_dependents` when:
+1. The status field is being updated
+2. The new status is DONE
+3. The old status was not DONE (to avoid redundant calls)
 
-**BACKREFERENCE COMMENTS**
+Import `unblock_dependents` from `scheduler.py`.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: src/orchestrator/api.py
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Add unblock call to `retry_merge_endpoint`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+In `api.py`, modify `retry_merge_endpoint` to call `unblock_dependents` after a successful merge marks the work unit as DONE.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+This endpoint already sets status to DONE on success, but doesn't trigger unblock.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: src/orchestrator/api.py
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 5: Verify test passes and add additional test cases
+
+Run the test from Step 1 and verify it passes. Add additional test cases:
+1. Test that manual DONE via API unblocks multiple dependent work units
+2. Test that manual DONE via API handles partial unblock (dependent has multiple blockers)
+3. Test that retry-merge success triggers unblock
+4. Test that existing scheduler-driven unblock still works (regression test)
+
+Location: tests/test_orchestrator_scheduler.py
+
+### Step 6: Add backreference comments
+
+Add chunk backreference comments to the modified functions:
+- `unblock_dependents` function
+- `update_work_unit_endpoint` (at the unblock call site)
+- `retry_merge_endpoint` (at the unblock call site)
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. The existing `_unblock_dependents` method and `list_blocked_by_chunk` StateStore method provide all the foundation needed.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **WebSocket broadcasting**: The existing `_unblock_dependents` doesn't broadcast WebSocket updates for the unblocked work units. The API endpoints already broadcast after updating, but we should verify the order of operations doesn't cause race conditions or missed broadcasts. The pattern is: update state → broadcast.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Concurrency**: If the scheduler is running and a manual DONE transition happens simultaneously, there could be a race where both try to unblock dependents. The existing logic is idempotent (removing a chunk from blocked_by that's already removed is a no-op), so this should be safe, but worth noting.
+
+3. **Import cycle**: Importing from `scheduler.py` into `api.py` could create an import cycle if `scheduler.py` imports from `api.py`. A quick check shows `scheduler.py` doesn't import from `api.py`, so this is safe.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

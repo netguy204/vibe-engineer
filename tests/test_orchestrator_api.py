@@ -937,3 +937,155 @@ status: ACTIVE
         get_b_ready = client.get("/work-units/chunk_b")
         assert get_b_ready.json()["status"] == "READY"
         assert "chunk_a" not in get_b_ready.json()["blocked_by"]
+
+
+# Chunk: docs/chunks/orch_manual_done_unblock - Tests for manual DONE unblocking via API
+class TestManualDoneUnblockAPI:
+    """Tests for unblocking dependents when work unit is manually set to DONE via API.
+
+    When an operator manually sets a work unit status to DONE (via PATCH endpoint),
+    the unblock_dependents function should be called to transition any dependent
+    work units from BLOCKED/NEEDS_ATTENTION to READY.
+    """
+
+    def test_manual_done_via_patch_unblocks_dependent(self, client):
+        """PATCH status to DONE should unblock dependent work units."""
+        # Create blocker work unit in NEEDS_ATTENTION (simulating stuck state)
+        client.post("/work-units", json={
+            "chunk": "blocker_chunk",
+            "phase": "COMPLETE",
+            "status": "NEEDS_ATTENTION",
+        })
+
+        # Create dependent work unit in BLOCKED status
+        client.post("/work-units", json={
+            "chunk": "dependent_chunk",
+            "phase": "PLAN",
+            "status": "BLOCKED",
+            "blocked_by": ["blocker_chunk"],
+        })
+
+        # Verify dependent is BLOCKED
+        dep_before = client.get("/work-units/dependent_chunk")
+        assert dep_before.json()["status"] == "BLOCKED"
+        assert "blocker_chunk" in dep_before.json()["blocked_by"]
+
+        # Manually set blocker to DONE
+        response = client.patch("/work-units/blocker_chunk", json={
+            "status": "DONE",
+        })
+        assert response.status_code == 200
+        assert response.json()["status"] == "DONE"
+
+        # Verify dependent is now READY
+        dep_after = client.get("/work-units/dependent_chunk")
+        assert dep_after.json()["status"] == "READY"
+        assert "blocker_chunk" not in dep_after.json()["blocked_by"]
+
+    def test_manual_done_unblocks_multiple_dependents(self, client):
+        """PATCH status to DONE should unblock multiple dependent work units."""
+        # Create blocker work unit
+        client.post("/work-units", json={
+            "chunk": "blocker",
+            "phase": "COMPLETE",
+            "status": "RUNNING",
+        })
+
+        # Create multiple dependent work units
+        for name in ["dep_a", "dep_b", "dep_c"]:
+            client.post("/work-units", json={
+                "chunk": name,
+                "phase": "PLAN",
+                "status": "BLOCKED",
+                "blocked_by": ["blocker"],
+            })
+
+        # Manually set blocker to DONE
+        client.patch("/work-units/blocker", json={"status": "DONE"})
+
+        # Verify all dependents are now READY
+        for name in ["dep_a", "dep_b", "dep_c"]:
+            dep = client.get(f"/work-units/{name}")
+            assert dep.json()["status"] == "READY", f"{name} should be READY"
+            assert "blocker" not in dep.json()["blocked_by"]
+
+    def test_partial_unblock_with_multiple_blockers(self, client):
+        """Dependent stays BLOCKED when it has other remaining blockers."""
+        # Create two blockers
+        client.post("/work-units", json={
+            "chunk": "blocker_a",
+            "phase": "COMPLETE",
+            "status": "RUNNING",
+        })
+        client.post("/work-units", json={
+            "chunk": "blocker_b",
+            "phase": "IMPLEMENT",
+            "status": "RUNNING",
+        })
+
+        # Create dependent blocked by BOTH
+        client.post("/work-units", json={
+            "chunk": "dependent",
+            "phase": "PLAN",
+            "status": "BLOCKED",
+            "blocked_by": ["blocker_a", "blocker_b"],
+        })
+
+        # Manually set blocker_a to DONE
+        client.patch("/work-units/blocker_a", json={"status": "DONE"})
+
+        # Verify dependent is STILL BLOCKED (blocker_b still running)
+        dep = client.get("/work-units/dependent")
+        assert dep.json()["status"] == "BLOCKED"
+        assert "blocker_a" not in dep.json()["blocked_by"]
+        assert "blocker_b" in dep.json()["blocked_by"]
+
+    def test_manual_done_unblocks_needs_attention(self, client):
+        """PATCH status to DONE should unblock NEEDS_ATTENTION work units."""
+        # Create blocker
+        client.post("/work-units", json={
+            "chunk": "blocker",
+            "phase": "COMPLETE",
+            "status": "RUNNING",
+        })
+
+        # Create dependent in NEEDS_ATTENTION (e.g., from conflict resolution)
+        client.post("/work-units", json={
+            "chunk": "dependent",
+            "phase": "PLAN",
+            "status": "NEEDS_ATTENTION",
+            "blocked_by": ["blocker"],
+        })
+
+        # Manually set blocker to DONE
+        client.patch("/work-units/blocker", json={"status": "DONE"})
+
+        # Verify dependent is now READY
+        dep = client.get("/work-units/dependent")
+        assert dep.json()["status"] == "READY"
+        assert "blocker" not in dep.json()["blocked_by"]
+
+    def test_no_unblock_when_already_done(self, client):
+        """No unblock triggered when status is already DONE."""
+        # Create a work unit that is already DONE
+        client.post("/work-units", json={
+            "chunk": "already_done",
+            "phase": "COMPLETE",
+            "status": "DONE",
+        })
+
+        # Create dependent (shouldn't exist in real scenario but tests idempotence)
+        client.post("/work-units", json={
+            "chunk": "dependent",
+            "phase": "PLAN",
+            "status": "BLOCKED",
+            "blocked_by": ["already_done"],
+        })
+
+        # PATCH to DONE again (no-op for status, but tests the guard condition)
+        client.patch("/work-units/already_done", json={"status": "DONE"})
+
+        # The dependent should still be BLOCKED because the transition
+        # from DONE to DONE doesn't trigger unblock (old_status == new_status)
+        dep = client.get("/work-units/dependent")
+        assert dep.json()["status"] == "BLOCKED"
