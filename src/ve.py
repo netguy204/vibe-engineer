@@ -4206,5 +4206,97 @@ def abandon_migration(migration_type, project_dir):
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/reviewer_decisions_review_cli - Reviewer decision review commands
+@cli.group()
+def reviewer():
+    """Reviewer commands."""
+    pass
+
+
+@reviewer.group(invoke_without_command=True)
+@click.option("--pending", is_flag=True, help="List only decisions with null operator_review")
+@click.option("--reviewer", "reviewer_filter", type=str, default=None, help="Filter by reviewer name")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.pass_context
+def decisions(ctx, pending, reviewer_filter, project_dir):
+    """Reviewer decision commands.
+
+    When invoked with --pending, lists decisions that need operator review.
+    Otherwise, use subcommands like 'review' to interact with decisions.
+    """
+    from reviewers import Reviewers
+
+    # If invoked without a subcommand and --pending flag is set
+    if ctx.invoked_subcommand is None and pending:
+        reviewers = Reviewers(project_dir)
+        pending_decisions = reviewers.get_pending_decisions(reviewer_filter)
+
+        if not pending_decisions:
+            click.echo("No pending decisions found.")
+            return
+
+        click.echo(f"Found {len(pending_decisions)} pending decision(s):\n")
+        for info in pending_decisions:
+            rel_path = info.path.relative_to(project_dir) if info.path.is_relative_to(project_dir) else info.path
+            click.echo(f"  {rel_path}")
+            click.echo(f"    Decision: {info.frontmatter.decision}")
+            if info.frontmatter.summary:
+                click.echo(f"    Summary: {info.frontmatter.summary}")
+            click.echo()
+    elif ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@decisions.command("review")
+@click.argument("path", type=str)
+@click.argument("verdict", type=click.Choice(["good", "bad"]), required=False)
+@click.option("--feedback", type=str, default=None, help="Feedback message (alternative to good/bad verdict)")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def decisions_review(path, verdict, feedback, project_dir):
+    """Mark a decision with operator review.
+
+    Updates the operator_review field in the decision file frontmatter.
+
+    Examples:
+        ve reviewer decisions review docs/reviewers/baseline/decisions/chunk_1.md good
+        ve reviewer decisions review docs/reviewers/baseline/decisions/chunk_1.md bad
+        ve reviewer decisions review docs/reviewers/baseline/decisions/chunk_1.md --feedback "Needs better summary"
+    """
+    from reviewers import Reviewers, validate_decision_path
+
+    # Validate mutually exclusive arguments
+    if verdict and feedback:
+        click.echo("Error: Cannot specify both verdict (good/bad) and --feedback", err=True)
+        raise SystemExit(1)
+
+    if not verdict and not feedback:
+        click.echo("Error: Must specify either verdict (good/bad) or --feedback", err=True)
+        raise SystemExit(1)
+
+    # Resolve and validate the path
+    resolved_path, error = validate_decision_path(project_dir, path)
+    if error:
+        click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    # Determine the review value
+    if verdict:
+        review_value = verdict  # "good" or "bad"
+    else:
+        review_value = {"feedback": feedback}
+
+    # Update the frontmatter
+    reviewers = Reviewers(project_dir)
+    try:
+        reviewers.update_operator_review(resolved_path, review_value)
+        if verdict:
+            click.echo(f"Updated operator_review to '{verdict}' in {path}")
+        else:
+            click.echo(f"Updated operator_review with feedback in {path}")
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     cli()
