@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_attention_queue - Attention queue API tests
 """Tests for the orchestrator HTTP API."""
 
 import pytest
@@ -1089,3 +1090,238 @@ class TestManualDoneUnblockAPI:
         # from DONE to DONE doesn't trigger unblock (old_status == new_status)
         dep = client.get("/work-units/dependent")
         assert dep.json()["status"] == "BLOCKED"
+
+
+# Chunk: docs/chunks/orch_inject_filter_done - Tests for filtering already-DONE blockers at inject time
+class TestInjectFiltersDoneBlockers:
+    """Tests for filtering already-DONE blockers when injecting work units.
+
+    When a work unit is injected with blocked_by specifying chunks that are
+    already DONE, those DONE chunks should be filtered out. This prevents
+    work units from being stuck in BLOCKED status when their blockers have
+    already completed.
+    """
+
+    @pytest.fixture
+    def app_with_chunks(self, tmp_path):
+        """Create a test application with a chunks directory."""
+        chunks_dir = tmp_path / "docs" / "chunks"
+        chunks_dir.mkdir(parents=True)
+        return create_app(tmp_path)
+
+    @pytest.fixture
+    def client_with_chunks(self, app_with_chunks):
+        """Create a test client with chunk support."""
+        return TestClient(app_with_chunks)
+
+    def _create_chunk(self, tmp_path, chunk_name: str, status: str = "IMPLEMENTING"):
+        """Helper to create a valid chunk for injection."""
+        chunk_dir = tmp_path / "docs" / "chunks" / chunk_name
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        goal_path = chunk_dir / "GOAL.md"
+        goal_path.write_text(f"""---
+status: {status}
+ticket: null
+parent_chunk: null
+code_paths: []
+code_references: []
+narrative: null
+investigation: null
+subsystems: []
+created_after: []
+---
+
+# Chunk Goal
+
+## Minor Goal
+
+Test chunk content for {chunk_name}.
+""")
+
+        plan_path = chunk_dir / "PLAN.md"
+        plan_path.write_text("""# Implementation Plan
+
+## Approach
+
+This is a real implementation plan with actual content.
+
+## Sequence
+
+### Step 1: Do the thing
+
+Details about doing the thing.
+""")
+
+    def test_inject_filters_already_done_blocker(self, client_with_chunks, tmp_path):
+        """Inject with blocked_by=[done_chunk] where done_chunk is DONE starts as READY."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Create a "blocker" work unit that is already DONE
+        client_with_chunks.post("/work-units", json={
+            "chunk": "done_chunk",
+            "phase": "COMPLETE",
+            "status": "DONE",
+        })
+
+        # Inject with blocked_by referencing the DONE chunk
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["done_chunk"],
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should start as READY because done_chunk is already DONE
+        assert data["status"] == "READY"
+        # blocked_by should be empty (done_chunk filtered out)
+        assert data["blocked_by"] == []
+
+    def test_inject_filters_mixed_done_and_pending_blockers(self, client_with_chunks, tmp_path):
+        """Inject with mix of DONE and non-DONE blockers keeps only non-DONE."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Create a DONE blocker
+        client_with_chunks.post("/work-units", json={
+            "chunk": "done_chunk",
+            "phase": "COMPLETE",
+            "status": "DONE",
+        })
+
+        # Create a RUNNING blocker (not DONE)
+        client_with_chunks.post("/work-units", json={
+            "chunk": "running_chunk",
+            "phase": "IMPLEMENT",
+            "status": "RUNNING",
+        })
+
+        # Inject with blocked_by referencing both
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["done_chunk", "running_chunk"],
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should be BLOCKED because running_chunk is not DONE
+        assert data["status"] == "BLOCKED"
+        # blocked_by should only contain running_chunk
+        assert data["blocked_by"] == ["running_chunk"]
+        assert "done_chunk" not in data["blocked_by"]
+
+    def test_inject_keeps_all_blockers_when_none_done(self, client_with_chunks, tmp_path):
+        """Inject with blockers where none are DONE keeps all and starts BLOCKED."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Create two non-DONE blockers
+        client_with_chunks.post("/work-units", json={
+            "chunk": "blocker_a",
+            "phase": "IMPLEMENT",
+            "status": "RUNNING",
+        })
+        client_with_chunks.post("/work-units", json={
+            "chunk": "blocker_b",
+            "phase": "PLAN",
+            "status": "READY",
+        })
+
+        # Inject with blocked_by referencing both
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["blocker_a", "blocker_b"],
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should be BLOCKED with both blockers
+        assert data["status"] == "BLOCKED"
+        assert "blocker_a" in data["blocked_by"]
+        assert "blocker_b" in data["blocked_by"]
+
+    def test_inject_nonexistent_blocker_kept(self, client_with_chunks, tmp_path):
+        """Inject with a blocker that doesn't exist keeps it in blocked_by."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Don't create a work unit for "unknown_blocker" - it doesn't exist
+
+        # Inject with blocked_by referencing a non-existent work unit
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["unknown_blocker"],
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should be BLOCKED - we can't assume non-existent blocker is DONE
+        assert data["status"] == "BLOCKED"
+        # blocked_by should keep the unknown blocker
+        assert data["blocked_by"] == ["unknown_blocker"]
+
+    def test_inject_filters_multiple_done_blockers(self, client_with_chunks, tmp_path):
+        """Inject with multiple DONE blockers filters all of them."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Create multiple DONE blockers
+        for name in ["done_a", "done_b", "done_c"]:
+            client_with_chunks.post("/work-units", json={
+                "chunk": name,
+                "phase": "COMPLETE",
+                "status": "DONE",
+            })
+
+        # Inject with blocked_by referencing all DONE chunks
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["done_a", "done_b", "done_c"],
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should start as READY with empty blocked_by
+        assert data["status"] == "READY"
+        assert data["blocked_by"] == []
+
+    def test_inject_filters_done_preserves_explicit_deps(self, client_with_chunks, tmp_path):
+        """explicit_deps flag is preserved when filtering DONE blockers."""
+        # Create the chunk we want to inject
+        self._create_chunk(tmp_path, "new_chunk")
+
+        # Create a DONE blocker
+        client_with_chunks.post("/work-units", json={
+            "chunk": "done_chunk",
+            "phase": "COMPLETE",
+            "status": "DONE",
+        })
+
+        # Create a non-DONE blocker
+        client_with_chunks.post("/work-units", json={
+            "chunk": "pending_chunk",
+            "phase": "PLAN",
+            "status": "READY",
+        })
+
+        # Inject with explicit_deps=True
+        response = client_with_chunks.post("/work-units/inject", json={
+            "chunk": "new_chunk",
+            "blocked_by": ["done_chunk", "pending_chunk"],
+            "explicit_deps": True,
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Should be BLOCKED with only pending_chunk
+        assert data["status"] == "BLOCKED"
+        assert data["blocked_by"] == ["pending_chunk"]
+        # explicit_deps flag should be preserved
+        assert data["explicit_deps"] is True

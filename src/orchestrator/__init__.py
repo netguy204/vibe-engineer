@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Package exports for scheduling layer components
 """Orchestrator package for parallel agent work management."""
 
 from orchestrator.models import (

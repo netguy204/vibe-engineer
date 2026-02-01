@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - OrchestratorConfig and AgentResult models
 # Chunk: docs/chunks/explicit_deps_workunit_flag - WorkUnit explicit_deps field
 # Chunk: docs/chunks/orch_verify_active - completion_retries and max_completion_retries fields
 """Pydantic models for the orchestrator daemon.
@@ -267,6 +268,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+# Chunk: docs/chunks/orch_task_detection - Task context detection data model and functions
 @dataclass
 class TaskContextInfo:
     """Information about task context for orchestrator operation.

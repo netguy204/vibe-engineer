@@ -1,8 +1,10 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Dispatch loop and work unit scheduling
 # Chunk: docs/chunks/deferred_worktree_creation - Worktree creation at dispatch time
 # Chunk: docs/chunks/explicit_deps_skip_oracle - Oracle bypass for explicit dependencies
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification before commit/merge
+# Chunk: docs/chunks/orch_task_detection - Scheduler factory with task_info parameter
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:

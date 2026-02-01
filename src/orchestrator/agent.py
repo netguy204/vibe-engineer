@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Agent spawning and phase execution
 # Chunk: docs/chunks/orch_verify_active - Resume agent session for ACTIVE status marking
 """Agent runner for executing chunk phases.
 

@@ -1,5 +1,7 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Inject, queue, prioritize and config endpoints
 # Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with explicit_deps parameter
+# Chunk: docs/chunks/orch_task_detection - Chunk directory resolution using task context
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.
@@ -487,6 +489,17 @@ async def inject_endpoint(request: Request) -> JSONResponse:
     explicit_deps = body.get("explicit_deps", False)
     if not isinstance(explicit_deps, bool):
         return _error_response("explicit_deps must be a boolean")
+
+    # Chunk: docs/chunks/orch_inject_filter_done - Filter out already-DONE blockers
+    # When injecting, remove blockers that are already DONE since they won't
+    # trigger unblock_dependents() (that only fires on status transitions TO DONE).
+    # Keep blockers that don't exist (can't assume they're DONE - may be injected later).
+    active_blockers = []
+    for blocker in blocked_by:
+        blocker_unit = store.get_work_unit(blocker)
+        if blocker_unit is None or blocker_unit.status != WorkUnitStatus.DONE:
+            active_blockers.append(blocker)
+    blocked_by = active_blockers
 
     # Determine initial status based on blocked_by
     initial_status = WorkUnitStatus.BLOCKED if blocked_by else WorkUnitStatus.READY

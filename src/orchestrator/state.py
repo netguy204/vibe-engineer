@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_scheduling - Ready queue and config storage
 # Chunk: docs/chunks/explicit_deps_workunit_flag - Schema migration and persistence for explicit_deps
 # Chunk: docs/chunks/orch_verify_active - Database migration adding completion_retries column
 """SQLite state store for the orchestrator daemon.
