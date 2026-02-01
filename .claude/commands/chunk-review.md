@@ -5,6 +5,7 @@ description: Review chunk implementation for alignment with documented intent
 
 
 
+
 <!--
 AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
 
@@ -175,6 +176,8 @@ context:
 
 ### Phase 4: Record Decision
 
+**IMPORTANT: The `operator_review` field is reserved for the operator.** Do not set it to "good", "bad", or any feedback value. Always leave it as `null`. The operator will curate decision quality after review.
+
 1. **Create the decision file** by running:
    ```bash
    ve reviewer decision create <chunk> --reviewer {reviewer}
@@ -185,6 +188,7 @@ context:
    - Open the created file
    - Set the `decision:` field to your decision (APPROVE, FEEDBACK, or ESCALATE)
    - Set the `summary:` field to a one-sentence summary of your findings
+   - **Do NOT set `operator_review`** - leave it as `null` (this field is for the operator to curate later)
    - Fill in the Criteria Assessment section for each success criterion
    - If FEEDBACK: fill in the Feedback Items section with issues to address
    - If ESCALATE: fill in the Escalation Reason section with questions for operator
@@ -194,7 +198,7 @@ context:
    ---
    decision: APPROVE  # APPROVE | FEEDBACK | ESCALATE
    summary: "All success criteria satisfied, implementation follows documented patterns"
-   operator_review: null  # Will be set by operator during curation
+   operator_review: null  # NEVER set this - operator-only field for curation
    ---
 
    ## Criteria Assessment

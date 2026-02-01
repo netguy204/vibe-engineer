@@ -4498,11 +4498,11 @@ def create_decision(chunk_id, reviewer_name, iteration, project_dir):
     criteria = chunks.get_success_criteria(chunk_id)
 
     # Build decision file content
-    # Frontmatter with null values (to be filled by reviewer)
+    # Frontmatter with null values (decision/summary filled by reviewer, operator_review by operator)
     frontmatter_content = """---
 decision: null  # APPROVE | FEEDBACK | ESCALATE
 summary: null   # One-sentence rationale
-operator_review: null  # "good" | "bad" | { feedback: "<message>" }
+operator_review: null  # DO NOT SET - reserved for operator curation
 ---
 
 """

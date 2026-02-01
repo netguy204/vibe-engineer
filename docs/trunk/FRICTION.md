@@ -303,3 +303,9 @@ After manually resolving a NEEDS_ATTENTION work unit (merge conflict) and settin
 The orchestrator insists that chunks exit as ACTIVE, but bug fix chunks can legitimately exit as HISTORICAL. When a bug chunk is completed and marked HISTORICAL (because the fix is now part of the codebase and the chunk represents past work), the orchestrator treats this as an error. The orchestrator should allow any terminal state (ACTIVE or HISTORICAL) as valid completion.
 
 **Impact**: Medium
+
+### F022: 2026-01-31 [orchestrator] chunk validate rejects HISTORICAL terminal state
+
+Running 've chunk validate' on a chunk in HISTORICAL status fails with 'Status is HISTORICAL, must be IMPLEMENTING or ACTIVE to complete'. HISTORICAL is a valid terminal state for bug fix chunks, so validation should accept it. The validate command is useful for checking code references even on completed/historical chunks.
+
+**Impact**: Medium

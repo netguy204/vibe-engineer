@@ -607,6 +607,7 @@ class Scheduler:
                 )
 
     # Chunk: docs/chunks/orch_question_forward - Provides question_callback to run_phase for forwarding
+    # Chunk: docs/chunks/reviewer_decision_tool - Sets up review_decision_callback for REVIEW phase
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 

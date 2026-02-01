@@ -658,11 +658,40 @@ class AgentRunner:
                         if hasattr(message, "session_id") and message.session_id:
                             session_id = message.session_id
 
-                    # Track assistant messages for session_id
+                    # Track assistant messages for session_id and ReviewDecision tool calls
                     if isinstance(message, AssistantMessage):
                         # Session ID might be in metadata
                         if hasattr(message, "session_id") and message.session_id:
                             session_id = message.session_id
+
+                        # Capture ReviewDecision tool calls from message content
+                        # Note: PreToolUse hooks don't fire for MCP tools, so we capture
+                        # the tool call directly from the AssistantMessage instead.
+                        if (
+                            captured_review_decision is None
+                            and phase == WorkUnitPhase.REVIEW
+                            and hasattr(message, "content")
+                            and message.content
+                        ):
+                            for block in message.content:
+                                if (
+                                    hasattr(block, "name")
+                                    and block.name == "mcp__orchestrator__ReviewDecision"
+                                ):
+                                    tool_input = getattr(block, "input", {})
+                                    if tool_input:
+                                        captured_review_decision = ReviewToolDecision(
+                                            decision=tool_input.get("decision", "").upper(),
+                                            summary=tool_input.get("summary", ""),
+                                            criteria_assessment=tool_input.get(
+                                                "criteria_assessment"
+                                            ),
+                                            issues=tool_input.get("issues"),
+                                            reason=tool_input.get("reason"),
+                                        )
+                                        if review_decision_callback:
+                                            review_decision_callback(captured_review_decision)
+                                        break  # Only capture first call
 
         except Exception as e:
             error = str(e)

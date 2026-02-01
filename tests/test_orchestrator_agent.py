@@ -1450,6 +1450,74 @@ class TestRunPhaseWithReviewDecisionCallback:
             assert len(captured_decisions) == 1
 
     @pytest.mark.asyncio
+    async def test_run_phase_captures_review_decision_from_message_stream(
+        self, project_dir, tmp_path
+    ):
+        """ReviewDecision is captured from AssistantMessage content when hook doesn't fire.
+
+        This tests the fallback behavior for MCP tools where PreToolUse hooks don't fire.
+        The decision is captured directly from the ToolUseBlock in the message stream.
+        """
+        runner = AgentRunner(project_dir)
+        worktree_path = tmp_path / "worktree"
+        worktree_path.mkdir()
+
+        captured_decisions = []
+
+        # Create mock that yields AssistantMessage with ToolUseBlock but does NOT call hooks
+        class MessageStreamCaptureMock(MockClaudeSDKClient):
+            async def receive_response(self):
+                # Yield init message
+                yield {"type": "init", "session_id": "test-session-456"}
+
+                # Yield AssistantMessage with ReviewDecision ToolUseBlock
+                # This simulates what the real SDK sends when an MCP tool is called
+                from orchestrator.agent import AssistantMessage
+
+                tool_use_block = MagicMock()
+                tool_use_block.name = "mcp__orchestrator__ReviewDecision"
+                tool_use_block.input = {
+                    "decision": "FEEDBACK",
+                    "summary": "Missing test coverage",
+                    "issues": [{"location": "src/main.py", "concern": "No tests"}],
+                }
+
+                assistant_msg = MagicMock(spec=AssistantMessage)
+                assistant_msg.content = [tool_use_block]
+                assistant_msg.session_id = None
+                yield assistant_msg
+
+                # Simulate completion
+                from orchestrator.agent import ResultMessage
+
+                mock_result = MagicMock(spec=ResultMessage)
+                mock_result.result = "Review complete"
+                mock_result.is_error = False
+                mock_result.session_id = None
+                yield mock_result
+
+        MockClaudeSDKClient.reset()
+        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+            result = await runner.run_phase(
+                chunk="test_chunk",
+                phase=WorkUnitPhase.REVIEW,
+                worktree_path=worktree_path,
+                review_decision_callback=lambda d: captured_decisions.append(d),
+            )
+
+            # Verify result has review_decision captured from message stream
+            assert result.completed is True
+            assert result.review_decision is not None
+            assert result.review_decision.decision == "FEEDBACK"
+            assert result.review_decision.summary == "Missing test coverage"
+            assert result.review_decision.issues is not None
+            assert len(result.review_decision.issues) == 1
+
+            # Verify callback was called
+            assert len(captured_decisions) == 1
+            assert captured_decisions[0].decision == "FEEDBACK"
+
+    @pytest.mark.asyncio
     async def test_run_phase_merges_all_hooks(self, project_dir, tmp_path):
         """run_phase merges sandbox, question, and review decision hooks."""
         runner = AgentRunner(project_dir)
