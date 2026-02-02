@@ -30,6 +30,8 @@ code_references:
     implements: "Tests for resolve_artifact_task_directory with narratives"
   - ref: tests/test_external_resolve_cli.py
     implements: "CLI integration tests for all artifact types and backward compatibility"
+  - ref: src/cli/external.py#resolve
+    implements: "CLI external resolve command supporting all artifact types after CLI modularization"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts

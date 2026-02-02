@@ -15,6 +15,8 @@ code_references:
     implements: "CLI command ve artifact copy-external"
   - ref: tests/test_artifact_copy_external.py
     implements: "Test suite for copy_artifact_as_external functionality"
+  - ref: src/cli/artifact.py#copy_external
+    implements: "CLI artifact copy-external command after CLI modularization"
 narrative: null
 subsystems: []
 created_after: ["ordering_audit_seqnums", "cluster_rename", "cluster_prefix_suggest", "task_list_proposed"]

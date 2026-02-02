@@ -19,6 +19,8 @@ code_references:
     implements: "Test coverage for external chunk validation scenarios"
   - ref: src/ve.py#validate
     implements: "External chunk skip reporting in verbose output"
+  - ref: src/cli/init_cmd.py#validate
+    implements: "CLI validate command after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

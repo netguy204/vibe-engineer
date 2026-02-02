@@ -17,6 +17,12 @@ code_references:
     implements: "Extracts success criteria from chunk GOAL.md for decision template"
   - ref: tests/test_reviewer_decision_create.py#TestReviewerDecisionCreateCommand
     implements: "Test suite verifying CLI command behavior"
+  - ref: src/cli/reviewer.py#reviewer
+    implements: "CLI reviewer command group after CLI modularization"
+  - ref: src/cli/reviewer.py#decision
+    implements: "CLI reviewer decision subgroup after CLI modularization"
+  - ref: src/cli/reviewer.py#create_decision
+    implements: "CLI reviewer decision create command after CLI modularization"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

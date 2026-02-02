@@ -13,6 +13,8 @@ code_references:
   implements: "CLI command that prints orchestrator URL with --json support"
 - ref: tests/test_orchestrator_cli.py#TestOrchUrl
   implements: "Test suite for URL command covering happy path, errors, and JSON output"
+- ref: src/cli/orch.py#orch_url
+  implements: "CLI orch url command after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

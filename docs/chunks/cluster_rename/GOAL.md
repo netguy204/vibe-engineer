@@ -41,6 +41,8 @@ code_references:
     implements: "Updated CLAUDE.md template with cluster-rename command documentation"
   - ref: tests/test_cluster_rename.py
     implements: "Test suite for cluster rename functionality"
+  - ref: src/cli/chunk.py#cluster_rename_cmd
+    implements: "CLI chunk cluster-rename command after CLI modularization"
 narrative: null
 subsystems: []
 created_after:

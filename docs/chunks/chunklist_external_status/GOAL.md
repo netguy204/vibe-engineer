@@ -10,6 +10,8 @@ code_references:
     implements: "External chunk detection and EXTERNAL status display logic"
   - ref: tests/test_chunk_list.py#TestExternalChunkListing
     implements: "Test coverage for external chunk listing behavior"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "CLI chunk list command with external chunk handling after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []

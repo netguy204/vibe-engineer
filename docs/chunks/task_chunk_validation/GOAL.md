@@ -19,6 +19,8 @@ code_references:
     implements: "Cross-project code reference validation"
   - ref: src/ve.py#validate
     implements: "CLI command with task context detection"
+  - ref: src/cli/chunk.py#validate
+    implements: "CLI chunk validate command with task context after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []

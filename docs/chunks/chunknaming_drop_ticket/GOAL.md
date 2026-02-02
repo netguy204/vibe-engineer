@@ -17,6 +17,8 @@ code_references:
   implements: "Validation simplified to check only short_name length"
 - ref: src/task_utils.py#create_task_chunk
   implements: "Task context chunk creation without ticket in directory name"
+- ref: src/cli/utils.py#validate_combined_chunk_name
+  implements: "Chunk name validation after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

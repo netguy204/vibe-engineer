@@ -23,6 +23,8 @@ code_references:
   implements: "Tests for new --recent flag functionality"
 - ref: tests/test_chunk_list.py#TestRecentFlagMutualExclusivity
   implements: "Tests for --recent mutual exclusivity with other flags"
+- ref: src/cli/chunk.py#list_chunks
+  implements: "CLI chunk list command with --current and --recent flags after CLI modularization"
 narrative: null
 investigation: claudemd_progressive_disclosure
 subsystems: []

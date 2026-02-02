@@ -21,6 +21,8 @@ code_references:
     implements: "Unit tests for get_last_active_chunk method"
   - ref: tests/test_chunk_list.py#TestLastActiveFlag
     implements: "CLI tests for --last-active flag"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "CLI chunk list command with --last-active flag after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []

@@ -40,6 +40,20 @@ code_references:
     implements: "Unit tests for resolve_project_ref"
   - ref: tests/test_flexible_paths.py
     implements: "Integration tests for CLI commands accepting flexible formats"
+  - ref: src/cli/artifact.py#copy_external
+    implements: "CLI copy-external command using flexible path normalization"
+  - ref: src/cli/chunk.py#activate
+    implements: "CLI chunk activate command using strip_artifact_path_prefix"
+  - ref: src/cli/chunk.py#status
+    implements: "CLI chunk status command using strip_artifact_path_prefix"
+  - ref: src/cli/chunk.py#overlap
+    implements: "CLI chunk overlap command using strip_artifact_path_prefix"
+  - ref: src/cli/chunk.py#suggest_prefix_cmd
+    implements: "CLI suggest-prefix command using strip_artifact_path_prefix"
+  - ref: src/cli/chunk.py#validate
+    implements: "CLI chunk validate command using strip_artifact_path_prefix"
+  - ref: src/cli/external.py#_detect_artifact_type_from_id
+    implements: "Artifact type detection using normalize_artifact_path after CLI modularization"
 narrative: null
 subsystems: []
 created_after:

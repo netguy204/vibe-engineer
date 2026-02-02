@@ -17,6 +17,8 @@ code_references:
   implements: Unit tests for list_chunks() and get_latest_chunk() methods
 - ref: tests/test_chunk_list.py
   implements: CLI integration tests for ve chunk list
+- ref: src/cli/chunk.py#list_chunks
+  implements: "CLI chunk list command after CLI modularization"
 created_after:
 - implement_chunk_start-ve-001
 ---

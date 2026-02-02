@@ -45,6 +45,8 @@ code_references:
   implements: Unit tests for external resolve module
 - ref: tests/test_external_resolve_cli.py
   implements: CLI integration tests for ve external resolve
+- ref: src/cli/external.py#resolve
+  implements: "CLI external resolve command after CLI modularization"
 narrative: cross_repo_chunks
 subsystems: []
 created_after:

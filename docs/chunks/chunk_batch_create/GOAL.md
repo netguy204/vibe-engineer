@@ -15,6 +15,8 @@ code_references:
   implements: "Test suite for batch chunk creation functionality"
 - ref: docs/trunk/ORCHESTRATOR.md
   implements: "Documentation for batch creation in orchestrator reference"
+- ref: src/cli/chunk.py#create
+  implements: "CLI chunk create command with batch support after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

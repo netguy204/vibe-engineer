@@ -13,6 +13,8 @@ code_references:
     implements: "Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode"
   - ref: tests/test_task_chunk_list.py#TestChunkListInTaskDirectory::test_latest_returns_implementing_chunk_from_external_repo
     implements: "Test for repo-prefixed output format in task context"
+  - ref: src/cli/chunk.py#_list_task_chunks
+    implements: "CLI handler for task-context chunk list after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []

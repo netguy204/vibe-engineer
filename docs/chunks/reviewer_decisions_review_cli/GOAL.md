@@ -23,6 +23,12 @@ code_references:
     implements: "Validates that a path is a valid decision file"
   - ref: src/reviewers.py#validate_decision_path
     implements: "Resolves and validates decision file paths from CLI arguments"
+  - ref: src/cli/reviewer.py#reviewer
+    implements: "CLI reviewer command group after CLI modularization"
+  - ref: src/cli/reviewer.py#decisions
+    implements: "CLI reviewer decisions subcommand with --pending after CLI modularization"
+  - ref: src/cli/reviewer.py#decisions_review
+    implements: "CLI reviewer decisions review command after CLI modularization"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

@@ -28,6 +28,8 @@ code_references:
   implements: Tests Project class, init(), and idempotency
 - ref: tests/test_init.py
   implements: CLI integration tests for 've init'
+- ref: src/cli/init_cmd.py#init
+  implements: "CLI init command after CLI modularization"
 created_after:
 - chunk_list_command-ve-002
 ---

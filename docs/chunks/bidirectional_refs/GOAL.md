@@ -31,6 +31,8 @@ code_references:
   implements: Subsystem validate CLI command ('ve subsystem validate' for chunk ref validation)
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: Template updated with subsystems field and documentation
+- ref: src/cli/subsystem.py#validate
+  implements: "CLI subsystem validate command after CLI modularization"
 narrative: subsystem_documentation
 created_after:
 - subsystem_template

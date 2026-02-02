@@ -22,6 +22,8 @@ code_references:
     implements: "Tests for mutual exclusivity between status filters and output mode flags"
   - ref: tests/test_chunk_list.py#TestStatusFilterWithExternalChunks
     implements: "Tests for status filtering with external chunk references"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "CLI chunk list command with status filtering after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

@@ -14,6 +14,8 @@ code_references:
     implements: "Updated skill template using per-file decision workflow"
   - ref: tests/test_chunk_review_skill.py
     implements: "Tests verifying skill template uses new decision commands"
+  - ref: src/cli/reviewer.py#decisions
+    implements: "CLI reviewer decisions --recent after CLI modularization"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

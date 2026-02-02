@@ -36,6 +36,8 @@ code_references:
   implements: Backward compatibility tests for mixed created_after scenarios
 - ref: tests/test_narrative_list.py
   implements: Tests for new ve narrative list command
+- ref: src/cli/chunk.py#list_chunks
+  implements: "CLI chunk list command using ArtifactIndex after CLI modularization"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts

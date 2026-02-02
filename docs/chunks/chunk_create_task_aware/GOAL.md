@@ -38,6 +38,8 @@ code_references:
   implements: Unit tests for TaskConfig, ExternalArtifactRef, ChunkDependent
 - ref: tests/test_task_utils.py
   implements: Unit tests for task utility functions
+- ref: src/cli/chunk.py#_start_task_chunks
+  implements: "CLI handler for cross-repo mode after CLI modularization"
 narrative: cross_repo_chunks
 created_after:
 - task_init

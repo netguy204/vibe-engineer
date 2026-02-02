@@ -19,6 +19,8 @@ code_references:
   implements: "Core function tests for removal, idempotency, cleanup, orphan warning"
 - ref: tests/test_artifact_remove_external.py#TestRemoveArtifactFromExternalCLI
   implements: "CLI command integration tests"
+- ref: src/cli/artifact.py#remove_external
+  implements: "CLI artifact remove-external command after CLI modularization"
 narrative: null
 investigation: selective_artifact_linking
 subsystems: []

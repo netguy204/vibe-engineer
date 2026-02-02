@@ -22,6 +22,8 @@ code_references:
   implements: Finds ACTIVE chunks with lower IDs having overlapping references
 - ref: tests/test_chunk_overlap.py
   implements: Tests covering CLI interface, overlap detection, edge cases
+- ref: src/cli/chunk.py#overlap
+  implements: "CLI chunk overlap command after CLI modularization"
 created_after:
 - project_init_command
 ---

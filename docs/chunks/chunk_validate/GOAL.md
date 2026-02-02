@@ -28,6 +28,8 @@ code_references:
   implements: Test coverage for symbolic reference validation
 - ref: tests/test_chunk_validate.py#TestNarrativeRefValidation
   implements: Test coverage for narrative reference validation
+- ref: src/cli/chunk.py#validate
+  implements: "CLI chunk validate command after CLI modularization"
 created_after:
 - chunk_overlap_command
 ---

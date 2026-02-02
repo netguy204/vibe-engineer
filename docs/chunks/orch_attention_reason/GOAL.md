@@ -39,6 +39,10 @@ code_references:
     implements: "CLI tests for work-unit show command"
   - ref: tests/test_orchestrator_cli.py#TestOrchPsAttentionReason
     implements: "CLI tests for ps command attention_reason display"
+  - ref: src/cli/orch.py#orch_ps
+    implements: "CLI orch ps command with attention_reason display after CLI modularization"
+  - ref: src/cli/orch.py#work_unit_show
+    implements: "CLI orch work-unit show command after CLI modularization"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

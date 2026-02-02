@@ -23,6 +23,8 @@ code_references:
     implements: "CLI command for ve chunk cluster-list"
   - ref: tests/test_cluster_list.py
     implements: "Test coverage for cluster analysis functionality"
+  - ref: src/cli/chunk.py#cluster_list_cmd
+    implements: "CLI chunk cluster-list command after CLI modularization"
 narrative: null
 investigation: alphabetical_chunk_grouping
 subsystems: []

@@ -35,6 +35,8 @@ code_references:
     implements: "CLI command: ve validate for project-wide referential integrity validation"
   - ref: tests/test_integrity.py
     implements: "Comprehensive test suite covering all validation scenarios"
+  - ref: src/cli/init_cmd.py#validate
+    implements: "CLI validate command after CLI modularization"
 narrative: null
 investigation: referential_integrity
 subsystems: []

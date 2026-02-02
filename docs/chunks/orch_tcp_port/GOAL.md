@@ -19,6 +19,8 @@ code_references:
     implements: "Dual-listener architecture running Unix socket and TCP server concurrently"
   - ref: tests/test_orchestrator_daemon.py#TestFindAvailablePort
     implements: "Unit tests for port discovery helper function"
+  - ref: src/cli/orch.py#start
+    implements: "CLI orch start command with --port and --host options after CLI modularization"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

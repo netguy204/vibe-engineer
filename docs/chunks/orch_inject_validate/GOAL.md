@@ -19,6 +19,8 @@ code_references:
     implements: "Comprehensive test coverage for inject endpoint validation"
   - ref: tests/test_chunk_validate_inject.py
     implements: "Additional injection-time validation tests"
+  - ref: src/cli/chunk.py#validate
+    implements: "CLI chunk validate command with --injectable flag after CLI modularization"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

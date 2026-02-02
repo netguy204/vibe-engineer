@@ -27,6 +27,8 @@ code_references:
     implements: "Unit tests for promote_artifact() function"
   - ref: tests/test_artifact_promote.py#TestPromoteArtifactCLI
     implements: "CLI integration tests for ve artifact promote command"
+  - ref: src/cli/artifact.py#promote
+    implements: "CLI artifact promote command after CLI modularization"
 narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts

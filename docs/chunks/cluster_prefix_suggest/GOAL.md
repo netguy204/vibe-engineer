@@ -23,6 +23,8 @@ code_references:
     implements: "TDD tests for business logic, task context, and CLI"
   - ref: .claude/commands/chunk-plan.md
     implements: "Skill integration to call suggest-prefix during planning"
+  - ref: src/cli/chunk.py#suggest_prefix_cmd
+    implements: "CLI chunk suggest-prefix command after CLI modularization"
 narrative: null
 subsystems: []
 created_after:
