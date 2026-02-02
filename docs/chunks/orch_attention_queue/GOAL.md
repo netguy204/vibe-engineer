@@ -33,9 +33,9 @@ code_references:
     implements: "Client method to call GET /attention endpoint"
   - ref: src/orchestrator/client.py#OrchestratorClient::answer_work_unit
     implements: "Client method to call POST /work-units/{chunk}/answer endpoint"
-  - ref: src/ve.py#orch_attention
+  - ref: src/cli/orch.py#orch_attention
     implements: "ve orch attention CLI command showing attention queue"
-  - ref: src/ve.py#orch_answer
+  - ref: src/cli/orch.py#orch_answer
     implements: "ve orch answer CLI command to answer questions and resume"
   - ref: tests/test_orchestrator_attention.py
     implements: "Tests for attention queue and pending_answer persistence"
