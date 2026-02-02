@@ -26,6 +26,9 @@ Framings discovered during writing that should thread through subsequent article
 | Compounding judgment | Article 1 | Documentation accumulation, narrative consolidation, institutional leverage |
 | Discoverable documentation | Article 1 | Chunks, narratives, subsystems—architecture that can be explored from any starting point |
 | Externalized learning | Article 5 | The struggle still happens; subsystems are where tacit understanding becomes concrete and shareable |
+| Tent-poles and stakes | Article 2 | Chunks as structural support points that help code maintain its intended form |
+| Context engineering | Article 2 | The emerging discipline of designing what goes into agent payloads |
+| Progressive disclosure | Article 2 | GOAL before PLAN; read only what you need at each layer of depth |
 
 ---
 
@@ -59,7 +62,7 @@ Framings discovered during writing that should thread through subsequent article
 
 ### Article 2: Chunks - The Assignment That Becomes the Record
 
-*Status: PLANNED*
+*Status: PUBLISHED*
 
 *Discovery: The chunk is both the assignment and the documentation—same artifact, no extra cost.*
 

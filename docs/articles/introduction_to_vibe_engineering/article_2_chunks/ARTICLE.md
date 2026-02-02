@@ -1,6 +1,6 @@
 ---
 title: "Chunks: The Assignment That Becomes the Record"
-status: DRAFTING
+status: PUBLISHED
 ---
 
 # Chunks: The Assignment That Becomes the Record
@@ -78,23 +78,25 @@ status: DRAFTING
 
 ## Draft
 
+This is the second installment of a series I'm writing about vibe-engineering: A philosophy and a toolset I'm developing to make vibe coding sustainable over time. The tools I'm describing below are things I use every day for real work, and you can use them too by running `uv tool install git+https://github.com/netguy204/vibe-engineer.git`, and then running `ve init` inside the repo you want to vibe engineer. You can learn more about the tools in the project README, by asking Claude-code after you've run `ve init`, or by following this series.
+
 ### The Struggle
 
-Discovering plan mode was a breakthrough for me. Asking the agent to plan first easily tripled the scope of work that it could reliably complete. Plan first became what I did all the time and my confidence in agent-assisted coding soared.
+Discovering "plan mode" was a breakthrough for me. Asking the agent to plan first easily tripled the scope of work that it could reliably complete. Plan first became what I did all the time, and my confidence in agent-assisted coding soared.
 
-But after the plan was implemented, I was faced with an unsatisfying decision: All of that reasoning was now "in the code" - but was it really? The plan and the chat session that created it had semantic value: *why* we made certain choices, *what* we considered and rejected, *how* the pieces fit together. The code captured the outcome, not the thinking. It felt wrong to throw the plan away, but hard to justify keeping it when so much had been duplicated.
+But after the agent implemented the plan, I was faced with an unsatisfying decision: All of that reasoning was now "in the code" - but was it really? The plan and the chat session that created it had semantic value: why we made particular choices, what we considered and rejected, and how the pieces fit together. The code captured the outcome, not the thinking. It felt wrong to throw the plan away, but it was hard to justify keeping it when so much had been duplicated.
 
 I realized the plan was actually two things tangled together: the *why* (intent, constraints, decisions) and the *how* (implementation steps, file changes, execution order). The *how* becomes a bit redundant once the code exists. The *why* stays valuable forever — but only if future agents can find it.
 
-So I split them. The "why" lives in a file I named GOAL.md. The "how" lives in PLAN.md. I commit both for each chunk of work that I define, but the GOAL is the one that matters long-term. It's what agents read to understand intent. The PLAN is there if they need implementation details, but most of the time they don't. (See sidebar: *How Agents Build Context*.)
+So I split them. The "why" lives in a file I named GOAL.md. The "how" lives in PLAN.md. I commit both files for each chunk of work I define, but the GOAL is what matters in the long term. It's what agents read to understand intent. The PLAN is there if they need implementation details, but most of the time, they don't. (See sidebar: *How Agents Build Context*.)
 
 ### The Insight
 
-The act of creating a chunk is no more difficult than the act of creating a plan. We start by giving `/chunk-create` a rough direction of what we want to do. The agent uses a CLI to instantiate GOAL and PLAN templates and then folds your rough direction into the GOAL. The template guides the agent to explore the broader context and ask you clarifying questions about the intended outcome. When the command completes, you'll have a GOAL file full of rich "why" and "why not" judgments that future agents will recognize and follow.
+Creating a chunk is no more difficult than creating a plan. We start by giving `/chunk-create` a rough direction of what we want to do. The agent uses a CLI to instantiate GOAL and PLAN templates and then folds your rough direction into the GOAL. The template guides the agent to investigate the broader context and ask you clarification questions regarding the desired result. When the command completes, you'll have a GOAL file full of rich "why" and "why not" judgments that future agents will recognize and follow.
 
-Then `/chunk-plan` instructs the agent to do a detailed implementation analysis given the code. This is where the agent does the deep exploration of the existing relevant code (and their backreferenced chunks) and builds exactly what the implementing agent will need to know to realize your vision while maintaining your previous judgments. The agent will fold its learnings into the PLAN template.
+Then `/chunk-plan` instructs the agent to do a detailed implementation analysis given the code. This is where the agent conducts a deep exploration of the existing relevant code (and its back-referenced chunks) and builds exactly what the implementing agent needs to know to realize your vision while maintaining your previous judgments. The agent will fold its learnings into the PLAN template.
 
-Now, your planning process was technically two steps but required no additional judgment. You gained a distilled semantic understanding of the change that you can commit to be used by all future agents, and you gained a PLAN that incorporated your judgments for this work and from earlier chunks.
+Now, your planning process was technically two steps, but required no additional judgment. You gained a distilled semantic understanding of the change that all future agents can use, and you gained a PLAN that incorporated your judgments for this work and those from earlier chunks.
 
 Does this actually work? I analyzed 318 orchestrator transcripts to find out. (What's an orchestrator? A future article will cover that.)
 
@@ -117,25 +119,25 @@ Second, *what* agents read when they do follow:
 | Both files | 31% |
 | PLAN.md only | 16% |
 
-84% of follows include the GOAL — agents reach for the *why* first. The PLAN is there when they need implementation details, but most of the time they don't.
+84% of the time, when the agent used a chunk reference, it read the GOAL — agents reach for the *why* first. The PLAN is there when they need implementation details, but most of the time, they don't.
 
 The two-file split isn't overhead. It's the natural structure agents already want.
 
 ### The Resolution
 
-One advantage of retaining the *why* is you can refer back to it explicitly as you're prompting the next chunk of work. "Hey, we're debugging what we did in this chunk" — and you just reference the chunk. You don't need to explain the setup, how you got there, or what the scope was. All of that lives in the chunk.
+One advantage of retaining the *why* is that you can refer back to it explicitly as you're prompting the next chunk of work. "Hey, we're debugging what we did in this chunk." — and you reference the chunk. You don't need to explain the setup, how you got there, or what the scope was. All of that lives in the chunk.
 
-This is a huge unlock for picking up work a prior agent left behind. Think about that bug in production that you didn't see until long after the agent session that created it was lost. The medical record is there. The next surgeon can prime itself by reading it.
+This is a major unlock for picking up work left behind by a prior agent. Think about that bug in production that you didn't see until long after the agent session that created it was lost. The medical record is there. The next surgeon can prime itself by reading it.
 
 But chunks do more than solve amnesia. They hold the shape.
 
-I think of chunk GOALs as tent-poles and stakes. They are points of judgment that help the sprawling fabric of code keep its intended form. An agent working on one section of the tent can see the poles and stakes nearby without needing to understand the whole structure. They work locally, but aligned.
+I think of chunk GOALs as tent-poles and stakes. They are points of judgment that help the sprawling codebase maintain its intended form. An agent working on a section of the tent can see the nearby poles and stakes without needing to understand the entire structure. They work locally, but are aligned.
 
-Every chunk you write is like another page in your onboarding wiki that you never have to explain again. Future agents discover it through backreferences in the code — they trace from implementation to intent, exploring as needed. They're not reading everything; they're finding relevant context when they need it. The wiki page is there when the agent needs its insights.
+Every chunk you write is like another page in your onboarding wiki that you never have to explain again. Future agents discover it through backreferences in the code — they trace from implementation to intent, exploring as needed. They're not reading everything; they're finding applicable context when they need it. The wiki page is there when the agent needs its insights.
 
-Your one-time effort compounds into institutional memory. As the tent gets bigger, it gets more poles and stakes. The shape holds, and everyone feels a little safer running around inside.
+Your effort compounds into institutional memory. As the tent gets bigger, it gets more poles and stakes. The shape holds, and everyone feels a little safer running around inside.
 
-I didn't add documentation to my workflow. I just found a way to productively keep the documentation my prompting was creating around. The act of scoping the work *was* the act of documenting it. No extra cost. The overhead I'd always resisted turned out to be work I was already doing — I just wasn't saving it.
+I didn't add documentation to my workflow. I just found a way to keep the documentation my prompting was creating around productively. Scoping the work was documenting it—no extra cost. The overhead I'd always resisted turned out to be work I was already doing — I wasn't saving it.
 
 We've solved surgeon amnesia with workflow, not effort. Conveniently, the next generation of meat-based junior developers we bring into the codebase will assimilate our judgment through the same artifacts.
 
@@ -143,22 +145,22 @@ We've solved surgeon amnesia with workflow, not effort. Conveniently, the next g
 
 ## Sidebar: How Agents Build Context
 
-Agents are built on LLMs, and LLMs are stateless functions. All an LLM can use to generate its next response is the payload in the API request — there's no persistent memory between sessions.
+Agents are built on LLMs, and LLMs are stateless functions. All an LLM can use to generate its following response is the payload in the API request — there's no persistent memory between sessions.
 
 This payload typically includes:
 - **System prompt** — instructions from the agent developer (and things you provide via CLAUDE.md and skill definitions)
 - **Conversation history** — the back-and-forth so far, including tool call results
 - **The latest user message** — what you just asked
 
-When you start a fresh session, conversation history is empty. The agent has only the system prompt to work with. But what distinguishes an agent from old-school ChatGPT is that agents can *build* their own context by exploring. They grep around, read files, and accumulate understanding through tool calls. Each result goes into conversation history, expanding what the agent knows.
+When you start a fresh session, the conversation history is empty. The agent has only the system prompt to work with. But what distinguishes an agent from old-school ChatGPT is that agents can build their own context as they explore. They grep around, read files, and accumulate understanding through tool calls. Each result is added to the conversation history, expanding what the agent knows.
 
-This is all part of the emerging discipline of **context engineering** — designing what goes into that payload so agents arrive informed and stay focused.
+This is all part of the emerging discipline of **context engineering** — designing what goes into that payload so agents arrive educated and stay focused.
 
-The problem: if the agent's exploration finds only code, it won't understand the forces that shaped it. You end up with a surgeon obsessed with the symptoms but ignorant of the medical history. The end result is the agent does what you asked but also hallucinates worthless features, ignores architectural patterns, and reinvents things that already exist. It's operating brilliantly on what's there but without the intent that caused it to be there.
+The problem: if the agent's exploration finds only code, it won't understand the forces that formed it. You end up with a surgeon obsessed with the symptoms but ignorant of the medical history. The result is that the agent does what you asked but also hallucinates worthless features, ignores architectural patterns, and reinvents things that already exist. It's operating brilliantly on what's there, but without the intent that caused it to be there.
 
 **How chunks help:** When agents explore, backreferences in the code point them to chunk GOALs. Instead of inferring intent from implementation, they can read it directly. The context they build includes *why*, not just *what*.
 
-Here's a real example from this project's codebase:
+Here's a real example from the vibe engineering codebase:
 
 ```python
 # Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
@@ -172,7 +174,7 @@ def is_parent_of(parent: str, child: str) -> bool:
 
 Without context, this looks like an arbitrary choice. Why `::` instead of `.`? Why string prefix matching instead of AST comparison?
 
-The GOAL.md explains: the `::` separator was chosen specifically so overlap detection between chunks can work through simple string operations. If chunk A references `foo.py#Bar` and chunk B references `foo.py#Bar::baz`, containment is computable via `startswith()` — no parsing required.
+The GOAL.md explains that the `::` separator was explicitly chosen so that overlap detection between chunks can be performed using simple string operations. If chunk A references `foo.py#Bar` and chunk B references `foo.py#Bar::baz`, containment is computable via `startswith()` — no parsing required.
 
 The agent reading this code now understands the design force behind it. The choice isn't arbitrary; it's load-bearing.
 
@@ -180,4 +182,17 @@ The agent reading this code now understands the design force behind it. The choi
 
 ## Parking Lot
 
-(ideas cut for flow)
+### Adoption tip: reviewing early PLANs
+> "When I'm introducing vibe engineering to a project (new or legacy) I'll typically review the first 3-6 PLANs to make sure the documentation environment is informative enough regarding my architectural vision. Then I stop reviewing plans and rarely need to look back."
+
+*Could fit: Article about adoption patterns, or a future "getting started" guide.*
+
+### Working memory insight
+> "Since the PLAN is exactly the codebase context needed to bring GOAL to life, this agent gets to use most of its working memory on just writing great code and useful tests."
+
+*Could fit: Article about agent efficiency, or a deeper dive on context engineering.*
+
+### Progressive disclosure framing
+> "I don't force agents to consider the why and then the detailed how and the code to make a decision. This is one example of progressive disclosure."
+
+*Could fit: Article 3 (Making the Wiki Reachable) or a dedicated article on documentation architecture.*
