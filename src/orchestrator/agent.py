@@ -695,6 +695,48 @@ class AgentRunner:
                                             review_decision_callback(captured_review_decision)
                                         break  # Only capture first call
 
+                        # Chunk: docs/chunks/orch_question_capture - Capture AskUserQuestion from AssistantMessage
+                        # Note: PreToolUse hooks don't fire for built-in tools like AskUserQuestion,
+                        # so we capture the tool call directly from the AssistantMessage content.
+                        if (
+                            captured_question is None
+                            and hasattr(message, "content")
+                            and message.content
+                        ):
+                            for block in message.content:
+                                if hasattr(block, "name") and block.name == "AskUserQuestion":
+                                    tool_input = getattr(block, "input", {})
+                                    if tool_input:
+                                        questions = tool_input.get("questions", [])
+                                        if questions:
+                                            first_q = questions[0]
+                                            captured_question = {
+                                                "question": first_q.get("question", ""),
+                                                "options": first_q.get("options", []),
+                                                "header": first_q.get("header", ""),
+                                                "multiSelect": first_q.get("multiSelect", False),
+                                                "all_questions": questions,
+                                            }
+                                        else:
+                                            captured_question = {
+                                                "question": "Agent asked a question (no details available)",
+                                                "options": [],
+                                                "header": "",
+                                                "multiSelect": False,
+                                                "all_questions": [],
+                                            }
+                                    else:
+                                        captured_question = {
+                                            "question": "Agent asked a question (no details available)",
+                                            "options": [],
+                                            "header": "",
+                                            "multiSelect": False,
+                                            "all_questions": [],
+                                        }
+                                    if question_callback:
+                                        question_callback(captured_question)
+                                    break  # Only capture first call
+
         except Exception as e:
             error = str(e)
 
