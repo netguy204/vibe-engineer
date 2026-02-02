@@ -42,6 +42,12 @@ role is to review chunk implementations for alignment with documented intent.
 - You've flagged the same issue twice (recurring issue)
 - Review-implementation loop hasn't converged (3+ iterations)
 
+### Notes
+
+- The changes will be committed in a phase after your review
+- If you notice untracked files that should be part of the changeset please add
+  them yourself
+
 ## Severity Classification
 
 - **architectural**: Design decisions, patterns, subsystem interactions → tend to escalate

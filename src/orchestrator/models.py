@@ -194,6 +194,8 @@ class OrchestratorConfig(BaseModel):
     max_agents: int = 4  # Maximum concurrent agents
     dispatch_interval_seconds: float = 1.0  # How often to check for READY work units
     max_completion_retries: int = 2  # Max retries for ACTIVE status verification
+    # Chunk: docs/chunks/orch_worktree_retain - Warn when retained worktrees exceed threshold
+    worktree_warning_threshold: int = 10  # Threshold for warning about retained worktrees
 
     def model_dump_json_serializable(self) -> dict:
         """Return a JSON-serializable dict representation."""
@@ -201,6 +203,7 @@ class OrchestratorConfig(BaseModel):
             "max_agents": self.max_agents,
             "dispatch_interval_seconds": self.dispatch_interval_seconds,
             "max_completion_retries": self.max_completion_retries,
+            "worktree_warning_threshold": self.worktree_warning_threshold,
         }
 
 
