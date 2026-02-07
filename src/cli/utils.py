@@ -5,10 +5,13 @@ multiple command groups.
 """
 # Chunk: docs/chunks/cli_modularize - Shared CLI utilities
 
+import pathlib
+from typing import Callable
+
 import click
 
 from validation import validate_identifier
-from task_utils import TaskProjectContext
+from task_utils import TaskProjectContext, is_task_directory
 
 
 def validate_short_name(short_name: str) -> list[str]:
@@ -89,3 +92,34 @@ def warn_task_project_context(context: TaskProjectContext | None, artifact_type:
         f"the task directory instead.",
         err=True,
     )
+
+
+# Chunk: docs/chunks/cli_task_context_dedup - Task-context routing helper
+def handle_task_context(
+    project_dir: pathlib.Path,
+    handler: Callable[[], None],
+) -> bool:
+    """Execute handler if in task context, return True if handled.
+
+    Use this helper to route CLI commands to task-specific handlers when running
+    in a task directory (cross-repo mode). Returns True if the handler was called,
+    allowing the caller to return early.
+
+    Args:
+        project_dir: The project directory to check.
+        handler: Zero-argument callable to execute if in task context.
+                 Typically a lambda capturing the task handler with arguments.
+
+    Returns:
+        True if handler was called (in task context), False otherwise.
+
+    Usage:
+        def list_proposed_chunks_cmd(project_dir):
+            if handle_task_context(project_dir, lambda: _list_task_proposed_chunks(project_dir)):
+                return
+            # Single-repo mode continues here...
+    """
+    if is_task_directory(project_dir):
+        handler()
+        return True
+    return False

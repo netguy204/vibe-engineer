@@ -27,7 +27,7 @@ from task_utils import (
 )
 from artifact_ordering import ArtifactIndex, ArtifactType
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
 
 
 @click.group()
@@ -94,9 +94,8 @@ def list_subsystems(json_output, project_dir):
     """List all subsystems."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_subsystems(project_dir, json_output)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_subsystems(project_dir, json_output)):
         return
 
     # Single-repo mode
@@ -164,9 +163,8 @@ def discover(shortname, project_dir, projects):
     # Normalize to lowercase
     shortname = shortname.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _create_task_subsystem(project_dir, shortname, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _create_task_subsystem(project_dir, shortname, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
