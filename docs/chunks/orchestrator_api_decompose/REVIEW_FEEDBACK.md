@@ -1,19 +1,19 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-Mid-file import of `logging` in streaming.py violates the 'no mid-file imports' success criterion
+Iteration 1 feedback not addressed: mid-file import in streaming.py still violates 'no mid-file imports' success criterion. 14 of 15 criteria satisfied.
 
 ## Issues to Address
 
 ### Issue 1: src/orchestrator/api/streaming.py:147-148
 
-**Concern:** The `import logging` statement is inside the `log_stream_websocket_endpoint` function instead of at module top level, violating success criterion 11
+**Concern:** The `import logging` statement is inside the `log_stream_websocket_endpoint` function instead of at module top level, violating success criterion 11. This was flagged in iteration 1 but has not been addressed.
 
-**Suggestion:** Move `import logging` to the module top level (after line 16 with other imports) and change line 148 to just `logger = logging.getLogger(__name__)` at module level
+**Suggestion:** Move `import logging` to the module top level (after line 16 with other imports) and add `logger = logging.getLogger(__name__)` at module level after the imports.
 
 
 ---
