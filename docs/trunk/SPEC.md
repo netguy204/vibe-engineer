@@ -378,6 +378,19 @@ The only stable API provided by this package is the CLI. There is no guarantee o
 
 ### CLI
 
+#### Exit Code Convention
+
+All CLI commands follow a consistent exit code convention:
+
+- **Exit code 0**: Command succeeded. This includes "no results found" scenarios for list commands—the command executed successfully, it just returned an empty result set.
+- **Exit code 1**: Command failed due to an error. This includes:
+  - Validation errors (invalid arguments, missing required inputs)
+  - File system errors (missing files, permission denied)
+  - Parse errors (malformed frontmatter, invalid references)
+  - State errors (e.g., `--current` when no `IMPLEMENTING` chunk exists)
+
+This follows standard UNIX conventions where exit code 0 indicates success and non-zero indicates failure. List commands that find no matching items are considered successful—they completed their work, the result was simply empty.
+
 #### ve init [--project-dir PATH]
 
 Initialize a project with the vibe engineering document structure.
@@ -476,8 +489,8 @@ List existing chunks.
   - Status shown in brackets after each path (e.g., `[IMPLEMENTING]`, `[FUTURE]`)
   - Sorted in descending order by chunk ID
   - With `--latest`: shows only the path (no status bracket) for the current `IMPLEMENTING` chunk
-- **Errors**: None
-- **Exit codes**: 0 if chunks found, 1 if no chunks exist (or no `IMPLEMENTING` chunk when using `--latest`)
+- **Errors**: None for basic list operation
+- **Exit codes**: 0 on success (including "no chunks found"); 1 when using `--current`, `--last-active`, or `--recent` and no matching chunk exists
 
 #### ve chunk activate CHUNK_ID [--project-dir PATH]
 
@@ -539,7 +552,7 @@ List existing subsystems with their status.
   - Status shown in brackets after each path (e.g., `[DISCOVERING]`, `[STABLE]`)
   - Sorted in ascending order by subsystem ID
 - **Errors**: None
-- **Exit codes**: 0 if subsystems found, 1 if no subsystems exist
+- **Exit codes**: 0 on success (including "no subsystems found")
 
 #### ve subsystem validate SUBSYSTEM_ID [--project-dir PATH]
 
@@ -622,7 +635,7 @@ List existing investigations with their status.
   - Status shown in brackets after each path (e.g., `[ONGOING]`, `[SOLVED]`)
   - Sorted in ascending order by investigation ID
 - **Errors**: None
-- **Exit codes**: 0 if investigations found, 1 if no investigations exist
+- **Exit codes**: 0 on success (including "no investigations found")
 
 ## Guarantees
 

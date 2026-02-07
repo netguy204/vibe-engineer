@@ -90,6 +90,7 @@ def migration_status(migration_type, project_dir):
 
 @migration.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_exit_codes - Explicit exit code 0 for empty migration list results
 def list_migrations(project_dir):
     """List all migrations."""
     from migrations import Migrations
@@ -99,7 +100,7 @@ def list_migrations(project_dir):
 
     if not migration_dirs:
         click.echo("No migrations found.")
-        return
+        raise SystemExit(0)
 
     click.echo("Migrations:")
     for migration_type in sorted(migration_dirs):

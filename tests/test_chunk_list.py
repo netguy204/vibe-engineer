@@ -14,13 +14,13 @@ class TestListCommand:
         assert "List all chunks" in result.output
         assert "--current" in result.output
 
-    def test_empty_project_exits_with_error(self, runner, temp_project):
-        """Empty project: stderr says 'No chunks found', exit code 1."""
+    def test_empty_project_exits_with_success(self, runner, temp_project):
+        """Empty project: outputs 'No chunks found', exit code 0 (success)."""
         result = runner.invoke(
             cli,
             ["chunk", "list", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No chunks found" in result.output
 
     def test_single_chunk_outputs_path(self, runner, temp_project):
@@ -696,7 +696,7 @@ class TestStatusFiltering:
         assert "FUTURE" in result.output or "Invalid status" in result.output
 
     def test_status_filter_empty_result(self, runner, temp_project):
-        """No chunks match filter shows appropriate message."""
+        """No chunks match filter shows appropriate message, exits with success."""
         # Create only IMPLEMENTING chunk
         runner.invoke(
             cli,
@@ -707,7 +707,7 @@ class TestStatusFiltering:
             cli,
             ["chunk", "list", "--status", "ACTIVE", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No chunks found" in result.output or "matching" in result.output.lower()
 
     def test_status_filter_with_project_dir(self, runner, temp_project):
