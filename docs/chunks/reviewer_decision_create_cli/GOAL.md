@@ -7,22 +7,16 @@ code_paths:
 - src/chunks.py
 - tests/test_reviewer_decision_create.py
 code_references:
-  - ref: src/ve.py#reviewer
-    implements: "Reviewer CLI group for reviewer agent operations"
-  - ref: src/ve.py#decision
-    implements: "Decision subgroup under reviewer for decision file commands"
-  - ref: src/ve.py#create_decision
-    implements: "Creates decision file at docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md with frontmatter and criteria assessment template"
   - ref: src/chunks.py#Chunks::get_success_criteria
     implements: "Extracts success criteria from chunk GOAL.md for decision template"
   - ref: tests/test_reviewer_decision_create.py#TestReviewerDecisionCreateCommand
     implements: "Test suite verifying CLI command behavior"
   - ref: src/cli/reviewer.py#reviewer
-    implements: "CLI reviewer command group after CLI modularization"
+    implements: "CLI reviewer command group for reviewer agent operations"
   - ref: src/cli/reviewer.py#decision
-    implements: "CLI reviewer decision subgroup after CLI modularization"
+    implements: "Decision subgroup under reviewer for decision file commands"
   - ref: src/cli/reviewer.py#create_decision
-    implements: "CLI reviewer decision create command after CLI modularization"
+    implements: "Creates decision file at docs/reviewers/{reviewer}/decisions/{chunk}_{iteration}.md with frontmatter and criteria assessment template"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

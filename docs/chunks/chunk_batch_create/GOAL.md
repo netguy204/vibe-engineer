@@ -7,16 +7,14 @@ code_paths:
 - docs/trunk/ORCHESTRATOR.md
 - tests/test_chunk_start.py
 code_references:
-- ref: src/ve.py#create
+- ref: src/cli/chunk.py#create
   implements: "CLI command accepting variadic chunk names with batch creation logic"
-- ref: src/ve.py#_start_task_chunks
+- ref: src/cli/chunk.py#_start_task_chunks
   implements: "Batch chunk creation handler for task directory (cross-repo) mode"
 - ref: tests/test_chunk_start.py#TestBatchCreation
   implements: "Test suite for batch chunk creation functionality"
 - ref: docs/trunk/ORCHESTRATOR.md
   implements: "Documentation for batch creation in orchestrator reference"
-- ref: src/cli/chunk.py#create
-  implements: "CLI chunk create command with batch support after CLI modularization"
 narrative: null
 investigation: null
 subsystems:

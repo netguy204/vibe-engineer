@@ -18,7 +18,11 @@ from template_system import render_template
 
 @click.group()
 def reviewer():
-    """Reviewer agent commands."""
+    """Manage reviewer agent - automated decision tracking and review.
+
+    Reviewer agents evaluate chunk implementations against success criteria.
+    Curated decisions provide few-shot examples for future reviews.
+    """
     pass
 
 
@@ -287,7 +291,8 @@ def create_decision(chunk_id, reviewer_name, iteration, project_dir):
     # Validate chunk exists
     chunk_name = chunks.resolve_chunk_id(chunk_id)
     if chunk_name is None:
-        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     # Build decision file path

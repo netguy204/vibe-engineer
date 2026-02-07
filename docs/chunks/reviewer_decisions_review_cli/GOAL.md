@@ -3,16 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/reviewer.py
 - src/reviewers.py
 - tests/test_reviewer_decisions_review.py
 code_references:
-  - ref: src/ve.py#reviewer
-    implements: "Top-level 'reviewer' CLI command group"
-  - ref: src/ve.py#decisions
-    implements: "Decisions subcommand with --pending flag to list unreviewed decisions"
-  - ref: src/ve.py#decisions_review
-    implements: "Review subcommand for marking decisions as good/bad or with feedback"
   - ref: src/reviewers.py#Reviewers
     implements: "Business logic class for reviewer operations"
   - ref: src/reviewers.py#Reviewers::update_operator_review
@@ -24,11 +18,11 @@ code_references:
   - ref: src/reviewers.py#validate_decision_path
     implements: "Resolves and validates decision file paths from CLI arguments"
   - ref: src/cli/reviewer.py#reviewer
-    implements: "CLI reviewer command group after CLI modularization"
+    implements: "CLI reviewer command group"
   - ref: src/cli/reviewer.py#decisions
-    implements: "CLI reviewer decisions subcommand with --pending after CLI modularization"
+    implements: "CLI reviewer decisions subcommand with --pending flag"
   - ref: src/cli/reviewer.py#decisions_review
-    implements: "CLI reviewer decisions review command after CLI modularization"
+    implements: "CLI reviewer decisions review command"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

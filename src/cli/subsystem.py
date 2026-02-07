@@ -32,7 +32,11 @@ from cli.utils import validate_short_name, warn_task_project_context
 
 @click.group()
 def subsystem():
-    """Subsystem commands"""
+    """Manage subsystems - documented architectural patterns.
+
+    Subsystems emerge when you notice recurring patterns across chunks.
+    They capture invariants and coordinate related code.
+    """
     pass
 
 
@@ -229,7 +233,8 @@ def validate(subsystem_id, project_dir):
     # Check if subsystem exists
     frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_id)
     if frontmatter is None:
-        click.echo(f"Error: Subsystem '{subsystem_id}' not found or has invalid frontmatter", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Subsystem', subsystem_id, 've subsystem list')}", err=True)
         raise SystemExit(1)
 
     # Validate chunk references
