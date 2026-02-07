@@ -49,7 +49,7 @@ class StateStore:
         for multi-statement operations that must be atomic.
     """
 
-    CURRENT_VERSION = 12
+    CURRENT_VERSION = 13
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -147,6 +147,7 @@ class StateStore:
             10: self._migrate_v10,
             11: self._migrate_v11,
             12: self._migrate_v12,
+            13: self._migrate_v13,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -358,6 +359,23 @@ class StateStore:
             ALTER TABLE work_units ADD COLUMN next_retry_at TEXT;
             """
         )
+
+    # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
+    def _migrate_v13(self) -> None:
+        """Document REBASE as a valid WorkUnitPhase value.
+
+        This migration documents that REBASE is now a valid phase value.
+        No schema change is needed because:
+        - The phase column stores TEXT values (not an enum constraint)
+        - Existing rows have valid phase values (GOAL, PLAN, IMPLEMENT, REVIEW, COMPLETE)
+        - New rows can use REBASE as a valid phase value
+
+        The REBASE phase is inserted between IMPLEMENT and REVIEW to merge
+        trunk into the worktree branch and resolve conflicts before review.
+        """
+        # No SQL needed - phase is stored as TEXT
+        # This migration exists to document the schema version change
+        pass
 
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""

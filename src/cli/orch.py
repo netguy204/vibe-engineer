@@ -887,10 +887,12 @@ def orch_tail(chunk, follow, project_dir):
         raise SystemExit(1)
 
     # Phase order for iteration
+    # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
     phase_order = [
         WorkUnitPhase.GOAL,
         WorkUnitPhase.PLAN,
         WorkUnitPhase.IMPLEMENT,
+        WorkUnitPhase.REBASE,
         WorkUnitPhase.REVIEW,
         WorkUnitPhase.COMPLETE,
     ]

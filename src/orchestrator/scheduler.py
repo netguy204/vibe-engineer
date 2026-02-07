@@ -887,10 +887,15 @@ class Scheduler:
             logger.info(f"Agent for {chunk} completed phase {phase.value}")
 
             # Chunk: docs/chunks/orch_review_phase - Special handling for REVIEW phase to route to _handle_review_result
+            # Chunk: docs/chunks/orch_pre_review_rebase - Special handling for REBASE phase outcomes
             if phase == WorkUnitPhase.REVIEW:
                 # REVIEW phase needs special handling to parse the decision
                 worktree_path = self.worktree_manager.get_worktree_path(chunk)
                 await self._handle_review_result(work_unit, worktree_path, result)
+            elif phase == WorkUnitPhase.REBASE:
+                # REBASE phase completed successfully - merge clean, tests pass
+                # Advance to REVIEW
+                await self._advance_phase(work_unit)
             else:
                 await self._advance_phase(work_unit)
 
@@ -906,6 +911,7 @@ class Scheduler:
     # Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk before merge when work unit completes
     # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast READY status on phase advancement and DONE status on completion
     # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason when transitioning to READY on phase advancement
+    # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase inserted between IMPLEMENT and REVIEW
     async def _advance_phase(self, work_unit: WorkUnit) -> None:
         """Advance a work unit to the next phase.
 
@@ -919,7 +925,8 @@ class Scheduler:
         next_phase_map = {
             WorkUnitPhase.GOAL: WorkUnitPhase.PLAN,
             WorkUnitPhase.PLAN: WorkUnitPhase.IMPLEMENT,
-            WorkUnitPhase.IMPLEMENT: WorkUnitPhase.REVIEW,  # IMPLEMENT → REVIEW
+            WorkUnitPhase.IMPLEMENT: WorkUnitPhase.REBASE,  # IMPLEMENT → REBASE
+            WorkUnitPhase.REBASE: WorkUnitPhase.REVIEW,     # REBASE → REVIEW
             WorkUnitPhase.REVIEW: WorkUnitPhase.COMPLETE,   # REVIEW → COMPLETE (on APPROVE)
             WorkUnitPhase.COMPLETE: None,  # Done
         }
