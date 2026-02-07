@@ -8,170 +8,228 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk improves CLI discoverability through three targeted changes:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Enriched command group help text** - Update `@click.group()` decorators across all CLI modules to include one-sentence concept descriptions.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Actionable "not found" error messages** - Wrap artifact lookup failures with suggestions to run list commands.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/cli_help_text/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Document the `chunk start` alias** - Add "(Aliases: start)" to the create command's help text.
 
-## Subsystem Considerations
+All changes are localized to CLI help strings and error message formatting. No changes to command behavior, validation logic, or core functionality.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per docs/trunk/TESTING_PHILOSOPHY.md: "We verify help exists, not its exact phrasing" - this chunk doesn't require new tests, but any existing tests must continue to pass.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Enrich command group help text
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Update the `@click.group()` decorator docstrings in each CLI module to include concept descriptions:
 
-Example:
+**src/cli/chunk.py** - Line 44-46:
+```python
+@click.group()
+def chunk():
+    """Manage chunks - discrete units of implementation work.
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Chunks are the primary work units in Vibe Engineering, each representing
+    a focused piece of implementation with a defined goal and success criteria.
+    """
+    pass
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**src/cli/narrative.py** - Line 30-32:
+```python
+@click.group()
+def narrative():
+    """Manage narratives - multi-chunk initiatives with upfront decomposition.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+    Use narratives when work is too large for a single chunk. They decompose
+    big ambitions into ordered chunks with a shared context.
+    """
+    pass
+```
 
-## Dependencies
+**src/cli/subsystem.py** - Line 31-33:
+```python
+@click.group()
+def subsystem():
+    """Manage subsystems - documented architectural patterns.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+    Subsystems emerge when you notice recurring patterns across chunks.
+    They capture invariants and coordinate related code.
+    """
+    pass
+```
 
-If there are no dependencies, delete this section.
--->
+**src/cli/investigation.py** - Line 30-32:
+```python
+@click.group()
+def investigation():
+    """Manage investigations - exploratory documents for understanding before acting.
+
+    Start an investigation when you need to explore before committing to
+    implementation, such as diagnosing issues or validating hypotheses.
+    """
+    pass
+```
+
+**src/cli/friction.py** - Line 13-15:
+```python
+@click.group()
+def friction():
+    """Manage friction log - accumulative ledger for pain points.
+
+    Log friction as you encounter it. When patterns emerge (3+ entries),
+    consider creating a chunk or investigation to address them.
+    """
+    pass
+```
+
+**src/cli/task.py** - Line 14-16:
+```python
+@click.group()
+def task():
+    """Manage task directories - cross-repository work coordination.
+
+    Task directories enable working across multiple repositories with
+    shared artifacts stored in an external repository.
+    """
+    pass
+```
+
+**src/cli/orch.py** - Line 19-21:
+```python
+@click.group()
+def orch():
+    """Manage orchestrator - parallel chunk execution across worktrees.
+
+    The orchestrator daemon schedules chunks to run in isolated git worktrees,
+    enabling parallel agent work with automatic conflict detection.
+    """
+    pass
+```
+
+**src/cli/reviewer.py** - Line 19-21:
+```python
+@click.group()
+def reviewer():
+    """Manage reviewer agent - automated decision tracking and review.
+
+    Reviewer agents evaluate chunk implementations against success criteria.
+    Curated decisions provide few-shot examples for future reviews.
+    """
+    pass
+```
+
+### Step 2: Add actionable suggestions to "not found" errors
+
+Create a helper function in `src/cli/utils.py` for formatting artifact-not-found errors with suggestions, then use it in CLI modules:
+
+**src/cli/utils.py** - Add helper function:
+```python
+def format_not_found_error(
+    artifact_type: str,
+    artifact_id: str,
+    list_command: str | None = None,
+) -> str:
+    """Format a 'not found' error with actionable suggestion.
+
+    Args:
+        artifact_type: The type of artifact (e.g., "Chunk", "Narrative")
+        artifact_id: The ID that wasn't found
+        list_command: Optional list command to suggest (e.g., "ve chunk list")
+
+    Returns:
+        Formatted error message with suggestion
+    """
+    msg = f"{artifact_type} '{artifact_id}' not found"
+    if list_command:
+        msg += f". Run `{list_command}` to see available {artifact_type.lower()}s"
+    return msg
+```
+
+Update key "not found" error sites:
+
+**src/cli/chunk.py** - `complete_chunk()` around line 522:
+```python
+if chunk_name is None:
+    from cli.utils import format_not_found_error
+    click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
+    raise SystemExit(1)
+```
+
+**src/cli/chunk.py** - `status()` around line 830:
+```python
+if resolved_id is None:
+    from cli.utils import format_not_found_error
+    click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
+    raise SystemExit(1)
+```
+
+**src/cli/narrative.py** - `status()` around line 181:
+```python
+if fm is None:
+    from cli.utils import format_not_found_error
+    click.echo(f"Error: {format_not_found_error('Narrative', narrative_id, 've narrative list')}", err=True)
+    raise SystemExit(1)
+```
+
+**src/cli/subsystem.py** - `validate()` around line 167:
+```python
+if frontmatter is None:
+    from cli.utils import format_not_found_error
+    click.echo(f"Error: {format_not_found_error('Subsystem', subsystem_id, 've subsystem list')}", err=True)
+    raise SystemExit(1)
+```
+
+**src/cli/investigation.py** - `status()` around line 177 (error handling for investigations):
+```python
+# Similar pattern for investigation status lookups
+```
+
+### Step 3: Document the `chunk start` alias
+
+The alias is created at line 201 of `src/cli/chunk.py` via `chunk.add_command(create, name="start")`.
+
+Update the `create` command's docstring to mention the alias:
+
+**src/cli/chunk.py** - `create()` docstring around line 59-67:
+```python
+def create(short_names, project_dir, yes, future, ticket, projects):
+    """Create a new chunk (or multiple chunks). (Aliases: start)
+
+    Creates chunks in docs/chunks/. Task context routes to task-scoped storage.
+
+    Single chunk: ve chunk create my_feature [TICKET_ID]
+    Multiple chunks: ve chunk create chunk_a chunk_b chunk_c --future [--ticket TICKET_ID]
+
+    When creating multiple chunks, use --ticket flag for ticket ID.
+    """
+```
+
+### Step 4: Run tests and verify
+
+Run the test suite to ensure no regressions:
+
+```bash
+uv run pytest tests/ -v
+```
+
+Manually verify help text is visible:
+```bash
+uv run ve --help
+uv run ve chunk --help
+uv run ve chunk create --help
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Help text length**: Click may truncate long help strings. Keep group-level descriptions to 2-3 lines maximum.
+- **Import location**: The `format_not_found_error` helper is added to `cli/utils.py`. This is consistent with other CLI utilities already there.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

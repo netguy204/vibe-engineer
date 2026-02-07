@@ -29,7 +29,11 @@ from cli.utils import validate_short_name, warn_task_project_context
 
 @click.group()
 def narrative():
-    """Narrative commands"""
+    """Manage narratives - multi-chunk initiatives with upfront decomposition.
+
+    Use narratives when work is too large for a single chunk. They decompose
+    big ambitions into ordered chunks with a shared context.
+    """
     pass
 
 
@@ -178,7 +182,8 @@ def status(narrative_id, new_status, project_dir):
     if new_status is None:
         fm = narratives.parse_narrative_frontmatter(narrative_id)
         if fm is None:
-            click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+            from cli.utils import format_not_found_error
+            click.echo(f"Error: {format_not_found_error('Narrative', narrative_id, 've narrative list')}", err=True)
             raise SystemExit(1)
         click.echo(f"{narrative_id}: {fm.status.value}")
         return
@@ -302,7 +307,8 @@ def update_refs(narrative_id, project_dir, dry_run, file_path):
     # Parse narrative frontmatter to get consolidated chunk IDs
     frontmatter = narratives.parse_narrative_frontmatter(narrative_id)
     if frontmatter is None:
-        click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Narrative', narrative_id, 've narrative list')}", err=True)
         raise SystemExit(1)
 
     # Get chunk IDs from proposed_chunks

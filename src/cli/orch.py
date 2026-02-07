@@ -18,7 +18,11 @@ from models import ArtifactType
 
 @click.group()
 def orch():
-    """Orchestrator daemon commands."""
+    """Manage orchestrator - parallel chunk execution across worktrees.
+
+    The orchestrator daemon schedules chunks to run in isolated git worktrees,
+    enabling parallel agent work with automatic conflict detection.
+    """
     pass
 
 
@@ -1003,7 +1007,8 @@ def orch_tail(chunk, follow, project_dir):
     # Check if chunk directory exists
     chunk_dir = project_dir / "docs" / "chunks" / chunk
     if not chunk_dir.exists():
-        click.echo(f"Error: Chunk '{chunk}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     # Check if log directory exists

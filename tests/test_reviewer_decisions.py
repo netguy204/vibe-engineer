@@ -68,7 +68,7 @@ class TestReviewerDecisionsCommandExists:
         """Reviewer command group is available."""
         result = runner.invoke(cli, ["reviewer", "--help"])
         assert result.exit_code == 0
-        assert "Reviewer agent commands" in result.output
+        assert "Manage reviewer agent" in result.output
 
     def test_decisions_command_exists(self, runner):
         """Help text available for reviewer decisions command."""

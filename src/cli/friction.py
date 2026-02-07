@@ -12,7 +12,11 @@ import click
 
 @click.group()
 def friction():
-    """Friction log commands."""
+    """Manage friction log - accumulative ledger for pain points.
+
+    Log friction as you encounter it. When patterns emerge (3+ entries),
+    consider creating a chunk or investigation to address them.
+    """
     pass
 
 

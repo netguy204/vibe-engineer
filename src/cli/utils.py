@@ -49,6 +49,27 @@ def validate_combined_chunk_name(short_name: str, ticket_id: str | None) -> list
     return []
 
 
+def format_not_found_error(
+    artifact_type: str,
+    artifact_id: str,
+    list_command: str | None = None,
+) -> str:
+    """Format a 'not found' error with actionable suggestion.
+
+    Args:
+        artifact_type: The type of artifact (e.g., "Chunk", "Narrative")
+        artifact_id: The ID that wasn't found
+        list_command: Optional list command to suggest (e.g., "ve chunk list")
+
+    Returns:
+        Formatted error message with suggestion
+    """
+    msg = f"{artifact_type} '{artifact_id}' not found"
+    if list_command:
+        msg += f". Run `{list_command}` to see available {artifact_type.lower()}s"
+    return msg
+
+
 def warn_task_project_context(context: TaskProjectContext | None, artifact_type: str) -> None:
     """Emit a warning if running an artifact command from within a task's project.
 

@@ -43,7 +43,11 @@ from cli.utils import (
 
 @click.group()
 def chunk():
-    """Chunk commands"""
+    """Manage chunks - discrete units of implementation work.
+
+    Chunks are the primary work units in Vibe Engineering, each representing
+    a focused piece of implementation with a defined goal and success criteria.
+    """
     pass
 
 
@@ -56,7 +60,7 @@ def chunk():
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 # Chunk: docs/chunks/chunk_batch_create - CLI command accepting variadic chunk names with batch creation logic
 def create(short_names, project_dir, yes, future, ticket, projects):
-    """Create a new chunk (or multiple chunks).
+    """Create a new chunk (or multiple chunks). (Aliases: start)
 
     Creates chunks in docs/chunks/. Task context routes to task-scoped storage.
 
@@ -519,7 +523,8 @@ def complete_chunk(chunk_id, project_dir):
 
     chunk_name = chunks.resolve_chunk_id(chunk_id)
     if chunk_name is None:
-        click.echo(f"Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
@@ -827,7 +832,8 @@ def status(chunk_id, new_status, project_dir):
     # Resolve chunk_id
     resolved_id = chunks.resolve_chunk_id(chunk_id)
     if resolved_id is None:
-        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     # Extract shortname for display

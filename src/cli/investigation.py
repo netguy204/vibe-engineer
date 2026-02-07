@@ -29,7 +29,11 @@ from cli.utils import validate_short_name, warn_task_project_context
 
 @click.group()
 def investigation():
-    """Investigation commands"""
+    """Manage investigations - exploratory documents for understanding before acting.
+
+    Start an investigation when you need to explore before committing to
+    implementation, such as diagnosing issues or validating hypotheses.
+    """
     pass
 
 
@@ -182,12 +186,12 @@ def status(investigation_id, new_status, project_dir):
 
     # Display mode: just show current status
     if new_status is None:
-        try:
-            current_status = investigations.get_status(investigation_id)
-            click.echo(f"{shortname}: {current_status.value}")
-        except ValueError as e:
-            click.echo(f"Error: {e}", err=True)
+        frontmatter = investigations.parse_investigation_frontmatter(investigation_id)
+        if frontmatter is None:
+            from cli.utils import format_not_found_error
+            click.echo(f"Error: {format_not_found_error('Investigation', investigation_id, 've investigation list')}", err=True)
             raise SystemExit(1)
+        click.echo(f"{shortname}: {frontmatter.status.value}")
         return
 
     # Transition mode: validate and update status
