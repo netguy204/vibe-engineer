@@ -699,8 +699,18 @@ class StateStore:
 
         return results
 
+    # Chunk: docs/chunks/orch_ready_critical_path - Critical-path scheduling for ready queue
     def get_ready_queue(self, limit: Optional[int] = None) -> list[WorkUnit]:
-        """Get READY work units ordered by priority (highest first), then creation time.
+        """Get READY work units ordered by critical-path priority.
+
+        Ordering:
+        1. blocks_count DESC - chunks that unblock the most other work come first
+        2. priority DESC - higher priority as tiebreaker
+        3. created_at ASC - earlier creation time as final tiebreaker
+
+        The blocks_count is the number of BLOCKED or READY work units that have
+        this chunk in their blocked_by list. This ensures critical-path chunks
+        (those blocking dependency chains) are dispatched before leaf chunks.
 
         Args:
             limit: Optional maximum number of work units to return
@@ -708,16 +718,50 @@ class StateStore:
         Returns:
             List of READY work units in scheduling order
         """
-        query = """
+        # Query all READY work units first
+        cursor = self.connection.execute(
+            """
             SELECT * FROM work_units
             WHERE status = ?
-            ORDER BY priority DESC, created_at ASC
-        """
-        if limit is not None:
-            query += f" LIMIT {limit}"
+            """,
+            (WorkUnitStatus.READY.value,),
+        )
+        ready_units = [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
-        cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
-        return [self._row_to_work_unit(row) for row in cursor.fetchall()]
+        if not ready_units:
+            return []
+
+        # Compute blocks_count for each ready unit
+        # This is the number of BLOCKED or READY work units that have this chunk
+        # in their blocked_by list
+        results: list[tuple[WorkUnit, int]] = []
+        for unit in ready_units:
+            # Count work units that are blocked by this chunk and are still waiting
+            cursor = self.connection.execute(
+                """
+                SELECT COUNT(*) FROM work_units
+                WHERE blocked_by LIKE ? AND status IN (?, ?)
+                """,
+                (
+                    f'%"{unit.chunk}"%',
+                    WorkUnitStatus.BLOCKED.value,
+                    WorkUnitStatus.READY.value,
+                ),
+            )
+            blocks_count = cursor.fetchone()[0]
+            results.append((unit, blocks_count))
+
+        # Sort by blocks_count DESC, priority DESC, created_at ASC
+        results.sort(key=lambda x: (-x[1], -x[0].priority, x[0].created_at))
+
+        # Extract just the work units
+        sorted_units = [unit for unit, _ in results]
+
+        # Apply limit if specified
+        if limit is not None:
+            sorted_units = sorted_units[:limit]
+
+        return sorted_units
 
     # Chunk: docs/chunks/orch_blocked_lifecycle - Query for work units blocked by a specific chunk
     def list_blocked_by_chunk(self, chunk: str) -> list[WorkUnit]:
