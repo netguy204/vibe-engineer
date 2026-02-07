@@ -1432,6 +1432,7 @@ async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
     })
 
 
+# Chunk: docs/chunks/orch_worktree_retain - POST /work-units/prune for batch cleanup of retained worktrees
 async def prune_all_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/prune - Prune all retained worktrees.
 

@@ -1,177 +1,119 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Swap the order of `remove_worktree` and `merge_to_base` in the `Scheduler._advance_phase` completion flow. The `orch_merge_safety` chunk (ACTIVE) already implemented checkout-free merging via git plumbing (`merge-tree`, `commit-tree`, `update-ref`), which means the worktree's existence no longer interferes with the merge operation. The stale comment claiming the worktree "must be done before merge" predates that work.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
+1. Reorder the operations: attempt merge first, only remove worktree on success
+2. Remove the stale comment
+3. Ensure merge failure leaves the worktree intact for investigation
+4. Add a test verifying the new behavior (worktree persists on merge failure)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_merge_before_delete/GOAL.md)
-with references to the files that you expect to touch.
--->
+This is a minimal, surgical change. The `retain_worktree` path remains unchanged (it skips both merge and deletion). The happy path remains unchanged (merge succeeds, then worktree is removed). Only the failure path changes: now the worktree survives for debugging.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the orchestrator subsystem's scheduler component. The change aligns with the subsystem's invariant that "worktrees are isolated execution environments" - keeping them around on failure makes investigation easier.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Reorder operations in `_advance_phase`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `src/orchestrator/scheduler.py` (~lines 1036-1078)
 
-Example:
+In the `else` branch (non-`retain_worktree` path):
+1. Remove the stale comment `# Remove the worktree (must be done before merge)`
+2. Move the merge attempt (`merge_to_base` and `has_changes` check) BEFORE `remove_worktree`
+3. Only call `remove_worktree` if the merge succeeds or there were no changes to merge
+4. When merge fails, the worktree is NOT removed - the work unit goes to NEEDS_ATTENTION with the worktree still intact
 
-### Step 1: Define the SegmentHeader struct
+**Before:**
+```python
+else:
+    # Remove the worktree (must be done before merge)
+    try:
+        self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+    except WorktreeError as e:
+        logger.warning(f"Failed to remove worktree for {chunk}: {e}")
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    # Merge the branch back to base if it has changes
+    try:
+        if self.worktree_manager.has_changes(chunk):
+            # ... merge logic
+        else:
+            # ... skip merge, clean up branch
+    except WorktreeError as e:
+        # Mark as needs attention - but worktree is already gone!
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**After:**
+```python
+else:
+    # Chunk: docs/chunks/orch_merge_before_delete - Merge before worktree removal
+    # Merge first so worktree remains available for investigation if merge fails
+    merge_succeeded = False
+    try:
+        if self.worktree_manager.has_changes(chunk):
+            logger.info(
+                f"Merging {chunk} branch back to "
+                f"{self.worktree_manager.base_branch}"
+            )
+            self.worktree_manager.merge_to_base(chunk, delete_branch=True)
+        else:
+            logger.info(f"No changes in {chunk}, skipping merge")
+            # Clean up the empty branch
+            # ... existing branch cleanup logic
+        merge_succeeded = True
+    except WorktreeError as e:
+        logger.error(f"Failed to merge {chunk} to base: {e}")
+        # Mark as needs attention - worktree remains for investigation
+        # ... existing needs_attention handling, then return
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+    # Only remove worktree after successful merge
+    try:
+        self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+    except WorktreeError as e:
+        logger.warning(f"Failed to remove worktree for {chunk}: {e}")
+```
 
-## Dependencies
+### Step 2: Update existing test to verify new order
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `tests/test_orchestrator_scheduler.py`
 
-If there are no dependencies, delete this section.
--->
+Find the test `test_advance_completes_work_unit` (around line 230-267) which verifies that `remove_worktree` is called. Update it to also verify:
+1. `has_changes` or `merge_to_base` is called BEFORE `remove_worktree`
+2. Use mock call ordering assertions to verify the sequence
+
+### Step 3: Add test for merge failure with worktree preservation
+
+Location: `tests/test_orchestrator_scheduler.py`
+
+Add a new test `test_advance_merge_failure_preserves_worktree` that:
+1. Sets up a work unit in COMPLETE phase
+2. Configures `mock_worktree_manager.has_changes.return_value = True`
+3. Configures `mock_worktree_manager.merge_to_base.side_effect = WorktreeError("Merge conflict")`
+4. Calls `scheduler._advance_phase(work_unit)`
+5. Asserts:
+   - Work unit status is `NEEDS_ATTENTION`
+   - Work unit `attention_reason` contains "Merge to base failed"
+   - `mock_worktree_manager.remove_worktree` was NOT called (the key assertion!)
+
+This test explicitly verifies the goal: when merge fails, the worktree remains.
+
+### Step 4: Run tests and verify
+
+Run `uv run pytest tests/test_orchestrator_scheduler.py -v` to ensure:
+- All existing tests pass (no regressions)
+- New merge failure test passes
+- Order verification test passes
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Minimal**: The change is straightforward reordering. The `retain_worktree` path is untouched.
+- **Edge case**: If `remove_worktree` fails after a successful merge, we log a warning but proceed. This matches existing behavior.
+- **Branch cleanup**: In the no-changes path, we still delete the empty branch before removing the worktree. This is fine because there's nothing to merge back anyway.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

@@ -1015,6 +1015,7 @@ def worktree():
 @click.option("--status", "status_filter", default=None, help="Filter by status (active, completed, retained, orphaned)")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/orch_worktree_retain - CLI command to list worktrees with status
 def worktree_list(status_filter, json_output, project_dir):
     """List all worktrees with their status.
 
@@ -1072,6 +1073,7 @@ def worktree_list(status_filter, json_output, project_dir):
 @click.option("--keep-branch", is_flag=True, help="Keep the git branch after removing worktree")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/orch_worktree_retain - CLI command to remove worktree without merging
 def worktree_remove(chunk, keep_branch, json_output, project_dir):
     """Remove a worktree without merging.
 
@@ -1124,6 +1126,7 @@ def worktree_remove(chunk, keep_branch, json_output, project_dir):
 @click.option("--dry-run", is_flag=True, help="Show what would be pruned without doing it")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/orch_worktree_retain - CLI command to prune all retained worktrees
 def worktree_prune(dry_run, json_output, project_dir):
     """Prune all retained worktrees.
 

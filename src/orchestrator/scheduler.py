@@ -7,6 +7,7 @@
 # Chunk: docs/chunks/orch_task_detection - Scheduler factory with task_info parameter
 # Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
 # Chunk: docs/chunks/orch_conflict_oracle - Conflict checking and re-analysis during dispatch
+# Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -1034,13 +1035,8 @@ class Scheduler:
                 )
                 # Skip worktree removal and merge - leave everything in place
             else:
-                # Remove the worktree (must be done before merge)
-                try:
-                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
-                except WorktreeError as e:
-                    logger.warning(f"Failed to remove worktree for {chunk}: {e}")
-
-                # Merge the branch back to base if it has changes
+                # Chunk: docs/chunks/orch_merge_before_delete - Merge before worktree removal
+                # Merge first so worktree remains available for investigation if merge fails
                 try:
                     if self.worktree_manager.has_changes(chunk):
                         logger.info(
@@ -1061,7 +1057,7 @@ class Scheduler:
                             )
                 except WorktreeError as e:
                     logger.error(f"Failed to merge {chunk} to base: {e}")
-                    # Mark as needs attention instead of done
+                    # Mark as needs attention - worktree remains for investigation
                     reason = f"Merge to base failed: {e}"
                     work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
                     work_unit.attention_reason = reason
@@ -1076,6 +1072,12 @@ class Scheduler:
                         phase=work_unit.phase.value,
                     )
                     return
+
+                # Only remove worktree after successful merge
+                try:
+                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+                except WorktreeError as e:
+                    logger.warning(f"Failed to remove worktree for {chunk}: {e}")
 
             work_unit.status = WorkUnitStatus.DONE
             work_unit.session_id = None

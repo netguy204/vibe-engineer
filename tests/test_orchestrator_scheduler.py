@@ -1,6 +1,7 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
 # Chunk: docs/chunks/orch_verify_active - Unit and integration tests for ACTIVE status verification
+# Chunk: docs/chunks/orch_broadcast_invariant - Test coverage for WebSocket broadcast invariant
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -264,6 +265,65 @@ status: ACTIVE
         mock_worktree_manager.remove_worktree.assert_called_once_with(
             "test", remove_branch=False
         )
+
+        # Chunk: docs/chunks/orch_merge_before_delete - Verify merge before remove order
+        # Verify that has_changes (merge check) is called before remove_worktree
+        has_changes_call = None
+        remove_worktree_call = None
+        for i, call in enumerate(mock_worktree_manager.method_calls):
+            if call[0] == "has_changes":
+                has_changes_call = i
+            elif call[0] == "remove_worktree":
+                remove_worktree_call = i
+        assert has_changes_call is not None, "has_changes should be called"
+        assert remove_worktree_call is not None, "remove_worktree should be called"
+        assert has_changes_call < remove_worktree_call, (
+            "has_changes (merge check) must be called before remove_worktree"
+        )
+
+    # Chunk: docs/chunks/orch_merge_before_delete - Merge failure preserves worktree
+    @pytest.mark.asyncio
+    async def test_advance_merge_failure_preserves_worktree(
+        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    ):
+        """When merge fails, worktree is NOT removed for investigation."""
+        from orchestrator.worktree import WorktreeError
+
+        # Set up chunk with ACTIVE status (required for completion)
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_merge_fail"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.side_effect = WorktreeError("Merge conflict")
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test_merge_fail",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test_merge_fail")
+        # Work unit should be marked as NEEDS_ATTENTION
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "Merge to base failed" in updated.attention_reason
+
+        # The key assertion: remove_worktree should NOT be called when merge fails
+        mock_worktree_manager.remove_worktree.assert_not_called()
 
 
 # Chunk: docs/chunks/orch_mechanical_commit - Unit tests for mechanical commit in scheduler
