@@ -1042,30 +1042,15 @@ class Scheduler:
                 )
                 # Skip worktree removal and merge - leave everything in place
             else:
-                # Chunk: docs/chunks/orch_merge_before_delete - Merge before worktree removal
-                # Merge first so worktree remains available for investigation if merge fails
+                # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
+                # Commit changes, remove worktree, merge to base, cleanup branch
                 try:
-                    if self.worktree_manager.has_changes(chunk):
-                        logger.info(
-                            f"Merging {chunk} branch back to "
-                            f"{self.worktree_manager.base_branch}"
-                        )
-                        self.worktree_manager.merge_to_base(chunk, delete_branch=True)
-                    else:
-                        logger.info(f"No changes in {chunk}, skipping merge")
-                        # Clean up the empty branch
-                        branch = self.worktree_manager.get_branch_name(chunk)
-                        if self.worktree_manager._branch_exists(branch):
-                            import subprocess
-                            subprocess.run(
-                                ["git", "branch", "-d", branch],
-                                cwd=self.project_dir,
-                                capture_output=True,
-                            )
+                    logger.info(f"Finalizing worktree for {chunk}")
+                    self.worktree_manager.finalize_work_unit(chunk)
                 except WorktreeError as e:
-                    logger.error(f"Failed to merge {chunk} to base: {e}")
-                    # Mark as needs attention - worktree remains for investigation
-                    reason = f"Merge to base failed: {e}"
+                    logger.error(f"Failed to finalize {chunk}: {e}")
+                    # Mark as needs attention - worktree may remain for investigation
+                    reason = f"Finalization failed: {e}"
                     work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
                     work_unit.attention_reason = reason
                     work_unit.updated_at = datetime.now(timezone.utc)
@@ -1079,12 +1064,6 @@ class Scheduler:
                         phase=work_unit.phase.value,
                     )
                     return
-
-                # Only remove worktree after successful merge
-                try:
-                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
-                except WorktreeError as e:
-                    logger.warning(f"Failed to remove worktree for {chunk}: {e}")
 
             work_unit.status = WorkUnitStatus.DONE
             work_unit.session_id = None

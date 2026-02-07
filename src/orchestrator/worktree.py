@@ -1,5 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_scheduling - Worktree lifecycle management for parallel execution
+# Chunk: docs/chunks/orch_scheduling - WorktreeManager for isolated chunk execution and merge_to_base
 # Chunk: docs/chunks/orch_task_worktrees - Multi-repo worktree support for task context
 # Chunk: docs/chunks/orch_task_detection - WorktreeManager with task_info for multi-repo worktrees
 """Git worktree manager for isolated chunk execution.
@@ -1403,3 +1403,45 @@ class WorktreeManager:
             raise WorktreeError(f"git commit failed: {result.stderr}")
 
         return True
+
+    # Chunk: docs/chunks/orch_prune_consolidate - Consolidated worktree finalization logic
+    def finalize_work_unit(self, chunk: str) -> None:
+        """Finalize a completed work unit by committing, removing worktree, and merging.
+
+        This method handles the complete lifecycle cleanup for a work unit:
+        1. Commits any uncommitted changes with a standard message
+        2. Removes the worktree (but keeps the branch for merge)
+        3. Merges changes to base branch (or deletes empty branch)
+
+        This consolidates the prune/merge/cleanup logic that was previously
+        duplicated in scheduler._advance_phase, api.prune_work_unit_endpoint,
+        and api.prune_all_endpoint.
+
+        Args:
+            chunk: Chunk name
+
+        Raises:
+            WorktreeError: If any step fails (commit, remove, merge)
+        """
+        import subprocess
+
+        # Step 1: Commit any uncommitted changes
+        worktree_path = self.get_worktree_path(chunk)
+        if worktree_path.exists() and self.has_uncommitted_changes(chunk):
+            self.commit_changes(chunk)
+
+        # Step 2: Remove worktree (must be done before merge to avoid conflicts)
+        self.remove_worktree(chunk, remove_branch=False)
+
+        # Step 3: Merge the branch back to base if it has changes
+        if self.has_changes(chunk):
+            self.merge_to_base(chunk, delete_branch=True)
+        else:
+            # Clean up the empty branch
+            branch = self.get_branch_name(chunk)
+            if self._branch_exists(branch):
+                subprocess.run(
+                    ["git", "branch", "-d", branch],
+                    cwd=self.project_dir,
+                    capture_output=True,
+                )

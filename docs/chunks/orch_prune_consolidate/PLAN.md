@@ -8,153 +8,203 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extracts duplicated worktree prune/merge/cleanup logic from three locations into a single consolidated method in `worktree.py`. The approach is pure refactoring with no behavioral changes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Current State:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The following ~50-line sequence appears in three places:
+1. `scheduler.py::_advance_phase()` (lines ~1000-1080) - on work unit completion
+2. `api.py::prune_work_unit_endpoint()` (lines ~1390-1420) - for single worktree prune
+3. `api.py::prune_all_endpoint()` (lines ~1469-1500) - batch prune iteration
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_prune_consolidate/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Duplicated Logic Pattern:**
+```python
+# 1. Commit any uncommitted changes
+if worktree_manager.has_uncommitted_changes(chunk):
+    worktree_manager.commit_changes(chunk)
+
+# 2. Remove worktree (must be done before merge)
+worktree_manager.remove_worktree(chunk, remove_branch=False)
+
+# 3. Merge the branch back to base if it has changes
+if worktree_manager.has_changes(chunk):
+    worktree_manager.merge_to_base(chunk, delete_branch=True)
+else:
+    # Clean up the empty branch
+    branch = worktree_manager.get_branch_name(chunk)
+    if worktree_manager._branch_exists(branch):
+        subprocess.run(["git", "branch", "-d", branch], ...)
+```
+
+**New Method:**
+
+Create `finalize_work_unit(chunk: str) -> None` in `worktree.py` that:
+1. Encapsulates the entire commit → remove → merge/cleanup sequence
+2. Handles errors consistently (raises `WorktreeError`)
+3. Is called by all three current locations
+
+**Testing Strategy (per TESTING_PHILOSOPHY.md):**
+
+This is pure refactoring. All existing tests should pass unchanged since behavior is preserved. We add one new test for the new method to verify the consolidated sequence works correctly.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of the orchestrator subsystem by consolidating worktree lifecycle logic. The subsystem is in DOCUMENTED status, so we add this chunk to its implementing chunks but don't attempt broader refactoring.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add finalize_work_unit method to WorktreeManager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create the new consolidated method in `src/orchestrator/worktree.py`.
 
-Example:
+**Method signature:**
+```python
+def finalize_work_unit(self, chunk: str) -> None:
+    """Finalize a completed work unit by committing, removing worktree, and merging.
 
-### Step 1: Define the SegmentHeader struct
+    This method handles the complete lifecycle cleanup for a work unit:
+    1. Commits any uncommitted changes with a standard message
+    2. Removes the worktree (but keeps the branch for merge)
+    3. Merges changes to base branch (or deletes empty branch)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Args:
+        chunk: Chunk name
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Raises:
+        WorktreeError: If any step fails (commit, remove, merge)
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**Implementation:**
+- Check for uncommitted changes with `has_uncommitted_changes()` and commit with `commit_changes()` if present
+- Call `remove_worktree(chunk, remove_branch=False)` to remove worktree but keep branch
+- Check `has_changes(chunk)` to determine if merge is needed
+- If changes: call `merge_to_base(chunk, delete_branch=True)`
+- If no changes: delete the empty branch with git command
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/worktree.py` (add after `commit_changes` method)
+
+### Step 2: Update scheduler._advance_phase to use finalize_work_unit
+
+Replace the inline commit/merge/cleanup sequence in `scheduler.py::_advance_phase()` with a call to `worktree_manager.finalize_work_unit(chunk)`.
+
+**Before:**
+```python
+# Check for uncommitted changes that need to be committed
+if self.worktree_manager.has_uncommitted_changes(chunk):
+    ...
+    self.worktree_manager.commit_changes(chunk)
+    ...
+
+# Remove worktree...
+# Merge the branch back to base...
+```
+
+**After:**
+```python
+# Finalize worktree - commit, merge to base, and cleanup
+try:
+    self.worktree_manager.finalize_work_unit(chunk)
+except WorktreeError as e:
+    ...
+```
+
+Note: The retain_worktree check remains in the scheduler since that's a policy decision about whether to call finalize at all.
+
+Location: `src/orchestrator/scheduler.py::_advance_phase()` (~lines 1000-1080)
+
+### Step 3: Update api.prune_work_unit_endpoint to use finalize_work_unit
+
+Replace the inline prune logic in the single-chunk prune endpoint.
+
+**Before:**
+```python
+# Commit any uncommitted changes
+if worktree_path.exists() and worktree_manager.has_uncommitted_changes(chunk):
+    worktree_manager.commit_changes(chunk)
+
+# Remove worktree (must be done before merge)
+worktree_manager.remove_worktree(chunk, remove_branch=False)
+
+# Merge the branch back to base if it has changes
+if worktree_manager.has_changes(chunk):
+    worktree_manager.merge_to_base(chunk, delete_branch=True)
+else:
+    ...
+```
+
+**After:**
+```python
+try:
+    worktree_manager.finalize_work_unit(chunk)
+except WorktreeError as e:
+    ...
+```
+
+Location: `src/orchestrator/api.py::prune_work_unit_endpoint()` (~lines 1390-1420)
+
+### Step 4: Update api.prune_all_endpoint to use finalize_work_unit
+
+Replace the inline prune logic in the batch prune endpoint.
+
+**Before:**
+```python
+for unit in retained_units:
+    chunk = unit.chunk
+    try:
+        # Commit any uncommitted changes
+        ...
+        # Remove worktree (must be done before merge)
+        worktree_manager.remove_worktree(chunk, remove_branch=False)
+        # Merge the branch back to base if it has changes
+        ...
+```
+
+**After:**
+```python
+for unit in retained_units:
+    chunk = unit.chunk
+    try:
+        worktree_manager.finalize_work_unit(chunk)
+        ...
+```
+
+Location: `src/orchestrator/api.py::prune_all_endpoint()` (~lines 1469-1500)
+
+### Step 5: Add test for finalize_work_unit
+
+Add a test case in `tests/test_orchestrator_worktree.py` to verify the consolidated method works correctly.
+
+**Test class: TestFinalizeWorkUnit**
+
+Tests to add:
+1. `test_finalize_work_unit_commits_and_merges` - Make changes in worktree, call finalize, verify changes are on base branch
+2. `test_finalize_work_unit_handles_no_changes` - No changes, verify empty branch is deleted
+3. `test_finalize_work_unit_removes_worktree` - Verify worktree is removed after finalize
+4. `test_finalize_work_unit_raises_on_error` - Verify WorktreeError propagates
+
+Location: `tests/test_orchestrator_worktree.py`
+
+### Step 6: Run tests and verify no behavioral changes
+
+Execute the full test suite to confirm:
+- All existing orchestrator tests pass without modification
+- New `finalize_work_unit` tests pass
+- No regressions in scheduler or API behavior
+
+Command: `uv run pytest tests/test_orchestrator*.py -v`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None - this chunk is independent and can be implemented immediately.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Import Dependency**: The scheduler needs to import `WorktreeError` - verify this doesn't create circular imports. (Low risk: WorktreeError is already imported in scheduler.py)
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Error Handling Semantics**: The original code in scheduler had specific error handling that marked work units as NEEDS_ATTENTION. Need to ensure the calling code still handles this correctly after the refactor.
+
+3. **Multi-repo (task context) mode**: The original code in `_advance_phase` only uses single-repo mode. The API endpoints don't appear to support multi-repo prune. The new method should match existing behavior (single-repo only for now). Multi-repo support can be added as a future enhancement.
 
 ## Deviations
 
@@ -169,9 +219,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
