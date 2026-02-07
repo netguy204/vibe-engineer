@@ -97,6 +97,9 @@ class IntegrityValidator:
         self._narrative_chunks: dict[str, set[str]] = {}
         # Maps investigation_name -> set of chunk directories listed in its proposed_chunks
         self._investigation_chunks: dict[str, set[str]] = {}
+        # Maps subsystem_name -> set of chunk_ids listed in its `chunks` frontmatter field
+        # Chunk: docs/chunks/integrity_subsystem_bidir - Subsystem→chunk reverse index for bidirectional validation
+        self._subsystem_chunks: dict[str, set[str]] = {}
         # Maps chunk_name -> set of file paths referenced in its code_references
         self._chunk_code_files: dict[str, set[str]] = {}
 
@@ -132,12 +135,14 @@ class IntegrityValidator:
             self._friction_entry_ids = {e.id for e in entries}
 
     # Chunk: docs/chunks/integrity_bidirectional - Builds reverse index for narrative/investigation→chunk lookups
+    # Chunk: docs/chunks/integrity_subsystem_bidir - Extended with subsystem→chunk reverse index
     def _build_parent_chunk_index(self) -> None:
         """Build reverse index of which chunks each parent artifact lists.
 
         Populates:
         - _narrative_chunks: Maps narrative_name -> set of chunk_directories
         - _investigation_chunks: Maps investigation_name -> set of chunk_directories
+        - _subsystem_chunks: Maps subsystem_name -> set of chunk_ids
         """
         # Index narrative → chunks
         for narrative_name in self._narrative_names:
@@ -170,6 +175,18 @@ class IntegrityValidator:
                 self._investigation_chunks[investigation_name] = chunk_dirs
             else:
                 self._investigation_chunks[investigation_name] = set()
+
+        # Index subsystem → chunks
+        # Chunk: docs/chunks/integrity_subsystem_bidir - Build subsystem→chunk index for bidirectional validation
+        for subsystem_name in self._subsystem_names:
+            frontmatter = self.subsystems.parse_subsystem_frontmatter(subsystem_name)
+            if frontmatter and frontmatter.chunks:
+                chunk_ids: set[str] = set()
+                for chunk_rel in frontmatter.chunks:
+                    chunk_ids.add(chunk_rel.chunk_id)
+                self._subsystem_chunks[subsystem_name] = chunk_ids
+            else:
+                self._subsystem_chunks[subsystem_name] = set()
 
     # Chunk: docs/chunks/integrity_bidirectional - Builds reverse index mapping chunks to referenced file paths
     def _build_chunk_code_index(self) -> None:
@@ -239,10 +256,12 @@ class IntegrityValidator:
             errors.extend(investigation_errors)
 
         # 4. Validate subsystem → chunk references
+        # Chunk: docs/chunks/integrity_subsystem_bidir - Updated to collect warnings for bidirectional validation
         for subsystem_name in self._subsystem_names:
             subsystems_scanned += 1
-            subsystem_errors = self._validate_subsystem_chunk_refs(subsystem_name)
+            subsystem_errors, subsystem_warnings = self._validate_subsystem_chunk_refs(subsystem_name)
             errors.extend(subsystem_errors)
+            warnings.extend(subsystem_warnings)
 
         # 5. Validate friction → chunk references
         if self.friction.exists():
@@ -342,6 +361,7 @@ class IntegrityValidator:
                     )
 
         # Validate subsystem references
+        # Chunk: docs/chunks/integrity_subsystem_bidir - Added bidirectional check for chunk→subsystem
         if frontmatter.subsystems:
             for subsystem_rel in frontmatter.subsystems:
                 if subsystem_rel.subsystem_id not in self._subsystem_names:
@@ -353,6 +373,18 @@ class IntegrityValidator:
                             message=f"Subsystem '{subsystem_rel.subsystem_id}' does not exist",
                         )
                     )
+                else:
+                    # Bidirectional check: does subsystem's chunks include this chunk?
+                    subsystem_chunks = self._subsystem_chunks.get(subsystem_rel.subsystem_id, set())
+                    if chunk_name not in subsystem_chunks:
+                        warnings.append(
+                            IntegrityWarning(
+                                source=f"docs/chunks/{chunk_name}/GOAL.md",
+                                target=f"docs/subsystems/{subsystem_rel.subsystem_id}/OVERVIEW.md",
+                                link_type="chunk↔subsystem",
+                                message=f"Chunk references subsystem '{subsystem_rel.subsystem_id}' but subsystem's chunks does not list this chunk",
+                            )
+                        )
 
         # Validate friction entry references
         if frontmatter.friction_entries:
@@ -458,27 +490,55 @@ class IntegrityValidator:
 
         return errors
 
-    def _validate_subsystem_chunk_refs(self, subsystem_name: str) -> list[IntegrityError]:
-        """Validate subsystem's chunk references."""
+    # Chunk: docs/chunks/integrity_subsystem_bidir - Extended to return warnings for bidirectional validation
+    def _validate_subsystem_chunk_refs(
+        self, subsystem_name: str
+    ) -> tuple[list[IntegrityError], list[IntegrityWarning]]:
+        """Validate subsystem's chunk references and bidirectional consistency."""
         errors: list[IntegrityError] = []
+        warnings: list[IntegrityWarning] = []
 
         frontmatter = self.subsystems.parse_subsystem_frontmatter(subsystem_name)
         if frontmatter is None:
-            return errors  # Can't validate if we can't parse
+            return errors, warnings  # Can't validate if we can't parse
 
         if frontmatter.chunks:
             for chunk_rel in frontmatter.chunks:
-                if chunk_rel.chunk_id not in self._chunk_names:
+                chunk_id = chunk_rel.chunk_id
+                is_local_chunk = chunk_id in self._chunk_names
+                is_external_chunk = chunk_id in self._external_chunk_names
+
+                if not is_local_chunk and not is_external_chunk:
                     errors.append(
                         IntegrityError(
                             source=f"docs/subsystems/{subsystem_name}/OVERVIEW.md",
-                            target=f"docs/chunks/{chunk_rel.chunk_id}",
+                            target=f"docs/chunks/{chunk_id}",
                             link_type="subsystem→chunk",
-                            message=f"Chunk '{chunk_rel.chunk_id}' does not exist",
+                            message=f"Chunk '{chunk_id}' does not exist",
                         )
                     )
+                elif is_local_chunk:
+                    # Bidirectional check only for local chunks
+                    # (external chunks don't have GOAL.md with subsystems field)
+                    chunk_frontmatter = self.chunks.parse_chunk_frontmatter(chunk_id)
+                    if chunk_frontmatter:
+                        subsystem_ids = (
+                            {s.subsystem_id for s in chunk_frontmatter.subsystems}
+                            if chunk_frontmatter.subsystems
+                            else set()
+                        )
+                        if subsystem_name not in subsystem_ids:
+                            warnings.append(
+                                IntegrityWarning(
+                                    source=f"docs/subsystems/{subsystem_name}/OVERVIEW.md",
+                                    target=f"docs/chunks/{chunk_id}/GOAL.md",
+                                    link_type="subsystem↔chunk",
+                                    message=f"Subsystem lists chunk '{chunk_id}' but chunk's subsystems does not reference this subsystem",
+                                )
+                            )
+                # External chunks: no bidirectional check (validated in home repo)
 
-        return errors
+        return errors, warnings
 
     def _validate_friction_chunk_refs(self) -> list[IntegrityError]:
         """Validate friction log's proposed_chunks → chunk references."""
