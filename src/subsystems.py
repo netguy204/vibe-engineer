@@ -30,6 +30,7 @@ SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem documentation management class
 class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
     """Utility class for managing subsystem documentation.
 
@@ -98,6 +99,30 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
             - Frontmatter is malformed or fails validation
         """
         return self.parse_frontmatter(subsystem_id)
+
+    # Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing
+    def parse_subsystem_frontmatter_with_errors(
+        self, subsystem_id: str
+    ) -> tuple[SubsystemFrontmatter | None, list[str]]:
+        """Parse OVERVIEW.md frontmatter with error details.
+
+        This is an alias for parse_frontmatter_with_errors() that maintains the
+        original method name for backward compatibility and consistency with
+        parse_subsystem_frontmatter().
+
+        Use this method when callers need to report errors to users (e.g., validation
+        commands, CLI feedback). For silent failure scenarios where None is acceptable,
+        use parse_subsystem_frontmatter() instead.
+
+        Args:
+            subsystem_id: The subsystem directory name.
+
+        Returns:
+            Tuple of (frontmatter, errors) where:
+            - frontmatter is the validated model if successful, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
+        return self.parse_frontmatter_with_errors(subsystem_id)
 
     def is_subsystem_dir(self, name: str) -> bool:
         """Check if a directory name matches the subsystem pattern.

@@ -5,6 +5,7 @@ Commands for managing investigations - exploratory documents.
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Investigation CLI commands
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+# Chunk: docs/chunks/investigation_commands - CLI commands for investigation management
 
 import json
 import pathlib

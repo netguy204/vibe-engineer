@@ -2,6 +2,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/narrative_cli_commands - Business logic for narrative management
 # Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on narrative creation
 
@@ -113,7 +114,61 @@ class Narratives(ArtifactManager[NarrativeFrontmatter, NarrativeStatus]):
         """
         return self.parse_narrative_frontmatter(artifact_id)
 
+    # Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing
+    def parse_narrative_frontmatter_with_errors(
+        self, narrative_id: str
+    ) -> tuple[NarrativeFrontmatter | None, list[str]]:
+        """Parse OVERVIEW.md frontmatter with error details.
+
+        Handles legacy 'chunks' field mapping to 'proposed_chunks'.
+
+        Use this method when callers need to report errors to users (e.g., validation
+        commands, CLI feedback). For silent failure scenarios where None is acceptable,
+        use parse_narrative_frontmatter() instead.
+
+        Args:
+            narrative_id: The narrative directory name.
+
+        Returns:
+            Tuple of (frontmatter, errors) where:
+            - frontmatter is the validated model if successful, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
+        from frontmatter import extract_frontmatter_dict
+
+        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
+        if not overview_path.exists():
+            return None, [f"Narrative '{narrative_id}' not found"]
+
+        frontmatter_data = extract_frontmatter_dict(overview_path)
+        if frontmatter_data is None:
+            return None, [f"Could not parse frontmatter in {overview_path}"]
+
+        try:
+            # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
+            if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
+                frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
+            return NarrativeFrontmatter.model_validate(frontmatter_data), []
+        except ValidationError as e:
+            errors = []
+            for error in e.errors():
+                loc = ".".join(str(x) for x in error["loc"])
+                msg = error["msg"]
+                errors.append(f"{loc}: {msg}")
+            return None, errors
+
+    # Override parse_frontmatter_with_errors to use the specialized parsing for legacy support
+    def parse_frontmatter_with_errors(
+        self, artifact_id: str
+    ) -> tuple[NarrativeFrontmatter | None, list[str]]:
+        """Parse and validate frontmatter with error details.
+
+        Overrides base class to handle legacy 'chunks' field mapping.
+        """
+        return self.parse_narrative_frontmatter_with_errors(artifact_id)
+
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
+    # Chunk: docs/chunks/narrative_cli_commands - Creates narrative directory with template files
     def create_narrative(self, short_name: str) -> pathlib.Path:
         """Create a new narrative directory with templates.
 

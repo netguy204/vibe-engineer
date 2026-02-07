@@ -126,6 +126,7 @@ class ActiveSubsystem:
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/investigation_commands - Template context for investigation rendering
 @dataclass
 class ActiveInvestigation:
     """Represents an active investigation context for template rendering."""

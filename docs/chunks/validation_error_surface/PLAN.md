@@ -8,170 +8,319 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds `_with_errors` variants to the ArtifactManager base class and all
+artifact frontmatter parsers to provide consistent error surfacing across all workflow
+artifact types.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Add `parse_frontmatter_with_errors()` to ArtifactManager** - The base class already
+   has `parse_frontmatter()` that uses the shared `frontmatter.parse_frontmatter()`. Add
+   a parallel `parse_frontmatter_with_errors()` method that uses
+   `frontmatter.parse_frontmatter_with_errors()` instead.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/validation_error_surface/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Add convenience methods to concrete managers** - Each artifact manager (Narratives,
+   Investigations, Subsystems) already has `parse_{type}_frontmatter()` as an alias for
+   `parse_frontmatter()`. Add corresponding `parse_{type}_frontmatter_with_errors()`
+   aliases for consistency and backward compatibility with the Chunks class pattern.
+
+3. **Fix `plan_has_content()` exception handling** - Replace the bare `except Exception`
+   with specific exception handling for expected errors (`FileNotFoundError`,
+   `PermissionError`), allowing unexpected errors to propagate.
+
+4. **Document the convention** - Add code comments explaining when to use `_with_errors`
+   variants (validation commands, error reporting) vs. regular parsers (silent failure
+   acceptable).
+
+**Building on existing code:**
+
+- `frontmatter.py` already provides the core `parse_frontmatter_with_errors()` function
+  that returns `tuple[T | None, list[str]]`
+- `chunks.py` already has `parse_chunk_frontmatter_with_errors()` as the reference pattern
+- `artifact_manager.py` provides the base class that all managers inherit from
+
+**Test strategy:**
+
+Per TESTING_PHILOSOPHY.md, tests should assert semantically meaningful properties:
+- Error variants return descriptive error messages for common failure modes
+- Error messages contain actionable information (field names, expected formats)
+- Regular parsers still work (backward compatibility)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS error surfacing
+  for the ArtifactManager pattern. The workflow_artifacts subsystem already documents
+  the manager class pattern (`parse_{type}_frontmatter()` interface). This chunk extends
+  that pattern with `_with_errors` variants.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `parse_frontmatter_with_errors()` to ArtifactManager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new method to `ArtifactManager` base class that delegates to the shared
+`frontmatter.parse_frontmatter_with_errors()`:
 
-Example:
+```python
+def parse_frontmatter_with_errors(
+    self, artifact_id: str
+) -> tuple[FrontmatterT | None, list[str]]:
+    """Parse and validate frontmatter with detailed error messages.
 
-### Step 1: Define the SegmentHeader struct
+    Args:
+        artifact_id: The artifact directory name.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Returns:
+        Tuple of (frontmatter, errors) where:
+        - frontmatter is the validated model if successful, None otherwise
+        - errors is a list of error messages (empty if parsing succeeded)
+    """
+    from frontmatter import parse_frontmatter_with_errors
 
-Location: src/segment/format.rs
+    main_path = self.get_main_file_path(artifact_id)
+    if not main_path.exists():
+        return None, [f"{self.artifact_type_name} '{artifact_id}' not found"]
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    return parse_frontmatter_with_errors(main_path, self.frontmatter_model_class)
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add backreference: `# Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/artifact_manager.py`
+
+### Step 2: Add `parse_narrative_frontmatter_with_errors()` to Narratives
+
+The Narratives class has special handling for the legacy 'chunks' field that maps to
+'proposed_chunks'. The `parse_narrative_frontmatter()` method overrides the base class
+to handle this. Add a corresponding `_with_errors` variant:
+
+```python
+def parse_narrative_frontmatter_with_errors(
+    self, narrative_id: str
+) -> tuple[NarrativeFrontmatter | None, list[str]]:
+    """Parse OVERVIEW.md frontmatter with error details.
+
+    Handles legacy 'chunks' field mapping to 'proposed_chunks'.
+
+    Args:
+        narrative_id: The narrative directory name.
+
+    Returns:
+        Tuple of (frontmatter, errors).
+    """
+    from frontmatter import extract_frontmatter_dict
+
+    overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
+    if not overview_path.exists():
+        return None, [f"Narrative '{narrative_id}' not found"]
+
+    frontmatter_data = extract_frontmatter_dict(overview_path)
+    if frontmatter_data is None:
+        return None, [f"Could not parse frontmatter in {overview_path}"]
+
+    try:
+        # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
+        if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
+            frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
+        return NarrativeFrontmatter.model_validate(frontmatter_data), []
+    except ValidationError as e:
+        errors = []
+        for error in e.errors():
+            loc = ".".join(str(x) for x in error["loc"])
+            msg = error["msg"]
+            errors.append(f"{loc}: {msg}")
+        return None, errors
+```
+
+Location: `src/narratives.py`
+
+### Step 3: Add `parse_investigation_frontmatter_with_errors()` to Investigations
+
+Investigations doesn't have special legacy field handling, so it can simply delegate
+to the base class method:
+
+```python
+def parse_investigation_frontmatter_with_errors(
+    self, investigation_id: str
+) -> tuple[InvestigationFrontmatter | None, list[str]]:
+    """Parse OVERVIEW.md frontmatter with error details.
+
+    This is an alias for parse_frontmatter_with_errors() that maintains the
+    original method name for backward compatibility and consistency with
+    parse_investigation_frontmatter().
+
+    Args:
+        investigation_id: The investigation directory name.
+
+    Returns:
+        Tuple of (frontmatter, errors).
+    """
+    return self.parse_frontmatter_with_errors(investigation_id)
+```
+
+Location: `src/investigations.py`
+
+### Step 4: Add `parse_subsystem_frontmatter_with_errors()` to Subsystems
+
+Same pattern as investigations - delegate to base class:
+
+```python
+def parse_subsystem_frontmatter_with_errors(
+    self, subsystem_id: str
+) -> tuple[SubsystemFrontmatter | None, list[str]]:
+    """Parse OVERVIEW.md frontmatter with error details.
+
+    This is an alias for parse_frontmatter_with_errors() that maintains the
+    original method name for backward compatibility and consistency with
+    parse_subsystem_frontmatter().
+
+    Args:
+        subsystem_id: The subsystem directory name.
+
+    Returns:
+        Tuple of (frontmatter, errors).
+    """
+    return self.parse_frontmatter_with_errors(subsystem_id)
+```
+
+Location: `src/subsystems.py`
+
+### Step 5: Fix `plan_has_content()` exception handling
+
+Replace the bare `except Exception` with specific exception handling:
+
+```python
+def plan_has_content(plan_path: pathlib.Path) -> bool:
+    """Check if PLAN.md has actual content beyond the template.
+
+    Looks for content in the '## Approach' section that isn't just the
+    template's HTML comment block.
+
+    Args:
+        plan_path: Path to the PLAN.md file
+
+    Returns:
+        True if the plan has actual content, False if:
+        - File doesn't exist
+        - File cannot be read due to permissions
+        - File is just a template without content
+
+    Note:
+        Other exceptions (e.g., encoding errors) will propagate to the caller.
+    """
+    try:
+        content = plan_path.read_text()
+    except FileNotFoundError:
+        return False
+    except PermissionError:
+        return False
+
+    # ... rest of the function unchanged
+```
+
+Add backreference: `# Chunk: docs/chunks/validation_error_surface - Specific exception handling`
+
+Location: `src/chunks.py` around line 1472
+
+### Step 6: Add documentation comments
+
+Add a comment block near the imports or at the module level in `artifact_manager.py`
+explaining the error surfacing convention:
+
+```python
+# ERROR SURFACING CONVENTION:
+#
+# All artifact frontmatter parsers provide two variants:
+#
+# 1. parse_frontmatter(artifact_id) -> Frontmatter | None
+#    - Returns None on any failure (file not found, parse error, validation error)
+#    - Use when silent failure is acceptable (e.g., checking if artifact exists)
+#
+# 2. parse_frontmatter_with_errors(artifact_id) -> tuple[Frontmatter | None, list[str]]
+#    - Returns (None, errors) with descriptive messages on failure
+#    - Use when caller needs to report errors (validation commands, CLI feedback)
+#
+# Concrete managers provide aliases (parse_{type}_frontmatter_with_errors) for
+# consistency with the existing parse_{type}_frontmatter() naming pattern.
+```
+
+### Step 7: Write tests for error surfacing
+
+Add tests to verify the new `_with_errors` methods work correctly:
+
+**Test file**: `tests/test_artifact_manager_errors.py`
+
+Tests to write:
+1. `test_parse_frontmatter_with_errors_returns_errors_for_missing_artifact` - verify
+   error message mentions artifact name
+2. `test_parse_frontmatter_with_errors_returns_errors_for_invalid_yaml` - verify
+   YAML error is reported
+3. `test_parse_frontmatter_with_errors_returns_field_errors_for_validation_failure` -
+   verify Pydantic field errors are formatted with field names
+4. `test_parse_frontmatter_with_errors_returns_empty_errors_on_success` - verify
+   successful parse returns (model, [])
+
+For narrative-specific tests (legacy 'chunks' field handling):
+5. `test_narrative_with_errors_handles_legacy_chunks_field` - verify legacy field
+   still works with error surfacing
+
+For `plan_has_content`:
+6. `test_plan_has_content_returns_false_for_missing_file` - specific FileNotFoundError
+7. `test_plan_has_content_propagates_unexpected_errors` - verify non-handled errors
+   propagate (can test with a mock or by creating a broken symlink)
+
+### Step 8: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter to include the files being modified:
+
+```yaml
+code_paths:
+  - src/artifact_manager.py
+  - src/narratives.py
+  - src/investigations.py
+  - src/subsystems.py
+  - src/chunks.py
+  - tests/test_artifact_manager_errors.py
+```
+
+### Step 9: Run tests and verify
+
+Run the test suite to ensure:
+- New tests pass
+- Existing tests still pass (backward compatibility)
+- No regressions in artifact parsing
+
+```bash
+uv run pytest tests/test_artifact_manager_errors.py tests/test_frontmatter.py -v
+uv run pytest tests/ -v  # Full suite
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+This chunk depends on:
+- **frontmatter_io** - The shared frontmatter I/O utilities that provide
+  `parse_frontmatter_with_errors()` and `parse_frontmatter_from_content_with_errors()`
+- **artifact_manager_base** - The ArtifactManager base class that will be extended
+  with the new method
 
-If there are no dependencies, delete this section.
--->
+Both dependencies are already complete (referenced in chunk frontmatter `depends_on`).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Narrative legacy field handling** - The Narratives class has special handling for
+   mapping 'chunks' to 'proposed_chunks'. The `_with_errors` variant needs to replicate
+   this logic rather than delegating to the base class. This is handled in Step 2.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Exception handling in `plan_has_content`** - The current bare `except Exception`
+   may be intentionally catching something specific. Review the call sites to understand
+   the expected behavior. Call sites are `orchestrator/api.py` and `chunks.py` itself
+   for validation. Both expect a boolean return - they should handle missing files
+   gracefully but propagate other errors.
+
+3. **Import cycle risk** - Adding `ValidationError` import to narratives.py. This
+   should be fine as it's a Pydantic import, not a local module import.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

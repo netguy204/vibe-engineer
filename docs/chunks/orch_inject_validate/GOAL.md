@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/chunks.py
-- src/ve.py
+- src/cli/chunk.py
 - src/orchestrator/api.py
 - tests/test_orchestrator_api.py
 - tests/test_chunk_validate_inject.py
@@ -13,14 +13,12 @@ code_references:
     implements: "Core validation function checking status-content consistency"
   - ref: src/chunks.py#plan_has_content
     implements: "Helper function detecting populated vs template-only PLAN.md"
-  - ref: src/ve.py#validate
-    implements: "CLI command with --injectable flag for injection validation"
+  - ref: src/cli/chunk.py#validate
+    implements: "CLI chunk validate command with --injectable flag"
   - ref: tests/test_orchestrator_api.py#TestInjectEndpointValidation
     implements: "Comprehensive test coverage for inject endpoint validation"
   - ref: tests/test_chunk_validate_inject.py
     implements: "Additional injection-time validation tests"
-  - ref: src/cli/chunk.py#validate
-    implements: "CLI chunk validate command with --injectable flag after CLI modularization"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

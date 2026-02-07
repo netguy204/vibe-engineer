@@ -1457,6 +1457,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
 
 # Chunk: docs/chunks/orch_inject_validate - Detect populated vs template-only PLAN.md
+# Chunk: docs/chunks/validation_error_surface - Specific exception handling
 def plan_has_content(plan_path: pathlib.Path) -> bool:
     """Check if PLAN.md has actual content beyond the template.
 
@@ -1467,11 +1468,19 @@ def plan_has_content(plan_path: pathlib.Path) -> bool:
         plan_path: Path to the PLAN.md file
 
     Returns:
-        True if the plan has actual content, False if it's just a template
+        True if the plan has actual content, False if:
+        - File doesn't exist
+        - File cannot be read due to permissions
+        - File is just a template without content
+
+    Note:
+        Other exceptions (e.g., encoding errors) will propagate to the caller.
     """
     try:
         content = plan_path.read_text()
-    except Exception:
+    except FileNotFoundError:
+        return False
+    except PermissionError:
         return False
 
     # Look for the Approach section

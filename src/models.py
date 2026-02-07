@@ -30,6 +30,7 @@ class SubsystemStatus(StrEnum):
     DEPRECATED = "DEPRECATED"
 
 
+# Chunk: docs/chunks/investigation_commands - InvestigationStatus enum with lifecycle values
 class InvestigationStatus(StrEnum):
     """Status values for investigation lifecycle."""
 
@@ -518,6 +519,7 @@ class NarrativeFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo narratives
 
 
+# Chunk: docs/chunks/investigation_commands - InvestigationFrontmatter model for validation
 # Chunk: docs/chunks/task_aware_investigations - Investigation frontmatter with dependents field
 class InvestigationFrontmatter(BaseModel):
     """Frontmatter schema for investigation OVERVIEW.md files.

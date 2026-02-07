@@ -3,7 +3,8 @@
 Commands for managing narratives - multi-chunk initiatives.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
-# Chunk: docs/chunks/cli_modularize - Narrative CLI commands
+# Chunk: docs/chunks/narrative_cli_commands - Narrative CLI command group and create command
+# Chunk: docs/chunks/cli_modularize - Narrative CLI commands (moved from src/ve.py)
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
 import json

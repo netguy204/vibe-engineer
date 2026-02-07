@@ -189,6 +189,7 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/narrative_cli_commands - Creates docs/narratives/ during ve init
     def _init_narratives(self) -> InitResult:
         """Create docs/narratives/ directory for narrative documents."""
         result = InitResult()

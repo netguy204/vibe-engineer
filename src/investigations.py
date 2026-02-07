@@ -2,6 +2,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 # Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
+# Chunk: docs/chunks/investigation_commands - Investigation management business logic
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on investigation creation
 
 import pathlib
@@ -83,6 +84,30 @@ class Investigations(ArtifactManager[InvestigationFrontmatter, InvestigationStat
             - Frontmatter is malformed or fails validation
         """
         return self.parse_frontmatter(investigation_id)
+
+    # Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing
+    def parse_investigation_frontmatter_with_errors(
+        self, investigation_id: str
+    ) -> tuple[InvestigationFrontmatter | None, list[str]]:
+        """Parse OVERVIEW.md frontmatter with error details.
+
+        This is an alias for parse_frontmatter_with_errors() that maintains the
+        original method name for backward compatibility and consistency with
+        parse_investigation_frontmatter().
+
+        Use this method when callers need to report errors to users (e.g., validation
+        commands, CLI feedback). For silent failure scenarios where None is acceptable,
+        use parse_investigation_frontmatter() instead.
+
+        Args:
+            investigation_id: The investigation directory name.
+
+        Returns:
+            Tuple of (frontmatter, errors) where:
+            - frontmatter is the validated model if successful, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
+        return self.parse_frontmatter_with_errors(investigation_id)
 
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:

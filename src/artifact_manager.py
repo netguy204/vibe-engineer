@@ -1,6 +1,7 @@
 """ArtifactManager abstract base class for workflow artifacts.
 
 # Chunk: docs/chunks/artifact_manager_base - Base class for artifact lifecycle management
+# Chunk: docs/chunks/validation_error_surface - Error surfacing convention
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 This module provides a generic base class that captures the shared pattern across
@@ -13,6 +14,21 @@ It eliminates duplicated code for:
 
 Each concrete manager (Chunks, Narratives, Investigations, Subsystems) subclasses
 this base and specifies only artifact-specific configuration.
+
+ERROR SURFACING CONVENTION:
+
+All artifact frontmatter parsers provide two variants:
+
+1. parse_frontmatter(artifact_id) -> Frontmatter | None
+   - Returns None on any failure (file not found, parse error, validation error)
+   - Use when silent failure is acceptable (e.g., checking if artifact exists)
+
+2. parse_frontmatter_with_errors(artifact_id) -> tuple[Frontmatter | None, list[str]]
+   - Returns (None, errors) with descriptive messages on failure
+   - Use when caller needs to report errors (validation commands, CLI feedback)
+
+Concrete managers provide aliases (parse_{type}_frontmatter_with_errors) for
+consistency with the existing parse_{type}_frontmatter() naming pattern.
 """
 
 from __future__ import annotations
@@ -165,6 +181,32 @@ class ArtifactManager(ABC, Generic[FrontmatterT, StatusT]):
             return None
 
         return parse_frontmatter(main_path, self.frontmatter_model_class)
+
+    # Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing
+    def parse_frontmatter_with_errors(
+        self, artifact_id: str
+    ) -> tuple[FrontmatterT | None, list[str]]:
+        """Parse and validate frontmatter with detailed error messages.
+
+        Use this method when callers need to report errors to users (e.g., validation
+        commands, CLI feedback). For silent failure scenarios where None is acceptable,
+        use parse_frontmatter() instead.
+
+        Args:
+            artifact_id: The artifact directory name.
+
+        Returns:
+            Tuple of (frontmatter, errors) where:
+            - frontmatter is the validated model if successful, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
+        from frontmatter import parse_frontmatter_with_errors
+
+        main_path = self.get_main_file_path(artifact_id)
+        if not main_path.exists():
+            return None, [f"{self.artifact_type_name} '{artifact_id}' not found"]
+
+        return parse_frontmatter_with_errors(main_path, self.frontmatter_model_class)
 
     def get_status(self, artifact_id: str) -> StatusT:
         """Get the current status of an artifact.
