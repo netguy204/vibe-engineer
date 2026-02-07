@@ -571,6 +571,7 @@ class AgentRunner:
             max_turns=100,  # Reasonable limit per phase
             setting_sources=["project"],  # Enable project-level skills/commands
             env=env,  # Restrict git operations to worktree
+            max_buffer_size=10 * 1024 * 1024,  # 10MB - default 1MB too small for COMPLETE phase
         )
 
         # Always add sandbox hook to prevent agents from escaping worktree
