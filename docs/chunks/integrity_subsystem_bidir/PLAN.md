@@ -8,170 +8,148 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Follow the existing bidirectional validation pattern in `src/integrity.py` (lines 308-342) that validates chunk↔narrative and chunk↔investigation relationships. The pattern has three key components:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Build a reverse index** in `_build_parent_chunk_index()` that maps parent artifact → set of chunk_ids it references
+2. **Check bidirectionality in `_validate_chunk_outbound()`** when validating chunk's outbound references - if chunk references an artifact but that artifact's reverse index doesn't include the chunk, emit an `IntegrityWarning`
+3. **Check the inverse direction** when validating subsystem→chunk references - if subsystem lists a chunk but that chunk's subsystems field doesn't reference the subsystem back, emit a warning
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/integrity_subsystem_bidir/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per TESTING_PHILOSOPHY.md, tests will be written first following TDD. The tests will follow the existing test structure in `tests/test_integrity.py`, specifically the `TestIntegrityValidatorBidirectional` class which tests chunk↔narrative and chunk↔investigation bidirectional warnings.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are directly relevant to this chunk. This work extends the integrity validation module which is a standalone module.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for chunk↔subsystem bidirectional warnings
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add test cases to `tests/test_integrity.py` in the `TestIntegrityValidatorBidirectional` class:
 
-Example:
+1. `test_chunk_subsystem_bidirectional_warning` - Chunk references subsystem but subsystem's `chunks` field doesn't list the chunk → expect `IntegrityWarning` with link_type `chunk↔subsystem`
+2. `test_chunk_subsystem_bidirectional_valid` - Both directions exist → no warning
+3. `test_subsystem_chunk_bidirectional_warning` - Subsystem lists chunk in its `chunks` field but chunk's `subsystems` field doesn't reference the subsystem → expect `IntegrityWarning` with link_type `subsystem↔chunk`
+4. `test_subsystem_chunk_bidirectional_valid` - Both directions exist → no warning
 
-### Step 1: Define the SegmentHeader struct
+Use the existing `write_chunk_goal()` and `write_subsystem_overview()` helper functions to create test fixtures.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_integrity.py`
 
-Location: src/segment/format.rs
+### Step 2: Add `_subsystem_chunks` index to `IntegrityValidator.__init__`
 
-### Step 2: Implement header serialization
+Add a new dictionary to the `__init__` method:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Maps subsystem_name -> set of chunk_ids listed in its `chunks` frontmatter field
+self._subsystem_chunks: dict[str, set[str]] = {}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This follows the existing pattern of `_narrative_chunks` and `_investigation_chunks`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/integrity.py`, around line 99
+
+### Step 3: Populate `_subsystem_chunks` in `_build_parent_chunk_index()`
+
+Extend `_build_parent_chunk_index()` to iterate over subsystems and build the reverse index:
+
+```python
+# Index subsystem → chunks
+for subsystem_name in self._subsystem_names:
+    frontmatter = self.subsystems.parse_subsystem_frontmatter(subsystem_name)
+    if frontmatter and frontmatter.chunks:
+        chunk_ids: set[str] = set()
+        for chunk_rel in frontmatter.chunks:
+            chunk_ids.add(chunk_rel.chunk_id)
+        self._subsystem_chunks[subsystem_name] = chunk_ids
+    else:
+        self._subsystem_chunks[subsystem_name] = set()
+```
+
+This follows the existing pattern for narratives and investigations (lines 143-172).
+
+Location: `src/integrity.py`, in `_build_parent_chunk_index()` after the investigation indexing block
+
+### Step 4: Add chunk→subsystem bidirectional check in `_validate_chunk_outbound()`
+
+Within the subsystem validation block (lines 344-355), after validating that the subsystem exists, add a bidirectional check:
+
+```python
+else:
+    # Bidirectional check: does subsystem's chunks include this chunk?
+    subsystem_chunks = self._subsystem_chunks.get(subsystem_rel.subsystem_id, set())
+    if chunk_name not in subsystem_chunks:
+        warnings.append(
+            IntegrityWarning(
+                source=f"docs/chunks/{chunk_name}/GOAL.md",
+                target=f"docs/subsystems/{subsystem_rel.subsystem_id}/OVERVIEW.md",
+                link_type="chunk↔subsystem",
+                message=f"Chunk references subsystem '{subsystem_rel.subsystem_id}' but subsystem's chunks does not list this chunk",
+            )
+        )
+```
+
+This follows the existing pattern for narrative and investigation bidirectional checks.
+
+Location: `src/integrity.py`, in `_validate_chunk_outbound()` after the subsystem existence check
+
+### Step 5: Add subsystem→chunk bidirectional check in `_validate_subsystem_chunk_refs()`
+
+Extend `_validate_subsystem_chunk_refs()` to return warnings (not just errors), and add a bidirectional check:
+
+1. Change return type to `tuple[list[IntegrityError], list[IntegrityWarning]]`
+2. After validating the chunk exists, check if the chunk references the subsystem back:
+
+```python
+else:
+    # Bidirectional check: does chunk's subsystems include this subsystem?
+    chunk_frontmatter = self.chunks.parse_chunk_frontmatter(chunk_rel.chunk_id)
+    if chunk_frontmatter and chunk_frontmatter.subsystems:
+        subsystem_ids = {s.subsystem_id for s in chunk_frontmatter.subsystems}
+        if subsystem_name not in subsystem_ids:
+            warnings.append(
+                IntegrityWarning(
+                    source=f"docs/subsystems/{subsystem_name}/OVERVIEW.md",
+                    target=f"docs/chunks/{chunk_rel.chunk_id}/GOAL.md",
+                    link_type="subsystem↔chunk",
+                    message=f"Subsystem lists chunk '{chunk_rel.chunk_id}' but chunk's subsystems does not reference this subsystem",
+                )
+            )
+    elif chunk_frontmatter:
+        # Chunk has no subsystems field or it's empty
+        warnings.append(
+            IntegrityWarning(
+                source=f"docs/subsystems/{subsystem_name}/OVERVIEW.md",
+                target=f"docs/chunks/{chunk_rel.chunk_id}/GOAL.md",
+                link_type="subsystem↔chunk",
+                message=f"Subsystem lists chunk '{chunk_rel.chunk_id}' but chunk's subsystems does not reference this subsystem",
+            )
+        )
+```
+
+3. Update the call site in `validate()` to collect warnings from this method
+
+Location: `src/integrity.py`, `_validate_subsystem_chunk_refs()` and `validate()`
+
+### Step 6: Run tests and verify all pass
+
+Run `uv run pytest tests/test_integrity.py -v` to verify all new and existing tests pass.
+
+### Step 7: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter `code_paths` field with the files modified:
+- `src/integrity.py`
+- `tests/test_integrity.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No dependencies on other chunks. The integrity validation infrastructure already exists and this is a purely additive change to the existing validation logic.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Performance consideration**: The subsystem→chunk bidirectional check requires parsing each chunk's frontmatter when validating subsystem→chunk references. This adds O(subsystems × chunks_per_subsystem) frontmatter parses. However, given the typical scale (dozens of subsystems, few chunks per subsystem), this is negligible. If performance becomes an issue, we could pre-build a chunk→subsystem_ids index similar to how we build _chunk_code_files.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **External chunks**: The existing code correctly skips bidirectional validation for external chunks (they don't have GOAL.md with subsystems field). The subsystem→chunk check should also skip external chunks to avoid false positives.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

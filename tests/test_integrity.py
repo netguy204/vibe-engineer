@@ -1172,3 +1172,163 @@ class TestIntegrityValidatorExternalChunks:
         assert result.success
         assert len(result.errors) == 0
         assert result.chunk_backrefs_found == 1
+
+
+# Chunk: docs/chunks/integrity_subsystem_bidir - Tests for chunk↔subsystem bidirectional warnings
+class TestIntegrityValidatorChunkSubsystemBidirectional:
+    """Tests for chunk↔subsystem bidirectional consistency warnings."""
+
+    def test_chunk_subsystem_bidirectional_warning(self, temp_project):
+        """Chunk references subsystem but subsystem's chunks doesn't list the chunk → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem WITHOUT this chunk in its chunks field
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(subsystem_path, chunks=[])  # Empty - chunk not listed
+
+        # Create chunk referencing the subsystem
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass (no errors) but have warnings
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔subsystem"
+        assert "test_subsystem" in result.warnings[0].message
+        assert "chunks" in result.warnings[0].message
+
+    def test_chunk_subsystem_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem WITH this chunk in its chunks field
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        # Create chunk referencing the subsystem
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_subsystem_chunk_bidirectional_warning(self, temp_project):
+        """Subsystem lists chunk in its chunks field but chunk's subsystems doesn't reference subsystem → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITHOUT subsystem reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, subsystems=[])  # Empty - no subsystem reference
+
+        # Create subsystem listing the chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass (no errors) but have warnings
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "subsystem↔chunk"
+        assert "test_chunk" in result.warnings[0].message
+        assert "subsystems" in result.warnings[0].message
+
+    def test_subsystem_chunk_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITH subsystem reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        # Create subsystem listing the chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_subsystem_chunk_bidirectional_warning_external_chunk_skipped(self, temp_project):
+        """Subsystem lists external chunk → no bidirectional warning (external chunks don't have GOAL.md)."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create external chunk (no GOAL.md, just external.yaml)
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external"
+        write_external_chunk(external_chunk_path)
+
+        # Create subsystem listing the external chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "xr_external", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass with no warnings - external chunks don't have subsystems field
+        assert result.success
+        assert len(result.warnings) == 0
+        assert len(result.errors) == 0
+
+    def test_multiple_subsystems_each_checked(self, temp_project):
+        """Chunk referencing multiple subsystems: each is checked for bidirectionality."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem A WITH this chunk in its chunks field
+        subsystem_a_path = temp_project / "docs" / "subsystems" / "subsystem_a"
+        subsystem_a_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_a_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        # Create subsystem B WITHOUT this chunk in its chunks field
+        subsystem_b_path = temp_project / "docs" / "subsystems" / "subsystem_b"
+        subsystem_b_path.mkdir(parents=True)
+        write_subsystem_overview(subsystem_b_path, chunks=[])  # Missing chunk
+
+        # Create chunk referencing both subsystems
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[
+                {"subsystem_id": "subsystem_a", "relationship": "implements"},
+                {"subsystem_id": "subsystem_b", "relationship": "uses"},
+            ],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success  # Bidirectional issues are warnings, not errors
+        # Should have one warning for subsystem_b
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔subsystem"
+        assert "subsystem_b" in result.warnings[0].message
