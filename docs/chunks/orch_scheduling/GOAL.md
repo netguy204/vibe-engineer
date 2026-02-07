@@ -49,7 +49,7 @@ code_references:
   - ref: src/orchestrator/state.py#StateStore::_migrate_v2
     implements: "Schema migration adding priority, session_id, and config table"
   - ref: src/orchestrator/state.py#StateStore::get_ready_queue
-    implements: "Ready queue ordered by priority DESC, created_at ASC"
+    implements: "Ready queue ordered by blocks_count DESC, priority DESC, created_at ASC"
   - ref: src/orchestrator/state.py#StateStore::get_config
     implements: "Config key-value retrieval"
   - ref: src/orchestrator/state.py#StateStore::set_config

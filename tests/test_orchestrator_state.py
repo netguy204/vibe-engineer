@@ -878,3 +878,278 @@ class TestUpdateWorkUnitAtomicity:
 
         history_final = store.get_status_history(sample_work_unit.chunk)
         assert len(history_final) == 2
+
+
+# Chunk: docs/chunks/orch_ready_critical_path - Critical-path scheduling for ready queue
+class TestReadyQueueCriticalPath:
+    """Tests for critical-path ordering in get_ready_queue.
+
+    The ready queue should prioritize chunks that block more other work,
+    enabling better throughput by unblocking dependency chains first.
+    """
+
+    def test_chunks_blocking_more_dispatched_first(self, store):
+        """A chunk blocking 2 others is returned before a chunk blocking 0."""
+        now = datetime.now(timezone.utc)
+
+        # chunk_a blocks 2 others
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(chunk_a)
+
+        # chunk_b blocks 0 others
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(chunk_b)
+
+        # chunk_c blocks 1 other
+        chunk_c = WorkUnit(
+            chunk="chunk_c",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(chunk_c)
+
+        # Create BLOCKED/READY chunks that depend on these READY chunks
+        # Two chunks blocked by chunk_a
+        blocked_by_a_1 = WorkUnit(
+            chunk="blocked_by_a_1",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a"],
+            created_at=now + timedelta(seconds=3),
+            updated_at=now + timedelta(seconds=3),
+        )
+        store.create_work_unit(blocked_by_a_1)
+
+        blocked_by_a_2 = WorkUnit(
+            chunk="blocked_by_a_2",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,  # READY status, also counts
+            blocked_by=["chunk_a"],
+            created_at=now + timedelta(seconds=4),
+            updated_at=now + timedelta(seconds=4),
+        )
+        store.create_work_unit(blocked_by_a_2)
+
+        # One chunk blocked by chunk_c
+        blocked_by_c = WorkUnit(
+            chunk="blocked_by_c",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_c"],
+            created_at=now + timedelta(seconds=5),
+            updated_at=now + timedelta(seconds=5),
+        )
+        store.create_work_unit(blocked_by_c)
+
+        # Get ready queue
+        ready_queue = store.get_ready_queue()
+
+        # Filter to only the original READY chunks (not the blocked_by_a_2 which is also READY)
+        ready_chunks = [u.chunk for u in ready_queue if u.chunk in ["chunk_a", "chunk_b", "chunk_c"]]
+
+        # Expected order: chunk_a (blocks 2), chunk_c (blocks 1), chunk_b (blocks 0)
+        assert ready_chunks[0] == "chunk_a", f"Expected chunk_a first, got {ready_chunks}"
+        assert ready_chunks[1] == "chunk_c", f"Expected chunk_c second, got {ready_chunks}"
+        assert ready_chunks[2] == "chunk_b", f"Expected chunk_b third, got {ready_chunks}"
+
+    def test_priority_tiebreaker_when_blocks_count_equal(self, store):
+        """Higher priority wins when blocks_count is equal."""
+        now = datetime.now(timezone.utc)
+
+        # Two READY chunks with same blocks_count (0) but different priority
+        low_priority = WorkUnit(
+            chunk="low_priority",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=1,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(low_priority)
+
+        high_priority = WorkUnit(
+            chunk="high_priority",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=10,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(high_priority)
+
+        ready_queue = store.get_ready_queue()
+
+        # Higher priority should come first when blocks_count is equal
+        assert ready_queue[0].chunk == "high_priority"
+        assert ready_queue[1].chunk == "low_priority"
+
+    def test_created_at_tiebreaker_when_blocks_count_and_priority_equal(self, store):
+        """Earlier created_at wins when both blocks_count and priority are equal."""
+        now = datetime.now(timezone.utc)
+
+        # Two READY chunks with same blocks_count (0) and same priority
+        older = WorkUnit(
+            chunk="older",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=5,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(older)
+
+        newer = WorkUnit(
+            chunk="newer",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=5,
+            created_at=now + timedelta(seconds=10),
+            updated_at=now + timedelta(seconds=10),
+        )
+        store.create_work_unit(newer)
+
+        ready_queue = store.get_ready_queue()
+
+        # Earlier created_at should come first
+        assert ready_queue[0].chunk == "older"
+        assert ready_queue[1].chunk == "newer"
+
+    def test_only_counts_blocked_and_ready_status(self, store):
+        """blocks_count only counts work units with BLOCKED or READY status."""
+        now = datetime.now(timezone.utc)
+
+        # blocker_a is READY
+        blocker_a = WorkUnit(
+            chunk="blocker_a",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(blocker_a)
+
+        # blocker_b is also READY
+        blocker_b = WorkUnit(
+            chunk="blocker_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(blocker_b)
+
+        # Create a DONE chunk that references blocker_a - should NOT count
+        done_unit = WorkUnit(
+            chunk="done_unit",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.DONE,
+            blocked_by=["blocker_a"],
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(done_unit)
+
+        # Create a BLOCKED chunk that references blocker_b - should count
+        blocked_unit = WorkUnit(
+            chunk="blocked_unit",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_b"],
+            created_at=now + timedelta(seconds=3),
+            updated_at=now + timedelta(seconds=3),
+        )
+        store.create_work_unit(blocked_unit)
+
+        ready_queue = store.get_ready_queue()
+        ready_chunks = [u.chunk for u in ready_queue]
+
+        # blocker_b should come first (blocks 1 BLOCKED unit)
+        # blocker_a should come second (only blocks a DONE unit, which doesn't count)
+        assert ready_chunks[0] == "blocker_b", f"Expected blocker_b first, got {ready_chunks}"
+        assert ready_chunks[1] == "blocker_a", f"Expected blocker_a second, got {ready_chunks}"
+
+    def test_limit_applied_after_sorting(self, store):
+        """Limit is applied after sorting, ensuring critical-path chunks are included."""
+        now = datetime.now(timezone.utc)
+
+        # Create 3 READY chunks with different blocks_count
+        # Create them in reverse order of criticality to ensure sorting works
+        chunk_low = WorkUnit(
+            chunk="chunk_low",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(chunk_low)
+
+        chunk_med = WorkUnit(
+            chunk="chunk_med",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(chunk_med)
+
+        chunk_high = WorkUnit(
+            chunk="chunk_high",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(chunk_high)
+
+        # chunk_high blocks 2, chunk_med blocks 1, chunk_low blocks 0
+        for i in range(2):
+            blocked = WorkUnit(
+                chunk=f"blocked_by_high_{i}",
+                phase=WorkUnitPhase.IMPLEMENT,
+                status=WorkUnitStatus.BLOCKED,
+                blocked_by=["chunk_high"],
+                created_at=now + timedelta(seconds=3 + i),
+                updated_at=now + timedelta(seconds=3 + i),
+            )
+            store.create_work_unit(blocked)
+
+        blocked_by_med = WorkUnit(
+            chunk="blocked_by_med",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_med"],
+            created_at=now + timedelta(seconds=5),
+            updated_at=now + timedelta(seconds=5),
+        )
+        store.create_work_unit(blocked_by_med)
+
+        # Get ready queue with limit=2
+        ready_queue = store.get_ready_queue(limit=2)
+
+        # Should return the 2 most critical chunks
+        ready_chunks = [u.chunk for u in ready_queue]
+        assert len(ready_chunks) == 2
+        assert ready_chunks[0] == "chunk_high", f"Expected chunk_high first, got {ready_chunks}"
+        assert ready_chunks[1] == "chunk_med", f"Expected chunk_med second, got {ready_chunks}"
