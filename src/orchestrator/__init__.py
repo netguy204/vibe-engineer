@@ -43,6 +43,12 @@ from orchestrator.scheduler import (
     SchedulerError,
     create_scheduler,
 )
+# Chunk: docs/chunks/orch_cli_extract - Dependency resolution functions extracted from CLI layer
+from orchestrator.dependencies import (
+    topological_sort_chunks,
+    read_chunk_dependencies,
+    validate_external_dependencies,
+)
 
 __all__ = [
     # Models
@@ -82,4 +88,8 @@ __all__ = [
     "Scheduler",
     "SchedulerError",
     "create_scheduler",
+    # Dependencies
+    "topological_sort_chunks",
+    "read_chunk_dependencies",
+    "validate_external_dependencies",
 ]

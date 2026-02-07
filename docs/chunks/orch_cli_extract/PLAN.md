@@ -1,177 +1,117 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a pure refactoring task: extract three functions from `src/cli/orch.py` (the CLI layer) into a new module in `src/orchestrator/` (the domain layer). The functions are:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`topological_sort_chunks`** (lines 344-412): Kahn's algorithm for topological sorting
+2. **`read_chunk_dependencies`** (lines 416-445): Reads `depends_on` from chunk frontmatter
+3. **`validate_external_dependencies`** (lines 449-494): Validates external dependencies exist
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Strategy:**
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_cli_extract/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. Create a new module `src/orchestrator/dependencies.py` that contains the extracted functions
+2. Update `src/cli/orch.py` to import and call these functions from their new location
+3. Add unit tests for the extracted functions in `tests/test_orchestrator_dependencies.py`
+4. Verify all existing CLI tests continue to pass unchanged
+
+The extraction is purely mechanical — function signatures, return types, and docstrings remain identical. The only change is the module location.
+
+**Pattern alignment:**
+
+This follows the orchestrator subsystem's soft convention (docs/subsystems/orchestrator): "CLI commands are thin wrappers around HTTP calls — business logic lives in daemon, CLI just formats output." These dependency resolution functions are domain logic that should live in the orchestrator package, not CLI presentation logic.
+
+**Testing approach (per TESTING_PHILOSOPHY.md):**
+
+- Add focused unit tests for the extracted functions in `tests/test_orchestrator_dependencies.py`
+- Test behavior at boundaries: empty lists, cycles, missing dependencies, None vs []
+- Verify existing CLI tests in `tests/test_orchestrator_cli.py` pass unchanged (they test the integrated behavior)
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of the orchestrator subsystem by moving domain logic to its canonical location (`src/orchestrator/`). The subsystem's Implementation Locations section lists `src/orchestrator/` as the canonical location for orchestrator logic.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+This extraction aligns with the subsystem's intent: "CLI commands are thin wrappers around HTTP calls — business logic lives in daemon." While these functions don't go through the daemon, they are pure domain computation that belongs in the orchestrator package, not the CLI layer.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the new dependencies module
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/orchestrator/dependencies.py` with:
+- Module-level docstring explaining its purpose
+- Subsystem and chunk backreference comments
+- The three extracted functions with identical signatures and docstrings
 
-Example:
+The functions have minimal imports:
+- `topological_sort_chunks`: No external dependencies (pure algorithm)
+- `read_chunk_dependencies`: Imports `pathlib.Path` and `chunks.Chunks`
+- `validate_external_dependencies`: Uses orchestrator client (passed as parameter)
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/orchestrator/dependencies.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Export the functions from orchestrator package
 
-Location: src/segment/format.rs
+Update `src/orchestrator/__init__.py` to export the three new functions:
+- `topological_sort_chunks`
+- `read_chunk_dependencies`
+- `validate_external_dependencies`
 
-### Step 2: Implement header serialization
+This makes them available for import from `orchestrator` directly.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/orchestrator/__init__.py`
 
-### Step 3: ...
+### Step 3: Update CLI to import from new location
 
----
+Modify `src/cli/orch.py`:
+1. Add import statement for the three functions from `orchestrator.dependencies`
+2. Remove the function definitions (approximately lines 344-494)
+3. Preserve the backreference comment for `explicit_deps_batch_inject` chunk at the import site
 
-**BACKREFERENCE COMMENTS**
+Location: `src/cli/orch.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: Add unit tests for the extracted functions
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Create `tests/test_orchestrator_dependencies.py` with tests for:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**topological_sort_chunks:**
+- Empty list returns empty list
+- Single chunk with no deps returns that chunk
+- Linear chain A→B→C returns [A, B, C]
+- Diamond shape handles correctly
+- Detects cycles with informative error message
+- Handles None dependencies (treats as empty)
+- Deterministic ordering (alphabetical for equal in-degree)
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+**read_chunk_dependencies:**
+- Returns dict mapping chunk names to dependency lists
+- Distinguishes None (unknown) from [] (explicit empty)
+- Handles missing chunks gracefully (returns None)
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**validate_external_dependencies:**
+- Returns empty list when all deps are in batch
+- Returns empty list when external deps exist as work units
+- Returns error messages for missing external deps
+- Handles None deps (skips validation)
+- Multiple chunks depending on same missing dep — one error per chunk
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `tests/test_orchestrator_dependencies.py`
 
-## Dependencies
+### Step 5: Run existing CLI tests to verify no regression
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Run `uv run pytest tests/test_orchestrator_cli.py` to verify:
+- All existing `TestOrchInjectBatch` tests pass
+- No import errors or behavioral changes
 
-If there are no dependencies, delete this section.
--->
+### Step 6: Verify line count reduction
+
+Check that `src/cli/orch.py` is approximately 150 lines shorter after the extraction.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Import cycle risk**: `read_chunk_dependencies` imports `chunks.Chunks`. If anything in the orchestrator package imports from chunks in a way that creates a cycle, this could break. Mitigation: The import is inside the function body in the original code; we can preserve this pattern or use a local import.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Function purity verification**: The functions should have no side effects and no CLI dependencies. Need to verify `validate_external_dependencies` only uses the client for read operations (it does — it calls `_request("GET", "/work-units")`).
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be filled during implementation.*
