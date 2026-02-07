@@ -538,6 +538,7 @@ class InvestigationFrontmatter(BaseModel):
 # Chunk: docs/chunks/chunk_frontmatter_model - Pydantic model for chunk GOAL.md frontmatter validation
 # Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
 # Chunk: docs/chunks/investigation_chunk_refs - Optional investigation field in chunk frontmatter schema
+# Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field to chunk frontmatter schema
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 
@@ -607,6 +608,7 @@ class FrictionProposedChunk(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/friction_chunk_linking - Regex pattern for validating friction entry ID format
 # Regex for validating friction entry ID format: F followed by digits
 FRICTION_ENTRY_ID_PATTERN = re.compile(r"^F\d+$")
 
@@ -662,6 +664,7 @@ class FrictionFrontmatter(BaseModel):
     external_friction_sources: list[ExternalFrictionSource] = []
 
 
+# Chunk: docs/chunks/friction_chunk_linking - Pydantic model for friction entry reference with entry_id and scope fields
 class FrictionEntryReference(BaseModel):
     """Reference to a friction entry that a chunk addresses.
 

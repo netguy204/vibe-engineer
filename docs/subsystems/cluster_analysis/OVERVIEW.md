@@ -3,6 +3,8 @@ status: DOCUMENTED
 chunks:
   - chunk_id: chunknaming_drop_ticket
     relationship: uses
+  - chunk_id: chunks_decompose
+    relationship: implements
 code_references:
 - ref: src/cluster_analysis.py#ClusterInfo
   implements: Cluster data model with prefix, chunks, and characteristics
@@ -22,17 +24,23 @@ code_references:
 - ref: src/cluster_rename.py#update_backrefs
   implements: Update chunk backreferences in source files
   compliance: COMPLIANT
-- ref: src/chunks.py#SuggestPrefixResult
+- ref: src/cluster_analysis.py#SuggestPrefixResult
   implements: Result dataclass for prefix suggestion analysis
+  compliance: COMPLIANT
+- ref: src/cluster_analysis.py#ClusterResult
+  implements: Result dataclass for chunk clustering analysis
+  compliance: COMPLIANT
+- ref: src/cluster_analysis.py#cluster_chunks
+  implements: Cluster chunks by content similarity using TF-IDF
+  compliance: COMPLIANT
+- ref: src/cluster_analysis.py#suggest_prefix
+  implements: TF-IDF similarity-based prefix suggestion
   compliance: COMPLIANT
 - ref: src/chunks.py#extract_goal_text
   implements: Extract text content from GOAL.md for TF-IDF
   compliance: COMPLIANT
 - ref: src/chunks.py#get_chunk_prefix
   implements: Get alphabetical prefix from chunk name
-  compliance: COMPLIANT
-- ref: src/chunks.py#suggest_prefix
-  implements: TF-IDF similarity-based prefix suggestion
   compliance: COMPLIANT
 - ref: src/ve.py#cluster
   implements: CLI command group for cluster operations
@@ -99,9 +107,9 @@ that aid filesystem navigation.
 ## Implementation Locations
 
 **Primary files**:
-- `src/cluster_analysis.py` - Cluster grouping and analysis
+- `src/cluster_analysis.py` - Cluster grouping, TF-IDF similarity, and prefix suggestion
 - `src/cluster_rename.py` - Batch rename operations
-- `src/chunks.py#suggest_prefix` - TF-IDF similarity computation
+- `src/chunks.py` - Helper functions (extract_goal_text, get_chunk_prefix)
 
 **Dependencies**: sklearn for TF-IDF vectorization (added to pyproject.toml)
 

@@ -1198,7 +1198,7 @@ def backrefs(project_dir, threshold, pattern):
     This helps identify code areas with excessive chunk backreferences
     that may benefit from consolidation into a narrative.
     """
-    from chunks import count_backreferences
+    from backreferences import count_backreferences
 
     # Use default patterns if none provided
     patterns = list(pattern) if pattern else None
@@ -1288,6 +1288,7 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/chunk_validate - CLI command for chunk validation
+# Chunk: docs/chunks/bidirectional_refs - Renamed from 'complete' to 'validate', includes subsystem ref validation
 # Chunk: docs/chunks/orch_inject_validate - --injectable flag for injection validation
 # Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk validate command using strip_artifact_path_prefix
 # Chunk: docs/chunks/task_chunk_validation - CLI command with task context detection

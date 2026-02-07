@@ -2,6 +2,7 @@
 
 # Chunk: docs/chunks/integrity_validate - Core referential integrity validation module
 # Chunk: docs/chunks/validate_external_chunks - External chunk detection and skipping
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions moved from Chunks class
 
 This module provides project-wide validation of artifact references:
 - Chunk outbound references (to narratives, investigations, subsystems, friction entries)
@@ -18,7 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
-from chunks import Chunks, CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
+from backreferences import CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
+from chunks import Chunks
 from external_refs import is_external_artifact
 from friction import Friction
 from investigations import Investigations
@@ -662,6 +664,191 @@ class IntegrityValidator:
                         )
 
         return errors, warnings, files_scanned, chunk_refs_found, subsystem_refs_found
+
+
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
+# Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
+# Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.subsystems access
+def validate_chunk_subsystem_refs(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+    """Validate subsystem references in a chunk's frontmatter.
+
+    Checks:
+    1. Each subsystem_id matches the {NNNN}-{short_name} pattern
+    2. Each referenced subsystem directory exists in docs/subsystems/
+
+    Args:
+        project_dir: Path to the project directory.
+        chunk_id: The chunk ID to validate.
+
+    Returns:
+        List of error messages (empty if all refs valid or no refs).
+    """
+    errors: list[str] = []
+
+    # Use late import to avoid circular dependency
+    chunks = Chunks(project_dir)
+
+    # Get chunk frontmatter
+    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
+    if frontmatter is None:
+        return []  # Chunk doesn't exist, nothing to validate
+
+    # Get subsystems field (already validated by ChunkFrontmatter model)
+    if not frontmatter.subsystems:
+        return []
+
+    # Subsystems directory path
+    subsystems_dir = project_dir / "docs" / "subsystems"
+
+    for entry in frontmatter.subsystems:
+        # Check if subsystem directory exists
+        subsystem_path = subsystems_dir / entry.subsystem_id
+        if not subsystem_path.exists():
+            errors.append(
+                f"Subsystem '{entry.subsystem_id}' does not exist in docs/subsystems/"
+            )
+
+    return errors
+
+
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
+# Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
+# Chunk: docs/chunks/investigation_chunk_refs - Validation that referenced investigations exist
+def validate_chunk_investigation_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+    """Validate investigation reference in a chunk's frontmatter.
+
+    Checks:
+    1. If investigation field is populated, the referenced investigation
+       directory exists in docs/investigations/
+
+    Args:
+        project_dir: Path to the project directory.
+        chunk_id: The chunk ID to validate.
+
+    Returns:
+        List of error messages (empty if valid or no reference).
+    """
+    errors: list[str] = []
+
+    # Use late import to avoid circular dependency
+    chunks = Chunks(project_dir)
+
+    # Get chunk frontmatter
+    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
+    if frontmatter is None:
+        return []  # Chunk doesn't exist, nothing to validate
+
+    # Get investigation field (already validated by ChunkFrontmatter model)
+    if not frontmatter.investigation:
+        return []
+
+    # Investigations directory path
+    investigations_dir = project_dir / "docs" / "investigations"
+
+    # Check if investigation directory exists
+    investigation_path = investigations_dir / frontmatter.investigation
+    if not investigation_path.exists():
+        errors.append(
+            f"Investigation '{frontmatter.investigation}' does not exist in docs/investigations/"
+        )
+
+    return errors
+
+
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
+# Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
+def validate_chunk_narrative_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+    """Validate narrative reference in a chunk's frontmatter.
+
+    Checks:
+    1. If narrative field is populated, the referenced narrative
+       directory exists in docs/narratives/
+
+    Args:
+        project_dir: Path to the project directory.
+        chunk_id: The chunk ID to validate.
+
+    Returns:
+        List of error messages (empty if valid or no reference).
+    """
+    errors: list[str] = []
+
+    # Use late import to avoid circular dependency
+    chunks = Chunks(project_dir)
+
+    # Get chunk frontmatter
+    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
+    if frontmatter is None:
+        return []  # Chunk doesn't exist, nothing to validate
+
+    # Get narrative field (already validated by ChunkFrontmatter model)
+    if not frontmatter.narrative:
+        return []
+
+    # Narratives directory path
+    narratives_dir = project_dir / "docs" / "narratives"
+
+    # Check if narrative directory exists
+    narrative_path = narratives_dir / frontmatter.narrative
+    if not narrative_path.exists():
+        errors.append(
+            f"Narrative '{frontmatter.narrative}' does not exist in docs/narratives/"
+        )
+
+    return errors
+
+
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
+# Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
+# Subsystem: docs/subsystems/friction_tracking - Friction log management
+def validate_chunk_friction_entries_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+    """Validate friction entry references in a chunk's frontmatter.
+
+    Checks that each referenced friction entry ID exists in FRICTION.md.
+    If friction_entries is empty, validation passes (optional field).
+
+    Args:
+        project_dir: Path to the project directory.
+        chunk_id: The chunk ID to validate.
+
+    Returns:
+        List of error messages (empty if valid or no references).
+    """
+    errors: list[str] = []
+
+    # Use late import to avoid circular dependency
+    chunks = Chunks(project_dir)
+
+    # Get chunk frontmatter
+    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
+    if frontmatter is None:
+        return []  # Chunk doesn't exist, nothing to validate
+
+    # Get friction_entries field (already validated by ChunkFrontmatter model)
+    if not frontmatter.friction_entries:
+        return []
+
+    # Parse friction log to get existing entry IDs
+    friction = Friction(project_dir)
+    if not friction.exists():
+        errors.append(
+            f"Friction log does not exist at docs/trunk/FRICTION.md but chunk "
+            f"references friction entries: {[e.entry_id for e in frontmatter.friction_entries]}"
+        )
+        return errors
+
+    # Get all existing friction entry IDs
+    existing_entries = friction.parse_entries()
+    existing_entry_ids = {entry.id for entry in existing_entries}
+
+    # Validate each referenced entry exists
+    for entry_ref in frontmatter.friction_entries:
+        if entry_ref.entry_id not in existing_entry_ids:
+            errors.append(
+                f"Friction entry '{entry_ref.entry_id}' does not exist in docs/trunk/FRICTION.md"
+            )
+
+    return errors
 
 
 def validate_integrity(project_dir: pathlib.Path) -> IntegrityResult:

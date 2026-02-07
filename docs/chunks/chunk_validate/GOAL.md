@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/chunk.py
 - src/chunks.py
 - src/models.py
 - tests/test_chunk_validate.py
@@ -20,8 +20,6 @@ code_references:
   implements: Validation that referenced narratives exist
 - ref: src/chunks.py#Chunks::_validate_symbol_exists
   implements: Symbol existence verification for code references
-- ref: src/ve.py#validate
-  implements: CLI command interface - chunk validate command
 - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
   implements: Test coverage for investigation reference validation
 - ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
