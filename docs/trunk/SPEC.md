@@ -492,7 +492,7 @@ List existing chunks.
 Activate a `FUTURE` chunk by changing its status to `IMPLEMENTING`.
 
 - **Arguments**:
-  - `CHUNK_ID` (required): The 4-digit chunk ID or full directory name
+  - `CHUNK_ID` (required): The chunk directory name
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
@@ -585,7 +585,7 @@ Show or update a subsystem's lifecycle status.
 - **Behavior**:
   - Without NEW_STATUS: displays current status as `{short_name}: {STATUS}`
   - With NEW_STATUS: validates transition and updates status, displays `{short_name}: {OLD} -> {NEW}`
-  - Accepts full subsystem ID (e.g., `0001-validation`) or short name (e.g., `validation`)
+  - Accepts the subsystem directory name (e.g., `validation`)
 - **Errors**:
   - Error if subsystem not found
   - Error if invalid status value
@@ -652,7 +652,7 @@ This tool is for documentation management, not high-throughput data processing. 
 | Limit | Value | Behavior when exceeded |
 |-------|-------|------------------------|
 | SHORT_NAME length | 31 characters | ValidationError, operation aborted |
-| Chunk ID digits | 4 (0001-9999) | Undefined behavior beyond 9999 chunks |
+| Chunk name length | 31 characters | ValidationError, operation aborted |
 | Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility

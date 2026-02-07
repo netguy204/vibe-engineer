@@ -1,37 +1,25 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-Core code changes complete; documentation and templates still contain legacy format references that must be updated
+Nearly complete; two SPEC.md references to legacy format remain (lines 588, 655)
 
 ## Issues to Address
 
-### Issue 1: docs/trunk/SPEC.md:459,526,590,609,658
+### Issue 1: docs/trunk/SPEC.md:588
 
-**Concern:** CLI command postconditions still reference {NNNN}-{short_name} format
+**Concern:** The behavior description says 'Accepts full subsystem ID (e.g., 0001-validation)' which uses the legacy format
 
-**Suggestion:** Update postconditions to reflect {short_name} format only
+**Suggestion:** Change to 'Accepts subsystem short name (e.g., validation)'
 
-### Issue 2: src/integrity.py:676
+### Issue 2: docs/trunk/SPEC.md:655
 
-**Concern:** Docstring mentions {NNNN}-{short_name} pattern which is no longer validated
+**Concern:** The limits table has 'Chunk ID digits | 4 (0001-9999) | Undefined behavior beyond 9999 chunks' which references the legacy 4-digit chunk ID system
 
-**Suggestion:** Update docstring to describe new format only
-
-### Issue 3: src/external_resolve.py:62,75,89,268,366
-
-**Concern:** Docstrings use legacy examples like 0001-feature
-
-**Suggestion:** Update examples to use non-prefixed format
-
-### Issue 4: src/templates/chunk/GOAL.md.jinja2, src/templates/chunk/PLAN.md.jinja2, src/templates/subsystem/OVERVIEW.md.jinja2, src/templates/investigation/OVERVIEW.md.jinja2
-
-**Concern:** Template comments and examples use legacy format (0001-validation, NNNN-short_name)
-
-**Suggestion:** Update all template examples to use non-prefixed format
+**Suggestion:** Remove this row entirely since chunk IDs are no longer numeric, or replace with a relevant limit if needed
 
 
 ---
