@@ -38,6 +38,7 @@ from cli.utils import (
     validate_ticket_id,
     validate_combined_chunk_name,
     warn_task_project_context,
+    handle_task_context,
 )
 
 
@@ -739,11 +740,10 @@ def _list_task_proposed_chunks(task_dir: pathlib.Path):
 
 @chunk.command("list-proposed")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
 def list_proposed_chunks_cmd(project_dir):
     """List all proposed chunks that haven't been created yet."""
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_proposed_chunks(project_dir)
+    if handle_task_context(project_dir, lambda: _list_task_proposed_chunks(project_dir)):
         return
 
     # Single-repo mode

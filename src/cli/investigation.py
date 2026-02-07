@@ -13,7 +13,6 @@ from external_refs import strip_artifact_path_prefix
 from investigations import Investigations
 from models import InvestigationStatus, ArtifactType
 from task_utils import (
-    is_task_directory,
     create_task_investigation,
     list_task_artifacts_grouped,
     TaskInvestigationError,
@@ -24,7 +23,7 @@ from task_utils import (
 )
 from artifact_ordering import ArtifactIndex, ArtifactType
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
 
 
 @click.group()
@@ -49,9 +48,8 @@ def create_investigation(short_name, project_dir, projects):
     # Normalize to lowercase
     short_name = short_name.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _create_task_investigation(project_dir, short_name, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _create_task_investigation(project_dir, short_name, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
@@ -103,9 +101,8 @@ def list_investigations(state, project_dir):
     """List all investigations."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_investigations(project_dir)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_investigations(project_dir)):
         return
 
     # Validate state filter if provided

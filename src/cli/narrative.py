@@ -14,7 +14,6 @@ from external_refs import strip_artifact_path_prefix
 from narratives import Narratives
 from models import NarrativeStatus, ArtifactType
 from task_utils import (
-    is_task_directory,
     create_task_narrative,
     list_task_narratives,
     TaskNarrativeError,
@@ -24,7 +23,7 @@ from task_utils import (
 )
 from artifact_ordering import ArtifactIndex, ArtifactType
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
 
 
 @click.group()
@@ -53,9 +52,8 @@ def create_narrative(short_name, project_dir, projects):
     # Normalize to lowercase
     short_name = short_name.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _start_task_narrative(project_dir, short_name, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _start_task_narrative(project_dir, short_name, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
@@ -116,9 +114,8 @@ def list_narratives(project_dir):
     In task directory mode, lists narratives from the external artifact repo.
     In single-repo mode, lists narratives from docs/narratives/.
     """
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_narratives_cmd(project_dir)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_narratives_cmd(project_dir)):
         return
 
     # Single-repo mode - list from docs/narratives/

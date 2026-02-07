@@ -52,13 +52,15 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
         load_task_config,
         parse_projects_option,
     )
+    from cli.utils import handle_task_context
 
-    # Detect task directory context
-    if is_task_directory(project_dir):
-        # Task context: create friction in external repo
-        _log_entry_task_context(
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _log_entry_task_context(
             project_dir, title, description, impact, theme, theme_name, projects
-        )
+        ),
+    ):
         return
 
     # Single-repo context: original behavior
