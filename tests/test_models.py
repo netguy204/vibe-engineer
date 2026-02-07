@@ -153,6 +153,7 @@ class TestInvestigationFrontmatter:
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/chunk_frontmatter_model - Test suite for ChunkFrontmatter validation
 class TestChunkFrontmatter:
     """Tests for ChunkFrontmatter model validation."""
 

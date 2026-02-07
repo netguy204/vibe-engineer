@@ -362,7 +362,7 @@ def update_refs(narrative_id, project_dir, dry_run, file_path):
         ve narrative update-refs my_narrative
         ve narrative update-refs my_narrative --dry-run
     """
-    from chunks import update_backreferences, count_backreferences
+    from backreferences import update_backreferences, count_backreferences
 
     # Normalize narrative_id
     narrative_id = strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)

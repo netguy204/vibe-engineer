@@ -1,4 +1,16 @@
-"""Chunks module - business logic for chunk management."""
+"""Chunks module - business logic for chunk management.
+
+# Chunk: docs/chunks/chunks_decompose - Module decomposition to reduce file size
+
+This module provides the core Chunks class and chunk management functions.
+Related functionality has been extracted to focused modules:
+
+- backreferences.py: BackreferenceInfo, count_backreferences, update_backreferences
+- consolidation.py: ConsolidationResult, consolidate_chunks
+- cluster_analysis.py: SuggestPrefixResult, ClusterResult, cluster_chunks, suggest_prefix
+
+All extracted symbols are re-exported for backward compatibility.
+"""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 # Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
@@ -16,6 +28,16 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from artifact_manager import ArtifactManager
+from backreferences import (
+    BackreferenceInfo,
+    CHUNK_BACKREF_PATTERN,
+    NARRATIVE_BACKREF_PATTERN,
+    SUBSYSTEM_BACKREF_PATTERN,
+    count_backreferences,
+    update_backreferences,
+)
+from consolidation import ConsolidationResult, consolidate_chunks
+from cluster_analysis import SuggestPrefixResult, ClusterResult, cluster_chunks, suggest_prefix
 from artifact_ordering import ArtifactIndex, ArtifactType
 from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
 import repo_cache
@@ -47,16 +69,6 @@ class ValidationResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     chunk_name: str | None = None
-
-
-# Chunk: docs/chunks/cluster_prefix_suggest - TF-IDF prefix suggestion result
-@dataclass
-class SuggestPrefixResult:
-    """Result of prefix suggestion analysis."""
-
-    suggested_prefix: str | None
-    similar_chunks: list[tuple[str, float]]  # (chunk_name, similarity_score)
-    reason: str
 
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
@@ -951,6 +963,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         errors.extend(narrative_errors)
 
         # Subsystem: docs/subsystems/friction_tracking - Friction log management
+        # Chunk: docs/chunks/friction_chunk_linking - Integration of friction entry validation into chunk completion validation
         friction_errors = validation_chunks.validate_friction_entries_ref(chunk_name_to_validate)
         errors.extend(friction_errors)
 
@@ -1221,13 +1234,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return (current_status, new_status)
 
     # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
-    # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.subsystems access
+    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_subsystem_refs
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
-        Checks:
-        1. Each subsystem_id matches the {NNNN}-{short_name} pattern
-        2. Each referenced subsystem directory exists in docs/subsystems/
+        Delegates to integrity.validate_chunk_subsystem_refs().
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -1235,38 +1246,15 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if all refs valid or no refs).
         """
-        errors: list[str] = []
-
-        # Get chunk frontmatter
-        frontmatter = self.parse_chunk_frontmatter(chunk_id)
-        if frontmatter is None:
-            return []  # Chunk doesn't exist, nothing to validate
-
-        # Get subsystems field (already validated by ChunkFrontmatter model)
-        if not frontmatter.subsystems:
-            return []
-
-        # Subsystems directory path
-        subsystems_dir = self.project_dir / "docs" / "subsystems"
-
-        for entry in frontmatter.subsystems:
-            # Check if subsystem directory exists
-            subsystem_path = subsystems_dir / entry.subsystem_id
-            if not subsystem_path.exists():
-                errors.append(
-                    f"Subsystem '{entry.subsystem_id}' does not exist in docs/subsystems/"
-                )
-
-        return errors
+        from integrity import validate_chunk_subsystem_refs
+        return validate_chunk_subsystem_refs(self.project_dir, chunk_id)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
-    # Chunk: docs/chunks/investigation_chunk_refs - Validation that referenced investigations exist
+    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_investigation_ref
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 
-        Checks:
-        1. If investigation field is populated, the referenced investigation
-           directory exists in docs/investigations/
+        Delegates to integrity.validate_chunk_investigation_ref().
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -1274,36 +1262,15 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        errors: list[str] = []
-
-        # Get chunk frontmatter
-        frontmatter = self.parse_chunk_frontmatter(chunk_id)
-        if frontmatter is None:
-            return []  # Chunk doesn't exist, nothing to validate
-
-        # Get investigation field (already validated by ChunkFrontmatter model)
-        if not frontmatter.investigation:
-            return []
-
-        # Investigations directory path
-        investigations_dir = self.project_dir / "docs" / "investigations"
-
-        # Check if investigation directory exists
-        investigation_path = investigations_dir / frontmatter.investigation
-        if not investigation_path.exists():
-            errors.append(
-                f"Investigation '{frontmatter.investigation}' does not exist in docs/investigations/"
-            )
-
-        return errors
+        from integrity import validate_chunk_investigation_ref
+        return validate_chunk_investigation_ref(self.project_dir, chunk_id)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
+    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_narrative_ref
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
         """Validate narrative reference in a chunk's frontmatter.
 
-        Checks:
-        1. If narrative field is populated, the referenced narrative
-           directory exists in docs/narratives/
+        Delegates to integrity.validate_chunk_narrative_ref().
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -1311,34 +1278,15 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        errors: list[str] = []
+        from integrity import validate_chunk_narrative_ref
+        return validate_chunk_narrative_ref(self.project_dir, chunk_id)
 
-        # Get chunk frontmatter
-        frontmatter = self.parse_chunk_frontmatter(chunk_id)
-        if frontmatter is None:
-            return []  # Chunk doesn't exist, nothing to validate
-
-        # Get narrative field (already validated by ChunkFrontmatter model)
-        if not frontmatter.narrative:
-            return []
-
-        # Narratives directory path
-        narratives_dir = self.project_dir / "docs" / "narratives"
-
-        # Check if narrative directory exists
-        narrative_path = narratives_dir / frontmatter.narrative
-        if not narrative_path.exists():
-            errors.append(
-                f"Narrative '{frontmatter.narrative}' does not exist in docs/narratives/"
-            )
-
-        return errors
-
+    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_friction_entries_ref
+    # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
     def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
         """Validate friction entry references in a chunk's frontmatter.
 
-        Checks that each referenced friction entry ID exists in FRICTION.md.
-        If friction_entries is empty, validation passes (optional field).
+        Delegates to integrity.validate_chunk_friction_entries_ref().
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -1346,40 +1294,8 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no references).
         """
-        from friction import Friction
-
-        errors: list[str] = []
-
-        # Get chunk frontmatter
-        frontmatter = self.parse_chunk_frontmatter(chunk_id)
-        if frontmatter is None:
-            return []  # Chunk doesn't exist, nothing to validate
-
-        # Get friction_entries field (already validated by ChunkFrontmatter model)
-        if not frontmatter.friction_entries:
-            return []
-
-        # Parse friction log to get existing entry IDs
-        friction = Friction(self.project_dir)
-        if not friction.exists():
-            errors.append(
-                f"Friction log does not exist at docs/trunk/FRICTION.md but chunk "
-                f"references friction entries: {[e.entry_id for e in frontmatter.friction_entries]}"
-            )
-            return errors
-
-        # Get all existing friction entry IDs
-        existing_entries = friction.parse_entries()
-        existing_entry_ids = {entry.id for entry in existing_entries}
-
-        # Validate each referenced entry exists
-        for entry_ref in frontmatter.friction_entries:
-            if entry_ref.entry_id not in existing_entry_ids:
-                errors.append(
-                    f"Friction entry '{entry_ref.entry_id}' does not exist in docs/trunk/FRICTION.md"
-                )
-
-        return errors
+        from integrity import validate_chunk_friction_entries_ref
+        return validate_chunk_friction_entries_ref(self.project_dir, chunk_id)
 
     # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
     # Chunk: docs/chunks/orch_inject_validate - Injection-time chunk validation
@@ -1523,412 +1439,6 @@ def compute_symbolic_overlap(refs_a: list[str], refs_b: list[str], project: str)
     return False
 
 
-@dataclass
-class BackreferenceInfo:
-    """Information about backreferences in a source file."""
-
-    file_path: pathlib.Path
-    chunk_refs: list[str]  # List of chunk IDs referenced
-    narrative_refs: list[str]  # List of narrative IDs referenced
-    subsystem_refs: list[str]  # List of subsystem IDs referenced
-
-    @property
-    def unique_chunk_count(self) -> int:
-        """Count of unique chunk references."""
-        return len(set(self.chunk_refs))
-
-    @property
-    def total_chunk_count(self) -> int:
-        """Total count of chunk references (including duplicates)."""
-        return len(self.chunk_refs)
-
-
-CHUNK_BACKREF_PATTERN = re.compile(r"^#\s+Chunk:\s+docs/chunks/([a-z0-9_-]+)", re.MULTILINE)
-NARRATIVE_BACKREF_PATTERN = re.compile(r"^#\s+Narrative:\s+docs/narratives/([a-z0-9_-]+)", re.MULTILINE)
-SUBSYSTEM_BACKREF_PATTERN = re.compile(r"^#\s+Subsystem:\s+docs/subsystems/([a-z0-9_-]+)", re.MULTILINE)
-
-
-def count_backreferences(
-    project_dir: pathlib.Path,
-    source_patterns: list[str] | None = None,
-) -> list[BackreferenceInfo]:
-    """Scan source files for backreference comments.
-
-    Finds all `# Chunk:`, `# Narrative:`, and `# Subsystem:` comments
-    in source files and returns counts per file.
-
-    Args:
-        project_dir: Path to the project directory.
-        source_patterns: List of glob patterns to search (default: ["src/**/*.py"]).
-
-    Returns:
-        List of BackreferenceInfo for files containing backreferences.
-    """
-    if source_patterns is None:
-        source_patterns = ["src/**/*.py"]
-
-    results: list[BackreferenceInfo] = []
-
-    for pattern in source_patterns:
-        for file_path in project_dir.glob(pattern):
-            if not file_path.is_file():
-                continue
-
-            try:
-                content = file_path.read_text()
-            except Exception:
-                continue
-
-            # Extract all backreferences
-            chunk_refs = CHUNK_BACKREF_PATTERN.findall(content)
-            narrative_refs = NARRATIVE_BACKREF_PATTERN.findall(content)
-            subsystem_refs = SUBSYSTEM_BACKREF_PATTERN.findall(content)
-
-            # Only include files with at least one chunk reference
-            if chunk_refs:
-                results.append(BackreferenceInfo(
-                    file_path=file_path,
-                    chunk_refs=chunk_refs,
-                    narrative_refs=narrative_refs,
-                    subsystem_refs=subsystem_refs,
-                ))
-
-    # Sort by unique chunk count descending
-    results.sort(key=lambda r: r.unique_chunk_count, reverse=True)
-
-    return results
-
-
-@dataclass
-class ConsolidationResult:
-    """Result of chunk consolidation into a narrative."""
-
-    narrative_id: str  # Created narrative directory name
-    chunks_updated: list[str]  # Chunk IDs whose frontmatter was updated
-    files_to_update: dict[str, tuple[list[str], str]]  # file -> (old_chunk_ids, new_narrative_ref)
-
-
-@dataclass
-class ClusterResult:
-    """Result of chunk clustering analysis."""
-
-    clusters: list[list[str]]  # Groups of related chunk IDs
-    unclustered: list[str]  # Chunks that don't fit clusters
-    cluster_themes: list[str]  # Inferred theme for each cluster
-
-
-def cluster_chunks(
-    project_dir: pathlib.Path,
-    chunk_ids: list[str] | None = None,
-    min_similarity: float = 0.3,
-    min_cluster_size: int = 2,
-) -> ClusterResult:
-    """Cluster chunks by content similarity using TF-IDF.
-
-    Groups related chunks for potential consolidation into narratives.
-    Uses agglomerative clustering with cosine similarity.
-
-    Args:
-        project_dir: Path to the project directory.
-        chunk_ids: Specific chunk IDs to cluster (default: all ACTIVE chunks).
-        min_similarity: Minimum similarity to cluster together (default: 0.3).
-        min_cluster_size: Minimum chunks per cluster (default: 2).
-
-    Returns:
-        ClusterResult with clusters, unclustered chunks, and inferred themes.
-    """
-    from collections import Counter
-
-    from sklearn.cluster import AgglomerativeClustering
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-
-    chunks_manager = Chunks(project_dir)
-
-    # Get chunk IDs to cluster
-    if chunk_ids is None:
-        # Default: all ACTIVE chunks
-        all_chunks = chunks_manager.enumerate_chunks()
-        chunk_ids = []
-        for chunk_name in all_chunks:
-            fm = chunks_manager.parse_chunk_frontmatter(chunk_name)
-            if fm and fm.status == ChunkStatus.ACTIVE:
-                chunk_ids.append(chunk_name)
-
-    if len(chunk_ids) < min_cluster_size:
-        return ClusterResult(
-            clusters=[],
-            unclustered=chunk_ids,
-            cluster_themes=[],
-        )
-
-    # Extract text from each chunk's GOAL.md
-    texts = []
-    valid_chunk_ids = []
-    for chunk_id in chunk_ids:
-        goal_path = chunks_manager.get_chunk_goal_path(chunk_id)
-        if goal_path is None:
-            continue
-        text = extract_goal_text(goal_path)
-        if text.strip():
-            texts.append(text)
-            valid_chunk_ids.append(chunk_id)
-
-    if len(valid_chunk_ids) < min_cluster_size:
-        return ClusterResult(
-            clusters=[],
-            unclustered=valid_chunk_ids,
-            cluster_themes=[],
-        )
-
-    # Build TF-IDF vectors
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        max_features=500,
-        ngram_range=(1, 2),
-    )
-
-    try:
-        tfidf_matrix = vectorizer.fit_transform(texts)
-    except ValueError:
-        # All documents empty after stop word removal
-        return ClusterResult(
-            clusters=[],
-            unclustered=valid_chunk_ids,
-            cluster_themes=[],
-        )
-
-    # Compute similarity matrix
-    similarity_matrix = cosine_similarity(tfidf_matrix)
-
-    # Convert similarity to distance (1 - similarity)
-    # Clip to avoid negative distances due to floating point errors
-    distance_matrix = 1 - similarity_matrix
-    distance_matrix = distance_matrix.clip(min=0)
-
-    # Agglomerative clustering with distance threshold
-    # threshold = 1 - min_similarity (e.g., 0.3 similarity = 0.7 distance)
-    clustering = AgglomerativeClustering(
-        n_clusters=None,
-        distance_threshold=1 - min_similarity,
-        metric="precomputed",
-        linkage="average",
-    )
-
-    labels = clustering.fit_predict(distance_matrix)
-
-    # Group chunks by cluster label
-    cluster_groups: dict[int, list[str]] = {}
-    for idx, label in enumerate(labels):
-        if label not in cluster_groups:
-            cluster_groups[label] = []
-        cluster_groups[label].append(valid_chunk_ids[idx])
-
-    # Separate into clusters (>= min_cluster_size) and unclustered
-    clusters: list[list[str]] = []
-    unclustered: list[str] = []
-
-    for label, members in cluster_groups.items():
-        if len(members) >= min_cluster_size:
-            clusters.append(sorted(members))
-        else:
-            unclustered.extend(members)
-
-    # Infer themes from common prefixes in each cluster
-    cluster_themes: list[str] = []
-    for cluster in clusters:
-        prefixes = [get_chunk_prefix(name) for name in cluster]
-        prefix_counts = Counter(prefixes)
-        most_common_prefix, count = prefix_counts.most_common(1)[0]
-
-        if count > len(prefixes) / 2:
-            # Majority share a prefix
-            cluster_themes.append(f"{most_common_prefix} ({count}/{len(prefixes)} share prefix)")
-        else:
-            # No dominant prefix, use chunk names
-            cluster_themes.append(f"mixed ({len(cluster)} chunks)")
-
-    # Sort clusters by size (largest first)
-    sorted_pairs = sorted(zip(clusters, cluster_themes), key=lambda x: -len(x[0]))
-    clusters = [c for c, _ in sorted_pairs]
-    cluster_themes = [t for _, t in sorted_pairs]
-
-    return ClusterResult(
-        clusters=clusters,
-        unclustered=sorted(unclustered),
-        cluster_themes=cluster_themes,
-    )
-
-
-def consolidate_chunks(
-    project_dir: pathlib.Path,
-    chunk_ids: list[str],
-    narrative_name: str,
-    narrative_description: str,
-) -> ConsolidationResult:
-    """Consolidate multiple chunks into a narrative.
-
-    Creates a new narrative synthesizing the given chunks, updates chunk
-    frontmatter to reference the narrative, and returns information needed
-    to update code backreferences.
-
-    Args:
-        project_dir: Path to the project directory.
-        chunk_ids: List of chunk IDs to consolidate.
-        narrative_name: Short name for the narrative (e.g., "chunk_lifecycle").
-        narrative_description: Human-readable description for the narrative.
-
-    Returns:
-        ConsolidationResult with:
-        - narrative_id: Created narrative directory name
-        - chunks_updated: List of chunk IDs whose frontmatter was updated
-        - files_to_update: Dict mapping file paths to (old_refs, new_ref) tuples
-
-    Raises:
-        ValueError: If any chunk doesn't exist or isn't ACTIVE.
-    """
-    from task_utils import update_frontmatter_field
-
-    # Import here to avoid circular import
-    from narratives import Narratives
-
-    chunks_manager = Chunks(project_dir)
-    narratives = Narratives(project_dir)
-
-    # Validate all chunks exist and are ACTIVE
-    for chunk_id in chunk_ids:
-        resolved = chunks_manager.resolve_chunk_id(chunk_id)
-        if resolved is None:
-            raise ValueError(f"Chunk '{chunk_id}' not found")
-
-        fm = chunks_manager.parse_chunk_frontmatter(resolved)
-        if fm is None:
-            raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}'")
-
-        if fm.status != ChunkStatus.ACTIVE:
-            raise ValueError(
-                f"Chunk '{chunk_id}' has status '{fm.status.value}', must be ACTIVE to consolidate"
-            )
-
-    # Create the narrative
-    narrative_path = narratives.create_narrative(narrative_name)
-
-    # Build proposed_chunks entries for the narrative
-    # This links the narrative to the consolidated chunks
-    proposed_chunks = []
-    for chunk_id in chunk_ids:
-        resolved = chunks_manager.resolve_chunk_id(chunk_id)
-        proposed_chunks.append({
-            "prompt": f"Originally: {chunk_id}",
-            "chunk_directory": resolved,
-        })
-
-    # Update narrative OVERVIEW.md with consolidated chunks info
-    overview_path = narrative_path / "OVERVIEW.md"
-    overview_content = overview_path.read_text()
-
-    # Update proposed_chunks in frontmatter
-    import yaml as yaml_lib
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", overview_content, re.DOTALL)
-    if match:
-        frontmatter = yaml_lib.safe_load(match.group(1)) or {}
-        frontmatter["proposed_chunks"] = proposed_chunks
-        body = match.group(2)
-        new_frontmatter = yaml_lib.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        overview_path.write_text(f"---\n{new_frontmatter}---\n{body}")
-
-    # Update each chunk's frontmatter with narrative reference
-    chunks_updated = []
-    for chunk_id in chunk_ids:
-        resolved = chunks_manager.resolve_chunk_id(chunk_id)
-        goal_path = chunks_manager.get_chunk_goal_path(resolved)
-        if goal_path:
-            update_frontmatter_field(goal_path, "narrative", narrative_name)
-            chunks_updated.append(resolved)
-
-    # Find files that reference these chunks
-    files_to_update: dict[str, tuple[list[str], str]] = {}
-    backref_results = count_backreferences(project_dir)
-    for info in backref_results:
-        # Find which chunk refs from this file are being consolidated
-        matching_refs = [
-            ref for ref in set(info.chunk_refs)
-            if ref in chunk_ids or chunks_manager.resolve_chunk_id(ref) in chunks_updated
-        ]
-        if matching_refs:
-            rel_path = str(info.file_path.relative_to(project_dir))
-            files_to_update[rel_path] = (
-                matching_refs,
-                f"# Narrative: docs/narratives/{narrative_name} - {narrative_description}",
-            )
-
-    return ConsolidationResult(
-        narrative_id=narrative_name,
-        chunks_updated=chunks_updated,
-        files_to_update=files_to_update,
-    )
-
-
-def update_backreferences(
-    project_dir: pathlib.Path,
-    file_path: pathlib.Path,
-    chunk_ids_to_replace: list[str],
-    narrative_id: str,
-    narrative_description: str,
-    dry_run: bool = False,
-) -> int:
-    """Replace chunk backreferences with narrative backreference.
-
-    Finds all `# Chunk: docs/chunks/{id}` comments where id is in
-    chunk_ids_to_replace and replaces them with a single
-    `# Narrative: docs/narratives/{narrative_id} - {description}` comment.
-
-    Args:
-        project_dir: Path to the project directory.
-        file_path: Path to the source file to update.
-        chunk_ids_to_replace: Chunk IDs whose references should be replaced.
-        narrative_id: Narrative directory to reference.
-        narrative_description: Description for the narrative backreference.
-        dry_run: If True, don't modify the file, just return count.
-
-    Returns:
-        Number of backreferences replaced.
-    """
-    if not file_path.exists():
-        return 0
-
-    content = file_path.read_text()
-    lines = content.split("\n")
-    new_lines: list[str] = []
-    replaced_count = 0
-    narrative_line_added = False
-
-    # Build pattern to match chunk refs we want to replace
-    chunk_ids_set = set(chunk_ids_to_replace)
-
-    for line in lines:
-        match = CHUNK_BACKREF_PATTERN.match(line)
-        if match:
-            chunk_id = match.group(1)
-            if chunk_id in chunk_ids_set:
-                replaced_count += 1
-                # Add narrative reference only once
-                if not narrative_line_added:
-                    new_lines.append(
-                        f"# Narrative: docs/narratives/{narrative_id} - {narrative_description}"
-                    )
-                    narrative_line_added = True
-                # Skip this chunk line (don't add to new_lines)
-                continue
-
-        new_lines.append(line)
-
-    if not dry_run and replaced_count > 0:
-        file_path.write_text("\n".join(new_lines))
-
-    return replaced_count
-
-
 # Chunk: docs/chunks/cluster_prefix_suggest - Extract text content from GOAL.md
 def extract_goal_text(goal_path: pathlib.Path) -> str:
     """Extract text content from GOAL.md, skipping frontmatter and HTML comments.
@@ -1967,176 +1477,3 @@ def get_chunk_prefix(chunk_name: str) -> str:
         The first underscore-delimited word, or the full name if no underscore.
     """
     return chunk_name.split("_")[0]
-
-
-# Chunk: docs/chunks/cluster_prefix_suggest - Main TF-IDF similarity computation and prefix suggestion logic
-def suggest_prefix(
-    project_dir: pathlib.Path,
-    chunk_id: str,
-    threshold: float = 0.4,
-    top_k: int = 5,
-) -> SuggestPrefixResult:
-    """Suggest a prefix for a chunk based on TF-IDF similarity to existing chunks.
-
-    Context determines corpus:
-    - Task directory: aggregates chunks from external repo + all project repos
-    - Project directory: uses only local project chunks
-
-    Args:
-        project_dir: Path to the project or task directory.
-        chunk_id: The chunk ID to analyze.
-        threshold: Minimum similarity score to consider (default 0.4).
-        top_k: Number of most similar chunks to consider (default 5).
-
-    Returns:
-        SuggestPrefixResult containing:
-        - suggested_prefix: str or None if no strong suggestion
-        - similar_chunks: list of (chunk_name, similarity_score) tuples
-        - reason: str explaining why the suggestion was or wasn't made
-    """
-    from collections import Counter
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-    from task_utils import is_task_directory, load_task_config, resolve_repo_directory
-
-    project_dir = pathlib.Path(project_dir)
-
-    # Build corpus based on context
-    corpus_chunks: list[tuple[str, pathlib.Path]] = []  # (chunk_name, goal_path)
-
-    if is_task_directory(project_dir):
-        # Task context: aggregate from external repo + all projects
-        config = load_task_config(project_dir)
-
-        # Add chunks from external repo
-        try:
-            external_path = resolve_repo_directory(project_dir, config.external_artifact_repo)
-            external_chunks = Chunks(external_path)
-            for name in external_chunks.enumerate_chunks():
-                goal_path = external_chunks.get_chunk_goal_path(name)
-                if goal_path and goal_path.exists():
-                    corpus_chunks.append((name, goal_path))
-        except FileNotFoundError:
-            pass
-
-        # Add chunks from each project
-        for project_ref in config.projects:
-            try:
-                proj_path = resolve_repo_directory(project_dir, project_ref)
-                proj_chunks = Chunks(proj_path)
-                for name in proj_chunks.enumerate_chunks():
-                    goal_path = proj_chunks.get_chunk_goal_path(name)
-                    if goal_path and goal_path.exists():
-                        corpus_chunks.append((name, goal_path))
-            except FileNotFoundError:
-                pass
-    else:
-        # Project context: use only local chunks
-        chunks = Chunks(project_dir)
-        for name in chunks.enumerate_chunks():
-            goal_path = chunks.get_chunk_goal_path(name)
-            if goal_path and goal_path.exists():
-                corpus_chunks.append((name, goal_path))
-
-    # Find target chunk in corpus
-    target_idx = None
-    for i, (name, _) in enumerate(corpus_chunks):
-        if name == chunk_id:
-            target_idx = i
-            break
-
-    if target_idx is None:
-        # Try resolving chunk_id
-        local_chunks = Chunks(project_dir)
-        resolved = local_chunks.resolve_chunk_id(chunk_id)
-        if resolved:
-            for i, (name, _) in enumerate(corpus_chunks):
-                if name == resolved:
-                    target_idx = i
-                    break
-
-    if target_idx is None:
-        return SuggestPrefixResult(
-            suggested_prefix=None,
-            similar_chunks=[],
-            reason=f"Chunk '{chunk_id}' not found in corpus",
-        )
-
-    # Check minimum corpus size (need at least 2 other chunks)
-    other_count = len(corpus_chunks) - 1
-    if other_count < 2:
-        return SuggestPrefixResult(
-            suggested_prefix=None,
-            similar_chunks=[],
-            reason=f"Too few chunks for meaningful similarity (need at least 3 total, have {len(corpus_chunks)})",
-        )
-
-    # Extract text from all chunks
-    texts = []
-    for _, goal_path in corpus_chunks:
-        text = extract_goal_text(goal_path)
-        texts.append(text if text else " ")  # Empty text causes TF-IDF issues
-
-    # Build TF-IDF vectors
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        max_features=500,
-        ngram_range=(1, 2),
-    )
-
-    try:
-        tfidf_matrix = vectorizer.fit_transform(texts)
-    except ValueError:
-        # Can happen if all documents are empty after stop word removal
-        return SuggestPrefixResult(
-            suggested_prefix=None,
-            similar_chunks=[],
-            reason="Could not build similarity model (insufficient text content)",
-        )
-
-    # Compute similarity between target and all others
-    target_vec = tfidf_matrix[target_idx]
-    similarities = cosine_similarity(target_vec, tfidf_matrix)[0]
-
-    # Find top-k similar chunks (excluding self)
-    indexed_sims = []
-    for i, sim in enumerate(similarities):
-        if i != target_idx:
-            indexed_sims.append((i, sim))
-
-    indexed_sims.sort(key=lambda x: -x[1])  # Sort by similarity descending
-    top_similar = indexed_sims[:top_k]
-
-    # Filter by threshold
-    above_threshold = [(i, sim) for i, sim in top_similar if sim >= threshold]
-
-    if not above_threshold:
-        # Return the top similar chunks even if below threshold
-        similar_chunks = [(corpus_chunks[i][0], sim) for i, sim in top_similar]
-        return SuggestPrefixResult(
-            suggested_prefix=None,
-            similar_chunks=similar_chunks,
-            reason=f"No chunks above similarity threshold ({threshold}). May be a new cluster seed.",
-        )
-
-    # Get similar chunk names and their prefixes
-    similar_chunks = [(corpus_chunks[i][0], sim) for i, sim in above_threshold]
-    prefixes = [get_chunk_prefix(name) for name, _ in similar_chunks]
-
-    # Count prefix occurrences
-    prefix_counts = Counter(prefixes)
-    most_common_prefix, count = prefix_counts.most_common(1)[0]
-
-    # Check if majority share the prefix
-    if count > len(prefixes) / 2:
-        return SuggestPrefixResult(
-            suggested_prefix=most_common_prefix,
-            similar_chunks=similar_chunks,
-            reason=f"Majority of similar chunks ({count}/{len(prefixes)}) share prefix '{most_common_prefix}'",
-        )
-    else:
-        return SuggestPrefixResult(
-            suggested_prefix=None,
-            similar_chunks=similar_chunks,
-            reason=f"Similar chunks have different prefixes (no common majority): {dict(prefix_counts)}",
-        )
