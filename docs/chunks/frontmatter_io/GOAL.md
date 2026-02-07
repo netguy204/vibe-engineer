@@ -11,7 +11,6 @@ code_paths:
 - src/subsystems.py
 - src/friction.py
 - src/artifact_ordering.py
-- src/task_utils.py
 code_references:
 - ref: src/frontmatter.py
   implements: Shared frontmatter I/O module - unified interface for parsing and updating
@@ -35,22 +34,14 @@ code_references:
   implements: Migrated to use shared parse_frontmatter_from_content
 - ref: src/narratives.py#Narratives::parse_narrative_frontmatter
   implements: Migrated to use shared extract_frontmatter_dict with legacy field remapping
-- ref: src/narratives.py#Narratives::_update_overview_frontmatter
-  implements: Migrated to use shared update_frontmatter_field
 - ref: src/investigations.py#Investigations::parse_investigation_frontmatter
   implements: Migrated to use shared parse_frontmatter
-- ref: src/investigations.py#Investigations::_update_overview_frontmatter
-  implements: Migrated to use shared update_frontmatter_field
 - ref: src/subsystems.py#Subsystems::parse_subsystem_frontmatter
   implements: Migrated to use shared parse_frontmatter
-- ref: src/subsystems.py#Subsystems::_update_overview_frontmatter
-  implements: Migrated to use shared update_frontmatter_field
 - ref: src/friction.py#Friction::parse_frontmatter
   implements: Migrated to use shared parse_frontmatter as parse_fm
 - ref: src/artifact_ordering.py#_parse_frontmatter
   implements: Migrated to use shared extract_frontmatter_dict
-- ref: src/task_utils.py
-  implements: Re-exports update_frontmatter_field from shared module for API compatibility
 narrative: arch_consolidation
 investigation: null
 subsystems:
