@@ -1,57 +1,60 @@
 ---
-status: IMPLEMENTING
+status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/chunk.py
-  - src/cli/narrative.py
-  - src/cli/investigation.py
-  - src/cli/subsystem.py
-  - src/cli/friction.py
-  - tests/test_chunk_list.py
-  - tests/test_narrative_list.py
-  - tests/test_investigation_list.py
-  - tests/test_subsystem_list.py
-  - tests/test_friction.py
+- src/cli/chunk.py
+- src/cli/narrative.py
+- src/cli/investigation.py
+- src/cli/subsystem.py
+- src/cli/friction.py
+- tests/test_chunk_list.py
+- tests/test_narrative_list.py
+- tests/test_investigation_list.py
+- tests/test_subsystem_list.py
+- tests/test_friction.py
 code_references:
-  - ref: src/cli/chunk.py#_chunk_to_json_dict
-    implements: "Helper function for JSON serialization of chunk frontmatter using Pydantic's model_dump()"
-  - ref: src/cli/chunk.py#_format_grouped_artifact_list_json
-    implements: "JSON output formatter for grouped artifact listings in task context mode"
-  - ref: src/cli/chunk.py#list_chunks
-    implements: "CLI command with --json flag for outputting chunks as JSON array"
-  - ref: src/cli/chunk.py#_list_task_chunks
-    implements: "Cross-repo chunk listing handler with JSON output support"
-  - ref: src/cli/narrative.py#_narrative_to_json_dict
-    implements: "Helper function for JSON serialization of narrative frontmatter"
-  - ref: src/cli/narrative.py#list_narratives
-    implements: "CLI command with --json flag for outputting narratives as JSON array"
-  - ref: src/cli/narrative.py#_list_task_narratives_cmd
-    implements: "Cross-repo narrative listing handler with JSON output support"
-  - ref: src/cli/investigation.py#_investigation_to_json_dict
-    implements: "Helper function for JSON serialization of investigation frontmatter"
-  - ref: src/cli/investigation.py#list_investigations
-    implements: "CLI command with --json flag for outputting investigations as JSON array"
-  - ref: src/cli/investigation.py#_list_task_investigations
-    implements: "Cross-repo investigation listing handler with JSON output support"
-  - ref: src/cli/subsystem.py#_subsystem_to_json_dict
-    implements: "Helper function for JSON serialization of subsystem frontmatter"
-  - ref: src/cli/subsystem.py#list_subsystems
-    implements: "CLI command with --json flag for outputting subsystems as JSON array"
-  - ref: src/cli/subsystem.py#_list_task_subsystems
-    implements: "Cross-repo subsystem listing handler with JSON output support"
-  - ref: src/cli/friction.py#list_entries
-    implements: "CLI command with --json flag for outputting friction entries as JSON array"
-  - ref: tests/test_chunk_list.py#TestJsonOutput
-    implements: "Test class for ve chunk list --json functionality"
-  - ref: tests/test_narrative_list.py#TestNarrativeListJsonOutput
-    implements: "Test class for ve narrative list --json functionality"
-  - ref: tests/test_investigation_list.py#TestInvestigationListJsonOutput
-    implements: "Test class for ve investigation list --json functionality"
-  - ref: tests/test_subsystem_list.py#TestSubsystemListJsonOutput
-    implements: "Test class for ve subsystem list --json functionality"
-  - ref: tests/test_friction_cli.py#TestFrictionListJsonOutput
-    implements: "Test class for ve friction list --json functionality"
+- ref: src/cli/chunk.py#_chunk_to_json_dict
+  implements: Helper function for JSON serialization of chunk frontmatter using Pydantic's
+    model_dump()
+- ref: src/cli/chunk.py#_format_grouped_artifact_list_json
+  implements: JSON output formatter for grouped artifact listings in task context
+    mode
+- ref: src/cli/chunk.py#list_chunks
+  implements: CLI command with --json flag for outputting chunks as JSON array
+- ref: src/cli/chunk.py#_list_task_chunks
+  implements: Cross-repo chunk listing handler with JSON output support
+- ref: src/cli/narrative.py#_narrative_to_json_dict
+  implements: Helper function for JSON serialization of narrative frontmatter
+- ref: src/cli/narrative.py#list_narratives
+  implements: CLI command with --json flag for outputting narratives as JSON array
+- ref: src/cli/narrative.py#_list_task_narratives_cmd
+  implements: Cross-repo narrative listing handler with JSON output support
+- ref: src/cli/investigation.py#_investigation_to_json_dict
+  implements: Helper function for JSON serialization of investigation frontmatter
+- ref: src/cli/investigation.py#list_investigations
+  implements: CLI command with --json flag for outputting investigations as JSON array
+- ref: src/cli/investigation.py#_list_task_investigations
+  implements: Cross-repo investigation listing handler with JSON output support
+- ref: src/cli/subsystem.py#_subsystem_to_json_dict
+  implements: Helper function for JSON serialization of subsystem frontmatter
+- ref: src/cli/subsystem.py#list_subsystems
+  implements: CLI command with --json flag for outputting subsystems as JSON array
+- ref: src/cli/subsystem.py#_list_task_subsystems
+  implements: Cross-repo subsystem listing handler with JSON output support
+- ref: src/cli/friction.py#list_entries
+  implements: CLI command with --json flag for outputting friction entries as JSON
+    array
+- ref: tests/test_chunk_list.py#TestJsonOutput
+  implements: Test class for ve chunk list --json functionality
+- ref: tests/test_narrative_list.py#TestNarrativeListJsonOutput
+  implements: Test class for ve narrative list --json functionality
+- ref: tests/test_investigation_list.py#TestInvestigationListJsonOutput
+  implements: Test class for ve investigation list --json functionality
+- ref: tests/test_subsystem_list.py#TestSubsystemListJsonOutput
+  implements: Test class for ve subsystem list --json functionality
+- ref: tests/test_friction_cli.py#TestFrictionListJsonOutput
+  implements: Test class for ve friction list --json functionality
 narrative: arch_consolidation
 investigation: null
 subsystems: []

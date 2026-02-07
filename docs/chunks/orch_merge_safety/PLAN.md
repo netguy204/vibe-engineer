@@ -8,170 +8,145 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The core problem is that `merge_to_base()` performs `git checkout` in the main repository (lines 730-739 in worktree.py), which disrupts the user's working tree during parallel orchestrator execution. Additionally, `_get_repo_current_branch()` is called at merge time (line 791) rather than at worktree creation time, introducing a race condition.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy**: Use worktree-based merge operations that never touch the main repository's checked-out branch:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Eliminate `git checkout` from merge**: Instead of checking out the base branch in the main repo and then merging, we can perform the merge operation from within a temporary context or use `git fetch` + ref manipulation to merge without checkout. The cleanest approach is to use `git merge-base` and `git merge-tree` or to perform the merge in the worktree itself before merging to base via `git push` to the local branch.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_merge_safety/GOAL.md)
-with references to the files that you expect to touch.
--->
+   **Chosen approach**: Merge in the worktree by fetching the base branch into the worktree, merging locally, then using `git push . HEAD:base_branch` to update the base branch ref without checkout. This leverages Git's ability to push to a local ref.
+
+2. **Capture base branch at worktree creation time**: Store the base branch in a metadata file (`.ve/chunks/<chunk>/base_branch`) when creating the worktree. Read this during merge instead of querying the current branch.
+
+3. **Lock worktrees against prune**: Call `git worktree lock` after creating worktrees and `git worktree unlock` before removal. This prevents `git worktree prune` from removing active worktrees.
+
+Following TDD per TESTING_PHILOSOPHY.md, tests will be written first for each behavioral change.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS improvements to the WorktreeManager component within the orchestrator subsystem, specifically addressing worktree lifecycle management and merge safety. The invariant "Worktrees are isolated execution environments" is being strengthened by this work.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add tests for base branch capture at creation time
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write failing tests that verify:
+- A file `.ve/chunks/<chunk>/base_branch` is created when a worktree is created
+- The base branch file contains the branch name at creation time
+- `merge_to_base()` reads from this file instead of querying `_get_repo_current_branch()`
+- If the main repo switches branches after worktree creation, merge still targets the original base branch
 
-Example:
+Location: `tests/test_orchestrator_worktree.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Implement base branch persistence
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add methods to store and retrieve the base branch:
+- `_save_base_branch(chunk: str, branch: str, repo_dir: Optional[Path] = None)` - writes to `.ve/chunks/<chunk>/base_branch` (or `.ve/chunks/<chunk>/base_branches/<repo_name>` for multi-repo)
+- `_load_base_branch(chunk: str, repo_dir: Optional[Path] = None) -> str` - reads from the file
+- Modify `_create_single_repo_worktree()` to call `_save_base_branch()` after determining the base branch
+- Modify `_create_task_context_worktrees()` to save per-repo base branches
 
-Location: src/segment/format.rs
+Location: `src/orchestrator/worktree.py`
 
-### Step 2: Implement header serialization
+### Step 3: Add tests for checkout-free merge
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Write failing tests that verify:
+- `merge_to_base()` does NOT change the checked-out branch in the main repository
+- A file can be modified in the main repo's working tree before merge, and it remains after merge
+- Merge conflicts are still detected and reported with WorktreeError
 
-### Step 3: ...
+Location: `tests/test_orchestrator_worktree.py`
+
+### Step 4: Implement checkout-free merge for single-repo mode
+
+Replace the current `_merge_to_base_single_repo()` implementation:
+1. Read the base branch from the persisted file
+2. In the worktree: `git fetch origin base_branch` (or `git fetch .. refs/heads/base_branch` for local fetch)
+3. In the worktree: `git merge FETCH_HEAD --no-edit` to merge base into worktree
+4. If merge succeeds, push back: `git push .. HEAD:refs/heads/base_branch`
+5. No `git checkout` needed in the main repository
+
+Alternative if the above is complex: Use `git merge-base` + `git merge-tree` + `git commit-tree` + `git update-ref` to create the merge commit without checkout.
+
+**Chosen approach after research**: The simplest approach that works is to do the merge in the worktree and then use `git push . worktree_branch:base_branch` from the main repo, or to use `git worktree`-relative refs. Actually, the cleanest is:
+1. From main repo: `git merge --no-checkout orch/<chunk>` - but this still requires being on base branch
+2. Better: From worktree, merge base into worktree, resolve there, then fast-forward base to worktree
+
+Final approach: Perform all merge work in the worktree:
+1. Fetch base branch into worktree: `git fetch origin base_branch`
+2. Merge in worktree: first merge base into worktree branch (handles any upstream changes)
+3. Then from main repo, use `git branch -f base_branch orch/<chunk>` to fast-forward base to the worktree branch (only works if worktree already includes all base commits)
+4. Or use `git push . orch/<chunk>:base_branch` from main repo
+
+Location: `src/orchestrator/worktree.py`
+
+### Step 5: Implement checkout-free merge for multi-repo mode
+
+Apply the same pattern to `_merge_to_base_multi_repo()`:
+1. Read per-repo base branches from persisted files
+2. For each repo, perform the merge without checkout in that repo's main directory
+3. Use the same push-based or branch-update approach
+
+Location: `src/orchestrator/worktree.py`
+
+### Step 6: Add tests for worktree locking
+
+Write failing tests that verify:
+- After `create_worktree()`, `git worktree list --porcelain` shows the worktree as locked
+- `git worktree prune` does not remove a locked worktree
+- `remove_worktree()` unlocks before removing
+- `unlock` doesn't error if worktree wasn't locked (idempotent)
+
+Location: `tests/test_orchestrator_worktree.py`
+
+### Step 7: Implement worktree locking
+
+Add locking calls:
+- After `git worktree add` succeeds: `git worktree lock <path> --reason "orchestrator active"`
+- Before `git worktree remove`: `git worktree unlock <path>` (ignore errors if already unlocked)
+- Apply to both single-repo and multi-repo modes
+
+Location: `src/orchestrator/worktree.py`
+
+### Step 8: Update GOAL.md code_paths
+
+Add the touched files to the chunk's frontmatter:
+- `src/orchestrator/worktree.py`
+- `tests/test_orchestrator_worktree.py`
+
+Location: `docs/chunks/orch_merge_safety/GOAL.md`
+
+### Step 9: Run full test suite and fix any regressions
+
+Verify all existing tests still pass. The merge behavior is tested in `TestMergeToBase` class and must continue to work correctly.
+
+Command: `uv run pytest tests/test_orchestrator_worktree.py -v`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+When implementing, add backreference comments:
+- `# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+At the method level for `_merge_to_base_single_repo`, `_merge_to_base_multi_repo`, `_save_base_branch`, `_load_base_branch`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk modifies existing code with no new external dependencies.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Git version compatibility**: `git worktree lock` was added in Git 2.10 (2016). This should be fine for modern systems, but if we need to support older Git versions, we may need to skip locking gracefully.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Merge strategy complexity**: The checkout-free merge is more complex than the current implementation. If it proves too fragile, we could fall back to a simpler approach: creating a temporary bare clone for merge operations, though this has performance implications.
+
+3. **Fast-forward assumption**: The planned approach assumes we can fast-forward the base branch to include the worktree changes. If base has advanced (someone else pushed), we need a proper merge. The worktree-based merge handles this by first merging base into worktree, then updating base to point to the merged result.
+
+4. **Reflog safety**: Using `git branch -f` or `git push . src:dst` updates refs directly. This should still create reflog entries, but we should verify reflog preservation for recovery scenarios.
+
+5. **Multi-repo atomicity**: If merge succeeds in repo A but fails in repo B, we currently roll back A. The checkout-free approach should maintain this rollback capability.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

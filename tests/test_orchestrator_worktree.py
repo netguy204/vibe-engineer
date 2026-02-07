@@ -460,6 +460,7 @@ class TestCommitChanges:
         assert log_result.stdout.strip() == "feat: chunk my_feature_chunk"
 
 
+# Chunk: docs/chunks/orch_task_worktrees - Multi-repo worktree creation tests
 class TestMultiRepoWorktreeCreation:
     """Tests for multi-repo worktree creation in task context."""
 
@@ -556,6 +557,7 @@ class TestMultiRepoWorktreeCreation:
         assert log_path.exists()
 
 
+# Chunk: docs/chunks/orch_task_worktrees - Multi-repo worktree removal tests
 class TestMultiRepoWorktreeRemoval:
     """Tests for multi-repo worktree removal."""
 
@@ -621,6 +623,7 @@ class TestMultiRepoWorktreeRemoval:
         assert not manager.worktree_exists("test_chunk")
 
 
+# Chunk: docs/chunks/orch_task_worktrees - Multi-repo merge operation tests
 class TestMultiRepoMerge:
     """Tests for multi-repo merge operations."""
 
@@ -949,6 +952,289 @@ class TestTaskContextSymlinks:
         assert not (work_dir / ".claude").is_symlink()
 
 
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestBaseBranchPersistence:
+    """Tests for base branch capture at worktree creation time."""
+
+    def test_single_repo_base_branch_file_created(self, git_repo):
+        """A base_branch file is created when a worktree is created."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        base_branch_file = git_repo / ".ve" / "chunks" / "test_chunk" / "base_branch"
+        assert base_branch_file.exists()
+
+    def test_single_repo_base_branch_file_contains_branch_name(self, git_repo):
+        """The base_branch file contains the branch name at creation time."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        base_branch_file = git_repo / ".ve" / "chunks" / "test_chunk" / "base_branch"
+        stored_branch = base_branch_file.read_text().strip()
+        # The base branch should be main or master
+        assert stored_branch in ("main", "master")
+
+    def test_single_repo_base_branch_captured_from_explicit_branch(self, git_repo):
+        """When base_branch is explicitly set, that value is persisted."""
+        # Create a feature branch
+        subprocess.run(
+            ["git", "checkout", "-b", "feature"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "main"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        manager = WorktreeManager(git_repo, base_branch="feature")
+        manager.create_worktree("test_chunk")
+
+        base_branch_file = git_repo / ".ve" / "chunks" / "test_chunk" / "base_branch"
+        stored_branch = base_branch_file.read_text().strip()
+        assert stored_branch == "feature"
+
+    def test_merge_uses_persisted_base_branch_not_current(self, git_repo):
+        """merge_to_base uses the persisted base branch, not current branch."""
+        # Start on main
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change in the worktree
+        (worktree_path / "new_file.txt").write_text("new content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add new file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree before merge
+        manager.remove_worktree("test_chunk", remove_branch=False)
+
+        # Switch main repo to a different branch
+        subprocess.run(
+            ["git", "checkout", "-b", "different_branch"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Merge should still target the original base branch (main), not different_branch
+        manager.merge_to_base("test_chunk", delete_branch=True)
+
+        # Switch back to main and verify the file is there
+        subprocess.run(
+            ["git", "checkout", "main"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+        assert (git_repo / "new_file.txt").exists()
+
+    def test_load_base_branch_returns_persisted_value(self, git_repo):
+        """_load_base_branch returns the value stored in the base_branch file."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        loaded_branch = manager._load_base_branch("test_chunk")
+        assert loaded_branch in ("main", "master")
+
+
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestCheckoutFreeMerge:
+    """Tests for merging without git checkout in main repo."""
+
+    def test_merge_does_not_change_main_repo_branch(self, git_repo):
+        """merge_to_base does NOT change the checked-out branch in main repo."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change in the worktree
+        (worktree_path / "new_file.txt").write_text("new content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add new file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree before merge
+        manager.remove_worktree("test_chunk", remove_branch=False)
+
+        # Switch main repo to a different branch
+        subprocess.run(
+            ["git", "checkout", "-b", "working_branch"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Get current branch before merge
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=git_repo,
+            capture_output=True,
+            text=True,
+        )
+        branch_before = result.stdout.strip()
+
+        # Merge to base - should NOT checkout a different branch
+        manager.merge_to_base("test_chunk", delete_branch=True)
+
+        # Check current branch after merge - should be unchanged
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=git_repo,
+            capture_output=True,
+            text=True,
+        )
+        branch_after = result.stdout.strip()
+
+        assert branch_before == branch_after == "working_branch"
+
+    def test_merge_preserves_working_tree_changes(self, git_repo):
+        """A file modified in main repo's working tree remains after merge."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change in the worktree and commit
+        (worktree_path / "worktree_file.txt").write_text("worktree content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add worktree file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree before merge
+        manager.remove_worktree("test_chunk", remove_branch=False)
+
+        # Create an uncommitted change in the main repo
+        (git_repo / "uncommitted_change.txt").write_text("I am uncommitted")
+
+        # Merge to base
+        manager.merge_to_base("test_chunk", delete_branch=True)
+
+        # Uncommitted file should still exist
+        assert (git_repo / "uncommitted_change.txt").exists()
+        assert (git_repo / "uncommitted_change.txt").read_text() == "I am uncommitted"
+
+    def test_merge_conflict_still_detected(self, git_repo):
+        """Merge conflicts are still detected and reported with WorktreeError."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Create a file in main repo on base branch
+        (git_repo / "conflict_file.txt").write_text("main version")
+        subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add conflict file on main"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Create a conflicting change in the worktree
+        (worktree_path / "conflict_file.txt").write_text("worktree version")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add conflict file in worktree"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree before merge
+        manager.remove_worktree("test_chunk", remove_branch=False)
+
+        # Merge should fail with WorktreeError due to conflict
+        with pytest.raises(WorktreeError):
+            manager.merge_to_base("test_chunk", delete_branch=True)
+
+
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestWorktreeLocking:
+    """Tests for git worktree locking to prevent premature pruning."""
+
+    def test_worktree_is_locked_after_creation(self, git_repo):
+        """After create_worktree(), the worktree is locked."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Check worktree list for locked status
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=git_repo,
+            capture_output=True,
+            text=True,
+        )
+
+        # Parse the porcelain output to find our worktree
+        in_our_worktree = False
+        is_locked = False
+        for line in result.stdout.split("\n"):
+            if line.startswith("worktree ") and str(worktree_path) in line:
+                in_our_worktree = True
+            elif line.startswith("worktree "):
+                in_our_worktree = False
+            elif in_our_worktree and line.startswith("locked"):
+                is_locked = True
+                break
+
+        assert is_locked, "Worktree should be locked after creation"
+
+    def test_locked_worktree_survives_prune(self, git_repo):
+        """git worktree prune does not remove a locked worktree."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Run prune
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=git_repo,
+            capture_output=True,
+        )
+
+        # Worktree should still exist
+        assert worktree_path.exists()
+        assert (worktree_path / ".git").exists()
+
+    def test_remove_worktree_unlocks_first(self, git_repo):
+        """remove_worktree unlocks the worktree before removing it."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Remove should succeed (which requires unlocking first)
+        manager.remove_worktree("test_chunk")
+
+        assert not worktree_path.exists()
+
+    def test_unlock_is_idempotent(self, git_repo):
+        """Unlocking a worktree that isn't locked doesn't error."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Manually unlock first
+        subprocess.run(
+            ["git", "worktree", "unlock", str(worktree_path)],
+            cwd=git_repo,
+            capture_output=True,
+        )
+
+        # Remove should still succeed (even though already unlocked)
+        manager.remove_worktree("test_chunk")
+
+        assert not worktree_path.exists()
+
+
+# Chunk: docs/chunks/orch_task_worktrees - Task context detection tests
 class TestTaskContextDetection:
     """Tests for task context detection and listing."""
 
@@ -1009,3 +1295,259 @@ class TestTaskContextDetection:
         worktrees = manager.list_worktrees()
 
         assert set(worktrees) == {"single_chunk", "task_chunk"}
+
+
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestMultiRepoBaseBranchPersistence:
+    """Tests for base branch persistence in multi-repo mode."""
+
+    @pytest.fixture
+    def task_repos(self, tmp_path):
+        """Create a task directory with multiple repos for testing."""
+        _, external, projects = setup_task_directory(
+            tmp_path,
+            external_name="external",
+            project_names=["project_a", "project_b"],
+        )
+        return {
+            "external": external,
+            "project_a": projects[0],
+            "project_b": projects[1],
+        }
+
+    def test_multi_repo_base_branch_files_created(self, task_repos):
+        """Base branch files are created for each repo in task context mode."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Each repo should have its own base_branch file
+        base_branches_dir = external / ".ve" / "chunks" / "test_chunk" / "base_branches"
+        assert (base_branches_dir / "external").exists()
+        assert (base_branches_dir / "project_a").exists()
+
+    def test_multi_repo_base_branch_files_contain_correct_values(self, task_repos):
+        """Each repo's base_branch file contains that repo's base branch."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        base_branches_dir = external / ".ve" / "chunks" / "test_chunk" / "base_branches"
+        external_branch = (base_branches_dir / "external").read_text().strip()
+        project_a_branch = (base_branches_dir / "project_a").read_text().strip()
+
+        # Both should be "main" since that's what make_ve_initialized_git_repo creates
+        assert external_branch == "main"
+        assert project_a_branch == "main"
+
+    def test_multi_repo_merge_uses_persisted_branches(self, task_repos):
+        """Multi-repo merge uses persisted base branches, not current branches."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Make changes in each repo worktree
+        (work_dir / "external" / "external_file.txt").write_text("external content")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=work_dir / "external",
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add external file"],
+            cwd=work_dir / "external",
+            check=True,
+            capture_output=True,
+        )
+
+        (work_dir / "project_a" / "project_file.txt").write_text("project content")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=work_dir / "project_a",
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add project file"],
+            cwd=work_dir / "project_a",
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktrees before merge
+        manager.remove_worktree("test_chunk", remove_branch=False, repo_paths=repo_paths)
+
+        # Switch each main repo to a different branch
+        for repo_path in repo_paths:
+            subprocess.run(
+                ["git", "checkout", "-b", "different_branch"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+            )
+
+        # Merge should still target the original base branches (main)
+        manager.merge_to_base("test_chunk", repo_paths=repo_paths)
+
+        # Switch back to main and verify the files are there
+        for repo_path in repo_paths:
+            subprocess.run(
+                ["git", "checkout", "main"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+            )
+
+        assert (task_repos["external"] / "external_file.txt").exists()
+        assert (task_repos["project_a"] / "project_file.txt").exists()
+
+
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestMultiRepoCheckoutFreeMerge:
+    """Tests for checkout-free merge in multi-repo mode."""
+
+    @pytest.fixture
+    def task_repos(self, tmp_path):
+        """Create a task directory with multiple repos for testing."""
+        _, external, projects = setup_task_directory(
+            tmp_path,
+            external_name="external",
+            project_names=["project_a"],
+        )
+        return {
+            "external": external,
+            "project_a": projects[0],
+        }
+
+    def test_multi_repo_merge_does_not_change_checked_out_branches(self, task_repos):
+        """Multi-repo merge does NOT change checked-out branches in any repo."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Make changes in each repo worktree
+        (work_dir / "external" / "external_file.txt").write_text("external content")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=work_dir / "external",
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add external file"],
+            cwd=work_dir / "external",
+            check=True,
+            capture_output=True,
+        )
+
+        (work_dir / "project_a" / "project_file.txt").write_text("project content")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=work_dir / "project_a",
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add project file"],
+            cwd=work_dir / "project_a",
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktrees before merge
+        manager.remove_worktree("test_chunk", remove_branch=False, repo_paths=repo_paths)
+
+        # Switch each main repo to a different branch
+        for repo_path in repo_paths:
+            subprocess.run(
+                ["git", "checkout", "-b", "working_branch"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+            )
+
+        # Merge to base - should NOT checkout a different branch in any repo
+        manager.merge_to_base("test_chunk", repo_paths=repo_paths)
+
+        # Check current branches after merge - should all be unchanged
+        for repo_path in repo_paths:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "working_branch"
+
+
+# Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+class TestMultiRepoWorktreeLocking:
+    """Tests for worktree locking in multi-repo mode."""
+
+    @pytest.fixture
+    def task_repos(self, tmp_path):
+        """Create a task directory with multiple repos for testing."""
+        _, external, projects = setup_task_directory(
+            tmp_path,
+            external_name="external",
+            project_names=["project_a"],
+        )
+        return {
+            "external": external,
+            "project_a": projects[0],
+        }
+
+    def test_multi_repo_worktrees_are_locked_after_creation(self, task_repos):
+        """All worktrees are locked after creation in multi-repo mode."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Check each repo for locked worktrees
+        for repo_path in repo_paths:
+            repo_name = repo_path.name
+            worktree_path = work_dir / repo_name
+
+            result = subprocess.run(
+                ["git", "worktree", "list", "--porcelain"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+            )
+
+            in_our_worktree = False
+            is_locked = False
+            for line in result.stdout.split("\n"):
+                if line.startswith("worktree ") and str(worktree_path) in line:
+                    in_our_worktree = True
+                elif line.startswith("worktree "):
+                    in_our_worktree = False
+                elif in_our_worktree and line.startswith("locked"):
+                    is_locked = True
+                    break
+
+            assert is_locked, f"Worktree for {repo_name} should be locked after creation"
+
+    def test_multi_repo_remove_unlocks_all_worktrees(self, task_repos):
+        """Remove unlocks and removes all worktrees in multi-repo mode."""
+        external = task_repos["external"]
+        manager = WorktreeManager(external)
+
+        repo_paths = [task_repos["external"], task_repos["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Remove should succeed
+        manager.remove_worktree("test_chunk", repo_paths=repo_paths)
+
+        assert not work_dir.exists()
