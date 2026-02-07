@@ -1,46 +1,88 @@
 """Investigations module - business logic for investigation management."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on investigation creation
 
 import pathlib
+from pathlib import Path
 
+from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import InvestigationFrontmatter, InvestigationStatus, VALID_INVESTIGATION_TRANSITIONS, extract_short_name
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
-class Investigations:
+class Investigations(ArtifactManager[InvestigationFrontmatter, InvestigationStatus]):
     """Utility class for managing investigation documentation."""
 
-    def __init__(self, project_dir):
+    def __init__(self, project_dir: Path | pathlib.Path) -> None:
         """Initialize with project directory.
 
         Args:
             project_dir: Path to the project root directory.
         """
-        self.project_dir = project_dir
+        super().__init__(Path(project_dir))
+
+    # Abstract property implementations from ArtifactManager
+    @property
+    def artifact_dir_name(self) -> str:
+        return "investigations"
 
     @property
-    def investigations_dir(self):
-        """Return the path to the investigations directory."""
-        return self.project_dir / "docs" / "investigations"
-
-    def enumerate_investigations(self):
-        """List investigation directory names.
-
-        Returns:
-            List of investigation directory names, or empty list if none exist.
-        """
-        if not self.investigations_dir.exists():
-            return []
-        return [f.name for f in self.investigations_dir.iterdir() if f.is_dir()]
+    def main_filename(self) -> str:
+        return "OVERVIEW.md"
 
     @property
-    def num_investigations(self):
+    def frontmatter_model_class(self) -> type[InvestigationFrontmatter]:
+        return InvestigationFrontmatter
+
+    @property
+    def status_enum(self) -> type[InvestigationStatus]:
+        return InvestigationStatus
+
+    @property
+    def transition_map(self) -> dict[InvestigationStatus, set[InvestigationStatus]]:
+        return VALID_INVESTIGATION_TRANSITIONS
+
+    # Backward compatibility aliases
+    @property
+    def project_dir(self) -> Path:
+        """Return the project root directory (alias for backward compatibility)."""
+        return self._project_dir
+
+    @property
+    def investigations_dir(self) -> Path:
+        """Return the path to the investigations directory (alias for artifact_dir)."""
+        return self.artifact_dir
+
+    def enumerate_investigations(self) -> list[str]:
+        """List investigation directory names (alias for enumerate_artifacts)."""
+        return self.enumerate_artifacts()
+
+    @property
+    def num_investigations(self) -> int:
         """Return the number of investigations."""
         return len(self.enumerate_investigations())
+
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
+    def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
+        """Parse and validate OVERVIEW.md frontmatter for an investigation.
+
+        This is an alias for parse_frontmatter() that maintains the original
+        method name for backward compatibility.
+
+        Args:
+            investigation_id: The investigation directory name.
+
+        Returns:
+            Validated InvestigationFrontmatter if successful, None if:
+            - Investigation directory doesn't exist
+            - OVERVIEW.md doesn't exist
+            - Frontmatter is malformed or fails validation
+        """
+        return self.parse_frontmatter(investigation_id)
 
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def create_investigation(self, short_name: str) -> pathlib.Path:
@@ -106,99 +148,3 @@ class Investigations:
             if existing_short == short_name:
                 duplicates.append(name)
         return duplicates
-
-    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
-    def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
-        """Parse and validate OVERVIEW.md frontmatter for an investigation.
-
-        Args:
-            investigation_id: The investigation directory name.
-
-        Returns:
-            Validated InvestigationFrontmatter if successful, None if:
-            - Investigation directory doesn't exist
-            - OVERVIEW.md doesn't exist
-            - Frontmatter is malformed or fails validation
-        """
-        from frontmatter import parse_frontmatter
-
-        overview_path = self.investigations_dir / investigation_id / "OVERVIEW.md"
-        if not overview_path.exists():
-            return None
-
-        return parse_frontmatter(overview_path, InvestigationFrontmatter)
-
-    def get_status(self, investigation_id: str) -> InvestigationStatus:
-        """Get the current status of an investigation.
-
-        Args:
-            investigation_id: The investigation directory name.
-
-        Returns:
-            The current InvestigationStatus.
-
-        Raises:
-            ValueError: If investigation not found or has invalid frontmatter.
-        """
-        frontmatter = self.parse_investigation_frontmatter(investigation_id)
-        if frontmatter is None:
-            raise ValueError(f"Investigation '{investigation_id}' not found in docs/investigations/")
-        return frontmatter.status
-
-    def update_status(
-        self, investigation_id: str, new_status: InvestigationStatus
-    ) -> tuple[InvestigationStatus, InvestigationStatus]:
-        """Update investigation status with transition validation.
-
-        Args:
-            investigation_id: The investigation directory name.
-            new_status: The new status to transition to.
-
-        Returns:
-            Tuple of (old_status, new_status) on success.
-
-        Raises:
-            ValueError: If investigation not found, invalid status, or invalid transition.
-        """
-        # Get current status
-        current_status = self.get_status(investigation_id)
-
-        # Validate the transition
-        valid_transitions = VALID_INVESTIGATION_TRANSITIONS.get(current_status, set())
-        if new_status not in valid_transitions:
-            valid_names = sorted(s.value for s in valid_transitions)
-            if valid_names:
-                valid_str = ", ".join(valid_names)
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"Valid transitions: {valid_str}"
-                )
-            else:
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"{current_status.value} is a terminal state with no valid transitions"
-                )
-
-        # Update the frontmatter
-        self._update_overview_frontmatter(investigation_id, "status", new_status.value)
-
-        return (current_status, new_status)
-
-    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
-    def _update_overview_frontmatter(
-        self, investigation_id: str, field: str, value
-    ) -> None:
-        """Update a single field in OVERVIEW.md frontmatter.
-
-        Args:
-            investigation_id: The investigation directory name.
-            field: The frontmatter field name to update.
-            value: The new value for the field.
-
-        Raises:
-            ValueError: If the file has no frontmatter.
-        """
-        from frontmatter import update_frontmatter_field
-
-        overview_path = self.investigations_dir / investigation_id / "OVERVIEW.md"
-        update_frontmatter_field(overview_path, field, value)

@@ -25,10 +25,8 @@ code_references:
   implements: Extended to include subsystem reference validation
 - ref: src/subsystems.py#Subsystems::validate_chunk_refs
   implements: Validates chunk references in subsystem frontmatter exist in docs/chunks/
-- ref: src/ve.py#validate
+- ref: src/cli/chunk.py#validate
   implements: Chunk validate CLI command (renamed from 'complete', includes subsystem ref validation)
-- ref: src/ve.py#validate
-  implements: Subsystem validate CLI command ('ve subsystem validate' for chunk ref validation)
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: Template updated with subsystems field and documentation
 - ref: src/cli/subsystem.py#validate

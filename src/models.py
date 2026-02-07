@@ -535,6 +535,7 @@ class InvestigationFrontmatter(BaseModel):
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
 # Chunk: docs/chunks/chunk_frontmatter_model - Pydantic model for chunk GOAL.md frontmatter validation
 # Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
+# Chunk: docs/chunks/investigation_chunk_refs - Optional investigation field in chunk frontmatter schema
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 

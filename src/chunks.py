@@ -1,6 +1,7 @@
 """Chunks module - business logic for chunk management."""
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/ordering_remove_seqno - Short name directory format and chunk resolution
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on chunk creation
 
@@ -8,11 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import pathlib
+from pathlib import Path
 import re
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
 from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
 import repo_cache
@@ -23,6 +26,7 @@ from models import (
     CHUNK_ID_PATTERN,
     ChunkFrontmatter,
     ChunkStatus,
+    VALID_CHUNK_TRANSITIONS,
     extract_short_name,
 )
 from symbols import is_parent_of, parse_reference, extract_symbols, qualify_ref
@@ -80,20 +84,65 @@ class ChunkLocation:
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
-class Chunks:
-    def __init__(self, project_dir):
-        self.project_dir = project_dir
-        self.chunk_dir = project_dir / "docs" / "chunks"
-        self.chunk_dir.mkdir(parents=True, exist_ok=True)
+class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
+    """Utility class for managing chunk documentation."""
 
-    def enumerate_chunks(self):
-        return [f.name for f in self.chunk_dir.iterdir() if f.is_dir()]
+    # Chunk: docs/chunks/implement_chunk_start-ve-001 - Chunks class initialization
+    def __init__(self, project_dir: Path | pathlib.Path) -> None:
+        """Initialize with project directory.
+
+        Args:
+            project_dir: Path to the project root directory.
+        """
+        super().__init__(Path(project_dir))
+        # Ensure chunk_dir exists (backward compatibility)
+        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    # Abstract property implementations from ArtifactManager
+    @property
+    def artifact_dir_name(self) -> str:
+        return "chunks"
 
     @property
-    def num_chunks(self):
+    def main_filename(self) -> str:
+        return "GOAL.md"
+
+    @property
+    def frontmatter_model_class(self) -> type[ChunkFrontmatter]:
+        return ChunkFrontmatter
+
+    @property
+    def status_enum(self) -> type[ChunkStatus]:
+        return ChunkStatus
+
+    @property
+    def transition_map(self) -> dict[ChunkStatus, set[ChunkStatus]]:
+        return VALID_CHUNK_TRANSITIONS
+
+    # Backward compatibility aliases
+    @property
+    def project_dir(self) -> Path:
+        """Return the project root directory (alias for backward compatibility)."""
+        return self._project_dir
+
+    @property
+    def chunk_dir(self) -> Path:
+        """Return the path to the chunks directory (alias for artifact_dir)."""
+        return self.artifact_dir
+
+    # Chunk: docs/chunks/implement_chunk_start-ve-001 - List existing chunk directories
+    def enumerate_chunks(self) -> list[str]:
+        """List chunk directory names (alias for enumerate_artifacts)."""
+        return self.enumerate_artifacts()
+
+    # Chunk: docs/chunks/implement_chunk_start-ve-001 - Count of existing chunks
+    @property
+    def num_chunks(self) -> int:
+        """Return the number of chunks."""
         return len(self.enumerate_chunks())
 
     # Chunk: docs/chunks/chunknaming_drop_ticket - Collision detection ignoring ticket_id
+    # Chunk: docs/chunks/implement_chunk_start-ve-001 - Detects existing chunks with same short_name only
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name.
 
@@ -291,6 +340,7 @@ class Chunks:
     # Chunk: docs/chunks/chunknaming_drop_ticket - Directory naming without ticket suffix
     # Chunk: docs/chunks/coderef_format_prompting - Projects parameter for task-context template rendering
     # Chunk: docs/chunks/future_chunk_creation - Extended with status parameter to support FUTURE and IMPLEMENTING statuses
+    # Chunk: docs/chunks/implement_chunk_start-ve-001 - Directory creation with correct path format, template rendering
     def create_chunk(
         self,
         ticket_id: str | None,
@@ -754,6 +804,7 @@ class Chunks:
     # Chunk: docs/chunks/bidirectional_refs - Extended to include subsystem reference validation
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed ChunkStatus and frontmatter.code_references
     # Chunk: docs/chunks/task_chunk_validation - Task-context awareness for validation
+    # Chunk: docs/chunks/investigation_chunk_refs - Integration of investigation validation into chunk completion
     def validate_chunk_complete(
         self,
         chunk_id: str | None = None,
@@ -1114,6 +1165,9 @@ class Chunks:
     def get_status(self, chunk_id: str) -> ChunkStatus:
         """Get the current status of a chunk.
 
+        Overrides base class to support chunk ID resolution (4-digit prefix,
+        short name, or exact match).
+
         Args:
             chunk_id: The chunk ID to get status for.
 
@@ -1138,6 +1192,9 @@ class Chunks:
     ) -> tuple[ChunkStatus, ChunkStatus]:
         """Update chunk status with transition validation.
 
+        Overrides base class to support chunk ID resolution and use
+        get_chunk_goal_path for file updates.
+
         Args:
             chunk_id: The chunk ID to update.
             new_status: The new status to transition to.
@@ -1149,26 +1206,13 @@ class Chunks:
             ValueError: If chunk not found, invalid status, or invalid transition.
         """
         from task_utils import update_frontmatter_field
-        from models import VALID_CHUNK_TRANSITIONS
 
-        # Get current status
+        # Get current status (uses resolve_chunk_id internally)
         current_status = self.get_status(chunk_id)
 
-        # Validate the transition
-        valid_transitions = VALID_CHUNK_TRANSITIONS.get(current_status, set())
-        if new_status not in valid_transitions:
-            valid_names = sorted(s.value for s in valid_transitions)
-            if valid_names:
-                valid_str = ", ".join(valid_names)
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"Valid transitions: {valid_str}"
-                )
-            else:
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"{current_status.value} is a terminal state with no valid transitions"
-                )
+        # Validate the transition using StateMachine from base class
+        sm = self._get_state_machine()
+        sm.validate_transition(current_status, new_status)
 
         # Update the frontmatter
         goal_path = self.get_chunk_goal_path(chunk_id)
@@ -1216,6 +1260,7 @@ class Chunks:
         return errors
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
+    # Chunk: docs/chunks/investigation_chunk_refs - Validation that referenced investigations exist
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 

@@ -14,11 +14,13 @@ from validation import validate_identifier
 from task_utils import TaskProjectContext, is_task_directory
 
 
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - Short name validation delegating to validate_identifier()
 def validate_short_name(short_name: str) -> list[str]:
     """Validate short_name and return list of error messages."""
     return validate_identifier(short_name, "short_name", max_length=31)
 
 
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - Ticket ID validation delegating to validate_identifier()
 def validate_ticket_id(ticket_id: str) -> list[str]:
     """Validate ticket_id and return list of error messages."""
     return validate_identifier(ticket_id, "ticket_id", max_length=None)
