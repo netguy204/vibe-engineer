@@ -101,9 +101,8 @@ The task directory acts as a unified resolution context where all projects and t
 
 ### Identifiers and Metadata
 
-- **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
-- **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
-- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk
+- **Short Name**: A human-readable identifier for a chunk, starting with a lowercase letter and containing only lowercase letters, digits, underscores, and hyphens
+- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk (stored in frontmatter, not directory name)
 - **Code Reference**: A symbolic path (file#symbol) that links documentation to specific implementation locations
 - **Superseded**: A document status indicating it has been replaced by a newer version but retained for historical context
 
@@ -123,14 +122,14 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
       DECISIONS.md                    # Architectural decision records
       TESTING_PHILOSOPHY.md           # Testing approach
     chunks/
-      {NNNN}-{short_name}[-{ticket}]/ # Chunk directories
+      {short_name}/                   # Chunk directories
         GOAL.md                       # Chunk goal with frontmatter
         PLAN.md                       # Implementation plan
     subsystems/
-      {NNNN}-{short_name}/            # Subsystem directories
+      {short_name}/                   # Subsystem directories
         OVERVIEW.md                   # Subsystem documentation with frontmatter
     investigations/
-      {NNNN}-{short_name}/            # Investigation directories
+      {short_name}/                   # Investigation directories
         OVERVIEW.md                   # Investigation documentation with frontmatter
   .claude/
     commands/                         # Agent command definitions
@@ -188,13 +187,11 @@ projects:
 
 ### Chunk Directory Naming
 
-Format: `{chunk_id}-{short_name}[-{ticket_id}]`
+Format: `{short_name}`
 
-- `chunk_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
-- `ticket_id`: optional, lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-initial_setup`, `0002-auth-feature-PROJ-123`
+Examples: `initial_setup`, `auth_feature`, `api_refactor`
 
 ### Chunk GOAL.md Frontmatter
 
@@ -209,7 +206,7 @@ code_references:
   - ref: path/to/file.ext#ClassName::method_name
     implements: "Description of what this code implements"
 subsystems:
-  - subsystem_id: "{NNNN}-{short_name}"
+  - subsystem_id: "{short_name}"
     relationship: implements | uses
 ---
 ```
@@ -255,12 +252,11 @@ Code references use symbolic paths rather than line numbers for stability as cod
 
 ### Subsystem Directory Naming
 
-Format: `{subsystem_id}-{short_name}`
+Format: `{short_name}`
 
-- `subsystem_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-validation`, `0002-template_system`
+Examples: `validation`, `template_system`, `workflow_artifacts`
 
 ### Subsystem OVERVIEW.md Frontmatter
 
@@ -268,7 +264,7 @@ Examples: `0001-validation`, `0002-template_system`
 ---
 status: DISCOVERING | DOCUMENTED | REFACTORING | STABLE | DEPRECATED
 chunks:
-  - chunk_id: "{NNNN}-{short_name}"
+  - chunk_id: "{short_name}"
     relationship: implements | uses
 code_references:
   - ref: path/to/file.ext#ClassName::method_name
@@ -318,14 +314,14 @@ Chunks and subsystems have a bidirectional relationship. Both sides use the same
 In chunk GOAL.md frontmatter:
 ```yaml
 subsystems:
-  - subsystem_id: "0001-validation"
+  - subsystem_id: "validation"
     relationship: implements
 ```
 
 In subsystem OVERVIEW.md frontmatter:
 ```yaml
 chunks:
-  - chunk_id: "0014-subsystem_frontmatter"
+  - chunk_id: "subsystem_frontmatter"
     relationship: implements
 ```
 
@@ -333,12 +329,11 @@ These references are validated by `ve chunk validate` (for chunks) and `ve subsy
 
 ### Investigation Directory Naming
 
-Format: `{investigation_id}-{short_name}`
+Format: `{short_name}`
 
-- `investigation_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-memory_leak`, `0002-graphql_migration`
+Examples: `memory_leak`, `graphql_migration`, `performance_regression`
 
 ### Investigation OVERVIEW.md Frontmatter
 
@@ -348,7 +343,7 @@ status: ONGOING | SOLVED | NOTED | DEFERRED
 trigger: {description} | null
 proposed_chunks:
   - prompt: "Description of proposed work"
-    chunk_directory: "{NNNN}-{short_name}" | null
+    chunk_directory: "{short_name}" | null
 ---
 ```
 

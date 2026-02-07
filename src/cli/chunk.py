@@ -1042,8 +1042,6 @@ def activate(chunk_id, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(chunk_id, new_status, project_dir):
     """Show or update chunk status."""
-    from models import extract_short_name
-
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
@@ -1056,14 +1054,11 @@ def status(chunk_id, new_status, project_dir):
         click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
-    # Extract shortname for display
-    shortname = extract_short_name(resolved_id)
-
     # Display mode: just show current status
     if new_status is None:
         try:
             current_status = chunks.get_status(resolved_id)
-            click.echo(f"{shortname}: {current_status.value}")
+            click.echo(f"{resolved_id}: {current_status.value}")
         except ValueError as e:
             click.echo(f"Error: {e}", err=True)
             raise SystemExit(1)
@@ -1084,7 +1079,7 @@ def status(chunk_id, new_status, project_dir):
     # Attempt the transition
     try:
         old_status, updated_status = chunks.update_status(resolved_id, new_status_enum)
-        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+        click.echo(f"{resolved_id}: {old_status.value} -> {updated_status.value}")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

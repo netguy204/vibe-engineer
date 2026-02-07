@@ -10,7 +10,7 @@ from pathlib import Path
 
 from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import InvestigationFrontmatter, InvestigationStatus, VALID_INVESTIGATION_TRANSITIONS, extract_short_name
+from models import InvestigationFrontmatter, InvestigationStatus, VALID_INVESTIGATION_TRANSITIONS
 from template_system import ActiveInvestigation, TemplateContext, render_to_directory
 
 
@@ -169,7 +169,7 @@ class Investigations(ArtifactManager[InvestigationFrontmatter, InvestigationStat
         """
         duplicates = []
         for name in self.enumerate_investigations():
-            existing_short = extract_short_name(name)
-            if existing_short == short_name:
+            # Directory name is the short name
+            if name == short_name:
                 duplicates.append(name)
         return duplicates

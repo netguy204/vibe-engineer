@@ -65,7 +65,7 @@ chunks: []
     def test_exits_0_with_no_output_when_no_overlap(self, runner, temp_project):
         """Exits 0 with no output when no overlap detected."""
         # Create chunk referencing one file
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py", "implements": "Foo module"}
         ])
 
@@ -76,7 +76,7 @@ chunks: []
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
@@ -141,7 +141,7 @@ chunks: []
     def test_exits_0_listing_overlapping_subsystems(self, runner, temp_project):
         """Exits 0 and lists overlapping subsystems when overlap detected."""
         # Create overlapping chunk and subsystem
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
@@ -153,7 +153,7 @@ chunks: []
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
@@ -161,7 +161,7 @@ chunks: []
 
     def test_shows_subsystem_status(self, runner, temp_project):
         """Each output line includes subsystem status."""
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
@@ -173,7 +173,7 @@ chunks: []
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
@@ -182,7 +182,7 @@ chunks: []
     def test_lists_multiple_overlapping_subsystems(self, runner, temp_project):
         """Lists all overlapping subsystems when multiple exist."""
         # Chunk references two files
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"},
             {"ref": "src/baz.py#Qux", "implements": "Qux class"},
         ])
@@ -199,7 +199,7 @@ chunks: []
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0

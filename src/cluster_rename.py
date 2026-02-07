@@ -19,7 +19,6 @@ from chunks import Chunks
 from investigations import Investigations
 from narratives import Narratives
 from subsystems import Subsystems
-from models import extract_short_name
 
 
 # Step 1: Core discovery function
@@ -28,9 +27,6 @@ def find_chunks_by_prefix(project_dir: Path, prefix: str) -> list[str]:
 
     Uses strict underscore separation to avoid false matches like
     'task_init' matching when 'task' is the prefix but 'task_foo' doesn't exist.
-
-    Handles both legacy {NNNN}-{short_name} and new {short_name} formats.
-    For legacy format, checks the short_name portion after the NNNN- prefix.
 
     Args:
         project_dir: Path to the project root directory.
@@ -43,11 +39,8 @@ def find_chunks_by_prefix(project_dir: Path, prefix: str) -> list[str]:
     matching = []
 
     for chunk_name in chunks.enumerate_chunks():
-        # Extract the short_name (handles both legacy and new formats)
-        short_name = extract_short_name(chunk_name)
-
-        # Check if short_name starts with {prefix}_
-        if short_name.startswith(f"{prefix}_"):
+        # Directory name is the short name
+        if chunk_name.startswith(f"{prefix}_"):
             matching.append(chunk_name)
 
     return sorted(matching)
@@ -76,17 +69,8 @@ def check_rename_collisions(
     errors = []
 
     for chunk_name in matching_chunks:
-        short_name = extract_short_name(chunk_name)
-        # Replace old_prefix with new_prefix at the start of short_name
-        new_short_name = new_prefix + short_name[len(old_prefix):]
-
-        # Determine new directory name
-        if re.match(r"^\d{4}-", chunk_name):
-            # Legacy format: preserve the sequence number
-            seq_prefix = chunk_name.split("-", 1)[0]
-            new_chunk_name = f"{seq_prefix}-{new_short_name}"
-        else:
-            new_chunk_name = new_short_name
+        # Replace old_prefix with new_prefix at the start
+        new_chunk_name = new_prefix + chunk_name[len(old_prefix):]
 
         # Check for collision (but not with itself in case of case-only changes)
         if new_chunk_name != chunk_name and new_chunk_name in existing_chunks:
@@ -145,14 +129,8 @@ def _compute_new_chunk_name(chunk_name: str, old_prefix: str, new_prefix: str) -
     Returns:
         The new chunk directory name.
     """
-    short_name = extract_short_name(chunk_name)
-    new_short_name = new_prefix + short_name[len(old_prefix):]
-
-    if re.match(r"^\d{4}-", chunk_name):
-        # Legacy format: preserve the sequence number
-        seq_prefix = chunk_name.split("-", 1)[0]
-        return f"{seq_prefix}-{new_short_name}"
-    return new_short_name
+    # Replace old_prefix with new_prefix at the start
+    return new_prefix + chunk_name[len(old_prefix):]
 
 
 def find_created_after_references(
@@ -183,9 +161,8 @@ def find_created_after_references(
             continue
 
         for ref in frontmatter.created_after:
-            # Extract short_name from the reference
-            ref_short = extract_short_name(ref)
-            if ref_short.startswith(f"{old_prefix}_"):
+            # Directory name is the short name
+            if ref.startswith(f"{old_prefix}_"):
                 new_ref = _compute_new_chunk_name(ref, old_prefix, new_prefix)
                 updates.append(FrontmatterUpdate(
                     file_path=goal_path,
@@ -226,8 +203,8 @@ def find_subsystem_chunk_references(
 
         for chunk_rel in frontmatter.chunks:
             chunk_id = chunk_rel.chunk_id
-            chunk_short = extract_short_name(chunk_id)
-            if chunk_short.startswith(f"{old_prefix}_"):
+            # Directory name is the short name
+            if chunk_id.startswith(f"{old_prefix}_"):
                 new_chunk_id = _compute_new_chunk_name(chunk_id, old_prefix, new_prefix)
                 updates.append(FrontmatterUpdate(
                     file_path=overview_path,
@@ -268,8 +245,8 @@ def find_narrative_chunk_references(
 
         for proposed in frontmatter.proposed_chunks:
             if proposed.chunk_directory:
-                chunk_short = extract_short_name(proposed.chunk_directory)
-                if chunk_short.startswith(f"{old_prefix}_"):
+                # Directory name is the short name
+                if proposed.chunk_directory.startswith(f"{old_prefix}_"):
                     new_chunk_dir = _compute_new_chunk_name(
                         proposed.chunk_directory, old_prefix, new_prefix
                     )
@@ -312,8 +289,8 @@ def find_investigation_chunk_references(
 
         for proposed in frontmatter.proposed_chunks:
             if proposed.chunk_directory:
-                chunk_short = extract_short_name(proposed.chunk_directory)
-                if chunk_short.startswith(f"{old_prefix}_"):
+                # Directory name is the short name
+                if proposed.chunk_directory.startswith(f"{old_prefix}_"):
                     new_chunk_dir = _compute_new_chunk_name(
                         proposed.chunk_directory, old_prefix, new_prefix
                     )

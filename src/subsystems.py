@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS, extract_short_name
+from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
 from symbols import is_parent_of, parse_reference, qualify_ref
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 
 # Regex for validating subsystem directory name pattern
-# Legacy: {NNNN}-{short_name}, New: {short_name} (lowercase, starting with letter)
-SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
+# {short_name}: lowercase, starting with letter
+SUBSYSTEM_DIR_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
@@ -133,13 +133,7 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
         Returns:
             True if name matches valid artifact ID pattern, False otherwise.
         """
-        if not SUBSYSTEM_DIR_PATTERN.match(name):
-            return False
-        # For legacy format, ensure there's content after the prefix
-        if re.match(r"^\d{4}-", name):
-            parts = name.split("-", 1)
-            return len(parts) == 2 and bool(parts[1])
-        return True
+        return bool(SUBSYSTEM_DIR_PATTERN.match(name))
 
     # Chunk: docs/chunks/subsystem_cli_scaffolding - Lookup subsystem directory by shortname
     def find_by_shortname(self, shortname: str) -> str | None:
@@ -153,9 +147,8 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
         """
         for dirname in self.enumerate_subsystems():
             if self.is_subsystem_dir(dirname):
-                # Extract short_name (handles both patterns)
-                existing_short = extract_short_name(dirname)
-                if existing_short == shortname:
+                # Directory name is the short name
+                if dirname == shortname:
                     return dirname
         return None
 
@@ -225,8 +218,8 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
         """
         duplicates = []
         for name in self.enumerate_subsystems():
-            existing_short = extract_short_name(name)
-            if existing_short == shortname:
+            # Directory name is the short name
+            if name == shortname:
                 duplicates.append(name)
         return duplicates
 

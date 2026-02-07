@@ -82,10 +82,16 @@ class TestSymbolicReference:
 class TestSubsystemRelationship:
     """Tests for SubsystemRelationship model (inverse of ChunkRelationship)."""
 
+    def test_valid_subsystem_relationship(self):
+        """Valid subsystem relationship parses successfully."""
+        rel = SubsystemRelationship(subsystem_id="validation", relationship="implements")
+        assert rel.subsystem_id == "validation"
+        assert rel.relationship == "implements"
+
     def test_invalid_relationship_type(self):
         """Invalid relationship type (not 'implements' or 'uses') fails."""
         with pytest.raises(ValidationError) as exc_info:
-            SubsystemRelationship(subsystem_id="0001-validation", relationship="extends")
+            SubsystemRelationship(subsystem_id="validation", relationship="extends")
         assert "relationship" in str(exc_info.value).lower()
 
     def test_empty_subsystem_id_fails(self):
@@ -94,22 +100,16 @@ class TestSubsystemRelationship:
             SubsystemRelationship(subsystem_id="", relationship="implements")
         assert "subsystem_id" in str(exc_info.value).lower()
 
-    def test_invalid_subsystem_id_format_no_hyphen(self):
-        """Invalid subsystem_id format (missing hyphen) fails."""
+    def test_invalid_subsystem_id_format_starts_with_digit(self):
+        """Invalid subsystem_id format (starts with digit) fails."""
         with pytest.raises(ValidationError) as exc_info:
             SubsystemRelationship(subsystem_id="0001validation", relationship="implements")
         assert "subsystem_id" in str(exc_info.value).lower()
 
-    def test_invalid_subsystem_id_format_short_number(self):
-        """Invalid subsystem_id format (less than 4 digits) fails."""
+    def test_invalid_subsystem_id_format_uppercase(self):
+        """Invalid subsystem_id format (uppercase) fails."""
         with pytest.raises(ValidationError) as exc_info:
-            SubsystemRelationship(subsystem_id="001-validation", relationship="implements")
-        assert "subsystem_id" in str(exc_info.value).lower()
-
-    def test_invalid_subsystem_id_format_no_name(self):
-        """Invalid subsystem_id format (missing short name after hyphen) fails."""
-        with pytest.raises(ValidationError) as exc_info:
-            SubsystemRelationship(subsystem_id="0001-", relationship="implements")
+            SubsystemRelationship(subsystem_id="Validation", relationship="implements")
         assert "subsystem_id" in str(exc_info.value).lower()
 
 
@@ -175,14 +175,14 @@ class TestChunkFrontmatter:
         frontmatter = ChunkFrontmatter(
             status=ChunkStatus.IMPLEMENTING,
             ticket="VE-123",
-            parent_chunk="0001-previous_chunk",
+            parent_chunk="previous_chunk",
             code_paths=["src/foo.py", "src/bar.py"],
             code_references=[
                 {"ref": "src/foo.py#Foo", "implements": "Main logic"}
             ],
-            narrative="0001-my_narrative",
+            narrative="my_narrative",
             subsystems=[
-                {"subsystem_id": "0001-validation", "relationship": "implements"}
+                {"subsystem_id": "validation", "relationship": "implements"}
             ],
             proposed_chunks=[
                 {"prompt": "Fix the bug", "chunk_directory": None}
@@ -193,10 +193,10 @@ class TestChunkFrontmatter:
         )
         assert frontmatter.status == ChunkStatus.IMPLEMENTING
         assert frontmatter.ticket == "VE-123"
-        assert frontmatter.parent_chunk == "0001-previous_chunk"
+        assert frontmatter.parent_chunk == "previous_chunk"
         assert len(frontmatter.code_paths) == 2
         assert len(frontmatter.code_references) == 1
-        assert frontmatter.narrative == "0001-my_narrative"
+        assert frontmatter.narrative == "my_narrative"
         assert len(frontmatter.subsystems) == 1
         assert len(frontmatter.proposed_chunks) == 1
         assert len(frontmatter.dependents) == 1
