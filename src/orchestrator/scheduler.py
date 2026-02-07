@@ -6,6 +6,7 @@
 # Chunk: docs/chunks/orch_verify_active - ACTIVE status verification before commit/merge
 # Chunk: docs/chunks/orch_task_detection - Scheduler factory with task_info parameter
 # Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict checking and re-analysis during dispatch
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -19,7 +20,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,54 @@ from orchestrator.worktree import WorktreeManager, WorktreeError
 
 
 logger = logging.getLogger(__name__)
+
+
+# Chunk: docs/chunks/orch_api_retry - Pattern matching for retryable API errors
+# Regex patterns for detecting 5xx API errors in error strings
+_5XX_STATUS_PATTERN = re.compile(r"\b5[0-9]{2}\b")  # 500, 502, 503, etc.
+_5XX_TEXT_PATTERNS = [
+    "internal server error",
+    "bad gateway",
+    "service unavailable",
+    "gateway timeout",
+    "overloaded",
+    "api_error",  # Anthropic API error type
+    "rate_limit",  # Often a temporary condition
+    "529",  # Anthropic overloaded status
+]
+
+
+def is_retryable_api_error(error: str) -> bool:
+    """Check if an error string indicates a retryable 5xx API error.
+
+    Looks for patterns indicating server-side errors that are likely
+    transient and worth retrying:
+    - HTTP 5xx status codes (500, 502, 503, 504, 529)
+    - Error messages like "Internal Server Error", "overloaded", etc.
+
+    Does NOT retry on client errors (4xx) or other non-transient failures.
+
+    Args:
+        error: The error string from the agent result
+
+    Returns:
+        True if the error appears to be a retryable 5xx API error
+    """
+    if not error:
+        return False
+
+    error_lower = error.lower()
+
+    # Check for 5xx status codes in the error
+    if _5XX_STATUS_PATTERN.search(error):
+        return True
+
+    # Check for common 5xx error text patterns
+    for pattern in _5XX_TEXT_PATTERNS:
+        if pattern in error_lower:
+            return True
+
+    return False
 
 
 class VerificationStatus(StrEnum):
@@ -117,6 +166,7 @@ class SchedulerError(Exception):
 
 
 # Chunk: docs/chunks/orch_manual_done_unblock - Module-level function for unblocking dependents
+# Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition when blockers complete
 def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
     """Unblock work units that were blocked by a now-completed chunk.
 
@@ -622,6 +672,16 @@ class Scheduler:
                 if unit.chunk in self._running_agents:
                     continue  # Already running
 
+                # Chunk: docs/chunks/orch_api_retry - Respect retry backoff timing
+                if unit.next_retry_at is not None:
+                    if datetime.now(timezone.utc) < unit.next_retry_at:
+                        # Not ready yet - still in backoff period
+                        continue
+                    # Backoff period elapsed - clear the retry timestamp
+                    unit.next_retry_at = None
+                    unit.updated_at = datetime.now(timezone.utc)
+                    self.store.update_work_unit(unit)
+
                 blocking_chunks = await self._check_conflicts(unit)
                 if blocking_chunks:
                     logger.info(
@@ -645,6 +705,8 @@ class Scheduler:
     # Chunk: docs/chunks/reviewer_decision_tool - Sets up review_decision_callback for REVIEW phase
     # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast RUNNING status when work unit is dispatched
     # Chunk: docs/chunks/orch_activate_on_inject - Integration of chunk activation after worktree creation
+    # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason and blocked_by when transitioning to RUNNING
+    # Chunk: docs/chunks/orch_attention_queue - Pass pending_answer to agent runner on resume
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -784,14 +846,35 @@ class Scheduler:
             )
 
         elif result.error:
-            # Agent failed
-            logger.error(f"Agent for {chunk} failed: {result.error}")
-            await self._mark_needs_attention(work_unit, result.error)
+            # Agent failed - check if this is a retryable API error
+            # Chunk: docs/chunks/orch_api_retry - Automatic retry for 5xx API errors
+            if (
+                is_retryable_api_error(result.error)
+                and work_unit.api_retry_count < self.config.api_retry_max_attempts
+            ):
+                # Schedule retry with exponential backoff
+                await self._schedule_api_retry(work_unit, result)
+            else:
+                # Non-retryable error or retries exhausted
+                if work_unit.api_retry_count >= self.config.api_retry_max_attempts:
+                    logger.warning(
+                        f"Exhausted {self.config.api_retry_max_attempts} API retries "
+                        f"for {chunk}, marking NEEDS_ATTENTION"
+                    )
+                    reason = (
+                        f"API error after {work_unit.api_retry_count} retries: "
+                        f"{result.error[:200]}"
+                    )
+                else:
+                    logger.error(f"Agent for {chunk} failed: {result.error}")
+                    reason = result.error
+                await self._mark_needs_attention(work_unit, reason)
 
         elif result.completed:
             # Phase completed - advance to next phase or mark done
             logger.info(f"Agent for {chunk} completed phase {phase.value}")
 
+            # Chunk: docs/chunks/orch_review_phase - Special handling for REVIEW phase to route to _handle_review_result
             if phase == WorkUnitPhase.REVIEW:
                 # REVIEW phase needs special handling to parse the decision
                 worktree_path = self.worktree_manager.get_worktree_path(chunk)
@@ -806,8 +889,11 @@ class Scheduler:
                 work_unit, "Agent ended in unknown state"
             )
 
+    # Chunk: docs/chunks/orch_review_phase - Updated phase progression map to include REVIEW between IMPLEMENT and COMPLETE
     # Chunk: docs/chunks/orch_blocked_lifecycle - Calls _unblock_dependents after work unit transitions to DONE
     # Chunk: docs/chunks/orch_activate_on_inject - Restore displaced chunk before merge when work unit completes
+    # Chunk: docs/chunks/orch_broadcast_invariant - Broadcast READY status on phase advancement and DONE status on completion
+    # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason when transitioning to READY on phase advancement
     async def _advance_phase(self, work_unit: WorkUnit) -> None:
         """Advance a work unit to the next phase.
 
@@ -981,6 +1067,9 @@ class Scheduler:
 
             work_unit.status = WorkUnitStatus.DONE
             work_unit.session_id = None
+            # Chunk: docs/chunks/orch_api_retry - Reset retry state on successful completion
+            work_unit.api_retry_count = 0
+            work_unit.next_retry_at = None
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
@@ -1000,6 +1089,9 @@ class Scheduler:
             work_unit.status = WorkUnitStatus.READY
             work_unit.session_id = None
             work_unit.attention_reason = None  # Clear any stale reason
+            # Chunk: docs/chunks/orch_api_retry - Reset retry state on successful phase advancement
+            work_unit.api_retry_count = 0
+            work_unit.next_retry_at = None
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
 
@@ -1170,6 +1262,7 @@ class Scheduler:
         # The next dispatch tick will trigger fresh analysis
 
     # Chunk: docs/chunks/orch_blocked_lifecycle - Automatic unblock when blockers complete
+    # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition when blockers complete
     def _unblock_dependents(self, completed_chunk: str) -> None:
         """Unblock work units that were blocked by a now-completed chunk.
 
@@ -1181,6 +1274,7 @@ class Scheduler:
         """
         unblock_dependents(self.store, completed_chunk)
 
+    # Chunk: docs/chunks/orch_review_phase - Route work unit based on review decision (APPROVE/FEEDBACK/ESCALATE)
     # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     async def _handle_review_result(
         self,
@@ -1392,6 +1486,65 @@ class Scheduler:
                 work_unit,
                 f"Review escalated: {review_result.reason or review_result.summary}",
             )
+
+    # Chunk: docs/chunks/orch_api_retry - Schedule retry with exponential backoff for 5xx API errors
+    async def _schedule_api_retry(
+        self,
+        work_unit: WorkUnit,
+        result: AgentResult,
+    ) -> None:
+        """Schedule a retry for a work unit that encountered a 5xx API error.
+
+        Uses exponential backoff: delay = min(initial * 2^retry_count, max_delay)
+
+        The work unit is transitioned back to READY with:
+        - Incremented api_retry_count
+        - next_retry_at set to the earliest time the retry should happen
+        - pending_answer set to "continue" to resume the session
+        - session_id preserved for session resumption
+
+        Args:
+            work_unit: The work unit that encountered the error
+            result: The AgentResult containing the error and session_id
+        """
+        chunk = work_unit.chunk
+
+        # Increment retry count
+        work_unit.api_retry_count += 1
+
+        # Calculate exponential backoff delay
+        # delay = min(initial * 2^(retry_count-1), max_delay)
+        delay_ms = min(
+            self.config.api_retry_initial_delay_ms * (2 ** (work_unit.api_retry_count - 1)),
+            self.config.api_retry_max_delay_ms,
+        )
+
+        # Set next retry time
+        work_unit.next_retry_at = datetime.now(timezone.utc) + timedelta(milliseconds=delay_ms)
+
+        # Set up session resumption with "continue" prompt
+        work_unit.pending_answer = "continue"
+        work_unit.session_id = result.session_id
+
+        # Transition to READY for dispatch loop to pick up
+        work_unit.status = WorkUnitStatus.READY
+        work_unit.attention_reason = None  # Clear any stale reason
+        work_unit.updated_at = datetime.now(timezone.utc)
+
+        self.store.update_work_unit(work_unit)
+
+        logger.info(
+            f"Retrying {chunk} after API error (attempt {work_unit.api_retry_count}/"
+            f"{self.config.api_retry_max_attempts}, backoff {delay_ms}ms): "
+            f"{result.error[:100] if result.error else 'unknown error'}"
+        )
+
+        # Broadcast status update
+        await broadcast_work_unit_update(
+            chunk=work_unit.chunk,
+            status=work_unit.status.value,
+            phase=work_unit.phase.value,
+        )
 
     # Chunk: docs/chunks/orch_attention_reason - Setting attention_reason when marking work unit as NEEDS_ATTENTION
     async def _mark_needs_attention(

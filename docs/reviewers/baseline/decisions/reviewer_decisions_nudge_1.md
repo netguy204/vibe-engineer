@@ -1,7 +1,7 @@
 ---
 decision: APPROVE
 summary: All success criteria satisfied - nudge message appears for FeedbackReview decisions, not for simple good/bad, with correct format and test coverage.
-operator_review: null  # DO NOT SET - reserved for operator curation
+operator_review: good
 ---
 
 ## Criteria Assessment

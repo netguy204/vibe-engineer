@@ -3,10 +3,12 @@
 Commands for managing the orchestrator daemon and work units.
 """
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Orchestrator daemon and work unit CLI commands
 # Chunk: docs/chunks/cli_modularize - Orchestrator CLI commands
 # Chunk: docs/chunks/orch_tcp_port - ve orch start with --port and --host options
 # Chunk: docs/chunks/orch_url_command - ve orch url command for getting orchestrator endpoint
 # Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
+# Chunk: docs/chunks/orch_conflict_oracle - CLI commands for conflict analysis and resolution
 
 import pathlib
 
@@ -488,12 +490,14 @@ def validate_external_dependencies(
     return errors
 
 
+# Chunk: docs/chunks/explicit_deps_batch_inject - CLI command extended to accept multiple chunks and inject in dependency order
 @orch.command("inject")
 @click.argument("chunks", nargs=-1, required=True)
 @click.option("--phase", type=str, default=None, help="Override initial phase (GOAL, PLAN, IMPLEMENT)")
 @click.option("--priority", type=int, default=0, help="Scheduling priority (higher = more urgent)")
 # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
 @click.option("--retain", is_flag=True, help="Retain worktree after completion for debugging")
+# Chunk: docs/chunks/orch_scheduling - ve orch inject CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
@@ -590,6 +594,7 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
 
 
 @orch.command("queue")
+# Chunk: docs/chunks/orch_scheduling - ve orch queue CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_queue(json_output, project_dir):
@@ -628,6 +633,7 @@ def orch_queue(json_output, project_dir):
 @orch.command("prioritize")
 @click.argument("chunk")
 @click.argument("priority", type=int)
+# Chunk: docs/chunks/orch_scheduling - ve orch prioritize CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_prioritize(chunk, priority, json_output, project_dir):
@@ -661,9 +667,12 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
 @orch.command("config")
 @click.option("--max-agents", type=int, help="Maximum concurrent agents")
 @click.option("--dispatch-interval", type=float, help="Dispatch interval in seconds")
+# Chunk: docs/chunks/orch_worktree_retain - CLI option for worktree warning threshold
+@click.option("--worktree-threshold", type=int, help="Warning threshold for retained worktrees (default: 10)")
+# Chunk: docs/chunks/orch_scheduling - ve orch config CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def orch_config(max_agents, dispatch_interval, json_output, project_dir):
+def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, project_dir):
     """Get or set orchestrator configuration.
 
     If no options are provided, shows current configuration.
@@ -673,7 +682,7 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
 
     client = create_client(project_dir)
     try:
-        if max_agents is None and dispatch_interval is None:
+        if max_agents is None and dispatch_interval is None and worktree_threshold is None:
             # Get config
             result = client._request("GET", "/config")
         else:
@@ -683,6 +692,9 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
                 body["max_agents"] = max_agents
             if dispatch_interval is not None:
                 body["dispatch_interval_seconds"] = dispatch_interval
+            # Chunk: docs/chunks/orch_worktree_retain - Update worktree threshold
+            if worktree_threshold is not None:
+                body["worktree_warning_threshold"] = worktree_threshold
 
             result = client._request("PATCH", "/config", json=body)
 
@@ -692,6 +704,8 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
             click.echo("Orchestrator Configuration:")
             click.echo(f"  max_agents: {result['max_agents']}")
             click.echo(f"  dispatch_interval_seconds: {result['dispatch_interval_seconds']}")
+            # Chunk: docs/chunks/orch_worktree_retain - Display worktree threshold
+            click.echo(f"  worktree_warning_threshold: {result.get('worktree_warning_threshold', 10)}")
 
     except DaemonNotRunningError as e:
         click.echo(f"Error: {e}", err=True)
@@ -703,6 +717,7 @@ def orch_config(max_agents, dispatch_interval, json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/orch_attention_queue - ve orch attention CLI command showing attention queue
 @orch.command("attention")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -775,6 +790,7 @@ def orch_attention(json_output, project_dir):
         client.close()
 
 
+# Chunk: docs/chunks/orch_attention_queue - ve orch answer CLI command to answer questions and resume
 @orch.command("answer")
 @click.argument("chunk")
 @click.argument("answer")

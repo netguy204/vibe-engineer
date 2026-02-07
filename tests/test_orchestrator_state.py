@@ -340,6 +340,7 @@ class TestDefaultDbPath:
         assert result == tmp_path / ".ve" / "orchestrator.db"
 
 
+# Chunk: docs/chunks/orch_attention_reason - State persistence tests for attention_reason field
 class TestAttentionReasonPersistence:
     """Tests for attention_reason field persistence."""
 

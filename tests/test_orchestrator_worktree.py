@@ -349,6 +349,7 @@ class TestMergeToBase:
         assert manager._branch_exists("orch/test_chunk")
 
 
+# Chunk: docs/chunks/orch_mechanical_commit - Unit tests for mechanical commit
 class TestCommitChanges:
     """Tests for WorktreeManager.commit_changes()."""
 

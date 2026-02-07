@@ -642,9 +642,50 @@ class TestOrchConfig:
             data = json.loads(result.output)
             assert data["max_agents"] == 2
 
+    # Chunk: docs/chunks/orch_worktree_retain - Test worktree threshold config
+    def test_config_set_worktree_threshold(self, runner, tmp_path):
+        """Sets worktree_warning_threshold."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+                "worktree_warning_threshold": 20,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--worktree-threshold", "20", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "PATCH", "/config", json={"worktree_warning_threshold": 20}
+            )
+            assert "worktree_warning_threshold: 20" in result.output
+
+    def test_config_shows_worktree_threshold(self, runner, tmp_path):
+        """Config output includes worktree_warning_threshold."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+                "worktree_warning_threshold": 15,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "worktree_warning_threshold: 15" in result.output
 
 
-
+# Chunk: docs/chunks/orch_attention_reason - CLI tests for work-unit show command
 class TestWorkUnitShow:
     """Tests for ve orch work-unit show command."""
 
@@ -828,6 +869,7 @@ class TestOrchUrl:
             assert "port" in result.output.lower() or "not found" in result.output.lower()
 
 
+# Chunk: docs/chunks/orch_attention_reason - CLI tests for ps command attention_reason display
 class TestOrchPsAttentionReason:
     """Tests for ve orch ps command with attention_reason display."""
 

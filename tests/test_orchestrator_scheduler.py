@@ -1,10 +1,11 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
+# Chunk: docs/chunks/orch_verify_active - Unit and integration tests for ACTIVE status verification
 """Tests for the orchestrator scheduler."""
 
 import asyncio
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,6 +18,7 @@ from orchestrator.scheduler import (
     VerificationResult,
     activate_chunk_in_worktree,
     restore_displaced_chunk,
+    is_retryable_api_error,
 )
 from orchestrator.models import (
     AgentResult,
@@ -264,6 +266,7 @@ status: ACTIVE
         )
 
 
+# Chunk: docs/chunks/orch_mechanical_commit - Unit tests for mechanical commit in scheduler
 class TestMechanicalCommit:
     """Tests for mechanical commit in scheduler."""
 
@@ -990,6 +993,7 @@ status: IMPLEMENTING
         assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
 
 
+# Chunk: docs/chunks/orch_attention_reason - Scheduler tests for attention_reason tracking
 class TestAttentionReason:
     """Tests for attention_reason tracking."""
 
@@ -2957,6 +2961,7 @@ status: ACTIVE
         assert "chunk_d" in updated_b.blocked_by
 
 
+# Chunk: docs/chunks/orch_unblock_transition - Tests for NEEDS_ATTENTION to READY transition on unblock
 class TestNeedsAttentionUnblock:
     """Tests for NEEDS_ATTENTION to READY transition when blockers complete.
 
@@ -3149,6 +3154,7 @@ status: ACTIVE
             assert "chunk_a" not in updated.blocked_by, f"{name} should not be blocked"
 
 
+# Chunk: docs/chunks/orch_unblock_transition - Tests for attention_reason and blocked_by cleanup on status transitions
 class TestAttentionReasonCleanup:
     """Tests for attention_reason and blocked_by cleanup on status transitions.
 
@@ -3676,7 +3682,7 @@ loop_detection:
         assert "exceeded" in updated.attention_reason.lower()
         assert "iterations" in updated.attention_reason.lower()
 
-
+# Chunk: docs/chunks/orch_review_phase - Tests for parsing review decision from agent output
 class TestReviewDecisionParsing:
     """Tests for parsing review decision from agent output."""
 
@@ -3765,7 +3771,7 @@ Everything looks good.
         assert result is not None
         assert result.decision == ReviewDecision.APPROVE
 
-
+# Chunk: docs/chunks/orch_review_phase - Tests for REVIEW_FEEDBACK.md file creation
 class TestReviewFeedbackFile:
     """Tests for REVIEW_FEEDBACK.md file creation."""
 
@@ -4374,3 +4380,316 @@ class TestManualDoneUnblock:
         # Verify dependent is now READY
         updated = state_store.get_work_unit("dependent_chunk")
         assert updated.status == WorkUnitStatus.READY
+
+
+# Chunk: docs/chunks/orch_api_retry - Tests for API retry functionality
+class TestIsRetryableApiError:
+    """Tests for the is_retryable_api_error helper function."""
+
+    def test_detects_500_error(self):
+        """Detects HTTP 500 Internal Server Error."""
+        assert is_retryable_api_error("Error: 500 Internal Server Error")
+        assert is_retryable_api_error("status code 500")
+        assert is_retryable_api_error("HTTP/1.1 500")
+
+    def test_detects_502_bad_gateway(self):
+        """Detects HTTP 502 Bad Gateway."""
+        assert is_retryable_api_error("502 Bad Gateway")
+        assert is_retryable_api_error("error: 502")
+
+    def test_detects_503_service_unavailable(self):
+        """Detects HTTP 503 Service Unavailable."""
+        assert is_retryable_api_error("503 Service Unavailable")
+        assert is_retryable_api_error("service unavailable")
+
+    def test_detects_504_gateway_timeout(self):
+        """Detects HTTP 504 Gateway Timeout."""
+        assert is_retryable_api_error("504 Gateway Timeout")
+        assert is_retryable_api_error("gateway timeout")
+
+    def test_detects_529_overloaded(self):
+        """Detects HTTP 529 Overloaded (Anthropic-specific)."""
+        assert is_retryable_api_error("529 Overloaded")
+        assert is_retryable_api_error("error code 529")
+
+    def test_detects_overloaded_text(self):
+        """Detects 'overloaded' text patterns."""
+        assert is_retryable_api_error("API is overloaded, please retry")
+        assert is_retryable_api_error("Server overloaded")
+
+    def test_detects_api_error_type(self):
+        """Detects Anthropic api_error type."""
+        assert is_retryable_api_error("api_error: server error")
+        assert is_retryable_api_error("type: api_error")
+
+    def test_detects_rate_limit(self):
+        """Detects rate limit errors (often temporary)."""
+        assert is_retryable_api_error("rate_limit exceeded")
+        assert is_retryable_api_error("rate_limit_error")
+
+    def test_rejects_4xx_errors(self):
+        """Does not retry 4xx client errors."""
+        assert not is_retryable_api_error("400 Bad Request")
+        assert not is_retryable_api_error("401 Unauthorized")
+        assert not is_retryable_api_error("403 Forbidden")
+        assert not is_retryable_api_error("404 Not Found")
+        assert not is_retryable_api_error("429 Too Many Requests")  # 429 is not a 5xx
+
+    def test_rejects_non_api_errors(self):
+        """Does not retry non-API errors."""
+        assert not is_retryable_api_error("FileNotFoundError: /path/to/file")
+        assert not is_retryable_api_error("SyntaxError in code")
+        assert not is_retryable_api_error("Permission denied")
+        assert not is_retryable_api_error("Invalid argument")
+
+    def test_handles_empty_error(self):
+        """Handles empty or None error strings."""
+        assert not is_retryable_api_error("")
+        assert not is_retryable_api_error(None)
+
+    def test_case_insensitive(self):
+        """Pattern matching is case-insensitive."""
+        assert is_retryable_api_error("INTERNAL SERVER ERROR")
+        assert is_retryable_api_error("Bad Gateway")
+        assert is_retryable_api_error("SERVICE UNAVAILABLE")
+        assert is_retryable_api_error("Overloaded")
+
+
+class TestApiRetryScheduling:
+    """Tests for API retry scheduling in the scheduler."""
+
+    @pytest.mark.asyncio
+    async def test_schedule_api_retry_increments_count(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify retry count increments on each retry."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="500 Internal Server Error",
+            session_id="session-123",
+        )
+
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("retry_chunk")
+        assert updated.api_retry_count == 1
+        assert updated.session_id == "session-123"
+        assert updated.pending_answer == "continue"
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_schedule_api_retry_calculates_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify exponential backoff calculation."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="backoff_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=2,  # 3rd attempt will use 2^2 = 4x initial delay
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="503 Service Unavailable",
+            session_id="session-456",
+        )
+
+        # Default config: initial=100ms, so 3rd attempt = 100 * 2^2 = 400ms
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("backoff_chunk")
+        assert updated.api_retry_count == 3
+        assert updated.next_retry_at is not None
+        # Should be approximately 400ms in the future
+        expected_delay = timedelta(milliseconds=400)
+        actual_delay = updated.next_retry_at - now
+        # Allow some tolerance for execution time
+        assert actual_delay >= expected_delay - timedelta(milliseconds=50)
+        assert actual_delay <= expected_delay + timedelta(milliseconds=100)
+
+    @pytest.mark.asyncio
+    async def test_schedule_api_retry_caps_at_max_delay(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify backoff caps at max delay."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="max_delay_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=20,  # Very high count, should cap at 5s
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="502 Bad Gateway",
+            session_id="session-789",
+        )
+
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("max_delay_chunk")
+        # Max delay is 5000ms = 5s by default
+        max_delay = timedelta(milliseconds=scheduler.config.api_retry_max_delay_ms)
+        actual_delay = updated.next_retry_at - now
+        # Should be capped at max delay (with some tolerance)
+        assert actual_delay <= max_delay + timedelta(milliseconds=100)
+
+    @pytest.mark.asyncio
+    async def test_dispatch_respects_retry_timing(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify dispatch loop skips work units in backoff period."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="waiting_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            next_retry_at=now + timedelta(seconds=10),  # 10 seconds in future
+            pending_answer="continue",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Run dispatch tick
+        await scheduler._dispatch_tick()
+
+        # Should NOT have dispatched (still in backoff)
+        assert "waiting_chunk" not in scheduler._running_agents
+
+    @pytest.mark.asyncio
+    async def test_dispatch_clears_retry_timing_when_elapsed(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Verify dispatch clears next_retry_at when backoff period elapsed."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="ready_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            next_retry_at=now - timedelta(seconds=1),  # 1 second in past
+            pending_answer="continue",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Run dispatch tick
+        await scheduler._dispatch_tick()
+
+        # Should have dispatched (backoff elapsed)
+        assert "ready_retry_chunk" in scheduler._running_agents
+
+        # next_retry_at should be cleared
+        updated = state_store.get_work_unit("ready_retry_chunk")
+        assert updated.next_retry_at is None
+
+    @pytest.mark.asyncio
+    async def test_retry_exhaustion_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify NEEDS_ATTENTION after exhausting retries."""
+        now = datetime.now(timezone.utc)
+        # Set retry count to max - 1
+        work_unit = WorkUnit(
+            chunk="exhausted_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=scheduler.config.api_retry_max_attempts,  # Already at max
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="500 Internal Server Error",
+        )
+
+        # Handle the result - should mark needs attention since retries exhausted
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("exhausted_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "API error after" in updated.attention_reason
+        assert str(scheduler.config.api_retry_max_attempts) in updated.attention_reason
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_error_immediately_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify non-retryable errors skip retry logic."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="non_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="400 Bad Request - invalid parameter",  # 4xx error, not retryable
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("non_retry_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.api_retry_count == 0  # Should not have incremented
+
+    @pytest.mark.asyncio
+    async def test_successful_completion_resets_retry_state(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify retry state clears on successful phase completion."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="success_chunk",
+            phase=WorkUnitPhase.GOAL,  # Will advance to PLAN
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=5,
+            next_retry_at=now + timedelta(seconds=1),
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Advance phase
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("success_chunk")
+        assert updated.phase == WorkUnitPhase.PLAN
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.api_retry_count == 0
+        assert updated.next_retry_at is None

@@ -506,6 +506,7 @@ class AgentRunner:
 
     # Chunk: docs/chunks/orch_question_forward - Accepts question_callback and configures hook to capture questions
     # Chunk: docs/chunks/orch_reviewer_decision_mcp - Migrate to ClaudeSDKClient for hooks and MCP tools
+    # Chunk: docs/chunks/orch_attention_queue - Accept and inject answer parameter when resuming sessions
     async def run_phase(
         self,
         chunk: str,

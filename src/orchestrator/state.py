@@ -1,7 +1,9 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - SQLite state persistence with migrations and CRUD operations
 # Chunk: docs/chunks/orch_scheduling - Ready queue and config storage
 # Chunk: docs/chunks/explicit_deps_workunit_flag - Schema migration and persistence for explicit_deps
 # Chunk: docs/chunks/orch_verify_active - Database migration adding completion_retries column
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis persistence and retrieval
 """SQLite state store for the orchestrator daemon.
 
 Provides persistent storage for work units and their state transitions.
@@ -30,7 +32,7 @@ class StateStore:
     and status transition logging.
     """
 
-    CURRENT_VERSION = 11
+    CURRENT_VERSION = 12
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -103,6 +105,7 @@ class StateStore:
             9: self._migrate_v9,
             10: self._migrate_v10,
             11: self._migrate_v11,
+            12: self._migrate_v12,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -194,6 +197,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_attention_queue - Database migration adding pending_answer column
     def _migrate_v6(self) -> None:
         """Add pending_answer field for storing operator answers until resume."""
         self.connection.executescript(
@@ -295,6 +299,25 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
+    def _migrate_v12(self) -> None:
+        """Add API retry state fields for automatic 5xx error recovery.
+
+        When an agent encounters a 5xx API error, the scheduler automatically
+        schedules a retry with exponential backoff. These fields track the
+        retry state:
+        - api_retry_count: Number of retries attempted so far
+        - next_retry_at: ISO timestamp when the next retry is allowed
+        """
+        self.connection.executescript(
+            """
+            -- Add api_retry_count column for tracking retry attempts
+            ALTER TABLE work_units ADD COLUMN api_retry_count INTEGER DEFAULT 0;
+            -- Add next_retry_at column for scheduling retry timing
+            ALTER TABLE work_units ADD COLUMN next_retry_at TEXT;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -328,8 +351,9 @@ class StateStore:
                     (chunk, phase, status, blocked_by, worktree, priority, session_id,
                      completion_retries, attention_reason, displaced_chunk, pending_answer,
                      conflict_verdicts, conflict_override, explicit_deps, review_iterations,
-                     review_nudge_count, retain_worktree, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_unit.chunk,
@@ -349,6 +373,8 @@ class StateStore:
                     work_unit.review_iterations,
                     work_unit.review_nudge_count,
                     1 if work_unit.retain_worktree else 0,
+                    work_unit.api_retry_count,
+                    work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                     work_unit.created_at.isoformat(),
                     work_unit.updated_at.isoformat(),
                 ),
@@ -409,7 +435,7 @@ class StateStore:
                 attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                 conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
                 review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
-                updated_at = ?
+                api_retry_count = ?, next_retry_at = ?, updated_at = ?
             WHERE chunk = ?
             """,
             (
@@ -429,6 +455,8 @@ class StateStore:
                 work_unit.review_iterations,
                 work_unit.review_nudge_count,
                 1 if work_unit.retain_worktree else 0,
+                work_unit.api_retry_count,
+                work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                 work_unit.updated_at.isoformat(),
                 work_unit.chunk,
             ),
@@ -571,6 +599,7 @@ class StateStore:
 
     # Queue operations
 
+    # Chunk: docs/chunks/orch_attention_queue - Query NEEDS_ATTENTION work units ordered by blocks count and time
     def get_attention_queue(self) -> list[tuple[WorkUnit, int]]:
         """Get NEEDS_ATTENTION work units ordered by priority.
 
@@ -740,6 +769,18 @@ class StateStore:
         except (IndexError, KeyError):
             retain_worktree = False
 
+        # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
+        try:
+            api_retry_count = row["api_retry_count"] if row["api_retry_count"] is not None else 0
+        except (IndexError, KeyError):
+            api_retry_count = 0
+
+        try:
+            next_retry_at_str = row["next_retry_at"]
+            next_retry_at = datetime.fromisoformat(next_retry_at_str) if next_retry_at_str else None
+        except (IndexError, KeyError):
+            next_retry_at = None
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -758,6 +799,8 @@ class StateStore:
             review_iterations=review_iterations,
             review_nudge_count=review_nudge_count,
             retain_worktree=retain_worktree,
+            api_retry_count=api_retry_count,
+            next_retry_at=next_retry_at,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

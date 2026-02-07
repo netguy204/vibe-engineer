@@ -1,4 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - HTTP client for CLI-to-daemon communication
+# Chunk: docs/chunks/orch_conflict_oracle - Client methods for conflict analysis
 """HTTP client for communicating with the orchestrator daemon.
 
 Provides a Python interface for CLI commands to interact with the daemon.
@@ -244,6 +246,7 @@ class OrchestratorClient:
 
     # Attention queue methods
 
+    # Chunk: docs/chunks/orch_attention_queue - Client method to call GET /attention endpoint
     def get_attention_queue(self) -> dict:
         """Get the prioritized attention queue.
 
@@ -252,6 +255,7 @@ class OrchestratorClient:
         """
         return self._request("GET", "/attention")
 
+    # Chunk: docs/chunks/orch_attention_queue - Client method to call POST /work-units/{chunk}/answer endpoint
     def answer_work_unit(self, chunk: str, answer: str) -> dict:
         """Submit an answer to a NEEDS_ATTENTION work unit.
 

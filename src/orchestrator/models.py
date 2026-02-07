@@ -1,7 +1,9 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Core work unit model and orchestrator state
 # Chunk: docs/chunks/orch_scheduling - OrchestratorConfig and AgentResult models
 # Chunk: docs/chunks/explicit_deps_workunit_flag - WorkUnit explicit_deps field
 # Chunk: docs/chunks/orch_verify_active - completion_retries and max_completion_retries fields
+# Chunk: docs/chunks/orch_conflict_oracle - ConflictVerdict and ConflictAnalysis models
 """Pydantic models for the orchestrator daemon.
 
 These models define the data contract between CLI, daemon, and SQLite.
@@ -57,7 +59,7 @@ class ConflictAnalysis(BaseModel):
             "created_at": self.created_at.isoformat(),
         }
 
-
+# Chunk: docs/chunks/orch_review_phase - Added REVIEW enum value between IMPLEMENT and COMPLETE
 class WorkUnitPhase(StrEnum):
     """Phase of a work unit in the chunk lifecycle.
 
@@ -85,6 +87,8 @@ class WorkUnitStatus(StrEnum):
 
 
 # Chunk: docs/chunks/orch_activate_on_inject - Added displaced_chunk field to track displaced IMPLEMENTING chunks
+# Chunk: docs/chunks/orch_attention_reason - Added attention_reason field to store NEEDS_ATTENTION diagnosis
+# Chunk: docs/chunks/orch_attention_queue - pending_answer field for storing operator answers until resume
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 
@@ -118,6 +122,9 @@ class WorkUnit(BaseModel):
     review_nudge_count: int = 0
     # Chunk: docs/chunks/orch_worktree_retain - Flag to retain worktree after completion
     retain_worktree: bool = False
+    # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
+    api_retry_count: int = 0  # Current retry attempt number
+    next_retry_at: Optional[datetime] = None  # When next retry is allowed (None = immediate)
     created_at: datetime
     updated_at: datetime
 
@@ -152,6 +159,8 @@ class WorkUnit(BaseModel):
             "review_iterations": self.review_iterations,
             "review_nudge_count": self.review_nudge_count,
             "retain_worktree": self.retain_worktree,
+            "api_retry_count": self.api_retry_count,
+            "next_retry_at": self.next_retry_at.isoformat() if self.next_retry_at else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -196,6 +205,10 @@ class OrchestratorConfig(BaseModel):
     max_completion_retries: int = 2  # Max retries for ACTIVE status verification
     # Chunk: docs/chunks/orch_worktree_retain - Warn when retained worktrees exceed threshold
     worktree_warning_threshold: int = 10  # Threshold for warning about retained worktrees
+    # Chunk: docs/chunks/orch_api_retry - API retry configuration
+    api_retry_initial_delay_ms: int = 100  # Initial backoff delay for API retries
+    api_retry_max_delay_ms: int = 5000  # Maximum backoff delay for API retries
+    api_retry_max_attempts: int = 30  # Maximum retry attempts for API errors
 
     def model_dump_json_serializable(self) -> dict:
         """Return a JSON-serializable dict representation."""
@@ -204,6 +217,9 @@ class OrchestratorConfig(BaseModel):
             "dispatch_interval_seconds": self.dispatch_interval_seconds,
             "max_completion_retries": self.max_completion_retries,
             "worktree_warning_threshold": self.worktree_warning_threshold,
+            "api_retry_initial_delay_ms": self.api_retry_initial_delay_ms,
+            "api_retry_max_delay_ms": self.api_retry_max_delay_ms,
+            "api_retry_max_attempts": self.api_retry_max_attempts,
         }
 
 
@@ -265,6 +281,7 @@ class AgentResult(BaseModel):
     review_decision: Optional[ReviewToolDecision] = None  # Captured from ReviewDecision tool call
 
 
+# Chunk: docs/chunks/orch_review_phase - Enum for review decisions: APPROVE, FEEDBACK, ESCALATE
 class ReviewDecision(StrEnum):
     """Decision outcome from the /chunk-review skill.
 
@@ -276,6 +293,7 @@ class ReviewDecision(StrEnum):
     ESCALATE = "ESCALATE"  # Cannot decide, requires operator intervention
 
 
+# Chunk: docs/chunks/orch_review_phase - Structured representation of a single review issue
 class ReviewIssue(BaseModel):
     """A single issue identified during review.
 
@@ -287,6 +305,7 @@ class ReviewIssue(BaseModel):
     suggestion: Optional[str] = None  # Suggested fix or approach
 
 
+# Chunk: docs/chunks/orch_review_phase - Structured output from /chunk-review skill
 class ReviewResult(BaseModel):
     """Structured output from the /chunk-review skill.
 

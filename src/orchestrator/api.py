@@ -1,7 +1,9 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - REST endpoints for work unit CRUD and daemon status
 # Chunk: docs/chunks/orch_scheduling - Inject, queue, prioritize and config endpoints
 # Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with explicit_deps parameter
 # Chunk: docs/chunks/orch_task_detection - Chunk directory resolution using task context
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis API endpoints
 """HTTP API for the orchestrator daemon.
 
 Provides REST endpoints for work unit management and daemon status.
@@ -634,6 +636,14 @@ async def get_config_endpoint(request: Request) -> JSONResponse:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/orch_worktree_retain - Read worktree_warning_threshold from config
+    threshold_str = store.get_config("worktree_warning_threshold")
+    if threshold_str:
+        try:
+            config.worktree_warning_threshold = int(threshold_str)
+        except ValueError:
+            pass
+
     return JSONResponse(config.model_dump_json_serializable())
 
 
@@ -660,6 +670,13 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
             return _error_response("dispatch_interval_seconds must be a positive number")
         store.set_config("dispatch_interval_seconds", str(interval))
 
+    # Chunk: docs/chunks/orch_worktree_retain - Update worktree_warning_threshold if provided
+    if "worktree_warning_threshold" in body:
+        threshold = body["worktree_warning_threshold"]
+        if not isinstance(threshold, int) or threshold < 1:
+            return _error_response("worktree_warning_threshold must be a positive integer")
+        store.set_config("worktree_warning_threshold", str(threshold))
+
     # Return updated config
     config = OrchestratorConfig()
 
@@ -677,11 +694,20 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/orch_worktree_retain - Read worktree_warning_threshold from config
+    threshold_str = store.get_config("worktree_warning_threshold")
+    if threshold_str:
+        try:
+            config.worktree_warning_threshold = int(threshold_str)
+        except ValueError:
+            pass
+
     return JSONResponse(config.model_dump_json_serializable())
 
 
 
 
+# Chunk: docs/chunks/orch_attention_queue - Extract goal summary from chunk's GOAL.md Minor Goal section
 def _get_goal_summary(chunk_dir: Path) -> Optional[str]:
     """Extract a summary from the chunk's GOAL.md Minor Goal section.
 
@@ -711,6 +737,7 @@ def _get_goal_summary(chunk_dir: Path) -> Optional[str]:
         return None
 
 
+# Chunk: docs/chunks/orch_attention_queue - GET /attention endpoint returning prioritized queue with enriched items
 async def attention_endpoint(request: Request) -> JSONResponse:
     """GET /attention - Get prioritized attention queue.
 
@@ -853,6 +880,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await manager.disconnect(websocket)
 
 
+# Chunk: docs/chunks/orch_attention_queue - POST /work-units/{chunk}/answer endpoint for submitting answers
 async def answer_endpoint(request: Request):
     """POST /work-units/{chunk}/answer - Submit answer to attention item.
 

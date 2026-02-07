@@ -8,153 +8,170 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add retry logic in the scheduler's `_handle_agent_result()` method. When an agent returns an error matching 5xx patterns, instead of immediately calling `_mark_needs_attention()`, we:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Check if the error looks like a 5xx API error (pattern matching on error string)
+2. If it's a retryable 5xx error, schedule a retry with exponential backoff
+3. Track retry count on the WorkUnit to enforce the 30-attempt maximum
+4. After exhausting retries, fall through to the existing NEEDS_ATTENTION behavior
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The retry mechanism will:
+- Store retry state on the WorkUnit (`api_retry_count`, `next_retry_at`)
+- Use a new database field or reuse `pending_answer` with special value "continue"
+- Resume the session by setting `pending_answer = "continue"` and scheduling the work unit
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_api_retry/GOAL.md)
-with references to the files that you expect to touch.
--->
+This approach integrates cleanly with existing patterns:
+- Session resumption already works via `pending_answer` + `resume_session_id`
+- The scheduler's dispatch loop already checks for READY work units periodically
+- We add a new status (RETRY_PENDING) or use existing READY with a `next_retry_at` timestamp
+
+Configuration values (100ms initial, 5s max, 30 retries) will be added to `OrchestratorConfig`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No relevant subsystems in docs/subsystems/. The orchestrator has 35+ chunks but no documented subsystem yet.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add retry configuration to OrchestratorConfig
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add three new fields to `OrchestratorConfig` in `src/orchestrator/models.py`:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+api_retry_initial_delay_ms: int = 100  # Initial backoff delay
+api_retry_max_delay_ms: int = 5000     # Maximum backoff delay
+api_retry_max_attempts: int = 30       # Maximum retry attempts
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Update `model_dump_json_serializable()` to include these fields.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/models.py#OrchestratorConfig`
+
+### Step 2: Add retry state fields to WorkUnit
+
+Add database migration (v12) to add two new columns to work_units table:
+
+- `api_retry_count INTEGER DEFAULT 0` - Current retry attempt number
+- `next_retry_at TEXT` - ISO timestamp when next retry is allowed (null = immediate)
+
+Update the WorkUnit model and StateStore methods to handle these fields.
+
+Location: `src/orchestrator/state.py`
+
+### Step 3: Add helper function to detect 5xx errors
+
+Create a function `is_retryable_api_error(error: str) -> bool` that pattern-matches error strings for 5xx status codes. Check for:
+- "500", "502", "503", "504", "529" in error text
+- "Internal Server Error", "Bad Gateway", "Service Unavailable", "Gateway Timeout", "overloaded" patterns
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 4: Implement retry scheduling logic in scheduler
+
+Modify `_handle_agent_result()` to check for retryable errors before marking NEEDS_ATTENTION:
+
+```python
+elif result.error:
+    if is_retryable_api_error(result.error) and work_unit.api_retry_count < config.api_retry_max_attempts:
+        # Schedule retry with exponential backoff
+        await self._schedule_api_retry(work_unit, result.error)
+    else:
+        # Exhausted retries or non-retryable error
+        await self._mark_needs_attention(work_unit, result.error)
+```
+
+Add `_schedule_api_retry()` method that:
+1. Increments `api_retry_count`
+2. Calculates backoff delay: `min(initial * 2^retry_count, max_delay)`
+3. Sets `next_retry_at` timestamp
+4. Sets `pending_answer = "continue"` to inject the prompt on resume
+5. Sets status back to READY (will be picked up by dispatch loop)
+6. Logs the retry attempt
+
+Location: `src/orchestrator/scheduler.py#Scheduler`
+
+### Step 5: Update dispatch loop to respect retry timing
+
+Modify `_dispatch_ready_work()` to check `next_retry_at` before dispatching:
+
+```python
+# Skip work units that are waiting for retry backoff
+if work_unit.next_retry_at:
+    retry_time = datetime.fromisoformat(work_unit.next_retry_at)
+    if datetime.now(timezone.utc) < retry_time:
+        continue  # Not ready yet
+    # Clear the retry timestamp, we're ready to go
+    work_unit.next_retry_at = None
+```
+
+Location: `src/orchestrator/scheduler.py#Scheduler._dispatch_ready_work`
+
+### Step 6: Reset retry state on success
+
+When a work unit completes successfully or advances phases, reset the retry state:
+
+```python
+work_unit.api_retry_count = 0
+work_unit.next_retry_at = None
+```
+
+Add this to `_advance_phase()` and anywhere else status transitions to success.
+
+Location: `src/orchestrator/scheduler.py#Scheduler._advance_phase`
+
+### Step 7: Add logging for retry visibility
+
+Log retry attempts with enough detail for operators:
+
+```python
+logger.info(
+    f"Retrying {chunk} after API error (attempt {retry_count}/{max_attempts}, "
+    f"backoff {delay_ms}ms): {error[:100]}"
+)
+```
+
+Log when retries are exhausted:
+
+```python
+logger.warning(
+    f"Exhausted {max_attempts} retries for {chunk}, marking NEEDS_ATTENTION"
+)
+```
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 8: Write tests
+
+Write tests in `tests/test_orchestrator_scheduler.py`:
+
+1. **test_is_retryable_api_error_detects_5xx** - Verify pattern matching for various 5xx error strings
+2. **test_is_retryable_api_error_rejects_4xx** - Verify 4xx errors are not retryable
+3. **test_schedule_api_retry_increments_count** - Verify retry count increments
+4. **test_schedule_api_retry_calculates_backoff** - Verify exponential backoff formula
+5. **test_schedule_api_retry_caps_at_max_delay** - Verify backoff caps at 5s
+6. **test_dispatch_respects_retry_timing** - Verify work units wait for backoff
+7. **test_retry_exhaustion_marks_needs_attention** - Verify NEEDS_ATTENTION after 30 retries
+8. **test_successful_completion_resets_retry_state** - Verify state clears on success
+
+Location: `tests/test_orchestrator_scheduler.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. All required infrastructure exists:
+- Database migrations pattern established (state.py has migrations v1-v11)
+- OrchestratorConfig pattern established (models.py)
+- Session resumption with `pending_answer` already works
+- Logging infrastructure in place
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Error string format variability** - API errors might not always contain the status code literally. The pattern matching function should be generous, looking for multiple patterns like "500", "Internal Server Error", "error_type.*server", etc.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Session resumption reliability** - Injecting "continue" assumes the session can be resumed cleanly. If the SDK session state is corrupted by the error, resumption might fail. This is acceptable; it will just retry again until exhausted.
+
+3. **Backoff timing precision** - The dispatch loop runs every `dispatch_interval_seconds` (default 1s). With a 100ms initial backoff, the first retry might actually happen after 1s. This is acceptable; the backoff is a minimum, not exact.
+
+4. **Race between retry scheduling and dispatch** - If we set status to READY and dispatch happens before we finish updating retry fields, we could dispatch prematurely. Solution: update all fields before changing status to READY.
 
 ## Deviations
 
