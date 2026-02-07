@@ -19,6 +19,8 @@ chunks:
     relationship: implements
   - chunk_id: orch_prune_consolidate
     relationship: implements
+  - chunk_id: orchestrator_api_decompose
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module
@@ -56,14 +58,32 @@ code_references:
 - ref: src/orchestrator/daemon.py#is_daemon_running
   implements: Daemon running status check via PID file
   compliance: COMPLIANT
-- ref: src/orchestrator/api.py#create_app
+- ref: src/orchestrator/api/app.py#create_app
   implements: Starlette app factory with REST endpoints
   compliance: COMPLIANT
-- ref: src/orchestrator/api.py#dashboard_endpoint
+- ref: src/orchestrator/api/streaming.py#dashboard_endpoint
   implements: Dashboard HTML rendering
   compliance: COMPLIANT
-- ref: src/orchestrator/api.py#websocket_endpoint
+- ref: src/orchestrator/api/streaming.py#websocket_endpoint
   implements: WebSocket for real-time updates
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/work_units.py
+  implements: Work unit CRUD endpoints
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/scheduling.py
+  implements: Inject, queue, prioritize, and config endpoints
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/attention.py
+  implements: Attention queue and answer endpoints
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/conflicts.py
+  implements: Conflict analysis and resolution endpoints
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/worktrees.py
+  implements: Worktree management endpoints
+  compliance: COMPLIANT
+- ref: src/orchestrator/api/common.py
+  implements: Shared utilities and state access helpers
   compliance: COMPLIANT
 - ref: src/orchestrator/client.py#OrchestratorClient
   implements: HTTP client for CLI-to-daemon communication
@@ -168,7 +188,15 @@ The module provides:
 - `models.py` - Data models (WorkUnit, WorkUnitPhase, WorkUnitStatus, etc.)
 - `state.py` - SQLite persistence (StateStore)
 - `daemon.py` - Daemon lifecycle (start, stop, status)
-- `api.py` - REST API endpoints (Starlette)
+- `api/` - REST API package (Starlette)
+  - `app.py` - Application factory (create_app)
+  - `common.py` - Shared utilities and state access helpers
+  - `work_units.py` - Work unit CRUD endpoints
+  - `scheduling.py` - Inject, queue, prioritize, and config endpoints
+  - `attention.py` - Attention queue and answer endpoints
+  - `conflicts.py` - Conflict analysis and resolution endpoints
+  - `worktrees.py` - Worktree management endpoints
+  - `streaming.py` - WebSocket log streaming and dashboard
 - `scheduler.py` - Dispatch loop (Scheduler)
 - `agent.py` - Agent execution (AgentRunner)
 - `worktree.py` - Git worktree management (WorktreeManager)

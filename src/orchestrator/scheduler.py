@@ -142,7 +142,7 @@ class Scheduler:
                 phase=work_unit.phase.value,
             )
 
-        See also: src/orchestrator/api.py which follows this invariant.
+        See also: src/orchestrator/api/work_units.py which follows this invariant.
     """
 
     def __init__(
