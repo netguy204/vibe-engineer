@@ -1,25 +1,25 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-Package decomposition is complete and tests pass, but GOAL.md success criterion for generic `create_task_artifact` and `list_task_artifacts` functions was not implemented - type-specific functions remain as separate implementations rather than thin wrappers around generic functions.
+Prior iteration feedback not addressed - generic create/list functions still missing, type-specific implementations remain duplicated, deviation not documented.
 
 ## Issues to Address
 
 ### Issue 1: src/task/artifact_ops.py
 
-**Concern:** GOAL.md requires "replacing the four duplicated create/list/add-dependents patterns with a single generic implementation". While `add_dependents_to_artifact` is generic with thin wrappers, `create_task_chunk/narrative/investigation/subsystem` and `list_task_chunks/narratives/investigations/subsystems` remain as separate ~100 line implementations each, duplicating similar logic.
+**Concern:** GOAL.md explicitly requires generic create_task_artifact and list_task_artifacts functions. The four create_task_* and list_task_* functions remain as separate ~100-line implementations. This was flagged in iteration 1 but NOT addressed.
 
-**Suggestion:** Implement `create_task_artifact(task_dir, artifact_type, short_name, **kwargs)` and `list_task_artifacts(task_dir, artifact_type)` as generic functions. Then rewrite the four type-specific functions as thin wrappers (similar to how `add_dependents_to_chunk` calls `add_dependents_to_artifact`).
+**Suggestion:** Implement generic create_task_artifact(task_dir, artifact_type, short_name, **kwargs) and list_task_artifacts(task_dir, artifact_type). Convert type-specific functions to thin wrappers.
 
 ### Issue 2: docs/chunks/task_operations_decompose/PLAN.md
 
-**Concern:** The Deviations section is empty despite the implementation diverging from the plan by not creating generic `create_task_artifact` and `list_task_artifacts` functions. This deviation should be documented.
+**Concern:** Deviations section remains empty despite implementation diverging from plan. This was flagged in iteration 1 but NOT addressed.
 
-**Suggestion:** Add a deviation note explaining why the generic functions were not implemented (e.g., if the complexity of artifact-specific parameters made generalization impractical).
+**Suggestion:** Either implement generic functions OR document the deviation explaining why the approach was not taken.
 
 
 ---
