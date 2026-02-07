@@ -168,6 +168,105 @@ class WorktreeManager:
         """
         return f"orch/{chunk}"
 
+    # Chunk: docs/chunks/orch_merge_safety - Lock worktrees to prevent pruning
+    def _lock_worktree(self, worktree_path: Path, repo_dir: Path) -> None:
+        """Lock a worktree to prevent it from being pruned.
+
+        Args:
+            worktree_path: Path to the worktree
+            repo_dir: Repository that owns the worktree
+        """
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "lock",
+                str(worktree_path),
+                "--reason",
+                "orchestrator active",
+            ],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+        # Ignore errors - locking may fail if already locked or Git version too old
+
+    # Chunk: docs/chunks/orch_merge_safety - Unlock worktrees before removal
+    def _unlock_worktree(self, worktree_path: Path, repo_dir: Path) -> None:
+        """Unlock a worktree before removal.
+
+        Args:
+            worktree_path: Path to the worktree
+            repo_dir: Repository that owns the worktree
+        """
+        subprocess.run(
+            ["git", "worktree", "unlock", str(worktree_path)],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+        # Ignore errors - unlocking may fail if already unlocked
+
+    # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+    def _save_base_branch(
+        self, chunk: str, branch: str, repo_dir: Optional[Path] = None
+    ) -> None:
+        """Save the base branch for a chunk to a file.
+
+        For single-repo mode, saves to .ve/chunks/<chunk>/base_branch.
+        For multi-repo mode, saves to .ve/chunks/<chunk>/base_branches/<repo_name>.
+
+        Args:
+            chunk: Chunk name
+            branch: Branch name to save
+            repo_dir: Repository directory (None for single-repo mode)
+        """
+        base_path = self._get_worktree_base_path(chunk)
+
+        if repo_dir is None:
+            # Single-repo mode
+            base_branch_file = base_path / "base_branch"
+        else:
+            # Multi-repo mode - save per-repo base branch
+            base_branches_dir = base_path / "base_branches"
+            base_branches_dir.mkdir(parents=True, exist_ok=True)
+            base_branch_file = base_branches_dir / repo_dir.name
+
+        base_branch_file.parent.mkdir(parents=True, exist_ok=True)
+        base_branch_file.write_text(branch)
+
+    # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+    def _load_base_branch(self, chunk: str, repo_dir: Optional[Path] = None) -> str:
+        """Load the base branch for a chunk from file.
+
+        For single-repo mode, reads from .ve/chunks/<chunk>/base_branch.
+        For multi-repo mode, reads from .ve/chunks/<chunk>/base_branches/<repo_name>.
+
+        Args:
+            chunk: Chunk name
+            repo_dir: Repository directory (None for single-repo mode)
+
+        Returns:
+            The persisted base branch name
+
+        Raises:
+            WorktreeError: If the base branch file doesn't exist
+        """
+        base_path = self._get_worktree_base_path(chunk)
+
+        if repo_dir is None:
+            # Single-repo mode
+            base_branch_file = base_path / "base_branch"
+        else:
+            # Multi-repo mode
+            base_branch_file = base_path / "base_branches" / repo_dir.name
+
+        if not base_branch_file.exists():
+            raise WorktreeError(
+                f"Base branch file not found for chunk {chunk}"
+                + (f" repo {repo_dir.name}" if repo_dir else "")
+            )
+
+        return base_branch_file.read_text().strip()
+
     def is_task_context(self, chunk: str) -> bool:
         """Check if a chunk uses task context (multi-repo) structure.
 
@@ -361,6 +460,10 @@ class WorktreeManager:
         # Create branch if needed
         self._create_branch(branch)
 
+        # Chunk: docs/chunks/orch_merge_safety - Persist base branch at creation time
+        # Save the base branch before creating the worktree
+        self._save_base_branch(chunk, self._base_branch)
+
         # Create worktree
         result = subprocess.run(
             ["git", "worktree", "add", str(worktree_path), branch],
@@ -382,6 +485,9 @@ class WorktreeManager:
 
             if result.returncode != 0:
                 raise WorktreeError(f"Failed to create worktree: {result.stderr}")
+
+        # Chunk: docs/chunks/orch_merge_safety - Lock worktree to prevent pruning
+        self._lock_worktree(worktree_path, self.project_dir)
 
         return worktree_path
 
@@ -410,6 +516,11 @@ class WorktreeManager:
             # Create branch in this repo
             self._create_branch(branch, repo_path)
 
+            # Chunk: docs/chunks/orch_merge_safety - Persist per-repo base branch at creation time
+            # Get and save the base branch for this repo before creating the worktree
+            repo_base_branch = self._get_repo_current_branch(repo_path)
+            self._save_base_branch(chunk, repo_base_branch, repo_path)
+
             # Create worktree for this repo
             result = subprocess.run(
                 ["git", "worktree", "add", str(repo_worktree_path), branch],
@@ -433,6 +544,9 @@ class WorktreeManager:
                     raise WorktreeError(
                         f"Failed to create worktree for {repo_name}: {result.stderr}"
                     )
+
+            # Chunk: docs/chunks/orch_merge_safety - Lock worktree to prevent pruning
+            self._lock_worktree(repo_worktree_path, repo_path)
 
         # Set up agent environment symlinks
         self._setup_agent_environment_symlinks(work_dir)
@@ -585,6 +699,9 @@ class WorktreeManager:
             worktree_path: Path to the worktree to remove
             repo_path: Path to the repository that owns the worktree
         """
+        # Chunk: docs/chunks/orch_merge_safety - Unlock worktree before removal
+        self._unlock_worktree(worktree_path, repo_path)
+
         result = subprocess.run(
             ["git", "worktree", "remove", str(worktree_path), "--force"],
             cwd=repo_path,
@@ -714,8 +831,15 @@ class WorktreeManager:
         else:
             self._merge_to_base_single_repo(chunk, delete_branch)
 
+    # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
     def _merge_to_base_single_repo(self, chunk: str, delete_branch: bool) -> None:
         """Merge a chunk's branch to base in single-repo mode.
+
+        Uses a checkout-free merge strategy to avoid disrupting the user's
+        working directory. The merge is performed by:
+        1. Loading the persisted base branch (captured at worktree creation time)
+        2. First trying fast-forward via branch -f (if branch is ancestor)
+        3. If not fast-forward, creating a merge commit using git plumbing commands
 
         Args:
             chunk: Chunk name
@@ -726,35 +850,17 @@ class WorktreeManager:
         if not self._branch_exists(branch):
             raise WorktreeError(f"Branch {branch} does not exist")
 
-        # First, ensure we're on the base branch in the main repo
-        result = subprocess.run(
-            ["git", "checkout", self._base_branch],
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise WorktreeError(
-                f"Failed to checkout base branch {self._base_branch}: {result.stderr}"
-            )
+        # Load the persisted base branch instead of using self._base_branch
+        # which may be stale if the manager was created before branch changes
+        try:
+            base_branch = self._load_base_branch(chunk)
+        except WorktreeError:
+            # Fall back to the manager's base branch if file doesn't exist
+            # (for backwards compatibility with existing worktrees)
+            base_branch = self._base_branch
 
-        # Merge the chunk branch
-        result = subprocess.run(
-            ["git", "merge", branch, "--no-edit"],
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            # Abort the merge if it failed
-            subprocess.run(
-                ["git", "merge", "--abort"],
-                cwd=self.project_dir,
-                capture_output=True,
-            )
-            raise WorktreeError(
-                f"Failed to merge {branch} into {self._base_branch}: {result.stderr}"
-            )
+        # Perform checkout-free merge
+        self._merge_without_checkout(branch, base_branch, self.project_dir)
 
         # Delete the branch if requested
         if delete_branch:
@@ -766,10 +872,331 @@ class WorktreeManager:
             )
             # Don't raise on branch deletion failure - merge succeeded
 
+    # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
+    def _merge_without_checkout(
+        self, source_branch: str, target_branch: str, repo_dir: Path
+    ) -> None:
+        """Perform a merge without checking out the target branch.
+
+        This preserves the user's current checkout and any uncommitted changes.
+
+        Strategy:
+        1. Check if source is an ancestor of target (already merged) - no-op
+        2. Check if target is an ancestor of source (fast-forward possible)
+           - Use git branch -f to fast-forward
+        3. Otherwise, create a merge commit using git plumbing commands:
+           - Use git merge-tree to compute the merge
+           - If clean, create merge commit with git commit-tree
+           - Update ref with git update-ref
+
+        Args:
+            source_branch: Branch to merge from (e.g., orch/chunk_name)
+            target_branch: Branch to merge into (e.g., main)
+            repo_dir: Repository directory
+
+        Raises:
+            WorktreeError: If merge fails (e.g., conflicts)
+        """
+        # Get commit SHAs for both branches
+        result = subprocess.run(
+            ["git", "rev-parse", source_branch],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"Branch {source_branch} not found")
+        source_sha = result.stdout.strip()
+
+        result = subprocess.run(
+            ["git", "rev-parse", target_branch],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"Branch {target_branch} not found")
+        target_sha = result.stdout.strip()
+
+        # Check if source is already an ancestor of target (already merged)
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_sha, target_sha],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            # Already merged, nothing to do
+            return
+
+        # Check if target is an ancestor of source (fast-forward possible)
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", target_sha, source_sha],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            # Fast-forward: update the target branch ref to source
+            # Use update-ref instead of branch -f to handle checked-out branches
+            result = subprocess.run(
+                ["git", "update-ref", f"refs/heads/{target_branch}", source_sha],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(
+                    f"Failed to fast-forward {target_branch} to {source_branch}: {result.stderr}"
+                )
+            # If the working tree is on the target branch, update it
+            self._update_working_tree_if_on_branch(target_branch, repo_dir)
+            return
+
+        # Need a real merge - use git merge-tree (Git 2.38+) for clean merge detection
+        # First get the merge base
+        result = subprocess.run(
+            ["git", "merge-base", source_sha, target_sha],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"Failed to find merge base: {result.stderr}")
+        merge_base = result.stdout.strip()
+
+        # Try git merge-tree --write-tree (Git 2.38+)
+        result = subprocess.run(
+            ["git", "merge-tree", "--write-tree", target_sha, source_sha],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # Merge conflict or git merge-tree not available
+            # Check if it's a conflict (indicated by CONFLICT in output)
+            if "CONFLICT" in result.stdout or "CONFLICT" in result.stderr:
+                raise WorktreeError(
+                    f"Merge conflict between {source_branch} and {target_branch}"
+                )
+            # Might be older Git without merge-tree --write-tree
+            # Fall back to index-based merge
+            self._merge_via_index(
+                source_branch, source_sha, target_branch, target_sha, repo_dir
+            )
+            return
+
+        # Parse the tree SHA from merge-tree output
+        lines = result.stdout.strip().split("\n")
+        tree_sha = lines[0]  # First line is the tree SHA
+
+        # Create the merge commit
+        commit_msg = f"Merge branch '{source_branch}' into {target_branch}"
+        result = subprocess.run(
+            [
+                "git",
+                "commit-tree",
+                tree_sha,
+                "-p",
+                target_sha,
+                "-p",
+                source_sha,
+                "-m",
+                commit_msg,
+            ],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"Failed to create merge commit: {result.stderr}")
+        merge_commit = result.stdout.strip()
+
+        # Update the target branch ref
+        result = subprocess.run(
+            ["git", "update-ref", f"refs/heads/{target_branch}", merge_commit],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(
+                f"Failed to update {target_branch} ref: {result.stderr}"
+            )
+        # If the working tree is on the target branch, update it
+        self._update_working_tree_if_on_branch(target_branch, repo_dir)
+
+    # Chunk: docs/chunks/orch_merge_safety - Fallback merge for older Git
+    def _merge_via_index(
+        self,
+        source_branch: str,
+        source_sha: str,
+        target_branch: str,
+        target_sha: str,
+        repo_dir: Path,
+    ) -> None:
+        """Perform merge using git index operations (fallback for older Git).
+
+        Uses a temporary index file to perform the merge without affecting
+        the working directory.
+
+        Args:
+            source_branch: Branch name being merged
+            source_sha: Source commit SHA
+            target_branch: Target branch name
+            target_sha: Target commit SHA
+            repo_dir: Repository directory
+
+        Raises:
+            WorktreeError: If merge fails
+        """
+        import os
+        import tempfile
+
+        # Get merge base
+        result = subprocess.run(
+            ["git", "merge-base", source_sha, target_sha],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise WorktreeError(f"Failed to find merge base: {result.stderr}")
+        merge_base = result.stdout.strip()
+
+        # Create a temporary index file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".idx") as tmp:
+            tmp_index = tmp.name
+
+        try:
+            env = os.environ.copy()
+            env["GIT_INDEX_FILE"] = tmp_index
+
+            # Read the base tree into the temp index
+            result = subprocess.run(
+                ["git", "read-tree", merge_base],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(f"Failed to read base tree: {result.stderr}")
+
+            # Perform a three-way merge into the temp index
+            result = subprocess.run(
+                ["git", "read-tree", "-m", merge_base, target_sha, source_sha],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(
+                    f"Merge conflict between {source_branch} and {target_branch}"
+                )
+
+            # Write the tree from the index
+            result = subprocess.run(
+                ["git", "write-tree"],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(f"Failed to write tree: {result.stderr}")
+            tree_sha = result.stdout.strip()
+
+            # Create the merge commit
+            commit_msg = f"Merge branch '{source_branch}' into {target_branch}"
+            result = subprocess.run(
+                [
+                    "git",
+                    "commit-tree",
+                    tree_sha,
+                    "-p",
+                    target_sha,
+                    "-p",
+                    source_sha,
+                    "-m",
+                    commit_msg,
+                ],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(f"Failed to create merge commit: {result.stderr}")
+            merge_commit = result.stdout.strip()
+
+            # Update the target branch ref
+            result = subprocess.run(
+                ["git", "update-ref", f"refs/heads/{target_branch}", merge_commit],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise WorktreeError(
+                    f"Failed to update {target_branch} ref: {result.stderr}"
+                )
+            # If the working tree is on the target branch, update it
+            self._update_working_tree_if_on_branch(target_branch, repo_dir)
+
+        finally:
+            # Clean up temp index
+            if Path(tmp_index).exists():
+                Path(tmp_index).unlink()
+
+    # Chunk: docs/chunks/orch_merge_safety - Update working tree after ref update
+    def _update_working_tree_if_on_branch(
+        self, target_branch: str, repo_dir: Path
+    ) -> None:
+        """Update the working tree if it's currently on the target branch.
+
+        After updating a branch ref with update-ref, the working tree is out
+        of sync if the user is on that branch. This method checks if the user
+        is on the target branch and updates their working tree to match.
+
+        Args:
+            target_branch: Branch that was just updated
+            repo_dir: Repository directory
+        """
+        # Check if working tree is on the target branch
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return  # Can't determine current branch, skip update
+
+        current_branch = result.stdout.strip()
+        if current_branch != target_branch:
+            return  # Not on target branch, no update needed
+
+        # Reset the working tree to match the new HEAD
+        # Use --mixed to update index but not touch uncommitted changes
+        subprocess.run(
+            ["git", "reset", "--mixed", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+        # Checkout to update the working tree files
+        subprocess.run(
+            ["git", "checkout", "--", "."],
+            cwd=repo_dir,
+            capture_output=True,
+        )
+
+    # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
     def _merge_to_base_multi_repo(
         self, chunk: str, delete_branch: bool, repo_paths: list[Path]
     ) -> None:
         """Merge a chunk's branch to base in each repository.
+
+        Uses checkout-free merge to avoid disrupting the user's working directory.
 
         Args:
             chunk: Chunk name
@@ -777,7 +1204,7 @@ class WorktreeManager:
             repo_paths: List of repository paths
         """
         branch = self.get_branch_name(chunk)
-        merged_repos: list[tuple[Path, str]] = []  # (repo_path, original_branch)
+        merged_repos: list[tuple[Path, str, str]] = []  # (repo_path, base, old_sha)
 
         try:
             for repo_path in repo_paths:
@@ -787,40 +1214,34 @@ class WorktreeManager:
                 if not self._branch_exists_in_repo(branch, repo_path):
                     continue
 
-                # Get the base branch for this repo
-                base = self._get_repo_current_branch(repo_path)
+                # Load the persisted base branch for this repo
+                try:
+                    base = self._load_base_branch(chunk, repo_path)
+                except WorktreeError:
+                    # Fall back to current branch if file doesn't exist
+                    # (for backwards compatibility)
+                    base = self._get_repo_current_branch(repo_path)
 
-                # First, ensure we're on the base branch in this repo
+                # Save the old base SHA for potential rollback
                 result = subprocess.run(
-                    ["git", "checkout", base],
+                    ["git", "rev-parse", base],
                     cwd=repo_path,
                     capture_output=True,
                     text=True,
                 )
                 if result.returncode != 0:
                     raise WorktreeError(
-                        f"Failed to checkout base branch {base} in {repo_name}: {result.stderr}"
+                        f"Base branch {base} not found in {repo_name}"
                     )
+                old_sha = result.stdout.strip()
 
-                # Merge the chunk branch
-                result = subprocess.run(
-                    ["git", "merge", branch, "--no-edit"],
-                    cwd=repo_path,
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0:
-                    # Abort the merge if it failed
-                    subprocess.run(
-                        ["git", "merge", "--abort"],
-                        cwd=repo_path,
-                        capture_output=True,
-                    )
-                    raise WorktreeError(
-                        f"Failed to merge {branch} into {base} in {repo_name}: {result.stderr}"
-                    )
+                # Perform checkout-free merge
+                try:
+                    self._merge_without_checkout(branch, base, repo_path)
+                except WorktreeError as e:
+                    raise WorktreeError(f"in {repo_name}: {e}")
 
-                merged_repos.append((repo_path, base))
+                merged_repos.append((repo_path, base, old_sha))
 
                 # Delete the branch if requested
                 if delete_branch:
@@ -832,10 +1253,10 @@ class WorktreeManager:
                     )
 
         except WorktreeError:
-            # Rollback successful merges by resetting to pre-merge state
-            for repo_path, base in merged_repos:
+            # Rollback successful merges by resetting refs to pre-merge state
+            for repo_path, base, old_sha in merged_repos:
                 subprocess.run(
-                    ["git", "reset", "--hard", f"{base}@{{1}}"],
+                    ["git", "update-ref", f"refs/heads/{base}", old_sha],
                     cwd=repo_path,
                     capture_output=True,
                 )
