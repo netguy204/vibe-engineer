@@ -73,6 +73,8 @@ chunks:
     relationship: implements
   - chunk_id: frontmatter_io
     relationship: implements
+  - chunk_id: validation_error_surface
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class

@@ -10,27 +10,27 @@ from artifact_manager import ArtifactManager
 
 
 # Test fixtures - minimal concrete implementation for testing
-class TestStatus(StrEnum):
+class StubStatus(StrEnum):
     """Status values for test artifacts."""
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
 
 
-VALID_TEST_TRANSITIONS: dict[TestStatus, set[TestStatus]] = {
-    TestStatus.DRAFT: {TestStatus.ACTIVE},
-    TestStatus.ACTIVE: {TestStatus.ARCHIVED},
-    TestStatus.ARCHIVED: set(),  # Terminal state
+VALID_TEST_TRANSITIONS: dict[StubStatus, set[StubStatus]] = {
+    StubStatus.DRAFT: {StubStatus.ACTIVE},
+    StubStatus.ACTIVE: {StubStatus.ARCHIVED},
+    StubStatus.ARCHIVED: set(),  # Terminal state
 }
 
 
-class TestFrontmatter(BaseModel):
+class StubFrontmatter(BaseModel):
     """Test frontmatter model."""
-    status: TestStatus
+    status: StubStatus
     title: str | None = None
 
 
-class ConcreteTestManager(ArtifactManager[TestFrontmatter, TestStatus]):
+class ConcreteTestManager(ArtifactManager[StubFrontmatter, StubStatus]):
     """Concrete implementation for testing ArtifactManager."""
 
     @property
@@ -42,15 +42,15 @@ class ConcreteTestManager(ArtifactManager[TestFrontmatter, TestStatus]):
         return "OVERVIEW.md"
 
     @property
-    def frontmatter_model_class(self) -> type[TestFrontmatter]:
-        return TestFrontmatter
+    def frontmatter_model_class(self) -> type[StubFrontmatter]:
+        return StubFrontmatter
 
     @property
-    def status_enum(self) -> type[TestStatus]:
-        return TestStatus
+    def status_enum(self) -> type[StubStatus]:
+        return StubStatus
 
     @property
-    def transition_map(self) -> dict[TestStatus, set[TestStatus]]:
+    def transition_map(self) -> dict[StubStatus, set[StubStatus]]:
         return VALID_TEST_TRANSITIONS
 
 
@@ -103,7 +103,7 @@ class TestArtifactManagerBase:
 
         result = manager.parse_frontmatter("my_artifact")
         assert result is not None
-        assert result.status == TestStatus.DRAFT
+        assert result.status == StubStatus.DRAFT
         assert result.title == "Test"
 
     def test_parse_frontmatter_missing_file(self, tmp_path):
@@ -120,7 +120,7 @@ class TestArtifactManagerBase:
         (artifact_dir / "OVERVIEW.md").write_text("---\nstatus: ACTIVE\n---\n")
 
         status = manager.get_status("my_artifact")
-        assert status == TestStatus.ACTIVE
+        assert status == StubStatus.ACTIVE
 
     def test_get_status_raises_for_missing(self, tmp_path):
         """get_status raises ValueError for missing artifact."""
@@ -137,13 +137,13 @@ class TestArtifactManagerBase:
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "OVERVIEW.md").write_text("---\nstatus: DRAFT\n---\n\n# Body")
 
-        old, new = manager.update_status("my_artifact", TestStatus.ACTIVE)
-        assert old == TestStatus.DRAFT
-        assert new == TestStatus.ACTIVE
+        old, new = manager.update_status("my_artifact", StubStatus.ACTIVE)
+        assert old == StubStatus.DRAFT
+        assert new == StubStatus.ACTIVE
 
         # Verify the file was updated
         new_status = manager.get_status("my_artifact")
-        assert new_status == TestStatus.ACTIVE
+        assert new_status == StubStatus.ACTIVE
 
     def test_update_status_invalid_transition_raises(self, tmp_path):
         """update_status raises ValueError on invalid transition."""
@@ -154,7 +154,7 @@ class TestArtifactManagerBase:
 
         with pytest.raises(ValueError) as exc_info:
             # DRAFT -> ARCHIVED is not valid
-            manager.update_status("my_artifact", TestStatus.ARCHIVED)
+            manager.update_status("my_artifact", StubStatus.ARCHIVED)
         assert "Cannot transition from DRAFT to ARCHIVED" in str(exc_info.value)
 
     def test_update_status_terminal_state_raises(self, tmp_path):
@@ -165,7 +165,7 @@ class TestArtifactManagerBase:
         (artifact_dir / "OVERVIEW.md").write_text("---\nstatus: ARCHIVED\n---\n")
 
         with pytest.raises(ValueError) as exc_info:
-            manager.update_status("my_artifact", TestStatus.ACTIVE)
+            manager.update_status("my_artifact", StubStatus.ACTIVE)
         assert "terminal state" in str(exc_info.value).lower()
 
     def test_update_frontmatter_updates_field(self, tmp_path):
@@ -182,4 +182,4 @@ class TestArtifactManagerBase:
         result = manager.parse_frontmatter("my_artifact")
         assert result is not None
         assert result.title == "New Title"
-        assert result.status == TestStatus.DRAFT  # Unchanged
+        assert result.status == StubStatus.DRAFT  # Unchanged

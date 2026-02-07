@@ -15,7 +15,7 @@ from frontmatter import (
 
 
 # Test model for isolation from real artifact models
-class TestFrontmatter(BaseModel):
+class StubFrontmatter(BaseModel):
     """Simple test model for frontmatter parsing tests."""
 
     status: str
@@ -23,7 +23,7 @@ class TestFrontmatter(BaseModel):
     count: int = 0
 
 
-class TestFrontmatterStrict(BaseModel):
+class StubFrontmatterStrict(BaseModel):
     """Stricter model requiring specific fields."""
 
     required_field: str
@@ -44,7 +44,7 @@ count: 42
 
 # Body content
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is not None
         assert result.status == "active"
@@ -54,7 +54,7 @@ count: 42
     def test_missing_file_returns_none(self, tmp_path: Path):
         """Non-existent file should return None."""
         file_path = tmp_path / "nonexistent.md"
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is None
 
@@ -63,7 +63,7 @@ count: 42
         file_path = tmp_path / "no_markers.md"
         file_path.write_text("# Just a regular markdown file\n\nNo frontmatter here.")
 
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is None
 
@@ -77,7 +77,7 @@ status: active
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is None
 
@@ -90,7 +90,7 @@ count: not_a_number
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is None
 
@@ -104,7 +104,7 @@ Body
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is None
 
@@ -117,7 +117,7 @@ status: draft
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is not None
         assert result.status == "draft"
@@ -137,7 +137,7 @@ status: active
 
 Body
 """)
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is not None
         assert result.status == "active"
@@ -146,7 +146,7 @@ Body
     def test_missing_file_returns_error(self, tmp_path: Path):
         """Missing file should return appropriate error message."""
         file_path = tmp_path / "nonexistent.md"
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is None
         assert len(errors) == 1
@@ -157,7 +157,7 @@ Body
         file_path = tmp_path / "no_markers.md"
         file_path.write_text("# No frontmatter\n")
 
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is None
         assert len(errors) == 1
@@ -172,7 +172,7 @@ status: [unclosed
 
 Body
 """)
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is None
         assert len(errors) == 1
@@ -187,7 +187,7 @@ count: not_a_number
 
 Body
 """)
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is None
         assert len(errors) >= 1
@@ -204,7 +204,7 @@ count: wrong
 Body
 """)
         # Missing required 'status' and 'count' has wrong type
-        result, errors = parse_frontmatter_with_errors(file_path, TestFrontmatter)
+        result, errors = parse_frontmatter_with_errors(file_path, StubFrontmatter)
 
         assert result is None
         # Should have errors for both issues
@@ -223,7 +223,7 @@ name: from_content
 
 # Body
 """
-        result = parse_frontmatter_from_content(content, TestFrontmatter)
+        result = parse_frontmatter_from_content(content, StubFrontmatter)
 
         assert result is not None
         assert result.status == "active"
@@ -232,7 +232,7 @@ name: from_content
     def test_invalid_content_returns_none(self):
         """Invalid content should return None."""
         content = "# No frontmatter"
-        result = parse_frontmatter_from_content(content, TestFrontmatter)
+        result = parse_frontmatter_from_content(content, StubFrontmatter)
 
         assert result is None
 
@@ -249,7 +249,7 @@ status: complete
 Body
 """
         result, errors = parse_frontmatter_from_content_with_errors(
-            content, TestFrontmatter
+            content, StubFrontmatter
         )
 
         assert result is not None
@@ -260,7 +260,7 @@ Body
         """Invalid content should return errors."""
         content = "No frontmatter here"
         result, errors = parse_frontmatter_from_content_with_errors(
-            content, TestFrontmatter
+            content, StubFrontmatter
         )
 
         assert result is None
@@ -482,7 +482,7 @@ status: minimal
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is not None
         assert result.status == "minimal"
@@ -499,7 +499,7 @@ name: |
 
 Body
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is not None
         assert "multiline" in result.name
@@ -533,7 +533,7 @@ name: "Test with unicode: \u2603 \u2764"
 
 Body with unicode: \u2603
 """)
-        result = parse_frontmatter(file_path, TestFrontmatter)
+        result = parse_frontmatter(file_path, StubFrontmatter)
 
         assert result is not None
         assert "\u2603" in result.name

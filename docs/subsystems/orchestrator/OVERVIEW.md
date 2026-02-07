@@ -11,6 +11,12 @@ chunks:
     relationship: implements
   - chunk_id: orch_merge_safety
     relationship: implements
+  - chunk_id: orch_state_transactions
+    relationship: implements
+  - chunk_id: orch_worktree_cleanup
+    relationship: implements
+  - chunk_id: orch_merge_before_delete
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module
