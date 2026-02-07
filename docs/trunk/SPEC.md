@@ -456,11 +456,10 @@ Create a new chunk directory with goal and plan templates.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
 - **Postconditions**:
-  - New directory `docs/chunks/{NNNN}-{short_name}[-{ticket_id}]/` created
+  - New directory `docs/chunks/{short_name}/` created
   - Directory contains GOAL.md and PLAN.md from templates
   - GOAL.md frontmatter has `status: IMPLEMENTING` (or `FUTURE` if `--future` flag used)
 - **Behavior**:
-  - Chunk ID is auto-incremented from existing chunks
   - Inputs are normalized to lowercase
   - Warns if duplicate short_name + ticket_id exists; prompts for confirmation
 - **Errors**:
@@ -523,10 +522,9 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing subsystem with the same short name
 - **Postconditions**:
-  - New directory `docs/subsystems/{NNNN}-{short_name}/` created
+  - New directory `docs/subsystems/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `DISCOVERING` status
 - **Behavior**:
-  - Subsystem ID is auto-incremented from existing subsystems
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
@@ -606,10 +604,9 @@ Create a new investigation directory with OVERVIEW.md template.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing investigation with the same short name
 - **Postconditions**:
-  - New directory `docs/investigations/{NNNN}-{short_name}/` created
+  - New directory `docs/investigations/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `ONGOING` status
 - **Behavior**:
-  - Investigation ID is auto-incremented from existing investigations
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters

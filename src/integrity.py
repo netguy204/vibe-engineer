@@ -672,9 +672,7 @@ class IntegrityValidator:
 def validate_chunk_subsystem_refs(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
     """Validate subsystem references in a chunk's frontmatter.
 
-    Checks:
-    1. Each subsystem_id matches the {NNNN}-{short_name} pattern
-    2. Each referenced subsystem directory exists in docs/subsystems/
+    Checks that each referenced subsystem directory exists in docs/subsystems/.
 
     Args:
         project_dir: Path to the project directory.

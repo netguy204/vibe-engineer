@@ -41,9 +41,9 @@ If no subsystems are relevant, delete this section.
 
 WHEN SUBSYSTEMS ARE RELEVANT:
 List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
+- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
   subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
+- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
   new error type following the subsystem's patterns
 
 HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
@@ -66,7 +66,7 @@ WHEN YOU DISCOVER DEVIATING CODE:
 Example:
 - **Discovered deviation**: src/legacy/parser.py#validate_input does its own
   validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
+  - Added to docs/subsystems/validation Known Deviations
   - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
 -->
 

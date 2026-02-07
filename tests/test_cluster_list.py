@@ -37,36 +37,6 @@ class TestClusterDetection:
         assert "db_init" in clusters["db"]
         assert "db_migrate" in clusters["db"]
 
-    def test_handles_legacy_numbered_format(self, temp_project):
-        """Handles {NNNN}-{short_name} chunks."""
-        from cluster_analysis import get_chunk_clusters
-
-        make_ve_initialized_git_repo(temp_project)
-
-        # Create legacy format chunk directories manually
-        chunk_dir = temp_project / "docs" / "chunks"
-        for name in ["0001-auth_login", "0002-auth_logout"]:
-            (chunk_dir / name).mkdir(parents=True, exist_ok=True)
-            (chunk_dir / name / "GOAL.md").write_text("""---
-status: ACTIVE
-ticket: null
-parent_chunk: null
-code_paths: []
-code_references: []
----
-
-# Chunk Goal
-
-Test chunk.
-""")
-
-        clusters = get_chunk_clusters(temp_project)
-
-        # Legacy format should still group by the prefix after extracting short_name
-        # get_chunk_prefix uses the first underscore-delimited word
-        # For "0001-auth_login", extract_short_name gives "auth_login", then prefix is "auth"
-        assert "auth" in clusters or "0001-auth" in clusters
-
     def test_handles_no_underscore_chunks(self, temp_project):
         """Chunks without underscore become their own singleton."""
         from cluster_analysis import get_chunk_clusters
