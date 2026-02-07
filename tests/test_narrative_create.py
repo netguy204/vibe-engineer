@@ -78,7 +78,7 @@ class TestNarrativeShortNameValidation:
         # Should mention multiple issues
         output_lower = result.output.lower()
         assert "invalid characters" in output_lower
-        assert "32" in result.output or "less than" in output_lower
+        assert "31" in result.output or "at most" in output_lower
 
 
 class TestNarrativeLowercaseNormalization:

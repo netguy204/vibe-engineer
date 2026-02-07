@@ -24,9 +24,9 @@ def validate_identifier(
     """
     errors = []
 
-    if max_length is not None and len(value) >= max_length + 1:
+    if max_length is not None and len(value) > max_length:
         errors.append(
-            f"{field_name} must be less than {max_length + 1} characters "
+            f"{field_name} must be at most {max_length} characters "
             f"(got {len(value)})"
         )
 
