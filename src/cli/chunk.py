@@ -62,6 +62,8 @@ def chunk():
 @click.option("--ticket", default=None, help="Ticket ID to apply to all chunks")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 # Chunk: docs/chunks/chunk_batch_create - CLI command accepting variadic chunk names with batch creation logic
+# Chunk: docs/chunks/future_chunk_creation - CLI command with --future flag for creating FUTURE chunks
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - create command - argument parsing, validation, normalization, duplicate detection, --yes flag
 def create(short_names, project_dir, yes, future, ticket, projects):
     """Create a new chunk (or multiple chunks). (Aliases: start)
 
@@ -417,6 +419,7 @@ def _parse_status_filters(
 # Chunk: docs/chunks/chunklist_external_status - External chunk status display in list output
 # Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty chunk list results
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+# Chunk: docs/chunks/future_chunk_creation - CLI command showing status, --latest uses get_current_chunk to find IMPLEMENTING chunk
 def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, json_output, project_dir):
     """List all chunks.
 
@@ -983,6 +986,7 @@ def list_proposed_chunks_cmd(project_dir):
 
 
 # Chunk: docs/chunks/accept_full_artifact_paths - CLI command using strip_artifact_path_prefix
+# Chunk: docs/chunks/future_chunk_creation - CLI command to activate a FUTURE chunk to IMPLEMENTING status
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")

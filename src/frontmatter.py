@@ -168,6 +168,7 @@ def extract_frontmatter_dict(file_path: Path) -> dict[str, Any] | None:
         return None
 
 
+# Chunk: docs/chunks/future_chunk_creation - Reusable utility for modifying YAML frontmatter fields including status
 def update_frontmatter_field(
     file_path: Path,
     field: str,

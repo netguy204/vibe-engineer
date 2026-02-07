@@ -2,36 +2,119 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on narrative creation
+
+import pathlib
+from pathlib import Path
 
 from pydantic import ValidationError
 
+from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import NarrativeFrontmatter, NarrativeStatus, VALID_NARRATIVE_TRANSITIONS, extract_short_name
 from template_system import ActiveNarrative, TemplateContext, render_to_directory
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
-class Narratives:
-    def __init__(self, project_dir):
-        self.project_dir = project_dir
+class Narratives(ArtifactManager[NarrativeFrontmatter, NarrativeStatus]):
+    """Utility class for managing narrative documentation."""
+
+    def __init__(self, project_dir: Path | pathlib.Path) -> None:
+        """Initialize with project directory.
+
+        Args:
+            project_dir: Path to the project root directory.
+        """
+        super().__init__(Path(project_dir))
+
+    # Abstract property implementations from ArtifactManager
+    @property
+    def artifact_dir_name(self) -> str:
+        return "narratives"
 
     @property
-    def narratives_dir(self):
-        return self.project_dir / "docs" / "narratives"
-
-    def enumerate_narratives(self):
-        """List narrative directory names."""
-        if not self.narratives_dir.exists():
-            return []
-        return [f.name for f in self.narratives_dir.iterdir() if f.is_dir()]
+    def main_filename(self) -> str:
+        return "OVERVIEW.md"
 
     @property
-    def num_narratives(self):
+    def frontmatter_model_class(self) -> type[NarrativeFrontmatter]:
+        return NarrativeFrontmatter
+
+    @property
+    def status_enum(self) -> type[NarrativeStatus]:
+        return NarrativeStatus
+
+    @property
+    def transition_map(self) -> dict[NarrativeStatus, set[NarrativeStatus]]:
+        return VALID_NARRATIVE_TRANSITIONS
+
+    # Backward compatibility aliases
+    @property
+    def project_dir(self) -> Path:
+        """Return the project root directory (alias for backward compatibility)."""
+        return self._project_dir
+
+    @property
+    def narratives_dir(self) -> Path:
+        """Return the path to the narratives directory (alias for artifact_dir)."""
+        return self.artifact_dir
+
+    def enumerate_narratives(self) -> list[str]:
+        """List narrative directory names (alias for enumerate_artifacts)."""
+        return self.enumerate_artifacts()
+
+    @property
+    def num_narratives(self) -> int:
+        """Return the number of narratives."""
         return len(self.enumerate_narratives())
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
+    def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
+        """Parse and validate OVERVIEW.md frontmatter for a narrative.
+
+        Note: This method has special handling for the legacy 'chunks' field
+        that maps to 'proposed_chunks'. This is artifact-specific behavior
+        that cannot be moved to the base class.
+
+        Args:
+            narrative_id: The narrative directory name.
+
+        Returns:
+            Validated NarrativeFrontmatter if successful, None if:
+            - Narrative directory doesn't exist
+            - OVERVIEW.md doesn't exist
+            - Frontmatter is malformed or fails validation
+        """
+        from frontmatter import extract_frontmatter_dict
+
+        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
+        if not overview_path.exists():
+            return None
+
+        # Use extract_frontmatter_dict for raw parsing, then apply legacy field mapping
+        frontmatter_data = extract_frontmatter_dict(overview_path)
+        if frontmatter_data is None:
+            return None
+
+        try:
+            # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
+            if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
+                frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
+            return NarrativeFrontmatter.model_validate(frontmatter_data)
+        except ValidationError:
+            return None
+
+    # Override parse_frontmatter to use the specialized parsing for legacy support
+    def parse_frontmatter(self, artifact_id: str) -> NarrativeFrontmatter | None:
+        """Parse and validate frontmatter for a narrative.
+
+        Overrides base class to handle legacy 'chunks' field mapping.
+        """
+        return self.parse_narrative_frontmatter(artifact_id)
+
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
-    def create_narrative(self, short_name: str):
+    def create_narrative(self, short_name: str) -> pathlib.Path:
         """Create a new narrative directory with templates.
 
         Args:
@@ -94,110 +177,3 @@ class Narratives:
             if existing_short == short_name:
                 duplicates.append(name)
         return duplicates
-
-    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
-    def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
-        """Parse and validate OVERVIEW.md frontmatter for a narrative.
-
-        Args:
-            narrative_id: The narrative directory name.
-
-        Returns:
-            Validated NarrativeFrontmatter if successful, None if:
-            - Narrative directory doesn't exist
-            - OVERVIEW.md doesn't exist
-            - Frontmatter is malformed or fails validation
-        """
-        from frontmatter import extract_frontmatter_dict
-
-        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
-        if not overview_path.exists():
-            return None
-
-        # Use extract_frontmatter_dict for raw parsing, then apply legacy field mapping
-        frontmatter_data = extract_frontmatter_dict(overview_path)
-        if frontmatter_data is None:
-            return None
-
-        try:
-            # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
-            if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
-                frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
-            return NarrativeFrontmatter.model_validate(frontmatter_data)
-        except ValidationError:
-            return None
-
-    def get_status(self, narrative_id: str) -> NarrativeStatus:
-        """Get the current status of a narrative.
-
-        Args:
-            narrative_id: The narrative directory name.
-
-        Returns:
-            The current NarrativeStatus.
-
-        Raises:
-            ValueError: If narrative not found or has invalid frontmatter.
-        """
-        frontmatter = self.parse_narrative_frontmatter(narrative_id)
-        if frontmatter is None:
-            raise ValueError(f"Narrative '{narrative_id}' not found in docs/narratives/")
-        return frontmatter.status
-
-    def update_status(
-        self, narrative_id: str, new_status: NarrativeStatus
-    ) -> tuple[NarrativeStatus, NarrativeStatus]:
-        """Update narrative status with transition validation.
-
-        Args:
-            narrative_id: The narrative directory name.
-            new_status: The new status to transition to.
-
-        Returns:
-            Tuple of (old_status, new_status) on success.
-
-        Raises:
-            ValueError: If narrative not found, invalid status, or invalid transition.
-        """
-        # Get current status
-        current_status = self.get_status(narrative_id)
-
-        # Validate the transition
-        valid_transitions = VALID_NARRATIVE_TRANSITIONS.get(current_status, set())
-        if new_status not in valid_transitions:
-            valid_names = sorted(s.value for s in valid_transitions)
-            if valid_names:
-                valid_str = ", ".join(valid_names)
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"Valid transitions: {valid_str}"
-                )
-            else:
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"{current_status.value} is a terminal state with no valid transitions"
-                )
-
-        # Update the frontmatter
-        self._update_overview_frontmatter(narrative_id, "status", new_status.value)
-
-        return (current_status, new_status)
-
-    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
-    def _update_overview_frontmatter(
-        self, narrative_id: str, field: str, value
-    ) -> None:
-        """Update a single field in OVERVIEW.md frontmatter.
-
-        Args:
-            narrative_id: The narrative directory name.
-            field: The frontmatter field name to update.
-            value: The new value for the field.
-
-        Raises:
-            ValueError: If the file has no frontmatter.
-        """
-        from frontmatter import update_frontmatter_field
-
-        overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
-        update_frontmatter_field(overview_path, field, value)

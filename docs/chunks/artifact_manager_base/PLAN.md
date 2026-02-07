@@ -8,170 +8,198 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extracts a shared `ArtifactManager` base class and a reusable `StateMachine` class to eliminate duplicated lifecycle management code across the four artifact types (Chunks, Narratives, Investigations, Subsystems).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Create a `StateMachine` class** that encapsulates transition validation logic. Currently, each manager duplicates the same pattern:
+   ```python
+   valid_transitions = VALID_*_TRANSITIONS.get(current_status, set())
+   if new_status not in valid_transitions:
+       # Build error message...
+   ```
+   The `StateMachine` will accept a transition map and provide a `validate_transition()` method with standardized error messages.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/artifact_manager_base/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Create an abstract `ArtifactManager` base class** that captures the shared pattern:
+   - `__init__(project_dir)` storing project_dir and computing artifact directory
+   - `enumerate_artifacts()` listing artifact directories
+   - `get_status(artifact_id)` parsing frontmatter and extracting status
+   - `update_status(artifact_id, new_status)` using StateMachine for validation
+   - `_update_frontmatter(artifact_id, field, value)` using frontmatter.py utilities
+
+3. **Refactor each manager** to subclass `ArtifactManager`:
+   - Implement abstract properties: `artifact_dir_name`, `main_filename`, `frontmatter_model_class`, `status_enum`, `transition_map`
+   - Remove duplicated `get_status`, `update_status`, and `_update_*_frontmatter` methods
+   - Retain artifact-specific methods (e.g., `Chunks.validate_subsystem_refs`, `Subsystems.find_overlapping_subsystems`)
+
+4. **Test-first approach**: Write failing tests for the StateMachine and ArtifactManager classes first, then implement to make them pass. Verify existing tests continue to pass after refactoring.
+
+**Building on:**
+- `src/frontmatter.py` - Already provides `parse_frontmatter`, `update_frontmatter_field` utilities
+- `src/models.py` - Contains status enums and transition maps
+- docs/subsystems/workflow_artifacts - Canonical pattern documentation
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk **IMPLEMENTS** a key piece of the workflow artifact pattern - the base class that enforces the manager class interface described in Hard Invariant #6. The subsystem documents that every workflow type needs `enumerate_`, `create_`, `parse_frontmatter` methods; this chunk formalizes that in code via an abstract base class.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create StateMachine class with tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/state_machine.py` with a `StateMachine` class that:
+- Accepts a transition map (`dict[StatusEnum, set[StatusEnum]]`) and the status enum type
+- Provides `validate_transition(current: StatusEnum, new: StatusEnum) -> None` that raises `ValueError` with descriptive messages
+- Error messages include: valid transitions list (for non-terminal states) or "terminal state" indicator
 
-Example:
+Write tests first in `tests/test_state_machine.py`:
+- Test valid transition passes without exception
+- Test invalid transition raises ValueError with correct message
+- Test terminal state transition raises ValueError mentioning "terminal"
+- Test with all four status enum types (ChunkStatus, NarrativeStatus, InvestigationStatus, SubsystemStatus)
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/state_machine.py`, `tests/test_state_machine.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Create ArtifactManager abstract base class with tests
 
-Location: src/segment/format.rs
+Create `src/artifact_manager.py` with an abstract `ArtifactManager` class:
 
-### Step 2: Implement header serialization
+**Abstract properties (must be overridden):**
+- `artifact_dir_name: str` - e.g., "chunks", "narratives"
+- `main_filename: str` - e.g., "GOAL.md", "OVERVIEW.md"
+- `frontmatter_model_class: type[BaseModel]` - Pydantic model class
+- `status_enum: type[StrEnum]` - Status enum class
+- `transition_map: dict` - Valid transitions dict
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Concrete methods:**
+- `__init__(project_dir: Path)` - stores project_dir, computes artifact_dir path
+- `artifact_dir: Path` (property) - returns `project_dir / "docs" / artifact_dir_name`
+- `enumerate_artifacts() -> list[str]` - lists subdirectories
+- `get_artifact_path(artifact_id: str) -> Path` - returns artifact directory path
+- `get_main_file_path(artifact_id: str) -> Path` - returns path to main markdown file
+- `parse_frontmatter(artifact_id: str)` - parses frontmatter using frontmatter.py
+- `get_status(artifact_id: str)` - returns status from parsed frontmatter
+- `update_status(artifact_id: str, new_status)` - validates and updates status
+- `_update_frontmatter(artifact_id: str, field: str, value: Any)` - updates a field
 
-### Step 3: ...
+Write tests first in `tests/test_artifact_manager.py`:
+- Create a minimal concrete subclass for testing (e.g., `TestManager`)
+- Test `enumerate_artifacts()` finds directories
+- Test `get_status()` returns correct status
+- Test `update_status()` with valid transition succeeds
+- Test `update_status()` with invalid transition raises ValueError
+- Test `_update_frontmatter()` updates field correctly
 
----
+Location: `src/artifact_manager.py`, `tests/test_artifact_manager.py`
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Refactor Subsystems to use ArtifactManager
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Refactor `src/subsystems.py`:
+- Import `ArtifactManager` and `StateMachine`
+- Make `Subsystems` inherit from `ArtifactManager`
+- Implement required abstract properties:
+  - `artifact_dir_name = "subsystems"`
+  - `main_filename = "OVERVIEW.md"`
+  - `frontmatter_model_class = SubsystemFrontmatter`
+  - `status_enum = SubsystemStatus`
+  - `transition_map = VALID_STATUS_TRANSITIONS`
+- Remove duplicated `get_status()`, `update_status()`, `_update_overview_frontmatter()` methods
+- Keep `subsystems_dir` as an alias property for backward compatibility: `return self.artifact_dir`
+- Keep `enumerate_subsystems()` as an alias: `return self.enumerate_artifacts()`
+- Keep all artifact-specific methods: `is_subsystem_dir()`, `find_by_shortname()`, `create_subsystem()`, `parse_subsystem_frontmatter()`, `find_duplicates()`, `validate_chunk_refs()`, `find_overlapping_subsystems()`, `_find_overlapping_refs()`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Run existing tests: `pytest tests/test_subsystems.py tests/test_subsystem_*.py`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Location: `src/subsystems.py`
 
-Format (place immediately before the symbol):
+### Step 4: Refactor Investigations to use ArtifactManager
+
+Refactor `src/investigations.py`:
+- Make `Investigations` inherit from `ArtifactManager`
+- Implement required abstract properties:
+  - `artifact_dir_name = "investigations"`
+  - `main_filename = "OVERVIEW.md"`
+  - `frontmatter_model_class = InvestigationFrontmatter`
+  - `status_enum = InvestigationStatus`
+  - `transition_map = VALID_INVESTIGATION_TRANSITIONS`
+- Remove duplicated `get_status()`, `update_status()`, `_update_overview_frontmatter()` methods
+- Keep `investigations_dir` as alias property for backward compatibility
+- Keep `enumerate_investigations()` as alias method
+- Keep artifact-specific methods: `create_investigation()`, `find_duplicates()`, `parse_investigation_frontmatter()`
+
+Run existing tests: `pytest tests/test_investigations.py tests/test_investigation_*.py`
+
+Location: `src/investigations.py`
+
+### Step 5: Refactor Narratives to use ArtifactManager
+
+Refactor `src/narratives.py`:
+- Make `Narratives` inherit from `ArtifactManager`
+- Implement required abstract properties:
+  - `artifact_dir_name = "narratives"`
+  - `main_filename = "OVERVIEW.md"`
+  - `frontmatter_model_class = NarrativeFrontmatter`
+  - `status_enum = NarrativeStatus`
+  - `transition_map = VALID_NARRATIVE_TRANSITIONS`
+- Remove duplicated `get_status()`, `update_status()`, `_update_overview_frontmatter()` methods
+- Keep `narratives_dir` as alias property for backward compatibility
+- Keep `enumerate_narratives()` as alias method
+- Keep artifact-specific methods: `create_narrative()`, `find_duplicates()`, `parse_narrative_frontmatter()`
+- Note: Narratives has special handling for legacy 'chunks' field mapping to 'proposed_chunks' - keep that logic in `parse_narrative_frontmatter()`
+
+Run existing tests: `pytest tests/test_narratives.py tests/test_narrative_*.py`
+
+Location: `src/narratives.py`
+
+### Step 6: Refactor Chunks to use ArtifactManager
+
+Refactor `src/chunks.py`:
+- Make `Chunks` inherit from `ArtifactManager`
+- Implement required abstract properties:
+  - `artifact_dir_name = "chunks"`
+  - `main_filename = "GOAL.md"`
+  - `frontmatter_model_class = ChunkFrontmatter`
+  - `status_enum = ChunkStatus`
+  - `transition_map = VALID_CHUNK_TRANSITIONS`
+- Remove duplicated `get_status()`, `update_status()` methods (already using task_utils.update_frontmatter_field)
+- Keep `chunk_dir` as alias property for backward compatibility
+- Keep `enumerate_chunks()` as alias method
+- Keep ALL artifact-specific methods - Chunks has the most: `find_duplicates()`, `list_chunks()`, `get_latest_chunk()`, `get_current_chunk()`, `get_recent_active_chunks()`, `get_last_active_chunk()`, `activate_chunk()`, `create_chunk()`, `resolve_chunk_id()`, `get_chunk_goal_path()`, `get_success_criteria()`, `parse_chunk_frontmatter()`, `parse_chunk_frontmatter_with_errors()`, `_parse_frontmatter_from_content()`, `resolve_chunk_location()`, `parse_code_references()`, `find_overlapping_chunks()`, `validate_chunk_complete()`, validation methods, etc.
+
+Run existing tests: `pytest tests/test_chunks.py tests/test_chunk_*.py`
+
+Location: `src/chunks.py`
+
+### Step 7: Run full test suite and add code backreferences
+
+Run the complete test suite to verify no regressions:
+```bash
+pytest tests/
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add backreference comments to the new files:
+- `src/state_machine.py`: Add module-level chunk backreference
+- `src/artifact_manager.py`: Add module-level chunk and subsystem backreferences
+- Each refactored manager: Add class-level chunk backreference
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Update `code_paths` in `docs/chunks/artifact_manager_base/GOAL.md` to list all touched files.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **frontmatter_io chunk**: This chunk depends on `frontmatter_io` being complete. The GOAL.md frontmatter shows `depends_on: [frontmatter_io]`. The `frontmatter.py` module with `parse_frontmatter`, `update_frontmatter_field`, etc. must be in place. Based on code review, this is already complete.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Backward compatibility of alias properties**: The refactored managers need to keep `chunk_dir`, `narratives_dir`, `investigations_dir`, `subsystems_dir` as alias properties since existing code may reference them. Need to verify all call sites.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Chunks has unique patterns**: The Chunks class has many more methods than the other managers. The base class extraction should focus on the shared lifecycle methods (get_status, update_status, _update_frontmatter) without trying to generalize chunk-specific features like `resolve_chunk_id` or `validate_chunk_complete`.
+
+3. **Different frontmatter parsing patterns**: Narratives has special handling for the legacy 'chunks' → 'proposed_chunks' field mapping. This artifact-specific logic should remain in `parse_narrative_frontmatter()` rather than being pushed into the base class.
+
+4. **Import cycles**: Need to be careful about import structure. `state_machine.py` and `artifact_manager.py` should not import from the concrete managers. They can import from `models.py` and `frontmatter.py`.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

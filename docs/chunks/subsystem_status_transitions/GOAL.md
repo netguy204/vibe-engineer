@@ -10,13 +10,13 @@ code_paths:
 code_references:
 - ref: src/models.py#VALID_STATUS_TRANSITIONS
   implements: State machine rules defining valid status transitions
-- ref: src/subsystems.py#Subsystems::get_status
+- ref: src/artifact_manager.py#ArtifactManager::get_status
   implements: Get current status of a subsystem (SC 4)
-- ref: src/subsystems.py#Subsystems::update_status
+- ref: src/artifact_manager.py#ArtifactManager::update_status
   implements: Validate transition and update status (SC 1, 3)
-- ref: src/subsystems.py#Subsystems::_update_overview_frontmatter
+- ref: src/artifact_manager.py#ArtifactManager::_update_frontmatter
   implements: Frontmatter update preserving other fields (SC 7)
-- ref: src/ve.py#status
+- ref: src/cli/subsystem.py#status
   implements: CLI command with ID resolution and error handling (SC 2, 5, 6)
 - ref: tests/test_subsystem_status.py
   implements: Comprehensive test coverage for all success criteria
