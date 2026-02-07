@@ -1,18 +1,65 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+  - src/frontmatter.py
+  - tests/test_frontmatter.py
+  - src/chunks.py
+  - src/narratives.py
+  - src/investigations.py
+  - src/subsystems.py
+  - src/friction.py
+  - src/artifact_ordering.py
+  - src/task_utils.py
+code_references:
+  - ref: src/frontmatter.py
+    implements: "Shared frontmatter I/O module - unified interface for parsing and updating YAML frontmatter"
+  - ref: src/frontmatter.py#parse_frontmatter
+    implements: "Parse YAML frontmatter from file and validate with Pydantic model"
+  - ref: src/frontmatter.py#parse_frontmatter_with_errors
+    implements: "Parse frontmatter with detailed error messages for validation reporting"
+  - ref: src/frontmatter.py#parse_frontmatter_from_content
+    implements: "Parse frontmatter from content string (cache-based resolution)"
+  - ref: src/frontmatter.py#parse_frontmatter_from_content_with_errors
+    implements: "Parse frontmatter from content string with error details"
+  - ref: src/frontmatter.py#extract_frontmatter_dict
+    implements: "Extract raw frontmatter dict without Pydantic validation (generic field extraction)"
+  - ref: src/frontmatter.py#update_frontmatter_field
+    implements: "Update a single field in file's YAML frontmatter"
+  - ref: src/chunks.py#Chunks::parse_chunk_frontmatter_with_errors
+    implements: "Migrated to use shared parse_frontmatter_with_errors"
+  - ref: src/chunks.py#Chunks::_parse_frontmatter_from_content
+    implements: "Migrated to use shared parse_frontmatter_from_content"
+  - ref: src/narratives.py#Narratives::parse_narrative_frontmatter
+    implements: "Migrated to use shared extract_frontmatter_dict with legacy field remapping"
+  - ref: src/narratives.py#Narratives::_update_overview_frontmatter
+    implements: "Migrated to use shared update_frontmatter_field"
+  - ref: src/investigations.py#Investigations::parse_investigation_frontmatter
+    implements: "Migrated to use shared parse_frontmatter"
+  - ref: src/investigations.py#Investigations::_update_overview_frontmatter
+    implements: "Migrated to use shared update_frontmatter_field"
+  - ref: src/subsystems.py#Subsystems::parse_subsystem_frontmatter
+    implements: "Migrated to use shared parse_frontmatter"
+  - ref: src/subsystems.py#Subsystems::_update_overview_frontmatter
+    implements: "Migrated to use shared update_frontmatter_field"
+  - ref: src/friction.py#Friction::parse_frontmatter
+    implements: "Migrated to use shared parse_frontmatter as parse_fm"
+  - ref: src/artifact_ordering.py#_parse_frontmatter
+    implements: "Migrated to use shared extract_frontmatter_dict"
+  - ref: src/task_utils.py
+    implements: "Re-exports update_frontmatter_field from shared module for API compatibility"
 narrative: arch_consolidation
 investigation: null
-subsystems: []
+subsystems:
+  - subsystem_id: workflow_artifacts
+    relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_api_retry"]
+created_after:
+- orch_api_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

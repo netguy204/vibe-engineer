@@ -4,10 +4,6 @@
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on investigation creation
 
 import pathlib
-import re
-
-from pydantic import ValidationError
-import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import InvestigationFrontmatter, InvestigationStatus, VALID_INVESTIGATION_TRANSITIONS, extract_short_name
@@ -111,6 +107,7 @@ class Investigations:
                 duplicates.append(name)
         return duplicates
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def parse_investigation_frontmatter(self, investigation_id: str) -> InvestigationFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for an investigation.
 
@@ -123,24 +120,13 @@ class Investigations:
             - OVERVIEW.md doesn't exist
             - Frontmatter is malformed or fails validation
         """
+        from frontmatter import parse_frontmatter
+
         overview_path = self.investigations_dir / investigation_id / "OVERVIEW.md"
         if not overview_path.exists():
             return None
 
-        content = overview_path.read_text()
-
-        # Extract frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not match:
-            return None
-
-        try:
-            frontmatter_data = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter_data, dict):
-                return None
-            return InvestigationFrontmatter.model_validate(frontmatter_data)
-        except (yaml.YAMLError, ValidationError):
-            return None
+        return parse_frontmatter(overview_path, InvestigationFrontmatter)
 
     def get_status(self, investigation_id: str) -> InvestigationStatus:
         """Get the current status of an investigation.
@@ -198,6 +184,7 @@ class Investigations:
 
         return (current_status, new_status)
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def _update_overview_frontmatter(
         self, investigation_id: str, field: str, value
     ) -> None:
@@ -211,26 +198,7 @@ class Investigations:
         Raises:
             ValueError: If the file has no frontmatter.
         """
+        from frontmatter import update_frontmatter_field
+
         overview_path = self.investigations_dir / investigation_id / "OVERVIEW.md"
-
-        content = overview_path.read_text()
-
-        # Parse frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-        if not match:
-            raise ValueError(f"Could not parse frontmatter in {overview_path}")
-
-        frontmatter_text = match.group(1)
-        body = match.group(2)
-
-        # Parse YAML frontmatter
-        frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-        # Update the field
-        frontmatter[field] = value
-
-        # Reconstruct the file
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        new_content = f"---\n{new_frontmatter}---\n{body}"
-
-        overview_path.write_text(new_content)
+        update_frontmatter_field(overview_path, field, value)

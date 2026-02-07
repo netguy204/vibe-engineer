@@ -8,8 +8,6 @@ from datetime import date
 from enum import StrEnum
 
 import yaml
-from pydantic import ValidationError
-
 from models import FrictionFrontmatter, FrictionTheme, FrictionProposedChunk, ExternalFrictionSource
 
 
@@ -62,6 +60,7 @@ class Friction:
         """Write content to the friction log file."""
         self.friction_path.write_text(content)
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def parse_frontmatter(self) -> FrictionFrontmatter | None:
         """Parse and validate FRICTION.md frontmatter.
 
@@ -70,23 +69,12 @@ class Friction:
             - File doesn't exist
             - Frontmatter is malformed or fails validation
         """
+        from frontmatter import parse_frontmatter as parse_fm
+
         if not self.exists():
             return None
 
-        content = self.read_content()
-
-        # Extract frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not match:
-            return None
-
-        try:
-            frontmatter_data = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter_data, dict):
-                return None
-            return FrictionFrontmatter.model_validate(frontmatter_data)
-        except (yaml.YAMLError, ValidationError):
-            return None
+        return parse_fm(self.friction_path, FrictionFrontmatter)
 
     def parse_entries(self) -> list[FrictionEntry]:
         """Extract friction entries from the log body.

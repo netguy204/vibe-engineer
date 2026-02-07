@@ -12,7 +12,6 @@ Works in any directory without requiring git.
 """
 
 import json
-import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -107,10 +106,7 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
     return result
 
 
-# Regex to extract YAML frontmatter from markdown files
-_FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
-
-
+# Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
 def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
     """Parse YAML frontmatter from a markdown file.
 
@@ -121,22 +117,9 @@ def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
         Parsed frontmatter dict, or None if file doesn't exist,
         has no frontmatter, or invalid YAML.
     """
-    if not file_path.exists():
-        return None
+    from frontmatter import extract_frontmatter_dict
 
-    try:
-        content = file_path.read_text()
-    except (OSError, IOError):
-        return None
-
-    match = _FRONTMATTER_PATTERN.match(content)
-    if not match:
-        return None
-
-    try:
-        return yaml.safe_load(match.group(1)) or {}
-    except yaml.YAMLError:
-        return None
+    return extract_frontmatter_dict(file_path)
 
 
 # Chunk: docs/chunks/artifact_ordering_index - Extracts created_after field from YAML frontmatter

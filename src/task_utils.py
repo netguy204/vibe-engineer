@@ -298,46 +298,9 @@ def get_next_chunk_id(project_path: Path) -> str:
 # create_external_yaml is imported from external_refs
 
 
-def update_frontmatter_field(
-    goal_path: Path,
-    field: str,
-    value,
-) -> None:
-    """Update a single field in GOAL.md frontmatter.
-
-    Args:
-        goal_path: Path to the GOAL.md file
-        field: The frontmatter field name to update
-        value: The new value for the field
-
-    Raises:
-        FileNotFoundError: If goal_path doesn't exist
-        ValueError: If the file has no frontmatter
-    """
-    if not goal_path.exists():
-        raise FileNotFoundError(f"File not found: {goal_path}")
-
-    content = goal_path.read_text()
-
-    # Parse frontmatter between --- markers
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-    if not match:
-        raise ValueError(f"Could not parse frontmatter in {goal_path}")
-
-    frontmatter_text = match.group(1)
-    body = match.group(2)
-
-    # Parse YAML frontmatter
-    frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-    # Update the field
-    frontmatter[field] = value
-
-    # Reconstruct the file
-    new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-    new_content = f"---\n{new_frontmatter}---\n{body}"
-
-    goal_path.write_text(new_content)
+# Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
+# Re-export update_frontmatter_field from the shared module for API compatibility
+from frontmatter import update_frontmatter_field
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Updates GOAL.md frontmatter with dependents
