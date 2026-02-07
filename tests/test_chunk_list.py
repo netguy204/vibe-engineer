@@ -1126,3 +1126,277 @@ class TestRecentFlagMutualExclusivity:
         )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower() or "cannot" in result.output.lower()
+
+
+# Chunk: docs/chunks/cli_json_output - JSON output tests for ve chunk list
+class TestJsonOutput:
+    """Tests for --json output in 've chunk list' command."""
+
+    def test_json_output_basic(self, runner, temp_project):
+        """--json outputs valid JSON with chunk objects."""
+        import json
+
+        # Create a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        # Verify it's valid JSON
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+
+        # Verify chunk structure
+        chunk = data[0]
+        assert chunk["name"] == "feature"
+        assert chunk["status"] == "IMPLEMENTING"
+        assert "is_tip" in chunk
+
+    def test_json_output_includes_frontmatter_fields(self, runner, temp_project):
+        """JSON output includes all frontmatter fields."""
+        import json
+
+        # Create a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "VE-001", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        chunk = data[0]
+
+        # Check for standard frontmatter fields
+        assert "name" in chunk
+        assert "status" in chunk
+        assert "ticket" in chunk
+        assert "code_paths" in chunk
+        assert "code_references" in chunk
+        assert "depends_on" in chunk
+
+    def test_json_output_with_status_filter(self, runner, temp_project):
+        """--json works with status filtering."""
+        import json
+
+        # Create IMPLEMENTING chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "implementing", "--project-dir", str(temp_project)]
+        )
+        # Create FUTURE chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "future_work", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--status", "FUTURE", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["name"] == "future_work"
+        assert data[0]["status"] == "FUTURE"
+
+    def test_json_output_with_current_flag(self, runner, temp_project):
+        """--json works with --current flag."""
+        import json
+
+        # Create a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "current_chunk", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--current", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["name"] == "current_chunk"
+        assert data[0]["status"] == "IMPLEMENTING"
+
+    def test_json_output_external_chunk(self, runner, temp_project):
+        """External chunks are serialized correctly in JSON."""
+        import json
+
+        # Create an external chunk reference
+        external_chunk_dir = temp_project / "docs" / "chunks" / "external_feature"
+        external_chunk_dir.mkdir(parents=True)
+        external_yaml_content = """artifact_type: chunk
+artifact_id: external_feature
+repo: acme/other-repo
+track: main
+"""
+        (external_chunk_dir / "external.yaml").write_text(external_yaml_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+
+        chunk = data[0]
+        assert chunk["name"] == "external_feature"
+        assert chunk["status"] == "EXTERNAL"
+        assert chunk["repo"] == "acme/other-repo"
+        assert "artifact_id" in chunk
+
+    def test_json_output_parse_error(self, runner, temp_project):
+        """Parse errors are included in JSON output."""
+        import json
+
+        # Create a chunk with invalid frontmatter
+        invalid_chunk_dir = temp_project / "docs" / "chunks" / "invalid_chunk"
+        invalid_chunk_dir.mkdir(parents=True)
+        goal_content = """---
+status: NOT_A_VALID_STATUS
+---
+# Invalid Chunk
+"""
+        (invalid_chunk_dir / "GOAL.md").write_text(goal_content)
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+
+        chunk = data[0]
+        assert chunk["name"] == "invalid_chunk"
+        assert chunk["status"] == "PARSE_ERROR"
+        assert "error" in chunk
+
+    def test_json_output_empty_project(self, runner, temp_project):
+        """Empty project returns empty array with exit code 0 in JSON mode."""
+        import json
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data == []
+
+    def test_json_output_multiple_chunks(self, runner, temp_project):
+        """JSON output correctly lists multiple chunks."""
+        import json
+
+        # Create multiple chunks
+        runner.invoke(
+            cli,
+            ["chunk", "start", "first", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "start", "second", "--future", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 2
+
+        names = [c["name"] for c in data]
+        assert "first" in names
+        assert "second" in names
+
+    def test_json_output_with_recent_flag(self, runner, temp_project):
+        """--json works with --recent flag."""
+        import json
+
+        # Create and complete multiple chunks
+        for name in ["first", "second", "third"]:
+            runner.invoke(
+                cli,
+                ["chunk", "start", name, "--project-dir", str(temp_project)]
+            )
+            runner.invoke(
+                cli,
+                ["chunk", "complete", "--project-dir", str(temp_project)]
+            )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--recent", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 3
+        # All should be ACTIVE
+        for chunk in data:
+            assert chunk["status"] == "ACTIVE"
+
+    def test_json_output_with_last_active_flag(self, runner, temp_project):
+        """--json works with --last-active flag."""
+        import json
+
+        # Create and complete a chunk
+        runner.invoke(
+            cli,
+            ["chunk", "start", "completed", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["chunk", "complete", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--last-active", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["name"] == "completed"
+        assert data[0]["status"] == "ACTIVE"
+
+    def test_json_is_parseable_by_jq(self, runner, temp_project):
+        """JSON output is compatible with jq tool (valid JSON array)."""
+        import json
+
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "list", "--json", "--project-dir", str(temp_project)]
+        )
+
+        # Should be valid JSON that can be parsed and re-serialized
+        data = json.loads(result.output)
+        re_serialized = json.dumps(data)
+        assert json.loads(re_serialized) == data

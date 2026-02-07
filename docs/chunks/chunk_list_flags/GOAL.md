@@ -15,16 +15,14 @@ code_paths:
 code_references:
 - ref: src/chunks.py#Chunks::get_recent_active_chunks
   implements: "New method returning up to 10 most recently created ACTIVE chunks"
-- ref: src/ve.py#list_chunks
-  implements: "CLI command with renamed --current flag and new --recent flag"
+- ref: src/cli/chunk.py#list_chunks
+  implements: "CLI chunk list command with --current and --recent flags"
 - ref: tests/test_chunk_list.py#TestCurrentFlag
   implements: "Tests for renamed --current flag (was --latest)"
 - ref: tests/test_chunk_list.py#TestRecentFlag
   implements: "Tests for new --recent flag functionality"
 - ref: tests/test_chunk_list.py#TestRecentFlagMutualExclusivity
   implements: "Tests for --recent mutual exclusivity with other flags"
-- ref: src/cli/chunk.py#list_chunks
-  implements: "CLI chunk list command with --current and --recent flags after CLI modularization"
 narrative: null
 investigation: claudemd_progressive_disclosure
 subsystems: []

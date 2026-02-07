@@ -4,7 +4,9 @@ Commands for managing friction log entries.
 """
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
 # Chunk: docs/chunks/cli_modularize - Friction CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -284,7 +286,9 @@ def _log_entry_task_context(project_dir, title, description, impact, theme, them
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--open", "status_open", is_flag=True, help="Show only OPEN entries")
 @click.option("--tags", multiple=True, help="Filter by theme tags")
-def list_entries(project_dir, status_open, tags):
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_entries(project_dir, status_open, tags, json_output):
     """List friction entries."""
     from friction import Friction, FrictionStatus
 
@@ -303,11 +307,27 @@ def list_entries(project_dir, status_open, tags):
     entries = friction_log.list_entries(status_filter=status_filter, theme_filter=theme_filter)
 
     if not entries:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No friction entries found", err=True)
         raise SystemExit(0)
 
-    for entry, status in entries:
-        click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
+    if json_output:
+        results = []
+        for entry, status in entries:
+            results.append({
+                "id": entry.id,
+                "status": status.value,
+                "theme_id": entry.theme_id,
+                "title": entry.title,
+                "date": entry.date,
+                "content": entry.content,
+            })
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for entry, status in entries:
+            click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
 
 
 @friction.command("analyze")

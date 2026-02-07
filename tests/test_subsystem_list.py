@@ -86,3 +86,99 @@ class TestSubsystemListCommand:
         assert result.exit_code == 0
         # Format should be: docs/subsystems/validation [DISCOVERING]
         assert "docs/subsystems/validation [DISCOVERING]" in result.output
+
+
+# Chunk: docs/chunks/cli_json_output - JSON output tests for ve subsystem list
+class TestSubsystemListJsonOutput:
+    """Tests for --json output in 've subsystem list' command."""
+
+    def test_json_output_basic(self, runner, temp_project):
+        """--json outputs valid JSON with subsystem objects."""
+        import json
+
+        # Create a subsystem
+        runner.invoke(
+            cli,
+            ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        # Verify it's valid JSON
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+
+        # Verify subsystem structure
+        subsystem = data[0]
+        assert "validation" in subsystem["name"]
+        assert subsystem["status"] == "DISCOVERING"
+        assert "is_tip" in subsystem
+
+    def test_json_output_includes_frontmatter(self, runner, temp_project):
+        """JSON output includes all frontmatter fields."""
+        import json
+
+        # Create a subsystem
+        runner.invoke(
+            cli,
+            ["subsystem", "discover", "validation", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        subsystem = data[0]
+
+        # Check for standard frontmatter fields
+        assert "name" in subsystem
+        assert "status" in subsystem
+
+    def test_json_output_empty(self, runner, temp_project):
+        """Empty project returns empty array with exit code 0 in JSON mode."""
+        import json
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data == []
+
+    def test_json_output_multiple_subsystems(self, runner, temp_project):
+        """JSON output correctly lists multiple subsystems."""
+        import json
+
+        # Create multiple subsystems
+        runner.invoke(
+            cli,
+            ["subsystem", "discover", "first", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["subsystem", "discover", "second", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 2
+
+        # Both subsystems should be present
+        names = [s["name"] for s in data]
+        assert any("first" in n for n in names)
+        assert any("second" in n for n in names)

@@ -5,7 +5,9 @@ Commands for managing chunks - the primary work unit in Vibe Engineering.
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 # Chunk: docs/chunks/cli_modularize - Chunk CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -281,6 +283,57 @@ def _start_task_chunks(
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/cli_json_output - Helper function for JSON serialization of chunk frontmatter
+def _chunk_to_json_dict(
+    chunk_name: str,
+    frontmatter,
+    chunks_manager,
+    project_dir: pathlib.Path,
+    tips: set[str] | None = None,
+) -> dict:
+    """Convert a chunk and its frontmatter to a JSON-serializable dictionary.
+
+    Args:
+        chunk_name: The chunk directory name
+        frontmatter: Parsed ChunkFrontmatter object (or None)
+        chunks_manager: Chunks instance for additional lookups
+        project_dir: Project directory path
+        tips: Set of chunk names that are tips (optional, for is_tip field)
+
+    Returns:
+        Dictionary with chunk name, status, and all frontmatter fields
+    """
+    if frontmatter is None:
+        return {
+            "name": chunk_name,
+            "status": "UNKNOWN",
+            "is_tip": chunk_name in tips if tips else False,
+        }
+
+    # Use Pydantic's model_dump() for serialization
+    fm_dict = frontmatter.model_dump()
+
+    # Convert StrEnum values to their string representations
+    # Status is already a StrEnum, model_dump should handle it
+    if hasattr(fm_dict.get("status"), "value"):
+        fm_dict["status"] = fm_dict["status"].value
+
+    # Build the result with name first, then status, then rest of frontmatter
+    result = {
+        "name": chunk_name,
+        "status": fm_dict.pop("status", "UNKNOWN"),
+    }
+
+    # Add is_tip indicator
+    result["is_tip"] = chunk_name in tips if tips else False
+
+    # Add remaining frontmatter fields
+    result.update(fm_dict)
+
+    return result
+
+
+# Chunk: docs/chunks/chunklist_status_filter - Parse and validate status filters
 def _parse_status_filters(
     status_option: tuple[str, ...],
     future_flag: bool,
@@ -349,6 +402,7 @@ def _parse_status_filters(
     is_flag=True,
     help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
 )
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 # Chunk: docs/chunks/artifact_list_ordering - CLI command with tip indicator display using ArtifactIndex
 # Chunk: docs/chunks/chunk_list_command-ve-002 - CLI command ve chunk list with --latest, --last-active, and --project-dir options
@@ -357,7 +411,8 @@ def _parse_status_filters(
 # Chunk: docs/chunks/chunklist_status_filter - Status filter parsing and handling
 # Chunk: docs/chunks/chunklist_external_status - External chunk status display in list output
 # Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty chunk list results
-def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, json_output, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
@@ -414,7 +469,7 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_chunks(current, last_active, recent, status_set, project_dir)
+        _list_task_chunks(current, last_active, recent, status_set, project_dir, json_output)
         return
 
     # Single-repo mode - list from docs/chunks/
@@ -423,32 +478,63 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
     if current:
         current_chunk = chunks.get_current_chunk()
         if current_chunk is None:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No implementing chunk found", err=True)
             raise SystemExit(1)
-        click.echo(f"docs/chunks/{current_chunk}")
+        if json_output:
+            # Get frontmatter for the current chunk
+            frontmatter = chunks.parse_chunk_frontmatter(current_chunk)
+            result = _chunk_to_json_dict(current_chunk, frontmatter, chunks, project_dir)
+            click.echo(json.dumps([result], indent=2))
+        else:
+            click.echo(f"docs/chunks/{current_chunk}")
     elif last_active:
         active_chunk = chunks.get_last_active_chunk()
         if active_chunk is None:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No active tip chunk found", err=True)
             raise SystemExit(1)
-        click.echo(f"docs/chunks/{active_chunk}")
+        if json_output:
+            frontmatter = chunks.parse_chunk_frontmatter(active_chunk)
+            result = _chunk_to_json_dict(active_chunk, frontmatter, chunks, project_dir)
+            click.echo(json.dumps([result], indent=2))
+        else:
+            click.echo(f"docs/chunks/{active_chunk}")
     elif recent:
         recent_chunks = chunks.get_recent_active_chunks(limit=10)
         if not recent_chunks:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No active chunks found", err=True)
             raise SystemExit(1)
-        for chunk_name in recent_chunks:
-            click.echo(f"docs/chunks/{chunk_name}")
+        if json_output:
+            results = []
+            for chunk_name in recent_chunks:
+                frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+                results.append(_chunk_to_json_dict(chunk_name, frontmatter, chunks, project_dir))
+            click.echo(json.dumps(results, indent=2))
+        else:
+            for chunk_name in recent_chunks:
+                click.echo(f"docs/chunks/{chunk_name}")
     else:
         chunk_list = chunks.list_chunks()
         if not chunk_list:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No chunks found")
             raise SystemExit(0)
 
         artifact_index = ArtifactIndex(project_dir)
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
 
-        # Track if any chunks pass the filter
+        # Collect results for JSON output or track count for text output
+        results = []
         filtered_count = 0
 
         for chunk_name in chunk_list:
@@ -459,7 +545,20 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                 # External chunks have no parseable status - skip when filtering
                 if status_set is not None:
                     continue
-                status = f"EXTERNAL: {external_ref.repo}"
+                filtered_count += 1
+                if json_output:
+                    results.append({
+                        "name": chunk_name,
+                        "status": "EXTERNAL",
+                        "repo": external_ref.repo,
+                        "artifact_id": external_ref.artifact_id,
+                        "track": external_ref.track,
+                        "is_tip": chunk_name in tips,
+                    })
+                else:
+                    status = f"EXTERNAL: {external_ref.repo}"
+                    tip_indicator = " *" if chunk_name in tips else ""
+                    click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
             else:
                 frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
                 if frontmatter:
@@ -467,25 +566,51 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                     # Apply status filter if specified
                     if status_set is not None and chunk_status not in status_set:
                         continue
-                    status = chunk_status.value
+                    filtered_count += 1
+                    if json_output:
+                        results.append(_chunk_to_json_dict(chunk_name, frontmatter, chunks, project_dir, tips))
+                    else:
+                        status = chunk_status.value
+                        tip_indicator = " *" if chunk_name in tips else ""
+                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
                 elif errors:
                     # Chunks with parse errors - skip when filtering
                     if status_set is not None:
                         continue
-                    # Show first error for brevity
-                    first_error = errors[0]
-                    status = f"PARSE ERROR: {first_error}"
+                    filtered_count += 1
+                    if json_output:
+                        results.append({
+                            "name": chunk_name,
+                            "status": "PARSE_ERROR",
+                            "error": errors[0],
+                            "is_tip": chunk_name in tips,
+                        })
+                    else:
+                        # Show first error for brevity
+                        first_error = errors[0]
+                        status = f"PARSE ERROR: {first_error}"
+                        tip_indicator = " *" if chunk_name in tips else ""
+                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
                 else:
                     # Unknown status - skip when filtering
                     if status_set is not None:
                         continue
-                    status = "UNKNOWN"
-            filtered_count += 1
-            tip_indicator = " *" if chunk_name in tips else ""
-            click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                    filtered_count += 1
+                    if json_output:
+                        results.append({
+                            "name": chunk_name,
+                            "status": "UNKNOWN",
+                            "is_tip": chunk_name in tips,
+                        })
+                    else:
+                        status = "UNKNOWN"
+                        tip_indicator = " *" if chunk_name in tips else ""
+                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
 
-        # Handle case where all chunks were filtered out
-        if filtered_count == 0:
+        if json_output:
+            click.echo(json.dumps(results, indent=2))
+        elif filtered_count == 0:
+            # Handle case where all chunks were filtered out
             if status_set is not None:
                 status_names = ", ".join(s.value for s in status_set)
                 click.echo(f"No chunks found matching status: {status_names}")
@@ -610,14 +735,65 @@ def _format_grouped_artifact_list(
             click.echo()
 
 
+# Chunk: docs/chunks/cli_json_output - JSON output for grouped artifact listing
+def _format_grouped_artifact_list_json(
+    grouped_data: dict,
+    artifact_type_dir: str,
+    status_set: set[ChunkStatus] | None = None,
+) -> None:
+    """Format and output grouped artifact listing as JSON.
+
+    Args:
+        grouped_data: Dict from list_task_artifacts_grouped with external and projects keys
+        artifact_type_dir: Directory name for the artifact type (e.g., "chunks", "narratives")
+        status_set: If provided, filter to only artifacts with matching status (chunks only)
+    """
+    external = grouped_data["external"]
+    projects = grouped_data["projects"]
+
+    # Apply status filtering if specified (only applies to chunks)
+    def status_matches(status_str: str) -> bool:
+        """Check if an artifact's status string matches the filter."""
+        if status_set is None:
+            return True
+        # Try to convert status string to ChunkStatus
+        try:
+            artifact_status = ChunkStatus(status_str.upper())
+            return artifact_status in status_set
+        except ValueError:
+            # Status doesn't match any ChunkStatus (e.g., EXTERNAL, PARSE ERROR)
+            # Exclude when filtering
+            return False
+
+    # Collect all artifacts into a flat list with repo information
+    results = []
+
+    # Add external artifacts
+    for artifact in external["artifacts"]:
+        if status_matches(artifact["status"]):
+            result = {**artifact, "repo": external["repo"], "source": "external"}
+            results.append(result)
+
+    # Add project artifacts
+    for project in projects:
+        for artifact in project["artifacts"]:
+            if status_matches(artifact["status"]):
+                result = {**artifact, "repo": project["repo"], "source": "local"}
+                results.append(result)
+
+    click.echo(json.dumps(results, indent=2))
+
+
 # Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode
 # Chunk: docs/chunks/chunk_last_active - Cross-repo (task context) support for --last-active
+# Chunk: docs/chunks/cli_json_output - JSON output for task context chunk listing
 def _list_task_chunks(
     current: bool,
     last_active: bool,
     recent: bool,
     status_set: set[ChunkStatus] | None,
     task_dir: pathlib.Path,
+    json_output: bool = False,
 ):
     """Handle chunk listing in task directory (cross-repo mode).
 
@@ -627,14 +803,29 @@ def _list_task_chunks(
         recent: If True, output the 10 most recently created ACTIVE chunks
         status_set: If provided, filter to only chunks with matching status
         task_dir: Path to the task directory
+        json_output: If True, output in JSON format
     """
     try:
         if current:
             current_chunk, external_repo = get_current_task_chunk(task_dir)
             if current_chunk is None:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No implementing chunk found", err=True)
                 raise SystemExit(1)
-            click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
+            if json_output:
+                # Get frontmatter for the current chunk
+                from task_utils import resolve_repo_directory, load_task_config
+                config = load_task_config(task_dir)
+                external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+                external_chunks = Chunks(external_path)
+                frontmatter = external_chunks.parse_chunk_frontmatter(current_chunk)
+                result = _chunk_to_json_dict(current_chunk, frontmatter, external_chunks, external_path)
+                result["repo"] = external_repo
+                click.echo(json.dumps([result], indent=2))
+            else:
+                click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
         elif last_active:
             # For task context, get the last active chunk from the external artifacts repo
             from task_utils import resolve_repo_directory, load_task_config
@@ -644,9 +835,18 @@ def _list_task_chunks(
             external_chunks = Chunks(external_path)
             active_chunk = external_chunks.get_last_active_chunk()
             if active_chunk is None:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No active tip chunk found", err=True)
                 raise SystemExit(1)
-            click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
+            if json_output:
+                frontmatter = external_chunks.parse_chunk_frontmatter(active_chunk)
+                result = _chunk_to_json_dict(active_chunk, frontmatter, external_chunks, external_path)
+                result["repo"] = config.external_artifact_repo
+                click.echo(json.dumps([result], indent=2))
+            else:
+                click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
         elif recent:
             # For task context, get recent active chunks from the external artifacts repo
             from task_utils import resolve_repo_directory, load_task_config
@@ -656,13 +856,28 @@ def _list_task_chunks(
             external_chunks = Chunks(external_path)
             recent_chunks = external_chunks.get_recent_active_chunks(limit=10)
             if not recent_chunks:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No active chunks found", err=True)
                 raise SystemExit(1)
-            for chunk_name in recent_chunks:
-                click.echo(f"{config.external_artifact_repo}::docs/chunks/{chunk_name}")
+            if json_output:
+                results = []
+                for chunk_name in recent_chunks:
+                    frontmatter = external_chunks.parse_chunk_frontmatter(chunk_name)
+                    result = _chunk_to_json_dict(chunk_name, frontmatter, external_chunks, external_path)
+                    result["repo"] = config.external_artifact_repo
+                    results.append(result)
+                click.echo(json.dumps(results, indent=2))
+            else:
+                for chunk_name in recent_chunks:
+                    click.echo(f"{config.external_artifact_repo}::docs/chunks/{chunk_name}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
-            _format_grouped_artifact_list(grouped_data, "chunks", status_set)
+            if json_output:
+                _format_grouped_artifact_list_json(grouped_data, "chunks", status_set)
+            else:
+                _format_grouped_artifact_list(grouped_data, "chunks", status_set)
     except (TaskChunkError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
