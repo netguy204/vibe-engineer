@@ -41,11 +41,13 @@ class AgentRunnerError(Exception):
 
 
 # Chunk: docs/chunks/orch_review_phase - Added chunk-review.md as skill for REVIEW phase
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE skill for pre-review trunk integration
 # Mapping from phase to skill file name
 PHASE_SKILL_FILES = {
     WorkUnitPhase.GOAL: "chunk-create.md",
     WorkUnitPhase.PLAN: "chunk-plan.md",
     WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
+    WorkUnitPhase.REBASE: "chunk-rebase.md",
     WorkUnitPhase.REVIEW: "chunk-review.md",
     WorkUnitPhase.COMPLETE: "chunk-complete.md",
 }

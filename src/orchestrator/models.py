@@ -60,6 +60,7 @@ class ConflictAnalysis(BaseModel):
         }
 
 # Chunk: docs/chunks/orch_review_phase - Added REVIEW enum value between IMPLEMENT and COMPLETE
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
 class WorkUnitPhase(StrEnum):
     """Phase of a work unit in the chunk lifecycle.
 
@@ -69,6 +70,7 @@ class WorkUnitPhase(StrEnum):
     GOAL = "GOAL"  # Drafting or refining the chunk goal
     PLAN = "PLAN"  # Creating the technical implementation plan
     IMPLEMENT = "IMPLEMENT"  # Writing the code
+    REBASE = "REBASE"  # Merge trunk into worktree and resolve conflicts
     REVIEW = "REVIEW"  # Reviewing implementation for alignment with documented intent
     COMPLETE = "COMPLETE"  # Finalizing and completing the chunk
 

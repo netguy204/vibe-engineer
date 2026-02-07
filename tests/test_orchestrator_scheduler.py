@@ -3571,13 +3571,33 @@ status: ACTIVE
 class TestReviewPhase:
     """Tests for REVIEW phase transitions and handling."""
 
+    # Chunk: docs/chunks/orch_pre_review_rebase - Updated to expect REBASE after IMPLEMENT
     @pytest.mark.asyncio
-    async def test_advance_implement_to_review(self, scheduler, state_store):
-        """Advances from IMPLEMENT to REVIEW phase."""
+    async def test_advance_implement_to_rebase(self, scheduler, state_store):
+        """Advances from IMPLEMENT to REBASE phase."""
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
             chunk="test",
             phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("test")
+        assert updated.phase == WorkUnitPhase.REBASE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_advance_rebase_to_review(self, scheduler, state_store):
+        """Advances from REBASE to REVIEW phase."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="test",
+            phase=WorkUnitPhase.REBASE,
             status=WorkUnitStatus.RUNNING,
             created_at=now,
             updated_at=now,
@@ -4836,3 +4856,207 @@ class TestApiRetryScheduling:
         assert updated.status == WorkUnitStatus.READY
         assert updated.api_retry_count == 0
         assert updated.next_retry_at is None
+
+
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase tests
+class TestRebasePhase:
+    """Tests for REBASE phase between IMPLEMENT and REVIEW."""
+
+    @pytest.mark.asyncio
+    async def test_implement_advances_to_rebase_not_review(self, scheduler, state_store):
+        """Verify IMPLEMENT phase advances to REBASE, not directly to REVIEW."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("rebase_test")
+        assert updated.phase == WorkUnitPhase.REBASE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_rebase_success_advances_to_review(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """REBASE phase on success advances to REVIEW phase."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_success",
+            phase=WorkUnitPhase.REBASE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate agent completing successfully (clean merge, tests pass)
+        result = AgentResult(completed=True, suspended=False)
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("rebase_success")
+        assert updated.phase == WorkUnitPhase.REVIEW
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_rebase_conflict_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """REBASE phase with merge conflict marks work unit NEEDS_ATTENTION."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_conflict",
+            phase=WorkUnitPhase.REBASE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate agent failing due to unresolvable conflict
+        result = AgentResult(
+            completed=False,
+            error="Merge conflict in src/scheduler.py - cannot resolve automatically",
+        )
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("rebase_conflict")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "conflict" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_rebase_test_failure_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """REBASE phase with test failure marks work unit NEEDS_ATTENTION."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_test_fail",
+            phase=WorkUnitPhase.REBASE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate agent failing due to test failures after merge
+        result = AgentResult(
+            completed=False,
+            error="Test failures after merge: test_scheduler.py::test_phase_advance FAILED",
+        )
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("rebase_test_fail")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "test" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_rebase_phase_in_full_lifecycle(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Verify REBASE phase is in the correct position in the full lifecycle."""
+        # Set up chunk with ACTIVE status for final completion
+        chunk_dir = tmp_path / "docs" / "chunks" / "lifecycle_test"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="lifecycle_test",
+            phase=WorkUnitPhase.GOAL,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Advance through all phases and verify order
+        phases_seen = [work_unit.phase]
+
+        # GOAL -> PLAN
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.PLAN
+
+        # PLAN -> IMPLEMENT
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.IMPLEMENT
+
+        # IMPLEMENT -> REBASE (this is the key test)
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.REBASE
+
+        # REBASE -> REVIEW
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.REVIEW
+
+        # Verify the complete order
+        expected_order = [
+            WorkUnitPhase.GOAL,
+            WorkUnitPhase.PLAN,
+            WorkUnitPhase.IMPLEMENT,
+            WorkUnitPhase.REBASE,
+            WorkUnitPhase.REVIEW,
+        ]
+        assert phases_seen == expected_order
+
+    @pytest.mark.asyncio
+    async def test_rebase_suspended_for_question_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """REBASE phase suspended for question marks work unit NEEDS_ATTENTION."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_question",
+            phase=WorkUnitPhase.REBASE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate agent asking a question during rebase
+        result = AgentResult(
+            completed=False,
+            suspended=True,
+            session_id="session-123",
+            question={
+                "question": "Both versions modified the same function. Which approach should I use?",
+                "options": [{"label": "Keep chunk version"}, {"label": "Keep trunk version"}],
+            },
+        )
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("rebase_question")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "question" in updated.attention_reason.lower()
+        assert updated.session_id == "session-123"

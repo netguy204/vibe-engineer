@@ -1,8 +1,16 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/orchestrator/models.py
+  - src/orchestrator/agent.py
+  - src/orchestrator/scheduler.py
+  - src/orchestrator/state.py
+  - src/cli/orch.py
+  - src/templates/commands/chunk-rebase.md.jinja2
+  - .claude/commands/chunk-rebase.md
+  - tests/test_orchestrator_scheduler.py
 code_references: []
 narrative: arch_consolidation
 investigation: null
@@ -10,9 +18,11 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["cli_exit_codes", "cli_help_text", "cli_json_output"]
+created_after:
+- cli_exit_codes
+- cli_help_text
+- cli_json_output
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
