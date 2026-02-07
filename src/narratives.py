@@ -5,6 +5,7 @@
 # Chunk: docs/chunks/narrative_cli_commands - Business logic for narrative management
 # Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on narrative creation
+# Chunk: docs/chunks/ordering_remove_seqno - Short name directory format for narratives
 
 import pathlib
 from pathlib import Path

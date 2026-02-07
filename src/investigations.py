@@ -4,6 +4,7 @@
 # Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/investigation_commands - Investigation management business logic
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on investigation creation
+# Chunk: docs/chunks/ordering_remove_seqno - Short name directory format for investigations
 
 import pathlib
 from pathlib import Path
