@@ -12,7 +12,6 @@ import re
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
-import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
 from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
@@ -446,6 +445,7 @@ class Chunks:
         return frontmatter
 
     # Chunk: docs/chunks/coderef_format_prompting - Frontmatter parsing that surfaces validation error details
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def parse_chunk_frontmatter_with_errors(
         self, chunk_id: str
     ) -> tuple[ChunkFrontmatter | None, list[str]]:
@@ -456,33 +456,16 @@ class Chunks:
             - ChunkFrontmatter is the parsed frontmatter if valid, None otherwise
             - errors is a list of error messages (empty if parsing succeeded)
         """
+        from frontmatter import parse_frontmatter_with_errors
+
         goal_path = self.get_chunk_goal_path(chunk_id)
         if goal_path is None or not goal_path.exists():
             return None, [f"Chunk '{chunk_id}' not found"]
 
-        content = goal_path.read_text()
-        # Extract frontmatter between --- markers
-        match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
-        if not match:
-            return None, ["GOAL.md missing frontmatter (no --- markers found)"]
-
-        try:
-            frontmatter = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter, dict):
-                return None, ["Frontmatter is not a valid YAML mapping"]
-            return ChunkFrontmatter.model_validate(frontmatter), []
-        except yaml.YAMLError as e:
-            return None, [f"YAML parsing error: {e}"]
-        except ValidationError as e:
-            # Extract user-friendly error messages from Pydantic validation
-            errors = []
-            for error in e.errors():
-                loc = ".".join(str(x) for x in error["loc"])
-                msg = error["msg"]
-                errors.append(f"{loc}: {msg}")
-            return None, errors
+        return parse_frontmatter_with_errors(goal_path, ChunkFrontmatter)
 
     # Chunk: docs/chunks/task_chunk_validation - Parse frontmatter from cached content strings
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def _parse_frontmatter_from_content(self, content: str) -> ChunkFrontmatter | None:
         """Parse YAML frontmatter from GOAL.md content string.
 
@@ -494,18 +477,9 @@ class Chunks:
         Returns:
             ChunkFrontmatter if valid, or None if frontmatter invalid.
         """
-        # Extract frontmatter between --- markers
-        match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
-        if not match:
-            return None
+        from frontmatter import parse_frontmatter_from_content
 
-        try:
-            frontmatter = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter, dict):
-                return None
-            return ChunkFrontmatter.model_validate(frontmatter)
-        except (yaml.YAMLError, ValidationError):
-            return None
+        return parse_frontmatter_from_content(content, ChunkFrontmatter)
 
     # Chunk: docs/chunks/task_chunk_validation - External chunk resolution via task context
     def resolve_chunk_location(

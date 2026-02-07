@@ -4,10 +4,7 @@
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on narrative creation
 
-import re
-
 from pydantic import ValidationError
-import yaml
 
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import NarrativeFrontmatter, NarrativeStatus, VALID_NARRATIVE_TRANSITIONS, extract_short_name
@@ -98,6 +95,7 @@ class Narratives:
                 duplicates.append(name)
         return duplicates
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def parse_narrative_frontmatter(self, narrative_id: str) -> NarrativeFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a narrative.
 
@@ -110,26 +108,23 @@ class Narratives:
             - OVERVIEW.md doesn't exist
             - Frontmatter is malformed or fails validation
         """
+        from frontmatter import extract_frontmatter_dict
+
         overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
         if not overview_path.exists():
             return None
 
-        content = overview_path.read_text()
-
-        # Extract frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not match:
+        # Use extract_frontmatter_dict for raw parsing, then apply legacy field mapping
+        frontmatter_data = extract_frontmatter_dict(overview_path)
+        if frontmatter_data is None:
             return None
 
         try:
-            frontmatter_data = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter_data, dict):
-                return None
             # Handle legacy 'chunks' field by mapping to 'proposed_chunks'
             if "chunks" in frontmatter_data and "proposed_chunks" not in frontmatter_data:
                 frontmatter_data["proposed_chunks"] = frontmatter_data.pop("chunks")
             return NarrativeFrontmatter.model_validate(frontmatter_data)
-        except (yaml.YAMLError, ValidationError):
+        except ValidationError:
             return None
 
     def get_status(self, narrative_id: str) -> NarrativeStatus:
@@ -188,6 +183,7 @@ class Narratives:
 
         return (current_status, new_status)
 
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def _update_overview_frontmatter(
         self, narrative_id: str, field: str, value
     ) -> None:
@@ -201,26 +197,7 @@ class Narratives:
         Raises:
             ValueError: If the file has no frontmatter.
         """
+        from frontmatter import update_frontmatter_field
+
         overview_path = self.narratives_dir / narrative_id / "OVERVIEW.md"
-
-        content = overview_path.read_text()
-
-        # Parse frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-        if not match:
-            raise ValueError(f"Could not parse frontmatter in {overview_path}")
-
-        frontmatter_text = match.group(1)
-        body = match.group(2)
-
-        # Parse YAML frontmatter
-        frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-        # Update the field
-        frontmatter[field] = value
-
-        # Reconstruct the file
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        new_content = f"---\n{new_frontmatter}---\n{body}"
-
-        overview_path.write_text(new_content)
+        update_frontmatter_field(overview_path, field, value)
