@@ -1,16 +1,16 @@
 ---
-status: IMPLEMENTING
+status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/models.py
-  - src/orchestrator/agent.py
-  - src/orchestrator/scheduler.py
-  - src/orchestrator/state.py
-  - src/cli/orch.py
-  - src/templates/commands/chunk-rebase.md.jinja2
-  - .claude/commands/chunk-rebase.md
-  - tests/test_orchestrator_scheduler.py
+- src/orchestrator/models.py
+- src/orchestrator/agent.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/state.py
+- src/cli/orch.py
+- src/templates/commands/chunk-rebase.md.jinja2
+- .claude/commands/chunk-rebase.md
+- tests/test_orchestrator_scheduler.py
 code_references: []
 narrative: arch_consolidation
 investigation: null

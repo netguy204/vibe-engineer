@@ -27,6 +27,7 @@ from task_utils import (
 from artifact_ordering import ArtifactIndex, ArtifactType
 
 from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
+from cli.formatters import artifact_to_json_dict
 
 
 @click.group()
@@ -113,51 +114,6 @@ def _start_task_narrative(
         click.echo(f"  {project_ref}: {narrative_dir.relative_to(task_dir)}/")
 
 
-# Chunk: docs/chunks/cli_json_output - Helper function for JSON serialization of narrative frontmatter
-def _narrative_to_json_dict(
-    narrative_name: str,
-    frontmatter,
-    tips: set[str] | None = None,
-) -> dict:
-    """Convert a narrative and its frontmatter to a JSON-serializable dictionary.
-
-    Args:
-        narrative_name: The narrative directory name
-        frontmatter: Parsed NarrativeFrontmatter object (or None)
-        tips: Set of narrative names that are tips (optional, for is_tip field)
-
-    Returns:
-        Dictionary with narrative name, status, and all frontmatter fields
-    """
-    if frontmatter is None:
-        return {
-            "name": narrative_name,
-            "status": "UNKNOWN",
-            "is_tip": narrative_name in tips if tips else False,
-        }
-
-    # Use Pydantic's model_dump() for serialization
-    fm_dict = frontmatter.model_dump()
-
-    # Convert StrEnum values to their string representations
-    if hasattr(fm_dict.get("status"), "value"):
-        fm_dict["status"] = fm_dict["status"].value
-
-    # Build the result with name first, then status, then rest of frontmatter
-    result = {
-        "name": narrative_name,
-        "status": fm_dict.pop("status", "UNKNOWN"),
-    }
-
-    # Add is_tip indicator
-    result["is_tip"] = narrative_name in tips if tips else False
-
-    # Add remaining frontmatter fields
-    result.update(fm_dict)
-
-    return result
-
-
 @narrative.command("list")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -193,7 +149,7 @@ def list_narratives(json_output, project_dir):
         results = []
         for narrative_name in reversed(ordered):
             frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
-            result = _narrative_to_json_dict(narrative_name, frontmatter, tips)
+            result = artifact_to_json_dict(narrative_name, frontmatter, tips)
             results.append(result)
         click.echo(json.dumps(results, indent=2))
     else:
