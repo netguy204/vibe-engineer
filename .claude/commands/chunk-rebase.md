@@ -39,9 +39,13 @@ If there are uncommitted changes:
 Merge the current main branch into this worktree branch:
 
 ```bash
-git fetch origin main
-git merge origin/main
+git merge main
 ```
+
+Note: Worktrees share the same git object store as the main repo, so `main`
+always reflects the latest local state. Do NOT use `origin/main` — in
+orchestrator mode, other chunks merge to local `main` without pushing, so
+`origin/main` will be stale.
 
 ### 3. Handle Merge Conflicts (If Any)
 
