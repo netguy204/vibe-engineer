@@ -4,7 +4,9 @@ Commands for managing subsystems - emergent architectural patterns.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Subsystem CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -34,15 +36,62 @@ def subsystem():
     pass
 
 
+# Chunk: docs/chunks/cli_json_output - Helper function for JSON serialization of subsystem frontmatter
+def _subsystem_to_json_dict(
+    subsystem_name: str,
+    frontmatter,
+    tips: set[str] | None = None,
+) -> dict:
+    """Convert a subsystem and its frontmatter to a JSON-serializable dictionary.
+
+    Args:
+        subsystem_name: The subsystem directory name
+        frontmatter: Parsed SubsystemFrontmatter object (or None)
+        tips: Set of subsystem names that are tips (optional, for is_tip field)
+
+    Returns:
+        Dictionary with subsystem name, status, and all frontmatter fields
+    """
+    if frontmatter is None:
+        return {
+            "name": subsystem_name,
+            "status": "UNKNOWN",
+            "is_tip": subsystem_name in tips if tips else False,
+        }
+
+    # Use Pydantic's model_dump() for serialization
+    fm_dict = frontmatter.model_dump()
+
+    # Convert StrEnum values to their string representations
+    if hasattr(fm_dict.get("status"), "value"):
+        fm_dict["status"] = fm_dict["status"].value
+
+    # Build the result with name first, then status, then rest of frontmatter
+    result = {
+        "name": subsystem_name,
+        "status": fm_dict.pop("status", "UNKNOWN"),
+    }
+
+    # Add is_tip indicator
+    result["is_tip"] = subsystem_name in tips if tips else False
+
+    # Add remaining frontmatter fields
+    result.update(fm_dict)
+
+    return result
+
+
 @subsystem.command("list")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_subsystems(project_dir):
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_subsystems(json_output, project_dir):
     """List all subsystems."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_subsystems(project_dir)
+        _list_task_subsystems(project_dir, json_output)
         return
 
     # Single-repo mode
@@ -54,26 +103,41 @@ def list_subsystems(project_dir):
     subsystem_list = list(reversed(ordered))
 
     if not subsystem_list:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No subsystems found", err=True)
         raise SystemExit(1)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.SUBSYSTEM))
 
-    for subsystem_name in subsystem_list:
-        frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if subsystem_name in tips else ""
-        click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for subsystem_name in subsystem_list:
+            frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
+            result = _subsystem_to_json_dict(subsystem_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for subsystem_name in subsystem_list:
+            frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if subsystem_name in tips else ""
+            click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
 
 
-def _list_task_subsystems(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context subsystem listing
+def _list_task_subsystems(task_dir: pathlib.Path, json_output: bool = False):
     """Handle subsystem listing in task directory (cross-repo mode)."""
-    from cli.chunk import _format_grouped_artifact_list
+    from cli.chunk import _format_grouped_artifact_list, _format_grouped_artifact_list_json
 
     try:
         grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.SUBSYSTEM)
-        _format_grouped_artifact_list(grouped_data, "subsystems")
+        if json_output:
+            _format_grouped_artifact_list_json(grouped_data, "subsystems")
+        else:
+            _format_grouped_artifact_list(grouped_data, "subsystems")
     except (TaskSubsystemError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

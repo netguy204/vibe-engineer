@@ -11,14 +11,12 @@ code_references:
   implements: Lists chunks in causal order (newest first) using ArtifactIndex
 - ref: src/chunks.py#Chunks::get_latest_chunk
   implements: Returns first chunk in causal order (newest)
-- ref: src/ve.py#list_chunks
-  implements: CLI command ve chunk list with --latest, --last-active, and --project-dir options
 - ref: tests/test_chunks.py
   implements: Unit tests for list_chunks() and get_latest_chunk() methods
 - ref: tests/test_chunk_list.py
   implements: CLI integration tests for ve chunk list
 - ref: src/cli/chunk.py#list_chunks
-  implements: "CLI chunk list command after CLI modularization"
+  implements: "CLI chunk list command with --current, --last-active, --recent, and --project-dir options"
 created_after:
 - implement_chunk_start-ve-001
 ---

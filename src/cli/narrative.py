@@ -4,7 +4,9 @@ Commands for managing narratives - multi-chunk initiatives.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Narrative CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -108,9 +110,56 @@ def _start_task_narrative(
         click.echo(f"  {project_ref}: {narrative_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/cli_json_output - Helper function for JSON serialization of narrative frontmatter
+def _narrative_to_json_dict(
+    narrative_name: str,
+    frontmatter,
+    tips: set[str] | None = None,
+) -> dict:
+    """Convert a narrative and its frontmatter to a JSON-serializable dictionary.
+
+    Args:
+        narrative_name: The narrative directory name
+        frontmatter: Parsed NarrativeFrontmatter object (or None)
+        tips: Set of narrative names that are tips (optional, for is_tip field)
+
+    Returns:
+        Dictionary with narrative name, status, and all frontmatter fields
+    """
+    if frontmatter is None:
+        return {
+            "name": narrative_name,
+            "status": "UNKNOWN",
+            "is_tip": narrative_name in tips if tips else False,
+        }
+
+    # Use Pydantic's model_dump() for serialization
+    fm_dict = frontmatter.model_dump()
+
+    # Convert StrEnum values to their string representations
+    if hasattr(fm_dict.get("status"), "value"):
+        fm_dict["status"] = fm_dict["status"].value
+
+    # Build the result with name first, then status, then rest of frontmatter
+    result = {
+        "name": narrative_name,
+        "status": fm_dict.pop("status", "UNKNOWN"),
+    }
+
+    # Add is_tip indicator
+    result["is_tip"] = narrative_name in tips if tips else False
+
+    # Add remaining frontmatter fields
+    result.update(fm_dict)
+
+    return result
+
+
 @narrative.command("list")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_narratives(project_dir):
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_narratives(json_output, project_dir):
     """List all narratives.
 
     In task directory mode, lists narratives from the external artifact repo.
@@ -118,7 +167,7 @@ def list_narratives(project_dir):
     """
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_narratives_cmd(project_dir)
+        _list_task_narratives_cmd(project_dir, json_output)
         return
 
     # Single-repo mode - list from docs/narratives/
@@ -126,6 +175,9 @@ def list_narratives(project_dir):
     narrative_list = narratives.enumerate_narratives()
 
     if not narrative_list:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No narratives found", err=True)
         raise SystemExit(1)
 
@@ -134,15 +186,24 @@ def list_narratives(project_dir):
     ordered = artifact_index.get_ordered(ArtifactType.NARRATIVE)
     tips = set(artifact_index.find_tips(ArtifactType.NARRATIVE))
 
-    # Reverse for newest first (ArtifactIndex returns oldest first)
-    for narrative_name in reversed(ordered):
-        frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if narrative_name in tips else ""
-        click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for narrative_name in reversed(ordered):
+            frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+            result = _narrative_to_json_dict(narrative_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        # Reverse for newest first (ArtifactIndex returns oldest first)
+        for narrative_name in reversed(ordered):
+            frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if narrative_name in tips else ""
+            click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
 
 
-def _list_task_narratives_cmd(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context narrative listing
+def _list_task_narratives_cmd(task_dir: pathlib.Path, json_output: bool = False):
     """Handle narrative listing in task directory (cross-repo mode)."""
     try:
         narratives = list_task_narratives(task_dir)
@@ -151,14 +212,20 @@ def _list_task_narratives_cmd(task_dir: pathlib.Path):
         raise SystemExit(1)
 
     if not narratives:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No narratives found", err=True)
         raise SystemExit(1)
 
-    for narrative in narratives:
-        click.echo(f"{narrative['name']} [{narrative['status']}]")
-        if narrative.get("dependents"):
-            for dep in narrative["dependents"]:
-                click.echo(f"  → {dep}")
+    if json_output:
+        click.echo(json.dumps(narratives, indent=2))
+    else:
+        for narrative in narratives:
+            click.echo(f"{narrative['name']} [{narrative['status']}]")
+            if narrative.get("dependents"):
+                for dep in narrative["dependents"]:
+                    click.echo(f"  → {dep}")
 
 
 @narrative.command()

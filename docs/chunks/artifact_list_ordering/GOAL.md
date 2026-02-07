@@ -18,14 +18,14 @@ code_references:
   implements: Updated for new list_chunks return type (list[str] instead of list[tuple[int,str]])
 - ref: src/chunks.py#Chunks::get_current_chunk
   implements: Updated for new list_chunks return type
-- ref: src/ve.py#list_chunks
+- ref: src/cli/chunk.py#list_chunks
   implements: CLI command with tip indicator display using ArtifactIndex
-- ref: src/ve.py#list_narratives
-  implements: New CLI command for listing narratives in causal order with tip indicators
-- ref: src/ve.py#list_subsystems
-  implements: Updated to use ArtifactIndex for causal ordering with tip indicators
-- ref: src/ve.py#list_investigations
-  implements: Updated to use ArtifactIndex for causal ordering with tip indicators
+- ref: src/cli/narrative.py#list_narratives
+  implements: CLI command for listing narratives in causal order with tip indicators
+- ref: src/cli/subsystem.py#list_subsystems
+  implements: CLI command using ArtifactIndex for causal ordering with tip indicators
+- ref: src/cli/investigation.py#list_investigations
+  implements: CLI command using ArtifactIndex for causal ordering with tip indicators
 - ref: src/task_utils.py#get_next_chunk_id
   implements: Updated to use enumerate_chunks for directory-based ID calculation
 - ref: src/task_utils.py#list_task_chunks

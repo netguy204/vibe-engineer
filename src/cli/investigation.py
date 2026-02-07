@@ -4,7 +4,9 @@ Commands for managing investigations - exploratory documents.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Investigation CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -96,16 +98,63 @@ def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects
         click.echo(f"Created reference in {project_ref}: {investigation_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/cli_json_output - Helper function for JSON serialization of investigation frontmatter
+def _investigation_to_json_dict(
+    investigation_name: str,
+    frontmatter,
+    tips: set[str] | None = None,
+) -> dict:
+    """Convert an investigation and its frontmatter to a JSON-serializable dictionary.
+
+    Args:
+        investigation_name: The investigation directory name
+        frontmatter: Parsed InvestigationFrontmatter object (or None)
+        tips: Set of investigation names that are tips (optional, for is_tip field)
+
+    Returns:
+        Dictionary with investigation name, status, and all frontmatter fields
+    """
+    if frontmatter is None:
+        return {
+            "name": investigation_name,
+            "status": "UNKNOWN",
+            "is_tip": investigation_name in tips if tips else False,
+        }
+
+    # Use Pydantic's model_dump() for serialization
+    fm_dict = frontmatter.model_dump()
+
+    # Convert StrEnum values to their string representations
+    if hasattr(fm_dict.get("status"), "value"):
+        fm_dict["status"] = fm_dict["status"].value
+
+    # Build the result with name first, then status, then rest of frontmatter
+    result = {
+        "name": investigation_name,
+        "status": fm_dict.pop("status", "UNKNOWN"),
+    }
+
+    # Add is_tip indicator
+    result["is_tip"] = investigation_name in tips if tips else False
+
+    # Add remaining frontmatter fields
+    result.update(fm_dict)
+
+    return result
+
+
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_investigations(state, project_dir):
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_investigations(state, json_output, project_dir):
     """List all investigations."""
     from artifact_ordering import ArtifactIndex, ArtifactType
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _list_task_investigations(project_dir)
+        _list_task_investigations(project_dir, json_output)
         return
 
     # Validate state filter if provided
@@ -139,26 +188,41 @@ def list_investigations(state, project_dir):
         investigation_list = filtered_list
 
     if not investigation_list:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No investigations found", err=True)
         raise SystemExit(1)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.INVESTIGATION))
 
-    for inv_name in investigation_list:
-        frontmatter = investigations.parse_investigation_frontmatter(inv_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if inv_name in tips else ""
-        click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for inv_name in investigation_list:
+            frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+            result = _investigation_to_json_dict(inv_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for inv_name in investigation_list:
+            frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if inv_name in tips else ""
+            click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
 
 
-def _list_task_investigations(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context investigation listing
+def _list_task_investigations(task_dir: pathlib.Path, json_output: bool = False):
     """Handle investigation listing in task directory (cross-repo mode)."""
-    from cli.chunk import _format_grouped_artifact_list
+    from cli.chunk import _format_grouped_artifact_list, _format_grouped_artifact_list_json
 
     try:
         grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.INVESTIGATION)
-        _format_grouped_artifact_list(grouped_data, "investigations")
+        if json_output:
+            _format_grouped_artifact_list_json(grouped_data, "investigations")
+        else:
+            _format_grouped_artifact_list(grouped_data, "investigations")
     except (TaskInvestigationError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

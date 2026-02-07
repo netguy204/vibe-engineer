@@ -3,15 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/chunk.py
 - tests/test_chunk_list.py
 code_references:
-  - ref: src/ve.py#list_chunks
-    implements: "External chunk detection and EXTERNAL status display logic"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "CLI chunk list command with external chunk handling"
   - ref: tests/test_chunk_list.py#TestExternalChunkListing
     implements: "Test coverage for external chunk listing behavior"
-  - ref: src/cli/chunk.py#list_chunks
-    implements: "CLI chunk list command with external chunk handling after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []
