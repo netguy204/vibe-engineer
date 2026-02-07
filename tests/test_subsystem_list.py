@@ -13,13 +13,13 @@ class TestSubsystemListCommand:
         assert result.exit_code == 0
         assert "List all subsystems" in result.output or "list" in result.output.lower()
 
-    def test_empty_project_exits_with_error(self, runner, temp_project):
-        """Empty project: stderr says 'No subsystems found', exit code 1."""
+    def test_empty_project_exits_with_success(self, runner, temp_project):
+        """Empty project: outputs 'No subsystems found', exit code 0 (success)."""
         result = runner.invoke(
             cli,
             ["subsystem", "list", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No subsystems found" in result.output
 
     def test_single_subsystem_outputs_path(self, runner, temp_project):

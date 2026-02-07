@@ -3,15 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/chunk.py
 - tests/test_chunk_list.py
 code_references:
-  - ref: src/ve.py#list_chunks
-    implements: "External chunk detection and EXTERNAL status display logic"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "CLI chunk list command with external chunk handling and status display"
   - ref: tests/test_chunk_list.py#TestExternalChunkListing
     implements: "Test coverage for external chunk listing behavior"
-  - ref: src/cli/chunk.py#list_chunks
-    implements: "CLI chunk list command with external chunk handling after CLI modularization"
 narrative: null
 investigation: null
 subsystems: []
@@ -42,10 +40,11 @@ The fix should detect external artifacts and display them appropriately, either 
 
 ## Technical Context
 
-The issue is in `src/ve.py` in the `list_chunks` command. It calls `parse_chunk_frontmatter_with_errors()` which:
+The implementation is in `src/cli/chunk.py` in the `list_chunks` command (lines 456-481). The fix checks for external artifact references using `is_external_artifact()` before attempting to parse frontmatter:
 
-1. Calls `get_chunk_goal_path()` to get the path to `GOAL.md`
-2. Checks `if goal_path is None or not goal_path.exists()`
-3. For external chunks, `GOAL.md` doesn't exist (only `external.yaml`), so it returns the error
+1. For each chunk directory, checks if it contains `external.yaml` (external reference)
+2. If external, loads the external reference using `load_external_ref()` and displays `EXTERNAL: {repo}` status
+3. If not external, proceeds with standard frontmatter parsing and status display
+4. Handles status filtering by skipping external chunks when a status filter is active
 
-The fix should check `is_external_artifact()` from `external_refs.py` before attempting to parse frontmatter, and handle external chunks with an appropriate display.
+The fix is completed and tested with comprehensive test coverage in `TestExternalChunkListing`.

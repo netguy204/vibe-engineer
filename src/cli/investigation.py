@@ -99,6 +99,7 @@ def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty investigation list results
 def list_investigations(state, project_dir):
     """List all investigations."""
     from artifact_ordering import ArtifactIndex, ArtifactType
@@ -139,8 +140,8 @@ def list_investigations(state, project_dir):
         investigation_list = filtered_list
 
     if not investigation_list:
-        click.echo("No investigations found", err=True)
-        raise SystemExit(1)
+        click.echo("No investigations found")
+        raise SystemExit(0)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.INVESTIGATION))

@@ -3,16 +3,16 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/chunk.py
 - tests/test_chunk_list.py
 code_references:
-  - ref: src/ve.py#_parse_status_filters
+  - ref: src/cli/chunk.py#_parse_status_filters
     implements: "Parse and validate status filters from CLI options (--status, --future, --active, --implementing)"
-  - ref: src/ve.py#list_chunks
+  - ref: src/cli/chunk.py#list_chunks
     implements: "CLI command with status filtering options and mutual exclusivity validation"
-  - ref: src/ve.py#_format_grouped_artifact_list
+  - ref: src/cli/chunk.py#_format_grouped_artifact_list
     implements: "Status filtering for task context (cross-repo) chunk listing"
-  - ref: src/ve.py#_list_task_chunks
+  - ref: src/cli/chunk.py#_list_task_chunks
     implements: "Task context chunk listing with status filter parameter"
   - ref: tests/test_chunk_list.py#TestStatusFiltering
     implements: "Tests for status filtering in 've chunk list' command"

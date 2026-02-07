@@ -36,6 +36,7 @@ def subsystem():
 
 @subsystem.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty subsystem list results
 def list_subsystems(project_dir):
     """List all subsystems."""
     from artifact_ordering import ArtifactIndex, ArtifactType
@@ -54,8 +55,8 @@ def list_subsystems(project_dir):
     subsystem_list = list(reversed(ordered))
 
     if not subsystem_list:
-        click.echo("No subsystems found", err=True)
-        raise SystemExit(1)
+        click.echo("No subsystems found")
+        raise SystemExit(0)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.SUBSYSTEM))

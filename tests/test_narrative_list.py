@@ -17,13 +17,13 @@ class TestNarrativeListCommand:
         assert result.exit_code == 0
         assert "List" in result.output or "list" in result.output.lower()
 
-    def test_empty_project_exits_with_error(self, runner, temp_project):
-        """Empty project: stderr says 'No narratives found', exit code 1."""
+    def test_empty_project_exits_with_success(self, runner, temp_project):
+        """Empty project: outputs 'No narratives found', exit code 0 (success)."""
         result = runner.invoke(
             cli,
             ["narrative", "list", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No narratives found" in result.output
 
     def test_single_narrative_outputs_path_with_status(self, runner, temp_project):

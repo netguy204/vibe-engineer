@@ -356,6 +356,7 @@ def _parse_status_filters(
 # Chunk: docs/chunks/chunk_last_active - CLI handler with --last-active flag and mutual exclusivity check
 # Chunk: docs/chunks/chunklist_status_filter - Status filter parsing and handling
 # Chunk: docs/chunks/chunklist_external_status - External chunk status display in list output
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty chunk list results
 def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
     """List all chunks.
 
@@ -441,8 +442,8 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
     else:
         chunk_list = chunks.list_chunks()
         if not chunk_list:
-            click.echo("No chunks found", err=True)
-            raise SystemExit(1)
+            click.echo("No chunks found")
+            raise SystemExit(0)
 
         artifact_index = ArtifactIndex(project_dir)
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
@@ -487,10 +488,10 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
         if filtered_count == 0:
             if status_set is not None:
                 status_names = ", ".join(s.value for s in status_set)
-                click.echo(f"No chunks found matching status: {status_names}", err=True)
+                click.echo(f"No chunks found matching status: {status_names}")
             else:
-                click.echo("No chunks found", err=True)
-            raise SystemExit(1)
+                click.echo("No chunks found")
+            raise SystemExit(0)
 
 
 @chunk.command("complete")

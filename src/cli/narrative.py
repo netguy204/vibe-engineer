@@ -110,6 +110,7 @@ def _start_task_narrative(
 
 @narrative.command("list")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty narrative list results
 def list_narratives(project_dir):
     """List all narratives.
 
@@ -126,8 +127,8 @@ def list_narratives(project_dir):
     narrative_list = narratives.enumerate_narratives()
 
     if not narrative_list:
-        click.echo("No narratives found", err=True)
-        raise SystemExit(1)
+        click.echo("No narratives found")
+        raise SystemExit(0)
 
     # Use ArtifactIndex for causal ordering and tip detection
     artifact_index = ArtifactIndex(project_dir)

@@ -13,13 +13,13 @@ class TestInvestigationListCommand:
         assert result.exit_code == 0
         assert "List" in result.output or "list" in result.output.lower()
 
-    def test_empty_project_exits_with_error(self, runner, temp_project):
-        """Empty project: stderr says 'No investigations found', exit code 1."""
+    def test_empty_project_exits_with_success(self, runner, temp_project):
+        """Empty project: outputs 'No investigations found', exit code 0 (success)."""
         result = runner.invoke(
             cli,
             ["investigation", "list", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No investigations found" in result.output
 
     def test_single_investigation_outputs_path_with_status(self, runner, temp_project):
@@ -75,12 +75,12 @@ class TestInvestigationListCommand:
         assert result.exit_code == 0
         assert "memory_leak" in result.output
 
-        # Filter by SOLVED (should not find it)
+        # Filter by SOLVED (should not find it, but exits with success)
         result = runner.invoke(
             cli,
             ["investigation", "list", "--state", "SOLVED", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No investigations found" in result.output
 
     def test_invalid_state_errors_with_message(self, runner, temp_project):

@@ -8,170 +8,110 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The implementation follows a test-driven development approach, updating tests first to define the expected exit code behavior, then modifying the CLI code to match.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The core principle being established:
+- **Exit code 0**: Command succeeded (including "no results found" - this is a valid, successful outcome)
+- **Exit code 1**: Command failed due to an error (validation errors, missing files, parse errors, etc.)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This aligns with standard UNIX conventions where exit code 0 means success, and follows the pattern already used by `ve friction list` and `ve chunk list-proposed`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/cli_exit_codes/GOAL.md)
-with references to the files that you expect to touch.
--->
+The changes are localized to CLI modules only - the underlying domain logic remains unchanged. Each list command will be updated to treat "empty results" as success (exit 0) rather than error (exit 1).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk touches CLI commands that manage workflow artifacts. The changes are purely presentation-layer (exit codes), not affecting the underlying artifact lifecycle logic.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update tests to expect exit code 0 for empty results
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Update the existing tests that currently expect exit code 1 for "no results found" scenarios to expect exit code 0 instead. This establishes the new contract first (TDD approach).
 
-Example:
+**Files to modify:**
+- `tests/test_chunk_list.py`: Change `test_empty_project_exits_with_error` to expect exit code 0
+- `tests/test_narrative_list.py`: Change `test_empty_project_exits_with_error` to expect exit code 0
+- `tests/test_investigation_list.py`: Change `test_empty_project_exits_with_error` and `test_state_filter_works` (SOLVED filter case) to expect exit code 0
+- `tests/test_subsystem_list.py`: Change `test_empty_project_exits_with_error` to expect exit code 0
 
-### Step 1: Define the SegmentHeader struct
+Also update test names and docstrings to reflect the new behavior (e.g., "exits_with_success" instead of "exits_with_error").
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Fix chunk list exit codes
 
-Location: src/segment/format.rs
+Modify `src/cli/chunk.py` to exit with code 0 when no chunks are found.
 
-### Step 2: Implement header serialization
+**Lines to change:**
+- Line 445: Change `raise SystemExit(1)` to `raise SystemExit(0)` for the main list case
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Note: The `--current`, `--last-active`, and `--recent` flags should continue to exit with code 1 when no matching chunk is found, because these flags explicitly request a specific chunk type and not finding one is an error condition (the operator is asking "give me THE current chunk" not "list all chunks").
 
-### Step 3: ...
+### Step 3: Fix investigation list exit codes
 
----
+Modify `src/cli/investigation.py` to exit with code 0 when no investigations are found.
 
-**BACKREFERENCE COMMENTS**
+**Line to change:**
+- Line 143: Change `raise SystemExit(1)` to `raise SystemExit(0)`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: Fix narrative list exit codes
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Modify `src/cli/narrative.py` to exit with code 0 when no narratives are found.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**Line to change:**
+- Line 130: Change `raise SystemExit(1)` to `raise SystemExit(0)`
 
-Format (place immediately before the symbol):
+### Step 5: Fix subsystem list exit codes
+
+Modify `src/cli/subsystem.py` to exit with code 0 when no subsystems are found.
+
+**Line to change:**
+- Line 58: Change `raise SystemExit(1)` to `raise SystemExit(0)`
+
+### Step 6: Make migration list exit code explicit
+
+Modify `src/cli/migration.py` to explicitly use `raise SystemExit(0)` for empty results instead of implicit return.
+
+**Line to change:**
+- Line 101-102: Change `return` to `raise SystemExit(0)` for consistency, even though the behavior is the same (implicit return = exit 0)
+
+### Step 7: Update SPEC.md to document exit code convention
+
+Add a new section to `docs/trunk/SPEC.md` documenting the exit code convention:
+
+**Location:** After the "CLI" section in SPEC.md (around line 379), add a new subsection called "Exit Code Convention" that documents:
+- Exit code 0 means "command succeeded" including "no results found"
+- Exit code 1 means "command failed due to an error"
+- List of error conditions that trigger exit code 1
+
+Also update individual command documentation in SPEC.md to reflect the new exit code behavior:
+- Line 480: Update `ve chunk list` exit codes
+- Line 542: Update `ve subsystem list` exit codes
+- Line 625: Update `ve investigation list` exit codes
+
+### Step 8: Run tests to verify all changes work correctly
+
+Run the full test suite to ensure:
+1. All updated tests pass with the new expected exit codes
+2. No regression in other tests
+3. Error cases still exit with code 1
+
+```bash
+uv run pytest tests/test_chunk_list.py tests/test_narrative_list.py tests/test_investigation_list.py tests/test_subsystem_list.py tests/test_friction_cli.py -v
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk has no dependencies on other chunks in the `arch_consolidation` narrative.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Breaking change for scripts**: Users who rely on the current exit code behavior may have scripts that break. However, the new behavior is more correct per UNIX conventions, and the previous behavior was inconsistent across commands.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Special flags like --current**: The `--current`, `--last-active`, and `--recent` flags for `ve chunk list` are designed to return a single specific chunk. When no matching chunk exists, this is an error condition because the operator explicitly requested a specific result. These should continue to exit with code 1.
+
+3. **Status filtering edge cases**: When using `--status ACTIVE` and no ACTIVE chunks exist, should this exit 0 or 1? The decision is exit 0 - the command succeeded at listing (which returned empty results). The filter is not requesting a specific single item.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
