@@ -13,7 +13,7 @@ code_references:
 - ref: src/models.py#ChunkRelationship
   implements: Model for chunk-to-subsystem relationships with implements/uses distinction
 - ref: src/models.py#ChunkRelationship::validate_chunk_id
-  implements: Validation of chunk_id format ({NNNN}-{short_name} pattern)
+  implements: Validation of chunk_id format ({short_name} pattern)
 - ref: src/models.py#SubsystemFrontmatter
   implements: Frontmatter schema for subsystem OVERVIEW.md files
 - ref: src/subsystems.py#Subsystems
@@ -23,7 +23,7 @@ code_references:
 - ref: src/subsystems.py#Subsystems::enumerate_subsystems
   implements: List subsystem directory names
 - ref: src/subsystems.py#Subsystems::is_subsystem_dir
-  implements: Validate {NNNN}-{short_name} directory pattern
+  implements: Validate {short_name} directory pattern
 - ref: src/subsystems.py#Subsystems::parse_subsystem_frontmatter
   implements: Parse and validate OVERVIEW.md frontmatter
 - ref: tests/test_subsystems.py#TestChunkRelationship
@@ -52,7 +52,7 @@ This advances the trunk goal's **Required Properties** by enabling agents to rec
 1. **SubsystemStatus enum** exists with values: `DISCOVERING`, `DOCUMENTED`, `REFACTORING`, `STABLE`, `DEPRECATED`
 
 2. **ChunkRelationship model** captures the implements/uses distinction:
-   - `chunk_id`: The chunk directory name (e.g., `0003-feature_name`)
+   - `chunk_id`: The chunk directory name (e.g., `feature_name`)
    - `relationship`: Either `implements` or `uses`
 
 3. **SubsystemFrontmatter model** validates subsystem OVERVIEW.md frontmatter:
@@ -64,7 +64,7 @@ This advances the trunk goal's **Required Properties** by enabling agents to rec
    - `__init__(project_dir)`: Initialize with project directory
    - `subsystems_dir` property: Returns path to `docs/subsystems/`
    - `enumerate_subsystems()`: List subsystem directory names
-   - `is_subsystem_dir(name)`: Check if a directory matches the `{NNNN}-{short_name}` pattern
+   - `is_subsystem_dir(name)`: Check if a directory matches the `{short_name}` pattern
    - `parse_subsystem_frontmatter(subsystem_id)`: Parse and validate OVERVIEW.md frontmatter
 
 5. **All models** are added to `src/models.py` following existing Pydantic patterns

@@ -5,6 +5,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 # Chunk: docs/chunks/external_chunk_causal - External chunk ordering in ArtifactIndex
 # Chunk: docs/chunks/ordering_active_only - Status-filtered tip detection for causal ordering
+# Chunk: docs/chunks/ordering_remove_seqno - Ancestor computation for causal ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
 listings using directory enumeration for staleness detection and topological sorting.

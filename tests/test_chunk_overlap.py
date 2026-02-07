@@ -4,6 +4,8 @@ Note: chunk overlap uses code_references which is an in-repo chunk feature.
 These tests use task directory mode (not scratchpad).
 """
 
+# Chunk: docs/chunks/chunk_overlap_command - Tests covering CLI interface, overlap detection, edge cases
+
 import pathlib
 
 import pytest

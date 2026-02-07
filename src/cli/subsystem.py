@@ -35,6 +35,7 @@ from cli.formatters import (
 )
 
 
+# Chunk: docs/chunks/subsystem_cli_scaffolding - CLI command group for subsystem commands
 @click.group()
 def subsystem():
     """Manage subsystems - documented architectural patterns.
@@ -45,6 +46,8 @@ def subsystem():
     pass
 
 
+
+# Chunk: docs/chunks/subsystem_cli_scaffolding - ve subsystem list command - displays subsystems with status
 @subsystem.command("list")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -105,6 +108,7 @@ def _list_task_subsystems(task_dir: pathlib.Path, json_output: bool = False):
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/subsystem_cli_scaffolding - ve subsystem discover command - creates new subsystem with validation
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")

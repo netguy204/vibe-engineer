@@ -65,17 +65,17 @@ chunks: []
         from chunks import Chunks
 
         # Create chunk with empty code_references
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=None)
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=None)
 
         # Create subsystem with code_references
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert result == []
 
     def test_no_overlap_when_no_subsystems_exist(self, temp_project):
@@ -84,14 +84,14 @@ chunks: []
         from chunks import Chunks
 
         # Create chunk with code_references
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert result == []
 
     def test_file_level_overlap_detection(self, temp_project):
@@ -100,21 +100,21 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references the file only (no symbol)
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py", "implements": "Foo module"}
         ])
 
         # Subsystem references a symbol within that file
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
 
     def test_symbol_level_overlap_parent_child(self, temp_project):
         """Detects overlap when chunk reference is child of subsystem reference."""
@@ -122,21 +122,21 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references a method (child)
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar::method", "implements": "Method implementation"}
         ])
 
         # Subsystem references the class (parent)
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
 
     def test_symbol_level_overlap_child_parent(self, temp_project):
         """Detects overlap when chunk reference is parent of subsystem reference."""
@@ -144,21 +144,21 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references the class (parent)
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         # Subsystem references a method (child)
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar::method", "implements": "Method implementation"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
 
     def test_no_overlap_for_unrelated_files(self, temp_project):
         """No overlap when chunk and subsystem reference different files."""
@@ -166,19 +166,19 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references one file
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py", "implements": "Foo module"}
         ])
 
         # Subsystem references a different file
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/bar.py", "implements": "Bar module"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert result == []
 
     def test_returns_subsystem_status_in_results(self, temp_project):
@@ -187,12 +187,12 @@ chunks: []
         from chunks import Chunks
 
         # Create overlapping chunk and subsystem
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         self._create_subsystem_with_refs(
-            temp_project, "0001-validation",
+            temp_project, "validation",
             [{"ref": "src/foo.py#Bar", "implements": "Bar class"}],
             status="STABLE"
         )
@@ -200,9 +200,9 @@ chunks: []
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
         assert result[0]["status"] == "STABLE"
         assert "overlapping_refs" in result[0]
 
@@ -213,22 +213,22 @@ chunks: []
 
         # Chunk has only code_paths, no code_references
         self._create_chunk_with_refs(
-            temp_project, "0001-feature",
+            temp_project, "feature",
             code_refs=None,
             code_paths=["src/foo.py"]
         )
 
         # Subsystem references a symbol in that file
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
 
     def test_handles_multiple_overlapping_subsystems(self, temp_project):
         """Returns all matching subsystems when multiple overlap."""
@@ -236,30 +236,30 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references two files
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"},
             {"ref": "src/baz.py#Qux", "implements": "Qux class"},
         ])
 
         # First subsystem overlaps with src/foo.py
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ], status="STABLE")
 
         # Second subsystem overlaps with src/baz.py
-        self._create_subsystem_with_refs(temp_project, "0002-processing", [
+        self._create_subsystem_with_refs(temp_project, "processing", [
             {"ref": "src/baz.py#Qux", "implements": "Qux class"}
         ], status="DOCUMENTED")
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 2
 
         # Extract subsystem IDs for easier assertion
         subsystem_ids = {r["subsystem_id"] for r in result}
-        assert subsystem_ids == {"0001-validation", "0002-processing"}
+        assert subsystem_ids == {"validation", "processing"}
 
     def test_raises_error_for_nonexistent_chunk(self, temp_project):
         """Raises ValueError when chunk doesn't exist."""
@@ -270,7 +270,7 @@ chunks: []
         chunks = Chunks(temp_project)
 
         with pytest.raises(ValueError) as exc_info:
-            subsystems.find_overlapping_subsystems("9999-nonexistent", chunks)
+            subsystems.find_overlapping_subsystems("nonexistent", chunks)
         assert "not found" in str(exc_info.value).lower()
 
     def test_exact_symbol_match(self, temp_project):
@@ -279,20 +279,20 @@ chunks: []
         from chunks import Chunks
 
         # Both reference exact same symbol
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar::baz", "implements": "Baz method"}
         ])
 
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar::baz", "implements": "Baz method"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
-        assert result[0]["subsystem_id"] == "0001-validation"
+        assert result[0]["subsystem_id"] == "validation"
 
     def test_overlapping_refs_includes_specific_matches(self, temp_project):
         """overlapping_refs field includes the specific references that match."""
@@ -300,19 +300,19 @@ chunks: []
         from chunks import Chunks
 
         # Chunk references a method
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar::method", "implements": "Method impl"}
         ])
 
         # Subsystem references the class (parent)
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         subsystems = Subsystems(temp_project)
         chunks = Chunks(temp_project)
 
-        result = subsystems.find_overlapping_subsystems("0001-feature", chunks)
+        result = subsystems.find_overlapping_subsystems("feature", chunks)
         assert len(result) == 1
         assert "overlapping_refs" in result[0]
         # The overlapping_refs should include the subsystem's reference that matched

@@ -74,13 +74,13 @@ class TestValidateCommandInterface:
     def test_project_dir_option_works(self, runner, temp_project):
         """--project-dir option works correctly."""
         # Create subsystem with valid state
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True)
         _write_subsystem_overview(subsystem_path, "DOCUMENTED", [])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -90,13 +90,13 @@ class TestValidSubsystem:
 
     def test_valid_subsystem_passes(self, runner, temp_project):
         """Valid subsystem passes validation."""
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True)
         _write_subsystem_overview(subsystem_path, "DOCUMENTED", [])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
         assert "passed" in result.output.lower()
@@ -104,18 +104,18 @@ class TestValidSubsystem:
     def test_valid_subsystem_with_valid_chunk_ref_passes(self, runner, temp_project):
         """Subsystem with valid chunk reference passes validation."""
         # Create chunk first
-        _create_chunk(temp_project, "0001-feature")
+        _create_chunk(temp_project, "feature")
 
         # Create subsystem with reference to chunk
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True)
         _write_subsystem_overview(subsystem_path, "DOCUMENTED", [
-            {"chunk_id": "0001-feature", "relationship": "implements"}
+            {"chunk_id": "feature", "relationship": "implements"}
         ])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code == 0
 
@@ -127,40 +127,40 @@ class TestInvalidSubsystem:
         """Non-existent subsystem fails with error."""
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "9999-nonexistent", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "nonexistent", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
     def test_invalid_chunk_ref_fails(self, runner, temp_project):
         """Subsystem with invalid chunk reference fails validation."""
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True)
         _write_subsystem_overview(subsystem_path, "DOCUMENTED", [
-            {"chunk_id": "0001-nonexistent", "relationship": "implements"}
+            {"chunk_id": "nonexistent", "relationship": "implements"}
         ])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "0001-nonexistent" in result.output
+        assert "nonexistent" in result.output
 
     def test_multiple_invalid_chunk_refs_reported(self, runner, temp_project):
         """Multiple invalid chunk references are all reported."""
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True)
         _write_subsystem_overview(subsystem_path, "DOCUMENTED", [
-            {"chunk_id": "0001-nonexistent1", "relationship": "implements"},
-            {"chunk_id": "0002-nonexistent2", "relationship": "uses"},
+            {"chunk_id": "nonexistent1", "relationship": "implements"},
+            {"chunk_id": "nonexistent_two", "relationship": "uses"},
         ])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "validate", "0001-validation", "--project-dir", str(temp_project)]
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Both errors should be reported
-        assert "0001-nonexistent1" in result.output
-        assert "0002-nonexistent2" in result.output
+        assert "nonexistent1" in result.output
+        assert "nonexistent_two" in result.output

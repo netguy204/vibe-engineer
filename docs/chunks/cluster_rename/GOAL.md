@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
   - src/cluster_rename.py
-  - src/ve.py
+  - src/cli/chunk.py
   - src/templates/commands/cluster-rename.md.jinja2
   - src/templates/claude/CLAUDE.md.jinja2
   - tests/test_cluster_rename.py
@@ -33,8 +33,6 @@ code_references:
     implements: "Main orchestration function for cluster rename operation"
   - ref: src/cluster_rename.py#format_dry_run_output
     implements: "Dry-run output formatter"
-  - ref: src/ve.py#cluster_rename_cmd
-    implements: "CLI command entry point for ve chunk cluster-rename"
   - ref: src/templates/commands/cluster-rename.md.jinja2
     implements: "Slash command template for /cluster-rename"
   - ref: src/templates/claude/CLAUDE.md.jinja2

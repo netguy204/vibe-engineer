@@ -15,11 +15,11 @@ code_references:
 - ref: src/subsystems.py#Subsystems::create_subsystem
   implements: Create subsystem directory with sequential numbering and OVERVIEW.md
     template
-- ref: src/ve.py#subsystem
+- ref: src/cli/subsystem.py#subsystem
   implements: CLI command group for subsystem commands
-- ref: src/ve.py#list_subsystems
+- ref: src/cli/subsystem.py#list_subsystems
   implements: ve subsystem list command - displays subsystems with status
-- ref: src/ve.py#discover
+- ref: src/cli/subsystem.py#discover
   implements: ve subsystem discover command - creates new subsystem with validation
 - ref: src/templates/subsystem/OVERVIEW.md.jinja2
   implements: Minimal template with DISCOVERING status and section headers

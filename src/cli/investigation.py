@@ -195,15 +195,10 @@ def _list_task_investigations(task_dir: pathlib.Path, json_output: bool = False)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(investigation_id, new_status, project_dir):
     """Show or update investigation status."""
-    from models import extract_short_name
-
     # Normalize investigation_id to strip path prefixes
     investigation_id = strip_artifact_path_prefix(investigation_id, ArtifactType.INVESTIGATION)
 
     investigations = Investigations(project_dir)
-
-    # Extract shortname for display
-    shortname = extract_short_name(investigation_id)
 
     # Display mode: just show current status
     if new_status is None:
@@ -212,7 +207,7 @@ def status(investigation_id, new_status, project_dir):
             from cli.utils import format_not_found_error
             click.echo(f"Error: {format_not_found_error('Investigation', investigation_id, 've investigation list')}", err=True)
             raise SystemExit(1)
-        click.echo(f"{shortname}: {frontmatter.status.value}")
+        click.echo(f"{investigation_id}: {frontmatter.status.value}")
         return
 
     # Transition mode: validate and update status
@@ -230,7 +225,7 @@ def status(investigation_id, new_status, project_dir):
     # Attempt the transition
     try:
         old_status, updated_status = investigations.update_status(investigation_id, new_status_enum)
-        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+        click.echo(f"{investigation_id}: {old_status.value} -> {updated_status.value}")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

@@ -4,6 +4,7 @@
 # Chunk: docs/chunks/external_artifact_unpin - External artifact unpinning
 # Chunk: docs/chunks/external_chunk_causal - External chunk causal ordering
 # Chunk: docs/chunks/remove_external_ref - Artifact remove-external command implementation
+# Chunk: docs/chunks/ordering_remove_seqno - Short name format for task chunk creation
 
 import re
 from dataclasses import dataclass

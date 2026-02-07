@@ -101,9 +101,8 @@ The task directory acts as a unified resolution context where all projects and t
 
 ### Identifiers and Metadata
 
-- **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
-- **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
-- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk
+- **Short Name**: A human-readable identifier for a chunk, starting with a lowercase letter and containing only lowercase letters, digits, underscores, and hyphens
+- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk (stored in frontmatter, not directory name)
 - **Code Reference**: A symbolic path (file#symbol) that links documentation to specific implementation locations
 - **Superseded**: A document status indicating it has been replaced by a newer version but retained for historical context
 
@@ -123,14 +122,14 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
       DECISIONS.md                    # Architectural decision records
       TESTING_PHILOSOPHY.md           # Testing approach
     chunks/
-      {NNNN}-{short_name}[-{ticket}]/ # Chunk directories
+      {short_name}/                   # Chunk directories
         GOAL.md                       # Chunk goal with frontmatter
         PLAN.md                       # Implementation plan
     subsystems/
-      {NNNN}-{short_name}/            # Subsystem directories
+      {short_name}/                   # Subsystem directories
         OVERVIEW.md                   # Subsystem documentation with frontmatter
     investigations/
-      {NNNN}-{short_name}/            # Investigation directories
+      {short_name}/                   # Investigation directories
         OVERVIEW.md                   # Investigation documentation with frontmatter
   .claude/
     commands/                         # Agent command definitions
@@ -188,13 +187,11 @@ projects:
 
 ### Chunk Directory Naming
 
-Format: `{chunk_id}-{short_name}[-{ticket_id}]`
+Format: `{short_name}`
 
-- `chunk_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
-- `ticket_id`: optional, lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-initial_setup`, `0002-auth-feature-PROJ-123`
+Examples: `initial_setup`, `auth_feature`, `api_refactor`
 
 ### Chunk GOAL.md Frontmatter
 
@@ -209,7 +206,7 @@ code_references:
   - ref: path/to/file.ext#ClassName::method_name
     implements: "Description of what this code implements"
 subsystems:
-  - subsystem_id: "{NNNN}-{short_name}"
+  - subsystem_id: "{short_name}"
     relationship: implements | uses
 ---
 ```
@@ -255,12 +252,11 @@ Code references use symbolic paths rather than line numbers for stability as cod
 
 ### Subsystem Directory Naming
 
-Format: `{subsystem_id}-{short_name}`
+Format: `{short_name}`
 
-- `subsystem_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-validation`, `0002-template_system`
+Examples: `validation`, `template_system`, `workflow_artifacts`
 
 ### Subsystem OVERVIEW.md Frontmatter
 
@@ -268,7 +264,7 @@ Examples: `0001-validation`, `0002-template_system`
 ---
 status: DISCOVERING | DOCUMENTED | REFACTORING | STABLE | DEPRECATED
 chunks:
-  - chunk_id: "{NNNN}-{short_name}"
+  - chunk_id: "{short_name}"
     relationship: implements | uses
 code_references:
   - ref: path/to/file.ext#ClassName::method_name
@@ -318,14 +314,14 @@ Chunks and subsystems have a bidirectional relationship. Both sides use the same
 In chunk GOAL.md frontmatter:
 ```yaml
 subsystems:
-  - subsystem_id: "0001-validation"
+  - subsystem_id: "validation"
     relationship: implements
 ```
 
 In subsystem OVERVIEW.md frontmatter:
 ```yaml
 chunks:
-  - chunk_id: "0014-subsystem_frontmatter"
+  - chunk_id: "subsystem_frontmatter"
     relationship: implements
 ```
 
@@ -333,12 +329,11 @@ These references are validated by `ve chunk validate` (for chunks) and `ve subsy
 
 ### Investigation Directory Naming
 
-Format: `{investigation_id}-{short_name}`
+Format: `{short_name}`
 
-- `investigation_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-memory_leak`, `0002-graphql_migration`
+Examples: `memory_leak`, `graphql_migration`, `performance_regression`
 
 ### Investigation OVERVIEW.md Frontmatter
 
@@ -348,7 +343,7 @@ status: ONGOING | SOLVED | NOTED | DEFERRED
 trigger: {description} | null
 proposed_chunks:
   - prompt: "Description of proposed work"
-    chunk_directory: "{NNNN}-{short_name}" | null
+    chunk_directory: "{short_name}" | null
 ---
 ```
 
@@ -461,11 +456,10 @@ Create a new chunk directory with goal and plan templates.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
 - **Postconditions**:
-  - New directory `docs/chunks/{NNNN}-{short_name}[-{ticket_id}]/` created
+  - New directory `docs/chunks/{short_name}/` created
   - Directory contains GOAL.md and PLAN.md from templates
   - GOAL.md frontmatter has `status: IMPLEMENTING` (or `FUTURE` if `--future` flag used)
 - **Behavior**:
-  - Chunk ID is auto-incremented from existing chunks
   - Inputs are normalized to lowercase
   - Warns if duplicate short_name + ticket_id exists; prompts for confirmation
 - **Errors**:
@@ -498,7 +492,7 @@ List existing chunks.
 Activate a `FUTURE` chunk by changing its status to `IMPLEMENTING`.
 
 - **Arguments**:
-  - `CHUNK_ID` (required): The 4-digit chunk ID or full directory name
+  - `CHUNK_ID` (required): The chunk directory name
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
@@ -528,10 +522,9 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing subsystem with the same short name
 - **Postconditions**:
-  - New directory `docs/subsystems/{NNNN}-{short_name}/` created
+  - New directory `docs/subsystems/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `DISCOVERING` status
 - **Behavior**:
-  - Subsystem ID is auto-incremented from existing subsystems
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
@@ -592,7 +585,7 @@ Show or update a subsystem's lifecycle status.
 - **Behavior**:
   - Without NEW_STATUS: displays current status as `{short_name}: {STATUS}`
   - With NEW_STATUS: validates transition and updates status, displays `{short_name}: {OLD} -> {NEW}`
-  - Accepts full subsystem ID (e.g., `0001-validation`) or short name (e.g., `validation`)
+  - Accepts the subsystem directory name (e.g., `validation`)
 - **Errors**:
   - Error if subsystem not found
   - Error if invalid status value
@@ -611,10 +604,9 @@ Create a new investigation directory with OVERVIEW.md template.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing investigation with the same short name
 - **Postconditions**:
-  - New directory `docs/investigations/{NNNN}-{short_name}/` created
+  - New directory `docs/investigations/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `ONGOING` status
 - **Behavior**:
-  - Investigation ID is auto-incremented from existing investigations
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
@@ -660,7 +652,7 @@ This tool is for documentation management, not high-throughput data processing. 
 | Limit | Value | Behavior when exceeded |
 |-------|-------|------------------------|
 | SHORT_NAME length | 31 characters | ValidationError, operation aborted |
-| Chunk ID digits | 4 (0001-9999) | Undefined behavior beyond 9999 chunks |
+| Chunk name length | 31 characters | ValidationError, operation aborted |
 | Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility

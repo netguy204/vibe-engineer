@@ -49,7 +49,6 @@ from models import (
     ChunkFrontmatter,
     ChunkStatus,
     VALID_CHUNK_TRANSITIONS,
-    extract_short_name,
 )
 from symbols import is_parent_of, parse_reference, extract_symbols, qualify_ref
 from template_system import ActiveChunk, TemplateContext, render_to_directory
@@ -158,9 +157,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
     def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
         """Find existing chunks with the same short_name.
 
-        Detects collisions by extracting the short_name from existing directory
-        names (handling both legacy {NNNN}-{name} and new {name} formats).
-
         Args:
             short_name: The short name to check for collisions.
             ticket_id: Optional ticket ID (kept for backward compatibility but
@@ -170,13 +166,10 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             List of existing chunk directory names that would collide.
         """
         # Match on short_name only - ticket_id is stored in frontmatter, not directory name
-        target_short = short_name
-
         duplicates = []
         for name in self.enumerate_chunks():
-            # Extract short_name from existing directory (handles both patterns)
-            existing_short = extract_short_name(name)
-            if existing_short == target_short:
+            # Directory name is the short name
+            if name == short_name:
                 duplicates.append(name)
         return duplicates
 
@@ -414,14 +407,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         )
         return chunk_path
 
-    # Chunk: docs/chunks/chunk_overlap_command - Resolves 4-digit or full name to directory name
+    # Chunk: docs/chunks/chunk_overlap_command - Resolves chunk ID to directory name
     def resolve_chunk_id(self, chunk_id: str) -> str | None:
         """Resolve a chunk ID to its directory name.
 
-        Supports multiple resolution strategies:
-        1. Exact match (returns the directory name as-is)
-        2. Legacy prefix match (e.g., "0003" matches "0003-feature")
-        3. Short name match (e.g., "feature" matches either "0003-feature" or "feature")
+        Looks for an exact match in chunk directories.
 
         Returns:
             The full chunk directory name, or None if not found.
@@ -430,14 +420,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         # Exact match
         if chunk_id in chunks:
             return chunk_id
-        # Legacy prefix match (e.g., "0003" matches "0003-feature")
-        for name in chunks:
-            if name.startswith(f"{chunk_id}-"):
-                return name
-        # Short name match (find by extracted short_name)
-        for name in chunks:
-            if extract_short_name(name) == chunk_id:
-                return name
         return None
 
     # Chunk: docs/chunks/chunk_overlap_command - Resolves chunk ID to GOAL.md path

@@ -1,4 +1,5 @@
 """Tests for the 'chunk start' CLI command."""
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - Comprehensive test suite covering chunk start command
 
 from ve import cli
 from chunks import Chunks

@@ -27,21 +27,11 @@ class TestFindChunkInProject:
 
     def test_finds_exact_match(self, tmp_path):
         """Finds chunk by exact directory name."""
-        chunks_dir = tmp_path / "docs" / "chunks" / "0001-feature"
+        chunks_dir = tmp_path / "docs" / "chunks" / "feature"
         chunks_dir.mkdir(parents=True)
         (chunks_dir / "GOAL.md").write_text("# Goal\n")
 
-        result = find_chunk_in_project(tmp_path, "0001-feature")
-
-        assert result == chunks_dir
-
-    def test_finds_by_number_prefix(self, tmp_path):
-        """Finds chunk by number prefix match."""
-        chunks_dir = tmp_path / "docs" / "chunks" / "0001-feature_name"
-        chunks_dir.mkdir(parents=True)
-        (chunks_dir / "GOAL.md").write_text("# Goal\n")
-
-        result = find_chunk_in_project(tmp_path, "0001")
+        result = find_chunk_in_project(tmp_path, "feature")
 
         assert result == chunks_dir
 
@@ -465,16 +455,6 @@ class TestFindArtifactInProject:
         result = find_artifact_in_project(tmp_path, "workflow_artifacts", ArtifactType.SUBSYSTEM)
 
         assert result == subsystems_dir
-
-    def test_finds_by_prefix(self, tmp_path):
-        """Finds artifact by numeric prefix match."""
-        narratives_dir = tmp_path / "docs" / "narratives" / "0003-big_feature"
-        narratives_dir.mkdir(parents=True)
-        (narratives_dir / "OVERVIEW.md").write_text("# Overview\n")
-
-        result = find_artifact_in_project(tmp_path, "0003", ArtifactType.NARRATIVE)
-
-        assert result == narratives_dir
 
     def test_returns_none_for_wrong_type(self, tmp_path):
         """Returns None when artifact exists but in wrong directory."""
