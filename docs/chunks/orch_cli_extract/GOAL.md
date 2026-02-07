@@ -22,6 +22,8 @@ code_references:
     implements: "Unit tests for reading chunk dependencies"
   - ref: tests/test_orchestrator_dependencies.py#TestValidateExternalDependencies
     implements: "Unit tests for external dependency validation"
+  - ref: src/cli/orch.py
+    implements: "Import site for extracted dependency resolution functions"
 narrative: arch_consolidation
 investigation: null
 subsystems: []

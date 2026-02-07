@@ -14,6 +14,8 @@ code_paths:
 code_references:
   - ref: src/cli/utils.py#handle_task_context
     implements: "Core task-context routing helper that checks is_task_directory and executes handler"
+  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
+    implements: "Using handle_task_context for routing in list-proposed command"
   - ref: tests/test_cli_utils.py#TestHandleTaskContext
     implements: "Unit tests for handle_task_context helper"
 narrative: arch_consolidation

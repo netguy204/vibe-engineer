@@ -1,5 +1,78 @@
 ---
 status: STABLE
+chunks:
+  - chunk_id: update_crossref_format
+    relationship: implements
+  - chunk_id: artifact_ordering_index
+    relationship: implements
+  - chunk_id: chunknaming_drop_ticket
+    relationship: implements
+  - chunk_id: ordering_active_only
+    relationship: implements
+  - chunk_id: ordering_field
+    relationship: implements
+  - chunk_id: chunklist_status_filter
+    relationship: uses
+  - chunk_id: sync_all_workflows
+    relationship: implements
+  - chunk_id: populate_created_after
+    relationship: implements
+  - chunk_id: scratchpad_cross_project
+    relationship: implements
+  - chunk_id: external_chunk_causal
+    relationship: implements
+  - chunk_id: validate_external_chunks
+    relationship: uses
+  - chunk_id: scratchpad_storage
+    relationship: implements
+  - chunk_id: causal_ordering_migration
+    relationship: implements
+  - chunk_id: artifact_copy_backref
+    relationship: uses
+  - chunk_id: subsystem_docs_update
+    relationship: implements
+  - chunk_id: external_resolve_all_types
+    relationship: implements
+  - chunk_id: task_aware_investigations
+    relationship: implements
+  - chunk_id: consolidate_ext_ref_utils
+    relationship: implements
+  - chunk_id: chunk_frontmatter_model
+    relationship: implements
+  - chunk_id: ordering_remove_seqno
+    relationship: implements
+  - chunk_id: artifact_index_no_git
+    relationship: implements
+  - chunk_id: ordering_audit_seqnums
+    relationship: uses
+  - chunk_id: rename_chunk_start_to_create
+    relationship: implements
+  - chunk_id: backref_restore_postmigration
+    relationship: uses
+  - chunk_id: scratchpad_narrative_commands
+    relationship: implements
+  - chunk_id: chunk_batch_create
+    relationship: uses
+  - chunk_id: task_aware_narrative_cmds
+    relationship: implements
+  - chunk_id: consolidate_ext_refs
+    relationship: implements
+  - chunk_id: artifact_list_ordering
+    relationship: implements
+  - chunk_id: taskdir_context_cmds
+    relationship: implements
+  - chunk_id: selective_artifact_friction
+    relationship: implements
+  - chunk_id: task_aware_subsystem_cmds
+    relationship: implements
+  - chunk_id: valid_transitions
+    relationship: implements
+  - chunk_id: artifact_promote
+    relationship: uses
+  - chunk_id: task_status_command
+    relationship: implements
+  - chunk_id: frontmatter_io
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -194,7 +267,7 @@ code_references:
   compliance: COMPLIANT
 - ref: src/chunks.py#suggest_prefix
   implements: TF-IDF similarity-based prefix suggestion for chunks
-  compliance: DEVIATION
+  compliance: PARTIAL
   deviation_reason: Does not dereference external artifacts in single-repo mode
 - ref: src/ve.py#suggest_prefix_cmd
   implements: CLI command for chunk prefix suggestion

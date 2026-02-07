@@ -1,5 +1,8 @@
 ---
 status: DOCUMENTED
+chunks:
+  - chunk_id: chunknaming_drop_ticket
+    relationship: uses
 code_references:
 - ref: src/cluster_analysis.py#ClusterInfo
   implements: Cluster data model with prefix, chunks, and characteristics

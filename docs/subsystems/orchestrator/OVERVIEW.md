@@ -1,5 +1,16 @@
 ---
 status: DOCUMENTED
+chunks:
+  - chunk_id: orch_review_phase
+    relationship: implements
+  - chunk_id: orch_task_agent_env
+    relationship: implements
+  - chunk_id: explicit_deps_workunit_flag
+    relationship: implements
+  - chunk_id: orch_url_command
+    relationship: implements
+  - chunk_id: orch_merge_safety
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module

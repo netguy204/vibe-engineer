@@ -22,6 +22,8 @@ code_references:
     implements: "API endpoint extended to accept blocked_by and explicit_deps parameters"
   - ref: tests/test_orchestrator_cli.py#TestOrchInjectBatch
     implements: "Test suite for batch injection with dependency ordering"
+  - ref: src/orchestrator/dependencies.py
+    implements: "Dependency resolution functions (extracted from CLI layer)"
 narrative: explicit_chunk_deps
 investigation: null
 subsystems: []

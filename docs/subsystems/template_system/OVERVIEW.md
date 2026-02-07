@@ -1,5 +1,36 @@
 ---
 status: STABLE
+chunks:
+  - chunk_id: template_artifact_guidance
+    relationship: uses
+  - chunk_id: template_drift_prevention
+    relationship: implements
+  - chunk_id: taskdir_cli_guidance
+    relationship: uses
+  - chunk_id: backref_task_context
+    relationship: uses
+  - chunk_id: proposed_chunks_frontmatter
+    relationship: uses
+  - chunk_id: template_system_consolidation
+    relationship: implements
+  - chunk_id: template_lang_agnostic
+    relationship: implements
+  - chunk_id: template_unified_module
+    relationship: implements
+  - chunk_id: code_to_docs_backrefs
+    relationship: uses
+  - chunk_id: scratchpad_storage
+    relationship: uses
+  - chunk_id: task_init_scaffolding
+    relationship: uses
+  - chunk_id: background_keyword_semantic
+    relationship: uses
+  - chunk_id: scratchpad_narrative_commands
+    relationship: uses
+  - chunk_id: migrate_chunks_template
+    relationship: implements
+  - chunk_id: reviewer_decision_template
+    relationship: uses
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass

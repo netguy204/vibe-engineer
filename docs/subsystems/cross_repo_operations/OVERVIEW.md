@@ -1,5 +1,12 @@
 ---
 status: DOCUMENTED
+chunks:
+  - chunk_id: external_artifact_unpin
+    relationship: implements
+  - chunk_id: validate_external_chunks
+    relationship: uses
+  - chunk_id: taskdir_subsystem_overlap
+    relationship: uses
 code_references:
 - ref: src/task_init.py#TaskInit
   implements: Task directory initialization class
