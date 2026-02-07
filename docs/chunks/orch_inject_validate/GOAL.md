@@ -11,7 +11,7 @@ code_paths:
 code_references:
   - ref: src/chunks.py#Chunks::validate_chunk_injectable
     implements: "Core validation function checking status-content consistency"
-  - ref: src/chunks.py#plan_has_content
+  - ref: src/chunk_validation.py#plan_has_content
     implements: "Helper function detecting populated vs template-only PLAN.md"
   - ref: src/cli/chunk.py#validate
     implements: "CLI chunk validate command with --injectable flag"

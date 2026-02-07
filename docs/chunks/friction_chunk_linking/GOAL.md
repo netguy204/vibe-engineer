@@ -3,16 +3,17 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
+  - src/models/friction.py
+  - src/models/chunk.py
   - src/chunks.py
   - src/templates/chunk/GOAL.md.jinja2
   - tests/test_chunk_validate.py
 code_references:
-  - ref: src/models.py#FrictionEntryReference
+  - ref: src/models/friction.py#FrictionEntryReference
     implements: "Pydantic model for friction entry reference with entry_id and scope fields"
-  - ref: src/models.py#FRICTION_ENTRY_ID_PATTERN
+  - ref: src/models/friction.py#FRICTION_ENTRY_ID_PATTERN
     implements: "Regex pattern for validating friction entry ID format (F followed by digits)"
-  - ref: src/models.py#ChunkFrontmatter
+  - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Added friction_entries field to chunk frontmatter schema"
   - ref: src/chunks.py#Chunks::validate_friction_entries_ref
     implements: "Validation method checking friction entry references exist in FRICTION.md"

@@ -8,170 +8,211 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extract chunk validation logic from `src/chunks.py` into a new `src/chunk_validation.py` module. This is a pure extraction refactor with no behavioral changes. The pattern follows what was done in the `chunks_decompose` chunk, which extracted `backreferences.py`, `consolidation.py`, and `cluster_analysis.py` from `chunks.py`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. Create a new `src/chunk_validation.py` module containing the extracted symbols
+2. Update `src/chunks.py` to:
+   - Import from `chunk_validation` module
+   - Re-export `ValidationResult` and `plan_has_content` for backward compatibility
+   - Replace the extracted methods with thin delegation wrappers
+3. Preserve all existing public APIs so callers don't need changes
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunk_validator_extract/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Testing approach:**
 
-## Subsystem Considerations
+Per TESTING_PHILOSOPHY.md, this is a refactor with no behavioral changes. Existing tests in `tests/test_chunk_validate.py`, `tests/test_chunk_validate_inject.py`, and `tests/test_artifact_manager_errors.py` already cover the validation logic. All tests must pass after the extraction, which verifies:
+- Backward compatibility of imports (`from chunks import ValidationResult`, `from chunks import plan_has_content`)
+- Method delegation works correctly
+- All validation outcomes remain identical
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new tests are needed because this is purely structural - we're not adding or changing behavior.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create src/chunk_validation.py with extracted symbols
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a new module `src/chunk_validation.py` containing:
 
-Example:
+1. **Imports** - Copy necessary imports from `chunks.py`:
+   - `from __future__ import annotations`
+   - `from dataclasses import dataclass, field`
+   - `import pathlib`
+   - `import re`
+   - `from models import ChunkStatus`
+   - `from symbols import parse_reference, extract_symbols, qualify_ref`
 
-### Step 1: Define the SegmentHeader struct
+2. **ValidationResult dataclass** (lines 63-71 of chunks.py):
+   ```python
+   @dataclass
+   class ValidationResult:
+       """Result of chunk completion validation."""
+       success: bool
+       errors: list[str] = field(default_factory=list)
+       warnings: list[str] = field(default_factory=list)
+       chunk_name: str | None = None
+   ```
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **plan_has_content function** (lines 1359-1402 of chunks.py):
+   Module-level function that checks if PLAN.md has actual content beyond template.
 
-Location: src/segment/format.rs
+4. **_validate_symbol_exists function** (lines 960-994 of chunks.py):
+   Validates that a symbolic reference points to an existing symbol. This is a helper used by `validate_chunk_complete`.
 
-### Step 2: Implement header serialization
+5. **_validate_symbol_exists_with_context function** (lines 997-1092 of chunks.py):
+   Validates a symbolic reference with task context for cross-project refs.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+6. **validate_chunk_complete function** (lines 802-957 of chunks.py):
+   The main validation function. Needs access to the Chunks instance for resolution helpers (`resolve_chunk_location`, `parse_chunk_frontmatter_with_errors`, `validate_subsystem_refs`, etc.). Will be a standalone function that takes a Chunks instance as its first parameter.
 
-### Step 3: ...
+7. **validate_chunk_injectable function** (lines 1284-1354 of chunks.py):
+   Injection-time validation. Also needs Chunks instance. Will be a standalone function.
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Add module-level backreference comment:
+```python
+# Chunk: docs/chunks/chunk_validator_extract - Chunk validation logic extraction
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/chunk_validation.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Update src/chunks.py to import and re-export
+
+Modify `src/chunks.py`:
+
+1. Add import at top (after existing imports):
+   ```python
+   from chunk_validation import (
+       ValidationResult,
+       plan_has_content,
+       validate_chunk_complete as _validate_chunk_complete,
+       validate_chunk_injectable as _validate_chunk_injectable,
+       _validate_symbol_exists,
+       _validate_symbol_exists_with_context,
+   )
+   ```
+
+2. Remove the `ValidationResult` dataclass definition (lines 62-71)
+
+3. Remove the `plan_has_content` function (lines 1357-1402)
+
+4. Remove `_validate_symbol_exists` method (lines 959-994)
+
+5. Remove `_validate_symbol_exists_with_context` method (lines 996-1092)
+
+6. Replace `validate_chunk_complete` method with thin delegation wrapper:
+   ```python
+   def validate_chunk_complete(
+       self,
+       chunk_id: str | None = None,
+       task_dir: pathlib.Path | None = None,
+   ) -> ValidationResult:
+       """Validate that a chunk is ready for completion.
+
+       Delegates to chunk_validation.validate_chunk_complete().
+       """
+       return _validate_chunk_complete(self, chunk_id, task_dir)
+   ```
+
+7. Replace `validate_chunk_injectable` method with thin delegation wrapper:
+   ```python
+   def validate_chunk_injectable(self, chunk_id: str) -> ValidationResult:
+       """Validate that a chunk is ready for injection.
+
+       Delegates to chunk_validation.validate_chunk_injectable().
+       """
+       return _validate_chunk_injectable(self, chunk_id)
+   ```
+
+Location: `src/chunks.py`
+
+### Step 3: Refactor extracted functions to work standalone
+
+In `src/chunk_validation.py`, update the extracted functions:
+
+1. `validate_chunk_complete(chunks: Chunks, chunk_id: str | None, task_dir: pathlib.Path | None)`:
+   - Add `chunks` parameter as first argument (TYPE_CHECKING import for Chunks)
+   - Replace all `self.` calls with `chunks.` calls
+   - Replace calls to `self._validate_symbol_exists_with_context(...)` with direct calls to the module function
+
+2. `validate_chunk_injectable(chunks: Chunks, chunk_id: str)`:
+   - Add `chunks` parameter as first argument
+   - Replace all `self.` calls with `chunks.` calls
+   - Replace `plan_has_content(plan_path)` call to module function (already at module level)
+
+3. `_validate_symbol_exists(project_dir: pathlib.Path, ref: str)`:
+   - Add `project_dir` parameter (previously accessed via `self.project_dir`)
+   - Update internal references to use parameter
+
+4. `_validate_symbol_exists_with_context(project_dir: pathlib.Path, ref: str, task_dir: pathlib.Path | None, chunk_project: pathlib.Path | None)`:
+   - Add `project_dir` parameter
+   - Update internal references to use parameters
+
+Add TYPE_CHECKING import for Chunks to avoid circular import:
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from chunks import Chunks
+```
+
+Location: `src/chunk_validation.py`
+
+### Step 4: Verify backward compatibility exports
+
+Ensure `src/chunks.py` re-exports the extracted symbols at module level so existing imports work:
+
+1. `ValidationResult` - already re-exported via import
+2. `plan_has_content` - already re-exported via import
+
+Check that these imports work:
+- `from chunks import ValidationResult` (used in tests)
+- `from chunks import plan_has_content` (used in `src/orchestrator/api.py`)
+- `chunks.validate_chunk_complete()` (used in `src/cli/chunk.py`)
+- `chunks.validate_chunk_injectable()` (used in `src/cli/chunk.py`)
+
+Location: `src/chunks.py`
+
+### Step 5: Run tests and verify no regressions
+
+Run the test suite to verify:
+
+1. All existing tests pass:
+   ```bash
+   uv run pytest tests/test_chunk_validate.py tests/test_chunk_validate_inject.py tests/test_artifact_manager_errors.py -v
+   ```
+
+2. Run full test suite to catch any import issues:
+   ```bash
+   uv run pytest tests/ -v
+   ```
+
+3. Verify the line count reduction in `src/chunks.py`:
+   - Original: ~1471 lines
+   - Expected reduction: ~200-250 lines (ValidationResult + plan_has_content + validate_chunk_complete + validate_chunk_injectable + _validate_symbol_exists + _validate_symbol_exists_with_context)
+   - Target: ~1220-1270 lines
+
+Location: Tests and verification
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+This chunk depends on:
+- **models_subpackage** (declared in GOAL.md frontmatter): The models subpackage must be complete so that imports like `from models import ChunkStatus` resolve correctly from the new `chunk_validation.py` module.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Circular import risk**: The `validate_chunk_complete` function needs access to the `Chunks` class for resolution methods (`resolve_chunk_location`, `parse_chunk_frontmatter_with_errors`, etc.). Using `TYPE_CHECKING` guard for the Chunks import should avoid circular imports, but verify at runtime.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Internal method access**: The extracted functions call internal helpers on the Chunks instance:
+   - `_validate_symbol_exists_with_context` - now a module function
+   - `_parse_frontmatter_from_content` - remains on Chunks class
+   - `validate_subsystem_refs`, `validate_investigation_ref`, `validate_narrative_ref`, `validate_friction_entries_ref` - remain on Chunks class
+
+   The module functions will need to call back into the chunks instance for these, which may feel slightly awkward but maintains the existing method contracts.
+
+3. **Test import patterns**: Some tests import `from chunks import plan_has_content` directly. Ensure the re-export is at module level so these continue to work.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

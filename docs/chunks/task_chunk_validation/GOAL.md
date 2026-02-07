@@ -14,13 +14,11 @@ code_references:
   - ref: src/chunks.py#Chunks::_parse_frontmatter_from_content
     implements: "Parse frontmatter from cached content strings"
   - ref: src/chunks.py#Chunks::validate_chunk_complete
-    implements: "Task-context awareness for validation"
-  - ref: src/chunks.py#Chunks::_validate_symbol_exists_with_context
+    implements: "Task-context awareness for validation (delegates to chunk_validation module)"
+  - ref: src/chunk_validation.py#_validate_symbol_exists_with_context
     implements: "Cross-project code reference validation"
-  - ref: src/ve.py#validate
-    implements: "CLI command with task context detection"
   - ref: src/cli/chunk.py#validate
-    implements: "CLI chunk validate command with task context after CLI modularization"
+    implements: "CLI chunk validate command with task context detection"
 narrative: null
 investigation: null
 subsystems: []
