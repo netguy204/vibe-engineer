@@ -314,7 +314,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             ValueError: If chunk doesn't exist, isn't FUTURE, or another
                        chunk is already IMPLEMENTING.
         """
-        from task_utils import update_frontmatter_field
+        from frontmatter import update_frontmatter_field
 
         chunk_name = self.resolve_chunk_id(chunk_id)
         if chunk_name is None:
@@ -1218,7 +1218,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Raises:
             ValueError: If chunk not found, invalid status, or invalid transition.
         """
-        from task_utils import update_frontmatter_field
+        from frontmatter import update_frontmatter_field
 
         # Get current status (uses resolve_chunk_id internally)
         current_status = self.get_status(chunk_id)

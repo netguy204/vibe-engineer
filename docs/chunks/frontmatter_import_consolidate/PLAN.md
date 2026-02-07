@@ -1,177 +1,134 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a straightforward import consolidation refactor. The strategy is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Update imports at call sites**: Change five modules from importing `update_frontmatter_field` from `task_utils` to importing directly from `frontmatter`.
+2. **Remove the re-export**: Delete the re-export lines from `task_utils.py`.
+3. **Update test imports**: The test file `tests/test_task_utils.py` imports this function from `task_utils`; these tests should be moved or updated to import from `frontmatter`.
+4. **Verify**: Run the full test suite to ensure no regressions.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This follows the pattern already established by `src/artifact_manager.py` (line 271), which correctly imports directly from `frontmatter`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/frontmatter_import_consolidate/GOAL.md)
-with references to the files that you expect to touch.
--->
+No new architectural decisions are required. This is a mechanical consolidation of import paths to reduce indirection.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant. This is a pure import path consolidation with no architectural pattern changes.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update import in `src/orchestrator/scheduler.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
-
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+Change the top-level import from:
+```python
+from task_utils import update_frontmatter_field
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+to:
+```python
+from frontmatter import update_frontmatter_field
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/orchestrator/scheduler.py` line 33
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Update import in `src/chunks.py` (first occurrence)
+
+Change the local import inside `activate_chunk()` from:
+```python
+from task_utils import update_frontmatter_field
+```
+to:
+```python
+from frontmatter import update_frontmatter_field
+```
+
+Location: `src/chunks.py` line 317
+
+### Step 3: Update import in `src/chunks.py` (second occurrence)
+
+Change the local import inside `update_status()` from:
+```python
+from task_utils import update_frontmatter_field
+```
+to:
+```python
+from frontmatter import update_frontmatter_field
+```
+
+Location: `src/chunks.py` line 1221
+
+### Step 4: Update import in `src/consolidation.py`
+
+Change the local import inside `consolidate_chunks_to_narrative()` from:
+```python
+from task_utils import update_frontmatter_field
+```
+to:
+```python
+from frontmatter import update_frontmatter_field
+```
+
+Location: `src/consolidation.py` line 55
+
+### Step 5: Update import in `src/cli/chunk.py`
+
+Change the local import inside `complete_chunk()` from:
+```python
+from task_utils import update_frontmatter_field
+```
+to:
+```python
+from frontmatter import update_frontmatter_field
+```
+
+Location: `src/cli/chunk.py` line 638
+
+### Step 6: Remove re-export from `src/task_utils.py`
+
+Delete the comment and import lines:
+```python
+# Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
+# Re-export update_frontmatter_field from the shared module for API compatibility
+from frontmatter import update_frontmatter_field
+```
+
+Location: `src/task_utils.py` lines 301-303
+
+### Step 7: Update test imports in `tests/test_task_utils.py`
+
+The test file imports `update_frontmatter_field` from `task_utils` (line 18). Since this function is tested thoroughly in `tests/test_frontmatter.py` already (class `TestUpdateFrontmatterField` starting at line 335), we have two options:
+
+**Option A (Preferred)**: Remove the `TestUpdateFrontmatterField` class from `tests/test_task_utils.py` entirely. The tests are duplicates of what's already covered in `tests/test_frontmatter.py`.
+
+**Option B**: Update the import to `from frontmatter import update_frontmatter_field` and keep the tests. However, this creates redundant testing.
+
+Given the goal of consolidation, Option A is cleaner. The import statement at line 18 should also be updated to remove `update_frontmatter_field` from the import list.
+
+### Step 8: Verify no remaining imports from task_utils
+
+Run grep to confirm zero results for:
+```bash
+grep -r "from task_utils import update_frontmatter_field" src/
+```
+
+### Step 9: Run full test suite
+
+Execute `uv run pytest tests/` to verify no regressions. All existing tests should pass.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk is independent per the narrative's design (`depends_on: []`). The `frontmatter.py` module already exists with the canonical `update_frontmatter_field` implementation.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+**Low risk**: This is a mechanical refactor. The function signature and behavior remain unchanged; only the import path changes.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+**Potential concern**: If any external tooling or dynamic imports reference `task_utils.update_frontmatter_field`, they would break. However:
+- The codebase grep shows all usages are explicit static imports
+- The re-export was marked "for API compatibility" but the only consumer is internal code
+- No external packages depend on this
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populated during implementation -->

@@ -30,7 +30,7 @@ import yaml
 
 from chunks import Chunks
 from models import ChunkStatus
-from task_utils import update_frontmatter_field
+from frontmatter import update_frontmatter_field
 # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
 from orchestrator.agent import AgentRunner, create_log_callback, create_review_decision_hook
 from orchestrator.models import (

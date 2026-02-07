@@ -52,7 +52,7 @@ def consolidate_chunks(
     Raises:
         ValueError: If any chunk doesn't exist or isn't ACTIVE.
     """
-    from task_utils import update_frontmatter_field
+    from frontmatter import update_frontmatter_field
 
     # Import here to avoid circular import
     from chunks import Chunks

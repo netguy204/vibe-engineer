@@ -635,7 +635,7 @@ def complete_chunk(chunk_id, project_dir):
 
     If no CHUNK_ID is provided, completes the current IMPLEMENTING chunk.
     """
-    from task_utils import update_frontmatter_field
+    from frontmatter import update_frontmatter_field
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):

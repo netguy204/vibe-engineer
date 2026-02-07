@@ -298,11 +298,6 @@ def get_next_chunk_id(project_path: Path) -> str:
 # create_external_yaml is imported from external_refs
 
 
-# Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
-# Re-export update_frontmatter_field from the shared module for API compatibility
-from frontmatter import update_frontmatter_field
-
-
 # Chunk: docs/chunks/chunk_create_task_aware - Updates GOAL.md frontmatter with dependents
 def add_dependents_to_chunk(
     chunk_path: Path,
@@ -317,6 +312,8 @@ def add_dependents_to_chunk(
     Raises:
         FileNotFoundError: If GOAL.md doesn't exist in chunk_path
     """
+    from frontmatter import update_frontmatter_field
+
     goal_path = chunk_path / "GOAL.md"
     if not goal_path.exists():
         raise FileNotFoundError(f"GOAL.md not found in {chunk_path}")
@@ -569,6 +566,8 @@ def add_dependents_to_narrative(
     Raises:
         FileNotFoundError: If OVERVIEW.md doesn't exist in narrative_path
     """
+    from frontmatter import update_frontmatter_field
+
     overview_path = narrative_path / "OVERVIEW.md"
     if not overview_path.exists():
         raise FileNotFoundError(f"OVERVIEW.md not found in {narrative_path}")
@@ -590,6 +589,8 @@ def add_dependents_to_investigation(
     Raises:
         FileNotFoundError: If OVERVIEW.md doesn't exist in investigation_path
     """
+    from frontmatter import update_frontmatter_field
+
     overview_path = investigation_path / "OVERVIEW.md"
     if not overview_path.exists():
         raise FileNotFoundError(f"OVERVIEW.md not found in {investigation_path}")
@@ -610,6 +611,8 @@ def add_dependents_to_subsystem(
     Raises:
         FileNotFoundError: If OVERVIEW.md doesn't exist in subsystem_path
     """
+    from frontmatter import update_frontmatter_field
+
     overview_path = subsystem_path / "OVERVIEW.md"
     if not overview_path.exists():
         raise FileNotFoundError(f"OVERVIEW.md not found in {subsystem_path}")
@@ -1248,6 +1251,8 @@ def add_dependents_to_artifact(
     Raises:
         FileNotFoundError: If main file doesn't exist in artifact_path.
     """
+    from frontmatter import update_frontmatter_field
+
     main_file = ARTIFACT_MAIN_FILE[artifact_type]
     main_path = artifact_path / main_file
 
@@ -1396,6 +1401,7 @@ def promote_artifact(
         is_external_artifact,
         ARTIFACT_DIR_NAME,
     )
+    from frontmatter import update_frontmatter_field
 
     artifact_path = Path(artifact_path).resolve()
 
