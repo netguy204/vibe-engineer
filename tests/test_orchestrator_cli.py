@@ -22,6 +22,77 @@ def runner():
     return CliRunner()
 
 
+# Chunk: docs/chunks/orch_client_context - Tests for orch_client context manager
+class TestOrchClientContextManager:
+    """Tests for the orch_client context manager."""
+
+    def test_successful_client_usage(self, tmp_path):
+        """Context manager yields client and closes on exit."""
+        from cli.orch import orch_client
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_create.return_value = mock_client
+
+            with orch_client(tmp_path) as client:
+                assert client is mock_client
+                client.list_work_units()
+
+            mock_client.close.assert_called_once()
+
+    def test_daemon_not_running_error(self, tmp_path, capsys):
+        """Context manager handles DaemonNotRunningError."""
+        from cli.orch import orch_client
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.list_work_units.side_effect = DaemonNotRunningError("Daemon not running")
+            mock_create.return_value = mock_client
+
+            with pytest.raises(SystemExit) as exc_info:
+                with orch_client(tmp_path) as client:
+                    client.list_work_units()
+
+            assert exc_info.value.code == 1
+            captured = capsys.readouterr()
+            assert "Error:" in captured.err
+            assert "Daemon not running" in captured.err
+            mock_client.close.assert_called_once()
+
+    def test_orchestrator_client_error(self, tmp_path, capsys):
+        """Context manager handles OrchestratorClientError."""
+        from cli.orch import orch_client
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.get_work_unit.side_effect = OrchestratorClientError("Work unit not found")
+            mock_create.return_value = mock_client
+
+            with pytest.raises(SystemExit) as exc_info:
+                with orch_client(tmp_path) as client:
+                    client.get_work_unit("missing")
+
+            assert exc_info.value.code == 1
+            captured = capsys.readouterr()
+            assert "Error:" in captured.err
+            assert "Work unit not found" in captured.err
+            mock_client.close.assert_called_once()
+
+    def test_client_close_called_on_exception(self, tmp_path):
+        """Context manager calls client.close() even on exception."""
+        from cli.orch import orch_client
+
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_create.return_value = mock_client
+
+            with pytest.raises(ValueError):
+                with orch_client(tmp_path) as client:
+                    raise ValueError("Some unexpected error")
+
+            mock_client.close.assert_called_once()
+
+
 class TestOrchStart:
     """Tests for ve orch start command."""
 

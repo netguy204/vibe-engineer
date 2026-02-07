@@ -1,177 +1,208 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk creates a context manager `orch_client(project_dir)` that encapsulates the repeated orchestrator client lifecycle pattern found across 18 CLI commands in `src/cli/orch.py`. The current boilerplate:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+```python
+client = create_client(project_dir)
+try:
+    # ... use client ...
+except DaemonNotRunningError as e:
+    click.echo(f"Error: {e}", err=True)
+    raise SystemExit(1)
+except OrchestratorClientError as e:
+    click.echo(f"Error: {e}", err=True)
+    raise SystemExit(1)
+finally:
+    client.close()
+```
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Will become:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_client_context/GOAL.md)
-with references to the files that you expect to touch.
--->
+```python
+with orch_client(project_dir) as client:
+    # ... use client ...
+```
+
+The context manager uses Python's `contextlib.contextmanager` decorator to wrap the lifecycle in a generator. The `__enter__` creates the client; the `__exit__` catches the known exceptions (formatting to stderr and raising `SystemExit(1)`), and calls `client.close()` regardless of success or failure.
+
+This is a pure refactoring -- no behavioral changes. Every command should produce identical output, exit codes, and stderr messages.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS a helper that consolidates the CLI-layer error handling for orchestrator client operations. It operates within the orchestrator subsystem's scope but doesn't change the subsystem's architecture or invariants.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define the `orch_client` context manager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a new context manager function in `src/cli/orch.py` at the top of the file (after imports, before command definitions):
 
-Example:
+```python
+from contextlib import contextmanager
 
-### Step 1: Define the SegmentHeader struct
+# Chunk: docs/chunks/orch_client_context - Orchestrator client context manager
+@contextmanager
+def orch_client(project_dir):
+    """Context manager for orchestrator client lifecycle.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Creates an orchestrator client, yields it for use, handles errors
+    (formatting to stderr and raising SystemExit(1)), and ensures
+    the client is closed.
 
-Location: src/segment/format.rs
+    Usage:
+        with orch_client(project_dir) as client:
+            result = client.list_work_units()
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    client = create_client(project_dir)
+    try:
+        yield client
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/cli/orch.py`, near top of file after imports
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Add test for the context manager
 
-## Dependencies
+Before refactoring commands, write a test that verifies the context manager's behavior in isolation:
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+1. Test successful client usage (yields client, closes on exit)
+2. Test `DaemonNotRunningError` handling (formats to stderr, raises `SystemExit(1)`)
+3. Test `OrchestratorClientError` handling (formats to stderr, raises `SystemExit(1)`)
+4. Test that `client.close()` is always called, even on exception
 
-If there are no dependencies, delete this section.
--->
+Location: `tests/test_orchestrator_cli.py`
+
+### Step 3: Refactor `orch_ps` command
+
+Replace the try/except/finally boilerplate in `orch_ps` with the context manager.
+
+Before:
+```python
+client = create_client(project_dir)
+try:
+    result = client.list_work_units(status=status_filter)
+    # ... output formatting ...
+except DaemonNotRunningError as e:
+    click.echo(f"Error: {e}", err=True)
+    raise SystemExit(1)
+except OrchestratorClientError as e:
+    click.echo(f"Error: {e}", err=True)
+    raise SystemExit(1)
+finally:
+    client.close()
+```
+
+After:
+```python
+with orch_client(project_dir) as client:
+    result = client.list_work_units(status=status_filter)
+    # ... output formatting ...
+```
+
+Run tests to verify no behavioral change: `uv run pytest tests/test_orchestrator_cli.py::TestOrchPs -v`
+
+### Step 4: Refactor `work_unit_create` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 5: Refactor `work_unit_status` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 6: Refactor `work_unit_show` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 7: Refactor `work_unit_delete` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 8: Refactor `orch_inject` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 9: Refactor `orch_queue` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 10: Refactor `orch_prioritize` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 11: Refactor `orch_config` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 12: Refactor `orch_attention` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 13: Refactor `orch_answer` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 14: Refactor `orch_conflicts` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 15: Refactor `orch_resolve` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 16: Refactor `orch_analyze` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 17: Refactor `worktree_list` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 18: Refactor `worktree_remove` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 19: Refactor `worktree_prune` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 20: Refactor `orch_prune` command
+
+Same pattern replacement. Run tests to verify.
+
+### Step 21: Clean up imports
+
+After all commands are refactored:
+1. Remove the per-command imports of `create_client`, `OrchestratorClientError`, and `DaemonNotRunningError` that are no longer needed (they're now imported inside the context manager)
+2. Verify no bare `except DaemonNotRunningError` or `except OrchestratorClientError` blocks remain outside the context manager
+
+### Step 22: Verify line reduction
+
+Count lines before and after. The goal is at least 100 lines reduced:
+- Each command saves 7-9 lines (the try/except/except/finally boilerplate)
+- 18 commands × ~7 lines = ~126 lines saved
+- Minus ~15 lines for the new context manager = ~111 net reduction
+
+### Step 23: Run full test suite
+
+Run `uv run pytest tests/` to ensure all tests pass and no regressions were introduced.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Risk**: The import inside the context manager (`from orchestrator.client import ...`) may have a minor performance impact due to repeated imports. However, Python caches imports, so subsequent calls are cheap. This pattern is already used in `orch_tail` and other commands, so it's consistent with the codebase style.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Risk**: Some commands may have subtle variations in their error handling that aren't captured in the pattern. Careful review of each command is needed to ensure behavioral equivalence.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+(To be populated during implementation)
