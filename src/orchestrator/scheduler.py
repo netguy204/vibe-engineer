@@ -8,6 +8,7 @@
 # Chunk: docs/chunks/orch_attention_reason - Store and display reason for NEEDS_ATTENTION status
 # Chunk: docs/chunks/orch_conflict_oracle - Conflict checking and re-analysis during dispatch
 # Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
+# Chunk: docs/chunks/scheduler_decompose - Decomposed into focused modules
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -19,18 +20,10 @@ The scheduler runs a background loop that:
 
 import asyncio
 import logging
-import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from enum import StrEnum
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
-from chunks import Chunks
-from models import ChunkStatus
-from frontmatter import update_frontmatter_field
 # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
 from orchestrator.agent import AgentRunner, create_log_callback, create_review_decision_hook
 from orchestrator.models import (
@@ -50,114 +43,25 @@ from orchestrator.state import StateStore
 from orchestrator.websocket import broadcast_attention_update, broadcast_work_unit_update
 from orchestrator.worktree import WorktreeManager, WorktreeError
 
+# Chunk: docs/chunks/scheduler_decompose - Imports from extracted modules
+from orchestrator.activation import (
+    VerificationStatus,
+    VerificationResult,
+    verify_chunk_active_status,
+    activate_chunk_in_worktree,
+    restore_displaced_chunk,
+)
+from orchestrator.review_parsing import (
+    create_review_feedback_file,
+    parse_review_decision,
+    load_reviewer_config,
+)
+from orchestrator.retry import (
+    is_retryable_api_error,
+)
+
 
 logger = logging.getLogger(__name__)
-
-
-# Chunk: docs/chunks/orch_api_retry - Pattern matching for retryable API errors
-# Regex patterns for detecting 5xx API errors in error strings
-_5XX_STATUS_PATTERN = re.compile(r"\b5[0-9]{2}\b")  # 500, 502, 503, etc.
-_5XX_TEXT_PATTERNS = [
-    "internal server error",
-    "bad gateway",
-    "service unavailable",
-    "gateway timeout",
-    "overloaded",
-    "api_error",  # Anthropic API error type
-    "rate_limit",  # Often a temporary condition
-    "529",  # Anthropic overloaded status
-]
-
-
-def is_retryable_api_error(error: str) -> bool:
-    """Check if an error string indicates a retryable 5xx API error.
-
-    Looks for patterns indicating server-side errors that are likely
-    transient and worth retrying:
-    - HTTP 5xx status codes (500, 502, 503, 504, 529)
-    - Error messages like "Internal Server Error", "overloaded", etc.
-
-    Does NOT retry on client errors (4xx) or other non-transient failures.
-
-    Args:
-        error: The error string from the agent result
-
-    Returns:
-        True if the error appears to be a retryable 5xx API error
-    """
-    if not error:
-        return False
-
-    error_lower = error.lower()
-
-    # Check for 5xx status codes in the error
-    if _5XX_STATUS_PATTERN.search(error):
-        return True
-
-    # Check for common 5xx error text patterns
-    for pattern in _5XX_TEXT_PATTERNS:
-        if pattern in error_lower:
-            return True
-
-    return False
-
-
-class VerificationStatus(StrEnum):
-    """Result of verifying chunk ACTIVE status."""
-
-    ACTIVE = "ACTIVE"  # Status is ACTIVE, proceed with commit/merge
-    IMPLEMENTING = "IMPLEMENTING"  # Still IMPLEMENTING, needs retry
-    ERROR = "ERROR"  # Error parsing or reading GOAL.md
-
-
-@dataclass
-class VerificationResult:
-    """Result from verifying chunk's GOAL.md status."""
-
-    status: VerificationStatus
-    error: Optional[str] = None
-
-
-# Chunk: docs/chunks/orch_activate_on_inject - Refactored to use Chunks class for frontmatter parsing
-def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
-    """Verify that a chunk's GOAL.md has status: ACTIVE.
-
-    Uses the Chunks class to parse frontmatter and check the status field.
-
-    Args:
-        worktree_path: Path to the worktree containing the chunk
-        chunk: The chunk directory name
-
-    Returns:
-        VerificationResult indicating ACTIVE, IMPLEMENTING, or ERROR
-    """
-    chunks = Chunks(worktree_path)
-
-    try:
-        frontmatter = chunks.parse_chunk_frontmatter(chunk)
-
-        if frontmatter is None:
-            return VerificationResult(
-                status=VerificationStatus.ERROR,
-                error=f"Chunk '{chunk}' not found or GOAL.md missing",
-            )
-
-        if frontmatter.status == ChunkStatus.ACTIVE:
-            return VerificationResult(status=VerificationStatus.ACTIVE)
-        elif frontmatter.status == ChunkStatus.IMPLEMENTING:
-            return VerificationResult(status=VerificationStatus.IMPLEMENTING)
-        else:
-            # Other statuses like FUTURE, SUPERSEDED, etc. are unexpected here
-            return VerificationResult(
-                status=VerificationStatus.ERROR,
-                error=f"Unexpected status '{frontmatter.status.value}' in GOAL.md (expected ACTIVE)",
-            )
-
-    except Exception as e:
-        return VerificationResult(
-            status=VerificationStatus.ERROR,
-            error=f"Error reading GOAL.md: {e}",
-        )
 
 
 class SchedulerError(Exception):
@@ -211,264 +115,6 @@ def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
                 )
 
             store.update_work_unit(unit)
-
-
-# Chunk: docs/chunks/orch_activate_on_inject - Activate target chunk in worktree, displacing any existing IMPLEMENTING chunk
-def activate_chunk_in_worktree(
-    worktree_path: Path,
-    target_chunk: str,
-) -> Optional[str]:
-    """Activate target chunk in worktree, displacing any existing IMPLEMENTING chunk.
-
-    This function ensures exactly one chunk is IMPLEMENTING in the worktree by:
-    1. Finding any existing IMPLEMENTING chunk
-    2. If found and different from target, demoting it to FUTURE
-    3. Activating the target chunk (FUTURE -> IMPLEMENTING)
-
-    Args:
-        worktree_path: Path to the worktree
-        target_chunk: The chunk to activate
-
-    Returns:
-        The name of the displaced chunk (if any), or None.
-
-    Raises:
-        ValueError: If target chunk doesn't exist or can't be activated
-    """
-    chunks = Chunks(worktree_path)
-
-    # Check if target is already IMPLEMENTING
-    frontmatter = chunks.parse_chunk_frontmatter(target_chunk)
-    if frontmatter is None:
-        raise ValueError(f"Chunk '{target_chunk}' not found in worktree")
-
-    if frontmatter.status == ChunkStatus.IMPLEMENTING:
-        logger.info(f"Chunk {target_chunk} is already IMPLEMENTING, no activation needed")
-        return None
-
-    if frontmatter.status != ChunkStatus.FUTURE:
-        raise ValueError(
-            f"Chunk '{target_chunk}' has status '{frontmatter.status.value}', "
-            f"expected 'FUTURE' for activation"
-        )
-
-    # Find any existing IMPLEMENTING chunk
-    current_implementing = chunks.get_current_chunk()
-    displaced_chunk = None
-
-    if current_implementing is not None and current_implementing != target_chunk:
-        # Demote the existing IMPLEMENTING chunk to FUTURE
-        logger.info(
-            f"Displacing existing IMPLEMENTING chunk '{current_implementing}' to FUTURE"
-        )
-        goal_path = chunks.get_chunk_goal_path(current_implementing)
-        update_frontmatter_field(goal_path, "status", ChunkStatus.FUTURE.value)
-        displaced_chunk = current_implementing
-
-    # Now activate the target chunk
-    logger.info(f"Activating chunk '{target_chunk}' (FUTURE -> IMPLEMENTING)")
-    goal_path = chunks.get_chunk_goal_path(target_chunk)
-    update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
-
-    return displaced_chunk
-
-
-# Chunk: docs/chunks/orch_activate_on_inject - Restore a displaced chunk back to IMPLEMENTING before merge
-def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
-    """Restore a displaced chunk back to IMPLEMENTING status.
-
-    This is called before merge to ensure the user's manually-active chunk
-    retains its IMPLEMENTING status after the merge.
-
-    Args:
-        worktree_path: Path to the worktree
-        displaced_chunk: The chunk to restore to IMPLEMENTING
-    """
-    chunks = Chunks(worktree_path)
-
-    # Verify the chunk exists and is currently FUTURE
-    frontmatter = chunks.parse_chunk_frontmatter(displaced_chunk)
-    if frontmatter is None:
-        logger.warning(f"Cannot restore displaced chunk '{displaced_chunk}': not found")
-        return
-
-    if frontmatter.status != ChunkStatus.FUTURE:
-        logger.warning(
-            f"Cannot restore displaced chunk '{displaced_chunk}': "
-            f"status is '{frontmatter.status.value}', expected 'FUTURE'"
-        )
-        return
-
-    # Restore to IMPLEMENTING
-    logger.info(f"Restoring displaced chunk '{displaced_chunk}' to IMPLEMENTING")
-    goal_path = chunks.get_chunk_goal_path(displaced_chunk)
-    update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
-
-
-# Chunk: docs/chunks/orch_review_phase - Creates REVIEW_FEEDBACK.md with reviewer feedback for implementer
-def create_review_feedback_file(
-    worktree_path: Path,
-    chunk: str,
-    feedback: ReviewResult,
-    iteration: int,
-) -> Path:
-    """Create the REVIEW_FEEDBACK.md file with reviewer feedback.
-
-    This file is written to the chunk directory and contains the reviewer's
-    feedback for the implementer to address on the next iteration.
-
-    Args:
-        worktree_path: Path to the worktree
-        chunk: Chunk directory name
-        feedback: ReviewResult containing the feedback details
-        iteration: Current review iteration count
-
-    Returns:
-        Path to the created feedback file
-    """
-    feedback_path = worktree_path / "docs" / "chunks" / chunk / "REVIEW_FEEDBACK.md"
-
-    # Build the issues section
-    issues_text = ""
-    if feedback.issues:
-        issues_text = "\n## Issues to Address\n\n"
-        for i, issue in enumerate(feedback.issues, 1):
-            issues_text += f"### Issue {i}: {issue.location}\n\n"
-            issues_text += f"**Concern:** {issue.concern}\n\n"
-            if issue.suggestion:
-                issues_text += f"**Suggestion:** {issue.suggestion}\n\n"
-
-    content = f"""# Review Feedback
-
-**Iteration:** {iteration}
-**Decision:** {feedback.decision.value}
-
-## Summary
-
-{feedback.summary}
-{issues_text}
----
-
-This file was generated by the orchestrator's review phase.
-The implementer should address the issues above before the next review cycle.
-"""
-
-    feedback_path.write_text(content)
-    logger.info(f"Created review feedback file: {feedback_path}")
-
-    return feedback_path
-
-
-# Chunk: docs/chunks/orch_review_phase - Parse YAML decision block from /chunk-review skill output
-def parse_review_decision(agent_output: str) -> Optional[ReviewResult]:
-    """Parse the YAML decision block from the /chunk-review skill output.
-
-    The /chunk-review skill outputs a YAML block with the decision:
-    ```yaml
-    decision: APPROVE|FEEDBACK|ESCALATE
-    summary: ...
-    issues: [...]
-    reason: ...
-    iteration: N
-    ```
-
-    Args:
-        agent_output: The raw text output from the agent
-
-    Returns:
-        ReviewResult if successfully parsed, None if parsing fails
-    """
-    # Look for YAML block markers in the output
-    # Pattern 1: Code fence with yaml marker
-    yaml_pattern = r"```(?:yaml)?\s*\n(.*?)\n```"
-    matches = re.findall(yaml_pattern, agent_output, re.DOTALL)
-
-    for match in matches:
-        try:
-            data = yaml.safe_load(match)
-            if isinstance(data, dict) and "decision" in data:
-                # Parse the decision
-                decision_str = data.get("decision", "").upper()
-                if decision_str not in [d.value for d in ReviewDecision]:
-                    continue
-
-                # Parse issues if present
-                issues = []
-                raw_issues = data.get("issues", [])
-                if isinstance(raw_issues, list):
-                    for raw_issue in raw_issues:
-                        if isinstance(raw_issue, dict):
-                            issues.append(ReviewIssue(
-                                location=raw_issue.get("location", "unknown"),
-                                concern=raw_issue.get("concern", ""),
-                                suggestion=raw_issue.get("suggestion"),
-                            ))
-
-                return ReviewResult(
-                    decision=ReviewDecision(decision_str),
-                    summary=data.get("summary", "No summary provided"),
-                    issues=issues,
-                    reason=data.get("reason"),
-                    iteration=data.get("iteration", 1),
-                )
-        except yaml.YAMLError:
-            continue
-
-    # Pattern 2: Look for decision: line directly (fallback for simpler output)
-    decision_line_pattern = r"^\s*decision:\s*(APPROVE|FEEDBACK|ESCALATE)\s*$"
-    match = re.search(decision_line_pattern, agent_output, re.MULTILINE | re.IGNORECASE)
-    if match:
-        decision_str = match.group(1).upper()
-        return ReviewResult(
-            decision=ReviewDecision(decision_str),
-            summary="Decision parsed from output (no YAML block found)",
-        )
-
-    return None
-
-
-# Chunk: docs/chunks/orch_review_phase - Load reviewer config for loop detection settings
-def load_reviewer_config(project_dir: Path, reviewer: str = "baseline") -> dict:
-    """Load reviewer configuration from METADATA.yaml.
-
-    Args:
-        project_dir: Project root directory
-        reviewer: Reviewer name (default: "baseline")
-
-    Returns:
-        Dict with reviewer config, including loop_detection settings
-    """
-    metadata_path = project_dir / "docs" / "reviewers" / reviewer / "METADATA.yaml"
-
-    defaults = {
-        "loop_detection": {
-            "max_iterations": 3,
-            "escalation_threshold": 2,
-            "same_issue_threshold": 2,
-        }
-    }
-
-    if not metadata_path.exists():
-        logger.warning(f"Reviewer config not found: {metadata_path}, using defaults")
-        return defaults
-
-    try:
-        with open(metadata_path) as f:
-            config = yaml.safe_load(f) or {}
-
-        # Merge with defaults
-        loop_detection = config.get("loop_detection", {})
-        return {
-            "name": config.get("name", reviewer),
-            "loop_detection": {
-                "max_iterations": loop_detection.get("max_iterations", 3),
-                "escalation_threshold": loop_detection.get("escalation_threshold", 2),
-                "same_issue_threshold": loop_detection.get("same_issue_threshold", 2),
-            },
-        }
-    except Exception as e:
-        logger.warning(f"Error loading reviewer config: {e}, using defaults")
-        return defaults
 
 
 # Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation

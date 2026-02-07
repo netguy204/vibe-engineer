@@ -1,18 +1,34 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/scheduler.py
+- src/orchestrator/activation.py
+- src/orchestrator/review_parsing.py
+- src/orchestrator/retry.py
+- src/orchestrator/worktree.py
+- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_activation.py
+- tests/test_orchestrator_review_parsing.py
+- tests/test_orchestrator_retry.py
 code_references: []
-narrative: "arch_decompose"
+narrative: arch_decompose
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["frontmatter_import_consolidate"]
-created_after: ["chunks_decompose", "orch_worktree_cleanup", "validation_error_surface", "validation_length_msg", "orch_ready_critical_path", "orch_pre_review_rebase", "orch_merge_before_delete"]
+depends_on:
+- frontmatter_import_consolidate
+created_after:
+- chunks_decompose
+- orch_worktree_cleanup
+- validation_error_surface
+- validation_length_msg
+- orch_ready_critical_path
+- orch_pre_review_rebase
+- orch_merge_before_delete
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

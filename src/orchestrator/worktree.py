@@ -1404,6 +1404,33 @@ class WorktreeManager:
 
         return True
 
+    # Chunk: docs/chunks/scheduler_decompose - Extracted branch deletion as public API
+    def delete_branch(self, chunk: str) -> bool:
+        """Delete the branch for a chunk.
+
+        This method deletes the orch/<chunk> branch. It should be called
+        after the worktree has been removed and merged.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            True if branch was deleted, False if it didn't exist or deletion failed
+        """
+        branch = self.get_branch_name(chunk)
+
+        if not self._branch_exists(branch):
+            return False
+
+        result = subprocess.run(
+            ["git", "branch", "-d", branch],
+            cwd=self.project_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        return result.returncode == 0
+
     # Chunk: docs/chunks/orch_prune_consolidate - Consolidated worktree finalization logic
     def finalize_work_unit(self, chunk: str) -> None:
         """Finalize a completed work unit by committing, removing worktree, and merging.

@@ -8,170 +8,287 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a pure refactoring chunk with no behavioral changes. The strategy is to extract
+cohesive groups of functions from `scheduler.py` into focused modules, then update imports
+to consume them from their new locations. The `Scheduler` class and its core dispatch loop
+remain in `scheduler.py`, but helper functions are extracted based on their domain:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Activation** - Chunk status management in worktrees
+2. **Review Parsing** - Review phase output parsing and configuration
+3. **Retry** - Retryable API error detection
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Additionally, the raw `subprocess.run` git branch deletion in `_advance_phase` will be
+moved into `WorktreeManager.delete_branch()` to maintain the pattern that all git
+subprocess operations live in `worktree.py`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/scheduler_decompose/GOAL.md)
-with references to the files that you expect to touch.
--->
+All existing tests must continue to pass without modification, which validates that the
+refactor preserves behavior. New tests will be added for the extracted modules to ensure
+they're independently testable.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of the
+  orchestrator subsystem by decomposing `scheduler.py` into focused modules. The subsystem
+  documents `scheduler.py#Scheduler` as the canonical dispatch loop implementation - this
+  remains true after the refactor.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create `src/orchestrator/retry.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Extract the retryable error detection logic.
 
-Example:
+**Contents:**
+- `_5XX_STATUS_PATTERN` - Compiled regex for 5xx status codes
+- `_5XX_TEXT_PATTERNS` - List of text patterns indicating server errors
+- `is_retryable_api_error(error: str) -> bool` - Main detection function
 
-### Step 1: Define the SegmentHeader struct
+**Location:** `src/orchestrator/retry.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Copy the code from scheduler.py lines 57-102, preserving all comments and docstrings.
+Add a module-level docstring explaining the purpose.
 
-Location: src/segment/format.rs
+### Step 2: Create `src/orchestrator/activation.py`
 
-### Step 2: Implement header serialization
+Extract chunk activation lifecycle functions.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Contents:**
+- `VerificationStatus` - StrEnum for verification results
+- `VerificationResult` - Dataclass for verification outcomes
+- `verify_chunk_active_status(worktree_path, chunk)` - Verify chunk has ACTIVE status
+- `activate_chunk_in_worktree(worktree_path, target_chunk)` - Activate a chunk, displacing others
+- `restore_displaced_chunk(worktree_path, displaced_chunk)` - Restore a displaced chunk
 
-### Step 3: ...
+**Location:** `src/orchestrator/activation.py`
 
----
+Copy from scheduler.py lines 105-306. Imports needed:
+- `from dataclasses import dataclass`
+- `from enum import StrEnum`
+- `from pathlib import Path`
+- `from typing import Optional`
+- `import logging`
+- `from chunks import Chunks`
+- `from models import ChunkStatus`
+- `from frontmatter import update_frontmatter_field`
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Create `src/orchestrator/review_parsing.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Extract review phase output parsing and configuration.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+**Contents:**
+- `create_review_feedback_file(worktree_path, chunk, feedback, iteration)` - Create feedback file
+- `parse_review_decision(agent_output)` - Parse YAML decision from agent output
+- `load_reviewer_config(project_dir, reviewer)` - Load reviewer config from METADATA.yaml
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**Location:** `src/orchestrator/review_parsing.py`
 
-Format (place immediately before the symbol):
+Copy from scheduler.py lines 309-471. Imports needed:
+- `import logging`
+- `import re`
+- `from pathlib import Path`
+- `from typing import Optional`
+- `import yaml`
+- `from orchestrator.models import ReviewDecision, ReviewIssue, ReviewResult`
+
+### Step 4: Add `delete_branch` method to `WorktreeManager`
+
+Add a new method to encapsulate git branch deletion.
+
+**Location:** `src/orchestrator/worktree.py`, add after `finalize_work_unit`:
+
+```python
+def delete_branch(self, chunk: str) -> bool:
+    """Delete the branch for a chunk.
+
+    This method deletes the orch/<chunk> branch. It should be called
+    after the worktree has been removed and merged.
+
+    Args:
+        chunk: Chunk name
+
+    Returns:
+        True if branch was deleted, False if it didn't exist or deletion failed
+    """
+    branch = self.get_branch_name(chunk)
+
+    if not self._branch_exists(branch):
+        return False
+
+    result = subprocess.run(
+        ["git", "branch", "-d", branch],
+        cwd=self.project_dir,
+        capture_output=True,
+        text=True,
+    )
+
+    return result.returncode == 0
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+Note: The `-d` flag (lowercase) is used for safe deletion, matching the original code.
+
+### Step 5: Update `scheduler.py` imports
+
+Replace the extracted code with imports from the new modules.
+
+**Add imports:**
+```python
+from orchestrator.activation import (
+    VerificationStatus,
+    VerificationResult,
+    verify_chunk_active_status,
+    activate_chunk_in_worktree,
+    restore_displaced_chunk,
+)
+from orchestrator.review_parsing import (
+    create_review_feedback_file,
+    parse_review_decision,
+    load_reviewer_config,
+)
+from orchestrator.retry import (
+    is_retryable_api_error,
+    _5XX_STATUS_PATTERN,
+    _5XX_TEXT_PATTERNS,
+)
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**Remove:**
+- Lines 57-102 (retry logic and patterns)
+- Lines 105-161 (VerificationStatus, VerificationResult)
+- Lines 122-160 (verify_chunk_active_status)
+- Lines 217-306 (activate_chunk_in_worktree, restore_displaced_chunk)
+- Lines 309-471 (create_review_feedback_file, parse_review_decision, load_reviewer_config)
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Keep:**
+- All `Scheduler` class code
+- `SchedulerError` exception
+- `unblock_dependents` function
+- `create_scheduler` factory
+
+### Step 6: Remove raw subprocess branch deletion from scheduler
+
+In `_merge_to_base_single_repo`, the raw `subprocess.run(["git", "branch", "-d", ...])` call
+is at lines 866-873. However, looking more closely at the goal, it mentions lines 1059-1064
+in the scheduler. Let me verify where this call actually is.
+
+After review: The raw subprocess call mentioned in the GOAL.md is in `_advance_phase` at
+approximately lines 1059-1064 of the original scheduler.py. However, this may have already
+been refactored into `finalize_work_unit`. The scheduler currently calls
+`self.worktree_manager.finalize_work_unit(chunk)` which handles branch deletion internally.
+
+**Action:** Verify there are no remaining raw `subprocess.run(["git", "branch", "-d", ...])`
+calls in scheduler.py. If found, replace with `self.worktree_manager.delete_branch(chunk)`.
+
+After checking the current scheduler.py, I don't see a raw subprocess branch deletion call
+in `_advance_phase`. The code uses `self.worktree_manager.finalize_work_unit(chunk)` at
+line 1049. The branch deletion is already encapsulated in `finalize_work_unit`.
+
+However, the GOAL.md explicitly mentions this should be done. Since the code may have
+changed, let's add `delete_branch` to `WorktreeManager` anyway for completeness and
+future-proofing. It provides a cleaner API than the internal branch deletion in
+`_remove_single_repo_worktree` and `merge_to_base`.
+
+### Step 7: Update test imports
+
+Update `tests/test_orchestrator_scheduler.py` to import from new locations.
+
+**Current imports (lines 13-23):**
+```python
+from orchestrator.scheduler import (
+    Scheduler,
+    SchedulerError,
+    create_scheduler,
+    verify_chunk_active_status,
+    VerificationStatus,
+    VerificationResult,
+    activate_chunk_in_worktree,
+    restore_displaced_chunk,
+    is_retryable_api_error,
+)
+```
+
+**Updated imports:**
+```python
+from orchestrator.scheduler import (
+    Scheduler,
+    SchedulerError,
+    create_scheduler,
+)
+from orchestrator.activation import (
+    verify_chunk_active_status,
+    VerificationStatus,
+    VerificationResult,
+    activate_chunk_in_worktree,
+    restore_displaced_chunk,
+)
+from orchestrator.retry import (
+    is_retryable_api_error,
+)
+```
+
+### Step 8: Create test files for extracted modules
+
+Create focused test files for each extracted module to ensure they are independently
+testable. These tests will largely be extracts from `test_orchestrator_scheduler.py`
+but organized by module.
+
+**Create `tests/test_orchestrator_retry.py`:**
+- Test `is_retryable_api_error` with various 5xx patterns
+- Test negative cases (4xx, non-API errors)
+
+**Create `tests/test_orchestrator_activation.py`:**
+- Test `verify_chunk_active_status` (already has tests in scheduler tests)
+- Test `activate_chunk_in_worktree` (already has tests)
+- Test `restore_displaced_chunk` (already has tests)
+
+**Create `tests/test_orchestrator_review_parsing.py`:**
+- Test `parse_review_decision` with various YAML formats
+- Test `load_reviewer_config` with existing/missing config
+- Test `create_review_feedback_file`
+
+Note: Many of these tests may already exist in `test_orchestrator_scheduler.py`. The goal
+is to ensure the functions remain testable from their new locations.
+
+### Step 9: Verify all tests pass
+
+Run the full test suite to verify no behavioral changes:
+
+```bash
+uv run pytest tests/ -v
+```
+
+All existing tests must pass without modification.
+
+### Step 10: Verify line count reduction
+
+After refactoring, verify `scheduler.py` is under ~900 lines:
+
+```bash
+wc -l src/orchestrator/scheduler.py
+```
+
+Target: Under 900 lines (down from ~1616 lines).
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- This chunk depends on `frontmatter_import_consolidate` which must complete first
+  (ensuring the `update_frontmatter_field` import is from the canonical location).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Circular imports** - The extracted modules import from `chunks`, `models`, and
+   `frontmatter`. These are all upstream dependencies that shouldn't import from
+   `orchestrator`, so circular imports are unlikely. Verify during implementation.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Test coverage gaps** - Some extracted functions may not have dedicated tests in the
+   existing suite. The test step should identify and fill any gaps.
+
+3. **Line 1059-1064 discrepancy** - The GOAL.md mentions a raw subprocess call at lines
+   1059-1064, but current code uses `finalize_work_unit`. This may be stale documentation
+   or a code change since the goal was written. Adding `delete_branch` to `WorktreeManager`
+   provides the clean API regardless.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

@@ -14,11 +14,15 @@ from orchestrator.scheduler import (
     Scheduler,
     SchedulerError,
     create_scheduler,
+)
+from orchestrator.activation import (
     verify_chunk_active_status,
     VerificationStatus,
     VerificationResult,
     activate_chunk_in_worktree,
     restore_displaced_chunk,
+)
+from orchestrator.retry import (
     is_retryable_api_error,
 )
 from orchestrator.models import (
