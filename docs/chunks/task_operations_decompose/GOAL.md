@@ -1,17 +1,17 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/task_utils.py
-  - src/task/__init__.py
-  - src/task/config.py
-  - src/task/artifact_ops.py
-  - src/task/promote.py
-  - src/task/external.py
-  - src/task/friction.py
-  - src/task/overlap.py
-  - src/task/exceptions.py
+- src/task_utils.py
+- src/task/__init__.py
+- src/task/config.py
+- src/task/artifact_ops.py
+- src/task/promote.py
+- src/task/external.py
+- src/task/friction.py
+- src/task/overlap.py
+- src/task/exceptions.py
 code_references: []
 narrative: null
 investigation: null
@@ -19,9 +19,17 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_prune_consolidate", "chunk_validator_extract", "cli_formatters_extract", "frontmatter_import_consolidate", "models_subpackage", "orch_client_context", "project_artifact_registry", "remove_legacy_prefix", "scheduler_decompose"]
+created_after:
+- orch_prune_consolidate
+- chunk_validator_extract
+- cli_formatters_extract
+- frontmatter_import_consolidate
+- models_subpackage
+- orch_client_context
+- project_artifact_registry
+- remove_legacy_prefix
+- scheduler_decompose
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

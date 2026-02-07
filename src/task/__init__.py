@@ -1,41 +1,25 @@
-"""Utility functions for cross-repository task management.
+"""Task operations package.
 
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Chunk: docs/chunks/task_operations_decompose - Task utilities package decomposition
 
-This module is a thin re-export layer for backward compatibility.
-All functionality has been moved to the `task` package with cohesive modules.
-Use `from task import X` for new code.
+This package provides utilities for cross-repository task management,
+organized into cohesive modules by responsibility:
 
-Module structure:
-- task.config: Configuration loading and project resolution
-- task.artifact_ops: Generic CRUD operations for task artifacts
-- task.promote: Artifact promotion to external repository
-- task.external: External artifact copy/remove operations
-- task.friction: Friction entry operations
-- task.overlap: Overlap detection across repos
-- task.exceptions: Exception hierarchy with TaskError base class
+- config: Task directory detection, configuration loading, project resolution
+- artifact_ops: Generic CRUD operations for task artifacts
+- promote: Artifact promotion to external repository
+- external: External artifact copy/remove operations
+- friction: Friction entry operations
+- overlap: Overlap detection across repos
+- exceptions: Exception hierarchy with TaskError base class
+
+All public names are re-exported here for backward compatibility with
+existing `from task_utils import X` patterns.
 """
-# Chunk: docs/chunks/copy_as_external - Artifact copy-external command implementation
-# Chunk: docs/chunks/external_artifact_unpin - External artifact unpinning
-# Chunk: docs/chunks/external_chunk_causal - External chunk causal ordering
-# Chunk: docs/chunks/remove_external_ref - Artifact remove-external command implementation
-# Chunk: docs/chunks/ordering_remove_seqno - Short name format for task chunk creation
 
-# Re-export external_refs utilities for backward compatibility
-# (The original task_utils.py imported these at module level, making them re-exportable)
-from external_refs import (
-    is_external_artifact,
-    load_external_ref,
-    create_external_yaml,
-    normalize_artifact_path,
-    ARTIFACT_MAIN_FILE,
-    ARTIFACT_DIR_NAME,
-)
-
-# Re-export everything from the task package for backward compatibility
-from task import (
-    # Exceptions
+# Exception classes
+from task.exceptions import (
     TaskError,
     TaskChunkError,
     TaskNarrativeError,
@@ -48,7 +32,10 @@ from task import (
     TaskFrictionError,
     TaskOverlapError,
     TaskActivateError,
-    # Config
+)
+
+# Config functions
+from task.config import (
     is_task_directory,
     load_task_config,
     resolve_repo_directory,
@@ -58,51 +45,64 @@ from task import (
     find_task_directory,
     TaskProjectContext,
     check_task_project_context,
-    # Artifact operations
+)
+
+# Artifact operations
+from task.artifact_ops import (
+    # Generic operations
     add_dependents_to_artifact,
     append_dependent_to_artifact,
+    # Type-specific wrappers (backward compatibility)
     add_dependents_to_chunk,
     add_dependents_to_narrative,
     add_dependents_to_investigation,
     add_dependents_to_subsystem,
+    # Creation functions
     create_task_chunk,
     create_task_narrative,
     create_task_investigation,
     create_task_subsystem,
+    # Listing functions
     list_task_chunks,
     list_task_narratives,
     list_task_investigations,
     list_task_subsystems,
     list_task_artifacts_grouped,
     list_task_proposed_chunks,
+    # Utility functions
     get_current_task_chunk,
     get_next_chunk_id,
     is_external_chunk,
     activate_task_chunk,
-    # Promotion
+)
+
+# Promotion
+from task.promote import (
     identify_source_project,
     promote_artifact,
-    # External
+)
+
+# External operations
+from task.external import (
     copy_artifact_as_external,
     remove_artifact_from_external,
     remove_dependent_from_artifact,
-    # Friction
+)
+
+# Friction operations
+from task.friction import (
     create_task_friction_entry,
     add_external_friction_source,
-    # Overlap
+)
+
+# Overlap detection
+from task.overlap import (
     TaskOverlapResult,
     find_task_overlapping_chunks,
 )
 
 
 __all__ = [
-    # External refs (backward compatibility re-exports)
-    "is_external_artifact",
-    "load_external_ref",
-    "create_external_yaml",
-    "normalize_artifact_path",
-    "ARTIFACT_MAIN_FILE",
-    "ARTIFACT_DIR_NAME",
     # Exceptions
     "TaskError",
     "TaskChunkError",

@@ -7,6 +7,8 @@ chunks:
     relationship: uses
   - chunk_id: taskdir_subsystem_overlap
     relationship: uses
+  - chunk_id: task_operations_decompose
+    relationship: implements
 code_references:
 - ref: src/task_init.py#TaskInit
   implements: Task directory initialization class
@@ -14,26 +16,47 @@ code_references:
 - ref: src/task_init.py#TaskInitResult
   implements: Result dataclass for init operations
   compliance: COMPLIANT
-- ref: src/task_utils.py#create_task_chunk
+- ref: src/task/artifact_ops.py#create_task_chunk
   implements: Task-aware chunk creation with external references
   compliance: COMPLIANT
-- ref: src/task_utils.py#list_task_chunks
+- ref: src/task/artifact_ops.py#list_task_chunks
   implements: Task-aware chunk listing from external repo
   compliance: COMPLIANT
-- ref: src/task_utils.py#create_task_narrative
+- ref: src/task/artifact_ops.py#create_task_narrative
   implements: Task-aware narrative creation
   compliance: COMPLIANT
-- ref: src/task_utils.py#create_task_investigation
+- ref: src/task/artifact_ops.py#create_task_investigation
   implements: Task-aware investigation creation
   compliance: COMPLIANT
-- ref: src/task_utils.py#create_task_subsystem
+- ref: src/task/artifact_ops.py#create_task_subsystem
   implements: Task-aware subsystem creation
   compliance: COMPLIANT
-- ref: src/task_utils.py#resolve_project_qualified_ref
+- ref: src/task/config.py#resolve_project_qualified_ref
   implements: Parse and resolve project-qualified code references
   compliance: COMPLIANT
-- ref: src/task_utils.py#find_task_overlapping_chunks
+- ref: src/task/overlap.py#find_task_overlapping_chunks
   implements: Cross-project chunk overlap detection
+  compliance: COMPLIANT
+- ref: src/task/config.py#load_task_config
+  implements: Task configuration loading and validation
+  compliance: COMPLIANT
+- ref: src/task/config.py#resolve_repo_directory
+  implements: Resolve org/repo to filesystem path
+  compliance: COMPLIANT
+- ref: src/task/promote.py#promote_artifact
+  implements: Promote local artifact to external repository
+  compliance: COMPLIANT
+- ref: src/task/external.py#copy_artifact_as_external
+  implements: Copy artifact from external repo as external reference
+  compliance: COMPLIANT
+- ref: src/task/external.py#remove_artifact_from_external
+  implements: Remove external artifact reference from project
+  compliance: COMPLIANT
+- ref: src/task/friction.py#create_task_friction_entry
+  implements: Create friction entry in task context
+  compliance: COMPLIANT
+- ref: src/task/exceptions.py#TaskError
+  implements: Base exception for all task operations
   compliance: COMPLIANT
 - ref: src/external_refs.py#is_external_artifact
   implements: Generic external artifact detection
@@ -148,7 +171,15 @@ This subsystem formalizes cross-repo work:
 
 **Primary files**:
 - `src/task_init.py` - Task directory initialization (TaskInit class)
-- `src/task_utils.py` - Task-aware artifact operations (~88 chunk refs - the core module)
+- `src/task/` - Task operations package (decomposed from task_utils.py):
+  - `task/config.py` - Configuration loading, project resolution, directory detection
+  - `task/artifact_ops.py` - Generic CRUD operations for task artifacts
+  - `task/promote.py` - Artifact promotion to external repository
+  - `task/external.py` - External artifact copy/remove operations
+  - `task/friction.py` - Friction entry operations
+  - `task/overlap.py` - Overlap detection across repos
+  - `task/exceptions.py` - Exception hierarchy with TaskError base class
+- `src/task_utils.py` - Re-export shim for backward compatibility
 - `src/external_refs.py` - External reference utilities (consolidated from multiple chunks)
 - `src/external_resolve.py` - External artifact resolution
 - `src/git_utils.py` - Git helper functions
