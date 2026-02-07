@@ -1386,33 +1386,13 @@ async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
             "status": "would_prune",
         })
 
-    # Actually prune - same logic as normal completion
+    # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
     from orchestrator.worktree import WorktreeManager, WorktreeError
 
     worktree_manager = WorktreeManager(_project_dir)
 
     try:
-        # Commit any uncommitted changes
-        worktree_path = worktree_manager.get_worktree_path(chunk)
-        if worktree_path.exists() and worktree_manager.has_uncommitted_changes(chunk):
-            worktree_manager.commit_changes(chunk)
-
-        # Remove worktree (must be done before merge)
-        worktree_manager.remove_worktree(chunk, remove_branch=False)
-
-        # Merge the branch back to base if it has changes
-        if worktree_manager.has_changes(chunk):
-            worktree_manager.merge_to_base(chunk, delete_branch=True)
-        else:
-            # Clean up the empty branch
-            branch = worktree_manager.get_branch_name(chunk)
-            if worktree_manager._branch_exists(branch):
-                import subprocess
-                subprocess.run(
-                    ["git", "branch", "-d", branch],
-                    cwd=_project_dir,
-                    capture_output=True,
-                )
+        worktree_manager.finalize_work_unit(chunk)
     except WorktreeError as e:
         return JSONResponse({
             "chunk": chunk,
@@ -1461,7 +1441,7 @@ async def prune_all_endpoint(request: Request) -> JSONResponse:
             })
         return JSONResponse({"results": results})
 
-    # Actually prune each one
+    # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
     from orchestrator.worktree import WorktreeManager, WorktreeError
 
     worktree_manager = WorktreeManager(_project_dir)
@@ -1469,27 +1449,7 @@ async def prune_all_endpoint(request: Request) -> JSONResponse:
     for unit in retained_units:
         chunk = unit.chunk
         try:
-            # Commit any uncommitted changes
-            worktree_path = worktree_manager.get_worktree_path(chunk)
-            if worktree_path.exists() and worktree_manager.has_uncommitted_changes(chunk):
-                worktree_manager.commit_changes(chunk)
-
-            # Remove worktree (must be done before merge)
-            worktree_manager.remove_worktree(chunk, remove_branch=False)
-
-            # Merge the branch back to base if it has changes
-            if worktree_manager.has_changes(chunk):
-                worktree_manager.merge_to_base(chunk, delete_branch=True)
-            else:
-                # Clean up the empty branch
-                branch = worktree_manager.get_branch_name(chunk)
-                if worktree_manager._branch_exists(branch):
-                    import subprocess
-                    subprocess.run(
-                        ["git", "branch", "-d", branch],
-                        cwd=_project_dir,
-                        capture_output=True,
-                    )
+            worktree_manager.finalize_work_unit(chunk)
 
             # Clear retain_worktree flag
             unit.retain_worktree = False

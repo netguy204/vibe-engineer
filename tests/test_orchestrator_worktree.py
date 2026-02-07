@@ -1551,3 +1551,135 @@ class TestMultiRepoWorktreeLocking:
         manager.remove_worktree("test_chunk", repo_paths=repo_paths)
 
         assert not work_dir.exists()
+
+
+# Chunk: docs/chunks/orch_prune_consolidate - Tests for finalize_work_unit
+class TestFinalizeWorkUnit:
+    """Tests for WorktreeManager.finalize_work_unit()."""
+
+    def test_finalize_work_unit_commits_and_merges(self, git_repo):
+        """finalize_work_unit commits, removes worktree, and merges to base."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make uncommitted changes in the worktree
+        (worktree_path / "new_file.txt").write_text("new content")
+
+        # Finalize the work unit
+        manager.finalize_work_unit("test_chunk")
+
+        # Worktree should be removed
+        assert not worktree_path.exists()
+
+        # Branch should be deleted
+        assert not manager._branch_exists("orch/test_chunk")
+
+        # Changes should be on base branch
+        assert (git_repo / "new_file.txt").exists()
+        assert (git_repo / "new_file.txt").read_text() == "new content"
+
+    def test_finalize_work_unit_handles_no_changes(self, git_repo):
+        """finalize_work_unit cleans up empty branch when no changes made."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # No changes made - finalize should clean up
+        manager.finalize_work_unit("test_chunk")
+
+        # Worktree should be removed
+        assert not worktree_path.exists()
+
+        # Branch should be deleted (empty branch cleanup)
+        assert not manager._branch_exists("orch/test_chunk")
+
+    def test_finalize_work_unit_removes_worktree(self, git_repo):
+        """finalize_work_unit removes the worktree directory."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change
+        (worktree_path / "file.txt").write_text("content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Finalize
+        manager.finalize_work_unit("test_chunk")
+
+        # Worktree should be gone
+        assert not worktree_path.exists()
+        assert not manager.worktree_exists("test_chunk")
+
+    def test_finalize_work_unit_raises_on_merge_conflict(self, git_repo):
+        """finalize_work_unit raises WorktreeError on merge conflict."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Create a file on base branch that will conflict
+        (git_repo / "conflict_file.txt").write_text("main version")
+        subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add conflict file on main"],
+            cwd=git_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Create a conflicting change in the worktree
+        (worktree_path / "conflict_file.txt").write_text("worktree version")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add conflict file in worktree"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Finalize should raise due to merge conflict
+        with pytest.raises(WorktreeError):
+            manager.finalize_work_unit("test_chunk")
+
+    def test_finalize_work_unit_with_already_committed_changes(self, git_repo):
+        """finalize_work_unit works when changes are already committed."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make and commit changes
+        (worktree_path / "file.txt").write_text("content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Finalize
+        manager.finalize_work_unit("test_chunk")
+
+        # Changes should be on base branch
+        assert (git_repo / "file.txt").exists()
+
+    def test_finalize_work_unit_idempotent_on_nonexistent_worktree(self, git_repo):
+        """finalize_work_unit handles missing worktree gracefully."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a change
+        (worktree_path / "file.txt").write_text("content")
+
+        # Finalize once
+        manager.finalize_work_unit("test_chunk")
+
+        # Calling finalize again should not raise (worktree already gone)
+        # It may raise on merge if branch was already deleted - that's expected
+        # but shouldn't crash with an unhandled exception
+        try:
+            manager.finalize_work_unit("test_chunk")
+        except WorktreeError:
+            # Expected - branch was already deleted in first finalize
+            pass

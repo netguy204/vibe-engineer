@@ -17,6 +17,8 @@ chunks:
     relationship: implements
   - chunk_id: orch_merge_before_delete
     relationship: implements
+  - chunk_id: orch_prune_consolidate
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module
