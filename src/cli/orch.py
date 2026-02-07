@@ -19,11 +19,41 @@ from models import ArtifactType
 
 # Chunk: docs/chunks/explicit_deps_batch_inject - Dependency resolution functions (extracted to orchestrator.dependencies)
 # Chunk: docs/chunks/orch_cli_extract - Moved to orchestrator domain layer
+from contextlib import contextmanager
+
 from orchestrator.dependencies import (
     topological_sort_chunks,
     read_chunk_dependencies,
     validate_external_dependencies,
 )
+
+
+# Chunk: docs/chunks/orch_client_context - Orchestrator client context manager
+@contextmanager
+def orch_client(project_dir):
+    """Context manager for orchestrator client lifecycle.
+
+    Creates an orchestrator client, yields it for use, handles errors
+    (formatting to stderr and raising SystemExit(1)), and ensures
+    the client is closed.
+
+    Usage:
+        with orch_client(project_dir) as client:
+            result = client.list_work_units()
+    """
+    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
+
+    client = create_client(project_dir)
+    try:
+        yield client
+    except DaemonNotRunningError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except OrchestratorClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    finally:
+        client.close()
 
 
 @click.group()
@@ -137,11 +167,9 @@ def orch_url(json_output, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_ps(status_filter, json_output, project_dir):
     """List all work units (alias for work-unit list)."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.list_work_units(status=status_filter)
 
         if json_output:
@@ -177,15 +205,6 @@ def orch_ps(status_filter, json_output, project_dir):
                 else:
                     click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['status']:<16} {blocked}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @orch.group("work-unit")
 def work_unit():
@@ -202,11 +221,9 @@ def work_unit():
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project_dir):
     """Create a new work unit for a chunk."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.create_work_unit(
             chunk=chunk,
             phase=phase,
@@ -219,15 +236,6 @@ def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project
         else:
             click.echo(f"Created work unit: {result['chunk']} [{result['phase']}] {result['status']}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @work_unit.command("status")
 @click.argument("chunk")
@@ -236,11 +244,9 @@ def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def work_unit_status(chunk, new_status, json_output, project_dir):
     """Show or update work unit status."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         if new_status is None:
             # Show current status
             result = client.get_work_unit(chunk)
@@ -257,15 +263,6 @@ def work_unit_status(chunk, new_status, json_output, project_dir):
             else:
                 click.echo(f"{chunk}: {old['status']} -> {result['status']}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @work_unit.command("show")
 @click.argument("chunk")
@@ -273,11 +270,9 @@ def work_unit_status(chunk, new_status, json_output, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def work_unit_show(chunk, json_output, project_dir):
     """Show detailed work unit information including attention reason."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.get_work_unit(chunk)
 
         if json_output:
@@ -298,15 +293,6 @@ def work_unit_show(chunk, json_output, project_dir):
             click.echo(f"Created At:       {result['created_at']}")
             click.echo(f"Updated At:       {result['updated_at']}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @work_unit.command("list")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
@@ -326,26 +312,15 @@ def work_unit_list(status_filter, json_output, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def work_unit_delete(chunk, json_output, project_dir):
     """Delete a work unit."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.delete_work_unit(chunk)
 
         if json_output:
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo(f"Deleted work unit: {chunk}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 # Chunk: docs/chunks/explicit_deps_batch_inject - CLI command extended to accept multiple chunks and inject in dependency order
@@ -371,15 +346,13 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
     Use --retain to preserve the worktree after completion for debugging.
     Retained worktrees can be cleaned up with `ve orch prune`.
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
     # Strip artifact path prefixes from all chunks
     chunk_list = [strip_artifact_path_prefix(c, ArtifactType.CHUNK) for c in chunks]
     batch_chunks = set(chunk_list)
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         # Read dependencies from all chunks
         if len(chunk_list) > 1 and not json_output:
             click.echo(f"Reading dependencies for {len(chunk_list)} chunks...")
@@ -441,15 +414,6 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
         elif len(chunk_list) > 1:
             click.echo(f"Injected {len(results)} chunks in dependency order")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @orch.command("queue")
 # Chunk: docs/chunks/orch_scheduling - ve orch queue CLI command
@@ -457,11 +421,9 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_queue(json_output, project_dir):
     """Show ready queue ordered by priority."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client._request("GET", "/work-units/queue")
 
         if json_output:
@@ -478,15 +440,6 @@ def orch_queue(json_output, project_dir):
             for unit in units:
                 click.echo(f"{unit['chunk']:<30} {unit['phase']:<12} {unit['priority']:<10}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @orch.command("prioritize")
 @click.argument("chunk")
@@ -496,11 +449,9 @@ def orch_queue(json_output, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def orch_prioritize(chunk, priority, json_output, project_dir):
     """Set priority for a work unit."""
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client._request(
             "PATCH",
             f"/work-units/{chunk}/priority",
@@ -511,15 +462,6 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo(f"{chunk}: priority set to {result['priority']}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 @orch.command("config")
@@ -535,11 +477,9 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
 
     If no options are provided, shows current configuration.
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         if max_agents is None and dispatch_interval is None and worktree_threshold is None:
             # Get config
             result = client._request("GET", "/config")
@@ -565,15 +505,6 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
             # Chunk: docs/chunks/orch_worktree_retain - Display worktree threshold
             click.echo(f"  worktree_warning_threshold: {result.get('worktree_warning_threshold', 10)}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 # Chunk: docs/chunks/orch_attention_queue - ve orch attention CLI command showing attention queue
 @orch.command("attention")
@@ -586,11 +517,9 @@ def orch_attention(json_output, project_dir):
     - Higher blocked count = higher priority (unblocks more work)
     - Older items surface first among equal priority
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.get_attention_queue()
 
         if json_output:
@@ -638,15 +567,6 @@ def orch_attention(json_output, project_dir):
 
                 click.echo("")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 # Chunk: docs/chunks/orch_attention_queue - ve orch answer CLI command to answer questions and resume
 @orch.command("answer")
@@ -660,26 +580,15 @@ def orch_answer(chunk, answer, json_output, project_dir):
     Submits the answer and transitions the work unit to READY,
     allowing the scheduler to resume the agent with the answer injected.
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.answer_work_unit(chunk, answer)
 
         if json_output:
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo(f"Answered {chunk}, work unit queued for resume")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 
@@ -697,11 +606,9 @@ def orch_conflicts(chunk, unresolved, json_output, project_dir):
 
     Use --unresolved to filter to only ASK_OPERATOR verdicts that need resolution.
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         if chunk:
             result = client.get_conflicts(chunk)
             conflicts = result.get("conflicts", [])
@@ -743,15 +650,6 @@ def orch_conflicts(chunk, unresolved, json_output, project_dir):
                     symbols = ", ".join(c["overlapping_symbols"][:3])
                     click.echo(f"  Symbols: {symbols}")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @orch.command("resolve")
 @click.argument("chunk")
@@ -768,15 +666,13 @@ def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
     Example:
         ve orch resolve my_chunk --with other_chunk serialize
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
     # Normalize chunk path
     chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
     other_chunk = strip_artifact_path_prefix(other_chunk, ArtifactType.CHUNK)
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.resolve_conflict(chunk, other_chunk, verdict)
 
         if json_output:
@@ -786,15 +682,6 @@ def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
             click.echo(f"Resolved: {chunk} vs {other_chunk} -> {resolved_verdict}")
             if result.get("blocked_by"):
                 click.echo(f"  Blocked by: {', '.join(result['blocked_by'])}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 @orch.command("analyze")
@@ -808,15 +695,13 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
     Triggers the conflict oracle to analyze whether CHUNK_A and CHUNK_B
     can be safely parallelized or require serialization.
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json
 
     # Normalize chunk paths
     chunk_a = strip_artifact_path_prefix(chunk_a, ArtifactType.CHUNK)
     chunk_b = strip_artifact_path_prefix(chunk_b, ArtifactType.CHUNK)
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client.analyze_conflicts(chunk_a, chunk_b)
 
         if json_output:
@@ -837,15 +722,6 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
                 click.echo(f"  Files:      {', '.join(result['overlapping_files'])}")
             if result.get("overlapping_symbols"):
                 click.echo(f"  Symbols:    {', '.join(result['overlapping_symbols'])}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 @orch.command("tail")
@@ -1031,11 +907,9 @@ def worktree_list(status_filter, json_output, project_dir):
         ve orch worktree list               # List all worktrees
         ve orch worktree list --status retained  # Only show retained worktrees
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client._request("GET", "/worktrees")
         worktrees = result.get("worktrees", [])
 
@@ -1060,15 +934,6 @@ def worktree_list(status_filter, json_output, project_dir):
 
             click.echo(f"\nTotal: {len(worktrees)} worktree(s)")
 
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
-
 
 @worktree.command("remove")
 @click.argument("chunk")
@@ -1089,14 +954,12 @@ def worktree_remove(chunk, keep_branch, json_output, project_dir):
         ve orch worktree remove my_chunk         # Remove worktree and branch
         ve orch worktree remove my_chunk --keep-branch  # Keep the branch
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
     # Normalize chunk path
     chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         params = {"remove_branch": "false" if keep_branch else "true"}
         result = client._request("DELETE", f"/worktrees/{chunk}", params=params)
 
@@ -1113,15 +976,6 @@ def worktree_remove(chunk, keep_branch, json_output, project_dir):
             else:
                 click.echo(f"Unexpected status: {status}", err=True)
                 raise SystemExit(1)
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 @worktree.command("prune")
@@ -1141,11 +995,9 @@ def worktree_prune(dry_run, json_output, project_dir):
         ve orch worktree prune            # Prune all retained worktrees
         ve orch worktree prune --dry-run  # Show what would be pruned
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         result = client._request(
             "POST",
             "/work-units/prune",
@@ -1173,15 +1025,6 @@ def worktree_prune(dry_run, json_output, project_dir):
                         click.echo(f"  {chunk_name}: skipped - {r.get('reason', 'unknown')}")
                     elif status == "error":
                         click.echo(f"  {chunk_name}: error - {r.get('error', 'unknown')}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
 
 
 # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
@@ -1211,7 +1054,6 @@ def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
         ve orch prune --all           # Prune all retained worktrees
         ve orch prune --all --dry-run # Show what would be pruned
     """
-    from orchestrator.client import create_client, OrchestratorClientError, DaemonNotRunningError
     import json as json_module
 
     if not chunk and not prune_all:
@@ -1222,8 +1064,7 @@ def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
     if chunk:
         chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
 
-    client = create_client(project_dir)
-    try:
+    with orch_client(project_dir) as client:
         if chunk:
             # Prune single chunk
             result = client._request(
@@ -1261,12 +1102,3 @@ def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
                         click.echo(f"  {chunk_name}: skipped - {r.get('reason', 'unknown')}")
                     elif status == "error":
                         click.echo(f"  {chunk_name}: error - {r.get('error', 'unknown')}")
-
-    except DaemonNotRunningError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    except OrchestratorClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-    finally:
-        client.close()
