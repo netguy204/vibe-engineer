@@ -1,177 +1,195 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk splits the monolithic `src/models.py` (815 lines) into a `src/models/` subpackage with domain-specific modules. The approach is a pure mechanical refactoring:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Create the package structure** - Create `src/models/` directory and individual domain modules
+2. **Move definitions by domain** - Each domain module gets its related enums, models, constants, and validators
+3. **Handle cross-domain imports** - Use explicit intra-package imports for shared types
+4. **Create `__init__.py` re-exports** - Ensure all existing `from models import X` statements continue working
+5. **Delete the monolith** - Remove `src/models.py` after the package is complete
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The decomposition follows the natural domain boundaries already present in the existing file:
+- **Chunk domain**: `ChunkStatus`, `BugType`, `VALID_CHUNK_TRANSITIONS`, `ChunkFrontmatter`, `ChunkDependent`
+- **Subsystem domain**: `SubsystemStatus`, `VALID_STATUS_TRANSITIONS`, `ComplianceLevel`, `ChunkRelationship`, `SubsystemFrontmatter`
+- **Narrative domain**: `NarrativeStatus`, `VALID_NARRATIVE_TRANSITIONS`, `NarrativeFrontmatter`
+- **Investigation domain**: `InvestigationStatus`, `VALID_INVESTIGATION_TRANSITIONS`, `InvestigationFrontmatter`
+- **References domain**: Shared reference types used across multiple artifacts
+- **Friction domain**: All friction log related types
+- **Reviewer domain**: All reviewer agent related types
+- **Shared utilities**: Helper functions and cross-cutting types
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/models_subpackage/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per docs/trunk/TESTING_PHILOSOPHY.md, this is a scaffolding refactoring with no behavioral changes. Existing tests (`tests/test_models.py`) already test the validation behavior. No new tests are needed - the success criterion is that all existing tests pass unchanged, verifying backward compatibility.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS reorganization of the models that are documented in this subsystem. After completion, code references in the subsystem should be updated to point to the new module locations (e.g., `src/models/chunk.py#ChunkStatus` instead of `src/models.py#ChunkStatus`). However, since the `__init__.py` re-exports preserve the public API, the subsystem documentation can reference either `src/models.py#...` (via re-export) or the specific module. We will update the subsystem's code_references to point to the new canonical locations after implementation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create package directory and shared module
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/models/` directory and `src/models/shared.py` with:
+- `extract_short_name()` function
+- `_require_valid_dir_name()` validator
+- `_require_valid_repo_ref()` validator
+- `SHA_PATTERN` regex
+- `TaskConfig` model
 
-Example:
+These are cross-cutting utilities used by multiple domain modules.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/models/shared.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Create references module
 
-Location: src/segment/format.rs
+Create `src/models/references.py` with shared reference types:
+- `ArtifactType` enum
+- `ARTIFACT_ID_PATTERN`, `CHUNK_ID_PATTERN` regexes
+- `SymbolicReference` model
+- `CodeRange`, `CodeReference` models
+- `ExternalArtifactRef` model
+- `SubsystemRelationship` model (used by ChunkFrontmatter)
+- `ProposedChunk` model (used by all artifact frontmatter)
 
-### Step 2: Implement header serialization
+This module imports from `shared.py` for validators.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/models/references.py`
 
-### Step 3: ...
+### Step 3: Create subsystem module
 
----
+Create `src/models/subsystem.py` with:
+- `SubsystemStatus` enum
+- `VALID_STATUS_TRANSITIONS` dict
+- `ComplianceLevel` enum
+- `ChunkRelationship` model
+- `SubsystemFrontmatter` model
 
-**BACKREFERENCE COMMENTS**
+This module imports from `references.py` for shared types like `SymbolicReference`, `ExternalArtifactRef`, `ProposedChunk`.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/models/subsystem.py`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Create investigation module
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Create `src/models/investigation.py` with:
+- `InvestigationStatus` enum
+- `VALID_INVESTIGATION_TRANSITIONS` dict
+- `InvestigationFrontmatter` model
 
-Format (place immediately before the symbol):
+This module imports from `references.py` for shared types.
+
+Location: `src/models/investigation.py`
+
+### Step 5: Create narrative module
+
+Create `src/models/narrative.py` with:
+- `NarrativeStatus` enum
+- `VALID_NARRATIVE_TRANSITIONS` dict
+- `NarrativeFrontmatter` model
+
+This module imports from `references.py` for shared types.
+
+Location: `src/models/narrative.py`
+
+### Step 6: Create friction module
+
+Create `src/models/friction.py` with:
+- `FrictionTheme` model
+- `FrictionProposedChunk` model
+- `FRICTION_ENTRY_ID_PATTERN` regex
+- `ExternalFrictionSource` model
+- `FrictionFrontmatter` model
+- `FrictionEntryReference` model
+
+This module imports from `shared.py` for validators.
+
+Location: `src/models/friction.py`
+
+### Step 7: Create reviewer module
+
+Create `src/models/reviewer.py` with:
+- `TrustLevel` enum
+- `LoopDetectionConfig` model
+- `ReviewerStats` model
+- `ReviewerMetadata` model
+- `ReviewerDecision` enum
+- `FeedbackReview` model
+- `DecisionFrontmatter` model
+
+This module is self-contained (no cross-domain imports needed).
+
+Location: `src/models/reviewer.py`
+
+### Step 8: Create chunk module
+
+Create `src/models/chunk.py` with:
+- `ChunkStatus` enum
+- `BugType` enum
+- `VALID_CHUNK_TRANSITIONS` dict
+- `ChunkDependent` model
+- `ChunkFrontmatter` model
+
+This module imports from `references.py` for `SymbolicReference`, `SubsystemRelationship`, `ExternalArtifactRef`, `ProposedChunk` and from `friction.py` for `FrictionEntryReference`.
+
+Location: `src/models/chunk.py`
+
+### Step 9: Create __init__.py with re-exports
+
+Create `src/models/__init__.py` that re-exports every public name from the domain modules:
+
+```python
+from models.shared import (
+    extract_short_name,
+    SHA_PATTERN,
+    TaskConfig,
+)
+from models.references import (
+    ArtifactType,
+    ARTIFACT_ID_PATTERN,
+    CHUNK_ID_PATTERN,
+    SymbolicReference,
+    CodeRange,
+    CodeReference,
+    ExternalArtifactRef,
+    SubsystemRelationship,
+    ProposedChunk,
+)
+# ... etc for all other modules
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This ensures all existing `from models import X` statements continue to work.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/models/__init__.py`
+
+### Step 10: Delete the monolithic models.py
+
+Remove `src/models.py` after verifying the package is complete.
+
+Location: `src/models.py` (delete)
+
+### Step 11: Run tests and verify backward compatibility
+
+Run `uv run pytest tests/` to verify:
+- All existing tests pass without modification
+- Import statements continue to resolve
+- No behavioral changes
+
+### Step 12: Update chunk GOAL.md with code_paths
+
+Update `docs/chunks/models_subpackage/GOAL.md` frontmatter with `code_paths` listing all created files.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **remove_legacy_prefix** chunk (depends_on in frontmatter): Must be completed first. This chunk simplified `extract_short_name()` to an identity function and removed legacy format handling from patterns like `ARTIFACT_ID_PATTERN`. The models_subpackage chunk expects these simplifications to be in place.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Circular import risk**: If domain modules have circular dependencies, Python will fail at import time. Mitigation: The domain boundaries are clean - shared types go in `references.py` and `shared.py`, which are imported by domain modules but don't import from them. Forward references (`"FrictionEntryReference"`) can be used if needed.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Import path changes in tests**: The test file `tests/test_models.py` imports directly from `models`. With the `__init__.py` re-exports, this should continue to work. If any tests import from `models.py` using relative paths, they would need updating.
+
+- **Module size constraint**: The goal states ~200 lines per module. Some modules may slightly exceed this due to extensive docstrings and backreference comments. This is acceptable as long as each module is single-responsibility.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

@@ -1,18 +1,34 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/models/__init__.py
+  - src/models/shared.py
+  - src/models/references.py
+  - src/models/subsystem.py
+  - src/models/investigation.py
+  - src/models/narrative.py
+  - src/models/friction.py
+  - src/models/reviewer.py
+  - src/models/chunk.py
 code_references: []
-narrative: "arch_decompose"
+narrative: arch_decompose
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["remove_legacy_prefix"]
-created_after: ["chunks_decompose", "orch_worktree_cleanup", "validation_error_surface", "validation_length_msg", "orch_ready_critical_path", "orch_pre_review_rebase", "orch_merge_before_delete"]
+depends_on:
+- remove_legacy_prefix
+created_after:
+- chunks_decompose
+- orch_worktree_cleanup
+- validation_error_surface
+- validation_length_msg
+- orch_ready_critical_path
+- orch_pre_review_rebase
+- orch_merge_before_delete
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
