@@ -754,3 +754,127 @@ class TestRetainWorktreePersistence:
         # Retrieve again and verify
         final = store.get_work_unit(sample_work_unit.chunk)
         assert final.retain_worktree is False
+
+
+# Chunk: docs/chunks/orch_state_transactions - Transaction atomicity tests
+class TestTransactionContextManager:
+    """Tests for the transaction context manager."""
+
+    def test_transaction_commits_on_success(self, store):
+        """Transaction commits when no exception is raised."""
+        with store.transaction():
+            store.connection.execute(
+                "INSERT INTO config (key, value) VALUES (?, ?)",
+                ("test_key", "test_value"),
+            )
+
+        # Value should be persisted
+        result = store.get_config("test_key")
+        assert result == "test_value"
+
+    def test_transaction_rollback_on_exception(self, store):
+        """Transaction rolls back when an exception is raised."""
+        try:
+            with store.transaction():
+                store.connection.execute(
+                    "INSERT INTO config (key, value) VALUES (?, ?)",
+                    ("rollback_key", "rollback_value"),
+                )
+                # Force an exception
+                raise ValueError("Simulated failure")
+        except ValueError:
+            pass
+
+        # Value should NOT be persisted
+        result = store.get_config("rollback_key")
+        assert result is None
+
+    def test_transaction_reraises_exception(self, store):
+        """Transaction re-raises the original exception after rollback."""
+        with pytest.raises(ValueError, match="Original error"):
+            with store.transaction():
+                raise ValueError("Original error")
+
+
+class TestCreateWorkUnitAtomicity:
+    """Tests for create_work_unit transaction atomicity."""
+
+    def test_create_work_unit_atomic_success(self, store, sample_work_unit):
+        """Work unit and status log are created atomically on success."""
+        store.create_work_unit(sample_work_unit)
+
+        # Both work unit and status log should exist
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        history = store.get_status_history(sample_work_unit.chunk)
+
+        assert retrieved is not None
+        assert len(history) == 1
+        assert history[0]["new_status"] == "READY"
+
+    def test_create_work_unit_rollback_on_duplicate(self, store, sample_work_unit):
+        """Duplicate work unit creation rolls back cleanly."""
+        store.create_work_unit(sample_work_unit)
+
+        # Try to create duplicate (should fail)
+        with pytest.raises(ValueError, match="already exists"):
+            store.create_work_unit(sample_work_unit)
+
+        # Original should still exist, with only one status log entry
+        history = store.get_status_history(sample_work_unit.chunk)
+        assert len(history) == 1
+
+
+class TestUpdateWorkUnitAtomicity:
+    """Tests for update_work_unit transaction atomicity."""
+
+    def test_update_work_unit_atomic_success(self, store, sample_work_unit):
+        """Work unit update and status log are created atomically on success."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update status
+        sample_work_unit.status = WorkUnitStatus.RUNNING
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        # Both update and status log should be persisted
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        history = store.get_status_history(sample_work_unit.chunk)
+
+        assert retrieved.status == WorkUnitStatus.RUNNING
+        assert len(history) == 2
+        assert history[1]["old_status"] == "READY"
+        assert history[1]["new_status"] == "RUNNING"
+
+    def test_update_nonexistent_rollback(self, store, sample_work_unit):
+        """Update of nonexistent work unit rolls back cleanly."""
+        # Try to update nonexistent work unit
+        with pytest.raises(ValueError, match="not found"):
+            store.update_work_unit(sample_work_unit)
+
+        # No work unit or status log should exist
+        assert store.get_work_unit(sample_work_unit.chunk) is None
+        assert store.get_status_history(sample_work_unit.chunk) == []
+
+    def test_update_status_log_tied_to_update(self, store, sample_work_unit):
+        """Status log entry is only created when update succeeds."""
+        store.create_work_unit(sample_work_unit)
+
+        # Initial state: 1 status log entry
+        history_before = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_before) == 1
+
+        # Update without changing status (should not add log entry)
+        sample_work_unit.phase = WorkUnitPhase.PLAN
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        history_after = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_after) == 1
+
+        # Update with status change (should add log entry)
+        sample_work_unit.status = WorkUnitStatus.DONE
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        history_final = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_final) == 2

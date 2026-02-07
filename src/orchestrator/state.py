@@ -12,9 +12,10 @@ Uses a simple migrations infrastructure for schema evolution.
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterator
 
 from orchestrator.models import (
     ConflictAnalysis,
@@ -30,6 +31,22 @@ class StateStore:
 
     Manages the orchestrator's persistent state including work units
     and status transition logging.
+
+    Concurrency Model:
+        Multiple StateStore instances may connect to the same database file.
+        In the orchestrator daemon, one instance is created in start_daemon()
+        (for the scheduler) and another in create_app() (for API endpoints).
+
+        This is safe because:
+        1. WAL mode is enabled, allowing concurrent readers and a single writer
+        2. Each write operation is either a single autocommitted statement or
+           wrapped in an explicit transaction (BEGIN/COMMIT)
+        3. Transactions are kept short-lived to minimize lock contention
+        4. SQLite handles write serialization - concurrent writes from different
+           connections will block briefly rather than corrupt
+
+        The transaction() context manager provides explicit transaction boundaries
+        for multi-statement operations that must be atomic.
     """
 
     CURRENT_VERSION = 12
@@ -68,6 +85,30 @@ class StateStore:
         if self._connection is not None:
             self._connection.close()
             self._connection = None
+
+    # Chunk: docs/chunks/orch_state_transactions - Explicit transaction boundaries for atomicity
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Context manager for explicit transaction boundaries.
+
+        With isolation_level=None (autocommit), we must use explicit
+        BEGIN/COMMIT statements to group operations atomically.
+
+        Usage:
+            with store.transaction():
+                store.connection.execute(...)
+                store.connection.execute(...)
+
+        On exception, the transaction is rolled back and the exception
+        is re-raised.
+        """
+        self.connection.execute("BEGIN")
+        try:
+            yield
+            self.connection.execute("COMMIT")
+        except Exception:
+            self.connection.execute("ROLLBACK")
+            raise
 
     def initialize(self) -> None:
         """Initialize the database schema, running migrations if needed."""
@@ -329,8 +370,13 @@ class StateStore:
     # CRUD Operations
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit creation
+    # Chunk: docs/chunks/orch_state_transactions - Atomic work unit creation with status log
     def create_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Create a new work unit.
+
+        The INSERT and status log are wrapped in a transaction to ensure
+        atomicity. Either both the work unit and status log are created,
+        or neither is.
 
         Args:
             work_unit: The work unit to create
@@ -344,46 +390,47 @@ class StateStore:
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
-        try:
-            self.connection.execute(
-                """
-                INSERT INTO work_units
-                    (chunk, phase, status, blocked_by, worktree, priority, session_id,
-                     completion_retries, attention_reason, displaced_chunk, pending_answer,
-                     conflict_verdicts, conflict_override, explicit_deps, review_iterations,
-                     review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    work_unit.chunk,
-                    work_unit.phase.value,
-                    work_unit.status.value,
-                    blocked_by_json,
-                    work_unit.worktree,
-                    work_unit.priority,
-                    work_unit.session_id,
-                    work_unit.completion_retries,
-                    work_unit.attention_reason,
-                    work_unit.displaced_chunk,
-                    work_unit.pending_answer,
-                    conflict_verdicts_json,
-                    work_unit.conflict_override,
-                    1 if work_unit.explicit_deps else 0,
-                    work_unit.review_iterations,
-                    work_unit.review_nudge_count,
-                    1 if work_unit.retain_worktree else 0,
-                    work_unit.api_retry_count,
-                    work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
-                    work_unit.created_at.isoformat(),
-                    work_unit.updated_at.isoformat(),
-                ),
-            )
-        except sqlite3.IntegrityError:
-            raise ValueError(f"Work unit for chunk '{work_unit.chunk}' already exists")
+        with self.transaction():
+            try:
+                self.connection.execute(
+                    """
+                    INSERT INTO work_units
+                        (chunk, phase, status, blocked_by, worktree, priority, session_id,
+                         completion_retries, attention_reason, displaced_chunk, pending_answer,
+                         conflict_verdicts, conflict_override, explicit_deps, review_iterations,
+                         review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        work_unit.chunk,
+                        work_unit.phase.value,
+                        work_unit.status.value,
+                        blocked_by_json,
+                        work_unit.worktree,
+                        work_unit.priority,
+                        work_unit.session_id,
+                        work_unit.completion_retries,
+                        work_unit.attention_reason,
+                        work_unit.displaced_chunk,
+                        work_unit.pending_answer,
+                        conflict_verdicts_json,
+                        work_unit.conflict_override,
+                        1 if work_unit.explicit_deps else 0,
+                        work_unit.review_iterations,
+                        work_unit.review_nudge_count,
+                        1 if work_unit.retain_worktree else 0,
+                        work_unit.api_retry_count,
+                        work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                        work_unit.created_at.isoformat(),
+                        work_unit.updated_at.isoformat(),
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError(f"Work unit for chunk '{work_unit.chunk}' already exists")
 
-        # Log the initial status
-        self._log_status_transition(work_unit.chunk, None, work_unit.status)
+            # Log the initial status
+            self._log_status_transition(work_unit.chunk, None, work_unit.status)
 
         return work_unit
 
@@ -407,8 +454,13 @@ class StateStore:
         return self._row_to_work_unit(row)
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit update
+    # Chunk: docs/chunks/orch_state_transactions - Atomic work unit update with status log
     def update_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Update an existing work unit.
+
+        The SELECT, UPDATE, and status log INSERT are wrapped in a transaction
+        to ensure atomicity. The status log is only written if the update
+        succeeds, and both changes commit together.
 
         Args:
             work_unit: The work unit with updated values
@@ -419,54 +471,55 @@ class StateStore:
         Raises:
             ValueError: If the work unit doesn't exist
         """
-        # Get the old status for logging
-        old_unit = self.get_work_unit(work_unit.chunk)
-        if old_unit is None:
-            raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
-
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
-        self.connection.execute(
-            """
-            UPDATE work_units
-            SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
-                priority = ?, session_id = ?, completion_retries = ?,
-                attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
-                conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
-                review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
-                api_retry_count = ?, next_retry_at = ?, updated_at = ?
-            WHERE chunk = ?
-            """,
-            (
-                work_unit.phase.value,
-                work_unit.status.value,
-                blocked_by_json,
-                work_unit.worktree,
-                work_unit.priority,
-                work_unit.session_id,
-                work_unit.completion_retries,
-                work_unit.attention_reason,
-                work_unit.displaced_chunk,
-                work_unit.pending_answer,
-                conflict_verdicts_json,
-                work_unit.conflict_override,
-                1 if work_unit.explicit_deps else 0,
-                work_unit.review_iterations,
-                work_unit.review_nudge_count,
-                1 if work_unit.retain_worktree else 0,
-                work_unit.api_retry_count,
-                work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
-                work_unit.updated_at.isoformat(),
-                work_unit.chunk,
-            ),
-        )
+        with self.transaction():
+            # Get the old status for logging (within transaction)
+            old_unit = self.get_work_unit(work_unit.chunk)
+            if old_unit is None:
+                raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
 
-        # Log status transition if status changed
-        if old_unit.status != work_unit.status:
-            self._log_status_transition(
-                work_unit.chunk, old_unit.status, work_unit.status
+            self.connection.execute(
+                """
+                UPDATE work_units
+                SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
+                    priority = ?, session_id = ?, completion_retries = ?,
+                    attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
+                    conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
+                    review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
+                    api_retry_count = ?, next_retry_at = ?, updated_at = ?
+                WHERE chunk = ?
+                """,
+                (
+                    work_unit.phase.value,
+                    work_unit.status.value,
+                    blocked_by_json,
+                    work_unit.worktree,
+                    work_unit.priority,
+                    work_unit.session_id,
+                    work_unit.completion_retries,
+                    work_unit.attention_reason,
+                    work_unit.displaced_chunk,
+                    work_unit.pending_answer,
+                    conflict_verdicts_json,
+                    work_unit.conflict_override,
+                    1 if work_unit.explicit_deps else 0,
+                    work_unit.review_iterations,
+                    work_unit.review_nudge_count,
+                    1 if work_unit.retain_worktree else 0,
+                    work_unit.api_retry_count,
+                    work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                    work_unit.updated_at.isoformat(),
+                    work_unit.chunk,
+                ),
             )
+
+            # Log status transition if status changed
+            if old_unit.status != work_unit.status:
+                self._log_status_transition(
+                    work_unit.chunk, old_unit.status, work_unit.status
+                )
 
         return work_unit
 
