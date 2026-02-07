@@ -1,177 +1,190 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This decomposition follows a bottom-up strategy: create the infrastructure first (shared state, helpers), then extract each domain module, and finally wire everything together in the application factory. The approach uses Starlette's `app.state` for dependency injection, replacing module-level globals.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Create shared infrastructure** - A `common.py` module with `AppState` protocol/type for accessing `store`, `project_dir`, `started_at`, and `task_info` from request context. This replaces the four module-level globals (`_store`, `_project_dir`, `_started_at`, `_task_info`).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orchestrator_api_decompose/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Extract domains incrementally** - Move endpoint functions to their respective modules one domain at a time, updating imports to use `request.app.state` instead of module globals. Each extraction is a discrete step that can be tested in isolation.
+
+3. **Preserve the original file temporarily** - Keep `api.py` during development to allow side-by-side comparison. Delete it only after all extractions are complete and tests pass.
+
+4. **Fix the mid-file import** - Move `from chunks import plan_has_content, Chunks` (currently at line 363) to the top of `scheduling.py`.
+
+5. **Replace the direct git subprocess call** - The `subprocess.run(["git", "branch", "-d", ...])` in `retry_merge_endpoint` (line 1180) should use `WorktreeManager.delete_branch()` if available, or we add that capability to `WorktreeManager`.
+
+**Test strategy per TESTING_PHILOSOPHY.md:**
+
+- Existing tests in `tests/test_orchestrator_api.py` already test the endpoints. Since this is a pure refactoring, no new behavioral tests are required.
+- Run the full test suite after each domain extraction to catch import or wiring issues.
+- If any tests reference internal symbols from `api.py`, update the import paths.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the `api.py` component listed in the subsystem's Implementation Locations section. After decomposition, the subsystem documentation should be updated to reflect the new package structure (`src/orchestrator/api/` instead of `src/orchestrator/api.py`). Since the subsystem is DOCUMENTED (not REFACTORING), we will note this in the subsystem's code_references but not expand scope to fix any deviations.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the api/ package directory structure
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/orchestrator/api/` directory with empty `__init__.py`.
 
-Example:
+Location: `src/orchestrator/api/__init__.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Create common.py with shared state access
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Create `src/orchestrator/api/common.py` containing:
 
-Location: src/segment/format.rs
+1. Error response helpers (`_error_response`, `_not_found_response`)
+2. `get_store(request)` function that returns `request.app.state.store`
+3. `get_project_dir(request)` function that returns `request.app.state.project_dir`
+4. `get_task_info(request)` function that returns `request.app.state.task_info`
+5. `get_chunk_directory(request, chunk)` function - refactored version of `_get_chunk_directory`
+6. Jinja2 environment accessor `get_jinja_env()`
 
-### Step 2: Implement header serialization
+All functions accept `request: Request` as the first parameter to access `app.state`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/orchestrator/api/common.py`
 
-### Step 3: ...
+### Step 3: Extract work_units.py (CRUD endpoints)
 
----
+Move work unit CRUD endpoints to `src/orchestrator/api/work_units.py`:
 
-**BACKREFERENCE COMMENTS**
+- `status_endpoint`
+- `list_work_units_endpoint`
+- `get_work_unit_endpoint`
+- `create_work_unit_endpoint`
+- `update_work_unit_endpoint`
+- `delete_work_unit_endpoint`
+- `get_status_history_endpoint`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Update each function to:
+1. Import from `common` instead of using module globals
+2. Call `get_store(request)` instead of `_get_store()`
+3. Use `get_project_dir(request)` where needed
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Preserve all existing chunk backreference comments.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Location: `src/orchestrator/api/work_units.py`
 
-Format (place immediately before the symbol):
+### Step 4: Extract scheduling.py (inject, queue, config)
+
+Move scheduling endpoints to `src/orchestrator/api/scheduling.py`:
+
+- `_parse_chunk_status` (helper)
+- `_detect_initial_phase` (helper)
+- `inject_endpoint`
+- `queue_endpoint`
+- `prioritize_endpoint`
+- `get_config_endpoint`
+- `update_config_endpoint`
+
+**Critical fix:** Move `from chunks import plan_has_content, Chunks` to the TOP of this module instead of mid-file.
+
+Location: `src/orchestrator/api/scheduling.py`
+
+### Step 5: Extract attention.py (attention queue, answers)
+
+Move attention management endpoints to `src/orchestrator/api/attention.py`:
+
+- `_get_goal_summary` (helper)
+- `attention_endpoint`
+- `answer_endpoint`
+
+Location: `src/orchestrator/api/attention.py`
+
+### Step 6: Extract conflicts.py (conflict analysis)
+
+Move conflict endpoints to `src/orchestrator/api/conflicts.py`:
+
+- `get_conflicts_endpoint`
+- `list_all_conflicts_endpoint`
+- `analyze_conflicts_endpoint`
+- `resolve_conflict_endpoint`
+- `retry_merge_endpoint`
+
+**Critical fix:** Replace the direct `subprocess.run(["git", "branch", "-d", ...])` call with `WorktreeManager.remove_branch()` or equivalent. Check if `WorktreeManager` already has this capability; if not, add a `delete_branch(branch_name)` method.
+
+Location: `src/orchestrator/api/conflicts.py`
+
+### Step 7: Extract worktrees.py (worktree management)
+
+Move worktree management endpoints to `src/orchestrator/api/worktrees.py`:
+
+- `list_worktrees_endpoint`
+- `remove_worktree_endpoint`
+- `prune_work_unit_endpoint`
+- `prune_all_endpoint`
+
+Location: `src/orchestrator/api/worktrees.py`
+
+### Step 8: Extract streaming.py (WebSocket log streaming)
+
+Move log streaming functionality to `src/orchestrator/api/streaming.py`:
+
+- `_get_log_directory` (helper)
+- `_detect_current_phase` (helper)
+- `_stream_log_file` (helper)
+- `log_stream_websocket_endpoint`
+- `websocket_endpoint` (dashboard WebSocket)
+- `dashboard_endpoint`
+
+Location: `src/orchestrator/api/streaming.py`
+
+### Step 9: Create app.py with application factory
+
+Create `src/orchestrator/api/app.py` containing:
+
+1. `create_app(project_dir: Path) -> Starlette` function
+2. Initialize `app.state.store`, `app.state.project_dir`, `app.state.started_at`, `app.state.task_info`
+3. Import routes from all sub-modules
+4. Assemble the `routes` list with proper ordering (more specific routes before generic `{chunk:path}` routes)
+
+Location: `src/orchestrator/api/app.py`
+
+### Step 10: Update __init__.py for backward compatibility
+
+Update `src/orchestrator/api/__init__.py` to re-export `create_app` from `app.py`:
+
+```python
+from orchestrator.api.app import create_app
+
+__all__ = ["create_app"]
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This ensures any code importing `from orchestrator.api import create_app` continues to work.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/api/__init__.py`
 
-## Dependencies
+### Step 11: Delete the old api.py and run tests
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+1. Delete `src/orchestrator/api.py`
+2. Run `uv run pytest tests/` to verify all tests pass
+3. If any tests fail due to import paths, update them
 
-If there are no dependencies, delete this section.
--->
+Location: `src/orchestrator/api.py` (delete)
+
+### Step 12: Update subsystem documentation
+
+Update `docs/subsystems/orchestrator/OVERVIEW.md` code_references to reflect new structure:
+- Change `src/orchestrator/api.py#create_app` to `src/orchestrator/api/app.py#create_app`
+- Add entries for new sub-modules
+
+Location: `docs/subsystems/orchestrator/OVERVIEW.md`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **WorktreeManager.delete_branch capability** - The GOAL mentions replacing direct subprocess git calls with WorktreeManager. Need to verify if `WorktreeManager` already has a `delete_branch` method. If not, we may need to add one or use `git_utils`. (Check `src/orchestrator/worktree.py` during implementation.)
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Route ordering sensitivity** - Starlette's routing is order-sensitive. The more specific routes (e.g., `/work-units/inject`) must come before generic routes (e.g., `/work-units/{chunk:path}`). This ordering must be preserved exactly when assembling routes in `app.py`.
+
+3. **Test import paths** - Some tests in `test_orchestrator_api.py` import `from orchestrator.api import create_app`. The re-export in `__init__.py` should handle this, but need to verify no tests import internal symbols directly.
+
+4. **Mid-file import side effects** - The current mid-file `from chunks import plan_has_content, Chunks` might have been placed there intentionally to avoid circular imports. Need to verify moving it to module top-level doesn't cause import errors.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*
