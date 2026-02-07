@@ -298,6 +298,7 @@ def get_next_chunk_id(project_path: Path) -> str:
 # create_external_yaml is imported from external_refs
 
 
+# Chunk: docs/chunks/future_chunk_creation - Reusable utility for modifying YAML frontmatter fields including status
 def update_frontmatter_field(
     goal_path: Path,
     field: str,
@@ -372,6 +373,7 @@ class TaskChunkError(Exception):
 # Chunk: docs/chunks/chunknaming_drop_ticket - Task context chunk creation without ticket in directory name
 # Chunk: docs/chunks/coderef_format_prompting - Pass projects to chunk template in task context
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format for dependents
+# Chunk: docs/chunks/future_chunk_creation - Extended with status parameter for cross-repo chunk creation supporting FUTURE/IMPLEMENTING
 def create_task_chunk(
     task_dir: Path,
     short_name: str,

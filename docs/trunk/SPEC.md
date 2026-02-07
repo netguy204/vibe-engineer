@@ -50,6 +50,7 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
 - **Narrative**: A high-level, multi-step goal that decomposes into multiple chunks. Stored in `docs/narratives/`.
 - **Subsystem**: A cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
+  <!-- Chunk: docs/chunks/spec_docs_update - Subsystem terminology, directory structure, frontmatter schema, status values, and CLI commands -->
 - **Investigation**: An exploratory document for understanding something before committing to action—diagnosing an issue or exploring a concept. Stored in `docs/investigations/`.
 
 ### Workflow Contexts

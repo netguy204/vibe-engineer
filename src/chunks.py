@@ -153,6 +153,7 @@ class Chunks:
 
     # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses ChunkStatus.IMPLEMENTING for status comparison
+    # Chunk: docs/chunks/future_chunk_creation - Returns the first IMPLEMENTING chunk in causal order, ignoring FUTURE/ACTIVE/SUPERSEDED/HISTORICAL
     def get_current_chunk(self) -> str | None:
         """Return the first IMPLEMENTING chunk in causal order.
 
@@ -239,6 +240,7 @@ class Chunks:
         return active_tips[0]
 
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses ChunkStatus.FUTURE for status comparison
+    # Chunk: docs/chunks/future_chunk_creation - Transitions FUTURE chunk to IMPLEMENTING, enforcing single IMPLEMENTING constraint
     def activate_chunk(self, chunk_id: str) -> str:
         """Activate a FUTURE chunk by changing its status to IMPLEMENTING.
 
@@ -289,6 +291,7 @@ class Chunks:
     # Chunk: docs/chunks/chunk_template_expansion - Template rendering with ActiveChunk context
     # Chunk: docs/chunks/chunknaming_drop_ticket - Directory naming without ticket suffix
     # Chunk: docs/chunks/coderef_format_prompting - Projects parameter for task-context template rendering
+    # Chunk: docs/chunks/future_chunk_creation - Extended with status parameter to support FUTURE and IMPLEMENTING statuses
     def create_chunk(
         self,
         ticket_id: str | None,
