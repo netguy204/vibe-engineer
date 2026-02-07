@@ -8,170 +8,230 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk expands the `Project` class in `src/project.py` into a unified artifact registry by adding lazy-loaded properties for all artifact manager types. This is a pure structural refactoring that follows the existing pattern established by the `chunks` property.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**High-level strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. Add `_narratives`, `_investigations`, `_subsystems`, and `_friction` private fields to `Project.__init__`
+2. Add corresponding `@property` methods that lazily instantiate the managers
+3. Refactor `Chunks.list_proposed_chunks()` to accept a `Project` instance instead of three separate manager parameters
+4. Refactor `IntegrityValidator.__init__` to accept or construct a `Project` and access managers through its properties
+5. Update all call sites that currently pass separate managers or construct their own managers
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/project_artifact_registry/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Key design decisions:**
+
+- Follow the identical `_field` / `@property` pattern used by `chunks` for consistency
+- Import artifact managers at module level since they're already imported elsewhere (no circular import issues)
+- Keep backward compatibility for CLI call sites by updating them to use `Project`
+
+This approach aligns with the docs/subsystems/workflow_artifacts pattern for manager classes.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/0001-validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/0002-error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/0001-validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk USES the workflow artifact manager pattern. The `Project` class becomes a unified registry that provides access to all manager instances (`Chunks`, `Narratives`, `Investigations`, `Subsystems`, `Friction`). This is consistent with the subsystem's intent of providing unified structural patterns for workflow artifacts.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add lazy-loaded manager properties to Project
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add private fields and corresponding lazy-loaded properties to the `Project` class for all artifact manager types:
 
-Example:
+- `_narratives` / `narratives` → `Narratives`
+- `_investigations` / `investigations` → `Investigations`
+- `_subsystems` / `subsystems` → `Subsystems`
+- `_friction` / `friction` → `Friction`
 
-### Step 1: Define the SegmentHeader struct
+Follow the exact pattern used by `_chunks` / `chunks`:
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+@property
+def narratives(self) -> Narratives:
+    """Lazily instantiate and return a Narratives instance for this project."""
+    if self._narratives is None:
+        self._narratives = Narratives(self.project_dir)
+    return self._narratives
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/project.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Update imports in project.py
+
+Add imports for the new manager classes at the top of `project.py`:
+
+```python
+from narratives import Narratives
+from investigations import Investigations
+from subsystems import Subsystems
+from friction import Friction
+```
+
+Location: `src/project.py`
+
+### Step 3: Refactor Chunks.list_proposed_chunks signature
+
+Change `Chunks.list_proposed_chunks()` to accept a `Project` instance instead of three separate manager parameters:
+
+**Before:**
+```python
+def list_proposed_chunks(
+    self,
+    investigations: Investigations,
+    narratives: Narratives,
+    subsystems: Subsystems,
+) -> list[dict]:
+```
+
+**After:**
+```python
+def list_proposed_chunks(
+    self,
+    project: Project,
+) -> list[dict]:
+```
+
+Update the method body to access managers via `project.investigations`, `project.narratives`, `project.subsystems`.
+
+Note: Import `Project` inside the method to avoid circular import (Chunks is imported by Project).
+
+Location: `src/chunks.py`
+
+### Step 4: Refactor IntegrityValidator.__init__
+
+Change `IntegrityValidator.__init__` to accept or construct a `Project` instance and access all managers through its properties:
+
+**Before:**
+```python
+def __init__(self, project_dir: pathlib.Path):
+    self.project_dir = pathlib.Path(project_dir)
+    self.chunks = Chunks(self.project_dir)
+    self.narratives = Narratives(self.project_dir)
+    self.investigations = Investigations(self.project_dir)
+    self.subsystems = Subsystems(self.project_dir)
+    self.friction = Friction(self.project_dir)
+```
+
+**After:**
+```python
+def __init__(self, project_dir: pathlib.Path, project: Project | None = None):
+    self.project_dir = pathlib.Path(project_dir)
+    if project is None:
+        from project import Project
+        project = Project(self.project_dir)
+    self._project = project
+    # Access managers via project properties
+    self.chunks = self._project.chunks
+    self.narratives = self._project.narratives
+    self.investigations = self._project.investigations
+    self.subsystems = self._project.subsystems
+    self.friction = self._project.friction
+```
+
+This maintains backward compatibility (existing callers that pass only `project_dir` still work) while allowing callers that already have a `Project` instance to pass it directly.
+
+Location: `src/integrity.py`
+
+### Step 5: Update call sites in cli/chunk.py
+
+Update `list_proposed_chunks_cmd` in `src/cli/chunk.py` to use `Project` instead of constructing separate managers:
+
+**Before:**
+```python
+chunks = Chunks(project_dir)
+investigations = Investigations(project_dir)
+narratives = Narratives(project_dir)
+subsystems_mgr = Subsystems(project_dir)
+
+proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems_mgr)
+```
+
+**After:**
+```python
+from project import Project
+
+project = Project(project_dir)
+proposed = project.chunks.list_proposed_chunks(project)
+```
+
+Location: `src/cli/chunk.py`
+
+### Step 6: Update call sites in task_utils.py
+
+Update `_list_task_proposed_chunks` in `src/task_utils.py` to use `Project` for both the external repo and project repos:
+
+**Before:**
+```python
+chunks = Chunks(external_repo_path)
+investigations = Investigations(external_repo_path)
+narratives = Narratives(external_repo_path)
+subsystems = Subsystems(external_repo_path)
+
+external_proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+```
+
+**After:**
+```python
+from project import Project
+
+external_project = Project(external_repo_path)
+external_proposed = external_project.chunks.list_proposed_chunks(external_project)
+```
+
+Apply the same pattern for the project repos loop.
+
+Location: `src/task_utils.py`
+
+### Step 7: Add tests for new Project properties
+
+Add tests to `tests/test_project.py` for the new lazy-loaded properties, following the existing pattern for `chunks`:
+
+1. `test_narratives_property_returns_narratives_instance` - Verify type and project_dir
+2. `test_narratives_property_is_lazy` - Verify `_narratives` is None until accessed
+3. `test_narratives_property_returns_same_instance` - Verify memoization
+
+Repeat for `investigations`, `subsystems`, and `friction` properties.
+
+Location: `tests/test_project.py`
+
+### Step 8: Update GOAL.md code_paths
+
+Update the chunk's `code_paths` frontmatter field with the files touched:
+
+```yaml
+code_paths:
+- src/project.py
+- src/chunks.py
+- src/integrity.py
+- src/cli/chunk.py
+- src/task_utils.py
+- tests/test_project.py
+```
+
+Location: `docs/chunks/project_artifact_registry/GOAL.md`
+
+### Step 9: Run tests and verify
+
+Run the full test suite to verify no behavioral changes:
+
+```bash
+uv run pytest tests/
+```
+
+All existing tests should pass without modification to assertions.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **models_subpackage** (GOAL.md depends_on): The models subpackage should be complete so imports from `models/` work correctly. The models subpackage has already been implemented (verified by `ls src/models/`).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Circular imports**: `Project` imports `Chunks`, and `Chunks.list_proposed_chunks` needs access to `Project`. Mitigated by using a local import inside the method (`from project import Project`).
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **IntegrityValidator backward compatibility**: The change to accept an optional `Project` parameter maintains backward compatibility. Existing callers that pass only `project_dir` will continue to work.
+
+3. **Performance**: Lazy loading means managers are only instantiated when accessed. This is the existing pattern and should not introduce performance regressions.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

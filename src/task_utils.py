@@ -1722,9 +1722,8 @@ def list_task_proposed_chunks(task_dir: Path) -> dict:
     Raises:
         TaskChunkError: If external repo not accessible
     """
-    from investigations import Investigations
-    from narratives import Narratives
-    from subsystems import Subsystems
+    # Chunk: docs/chunks/project_artifact_registry - Uses Project for unified manager access
+    from project import Project
 
     # Load task config
     try:
@@ -1743,12 +1742,8 @@ def list_task_proposed_chunks(task_dir: Path) -> dict:
         )
 
     # Collect proposed chunks from external repo
-    chunks = Chunks(external_repo_path)
-    investigations = Investigations(external_repo_path)
-    narratives = Narratives(external_repo_path)
-    subsystems = Subsystems(external_repo_path)
-
-    external_proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+    external_project = Project(external_repo_path)
+    external_proposed = external_project.chunks.list_proposed_chunks(external_project)
 
     # Build project lists
     project_results = []
@@ -1760,14 +1755,8 @@ def list_task_proposed_chunks(task_dir: Path) -> dict:
             continue
 
         # Collect proposed chunks from this project
-        proj_chunks = Chunks(project_path)
-        proj_investigations = Investigations(project_path)
-        proj_narratives = Narratives(project_path)
-        proj_subsystems = Subsystems(project_path)
-
-        proj_proposed = proj_chunks.list_proposed_chunks(
-            proj_investigations, proj_narratives, proj_subsystems
-        )
+        proj = Project(project_path)
+        proj_proposed = proj.chunks.list_proposed_chunks(proj)
 
         project_results.append({
             "repo": project_ref,

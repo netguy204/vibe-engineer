@@ -10,6 +10,10 @@ from datetime import date
 from typing import NamedTuple
 
 from chunks import Chunks
+from friction import Friction
+from investigations import Investigations
+from narratives import Narratives
+from subsystems import Subsystems
 from template_system import (
     TemplateContext,
     VeConfig,
@@ -113,10 +117,15 @@ class InitResult:
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/project_artifact_registry - Unified artifact registry
 class Project:
     def __init__(self, project_dir: pathlib.Path):
         self.project_dir = project_dir
         self._chunks = None
+        self._narratives = None
+        self._investigations = None
+        self._subsystems = None
+        self._friction = None
         self._ve_config = None
 
     @property
@@ -125,6 +134,34 @@ class Project:
         if self._chunks is None:
             self._chunks = Chunks(self.project_dir)
         return self._chunks
+
+    @property
+    def narratives(self) -> Narratives:
+        """Lazily instantiate and return a Narratives instance for this project."""
+        if self._narratives is None:
+            self._narratives = Narratives(self.project_dir)
+        return self._narratives
+
+    @property
+    def investigations(self) -> Investigations:
+        """Lazily instantiate and return an Investigations instance for this project."""
+        if self._investigations is None:
+            self._investigations = Investigations(self.project_dir)
+        return self._investigations
+
+    @property
+    def subsystems(self) -> Subsystems:
+        """Lazily instantiate and return a Subsystems instance for this project."""
+        if self._subsystems is None:
+            self._subsystems = Subsystems(self.project_dir)
+        return self._subsystems
+
+    @property
+    def friction(self) -> Friction:
+        """Lazily instantiate and return a Friction instance for this project."""
+        if self._friction is None:
+            self._friction = Friction(self.project_dir)
+        return self._friction
 
     @property
     def ve_config(self) -> VeConfig:

@@ -56,6 +56,7 @@ from template_system import ActiveChunk, TemplateContext, render_to_directory
 if TYPE_CHECKING:
     from investigations import Investigations
     from narratives import Narratives
+    from project import Project
     from subsystems import Subsystems
 
 
@@ -1091,28 +1092,29 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
             return []
 
+    # Chunk: docs/chunks/project_artifact_registry - Refactored to accept Project for unified manager access
     def list_proposed_chunks(
         self,
-        investigations: Investigations,
-        narratives: Narratives,
-        subsystems: Subsystems,
+        project: "Project",
     ) -> list[dict]:
         """List all proposed chunks across investigations, narratives, and subsystems.
 
         Args:
-            investigations: Investigations instance for parsing investigation frontmatter.
-            narratives: Narratives instance for parsing narrative frontmatter.
-            subsystems: Subsystems instance for parsing subsystem frontmatter.
+            project: Project instance providing access to all artifact managers.
 
         Returns:
             List of dicts with keys: prompt, chunk_directory, source_type, source_id
             Filtered to entries where chunk_directory is None (not yet created).
         """
+        # Import Project inside method to avoid circular import
+        # (Chunks is imported by Project)
+        from project import Project
+
         results: list[dict] = []
 
         # Collect from investigations
-        for inv_id in investigations.enumerate_investigations():
-            frontmatter = investigations.parse_investigation_frontmatter(inv_id)
+        for inv_id in project.investigations.enumerate_investigations():
+            frontmatter = project.investigations.parse_investigation_frontmatter(inv_id)
             if frontmatter is None:
                 continue
             for proposed in frontmatter.proposed_chunks:
@@ -1126,8 +1128,8 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
                     })
 
         # Collect from narratives
-        for narr_id in narratives.enumerate_narratives():
-            frontmatter = narratives.parse_narrative_frontmatter(narr_id)
+        for narr_id in project.narratives.enumerate_narratives():
+            frontmatter = project.narratives.parse_narrative_frontmatter(narr_id)
             if frontmatter is None:
                 continue
             for proposed in frontmatter.proposed_chunks:
@@ -1141,8 +1143,8 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
                     })
 
         # Collect from subsystems
-        for sub_id in subsystems.enumerate_subsystems():
-            frontmatter = subsystems.parse_subsystem_frontmatter(sub_id)
+        for sub_id in project.subsystems.enumerate_subsystems():
+            frontmatter = project.subsystems.parse_subsystem_frontmatter(sub_id)
             if frontmatter is None:
                 continue
             for proposed in frontmatter.proposed_chunks:

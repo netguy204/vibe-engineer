@@ -17,7 +17,7 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 
 from backreferences import CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
 from chunks import Chunks
@@ -27,6 +27,9 @@ from investigations import Investigations
 from models import ArtifactType
 from narratives import Narratives
 from subsystems import Subsystems
+
+if TYPE_CHECKING:
+    from project import Project
 
 
 @dataclass
@@ -68,6 +71,7 @@ class IntegrityResult:
 
 
 # Chunk: docs/chunks/integrity_validate - Core integrity validator class
+# Chunk: docs/chunks/project_artifact_registry - Accepts optional Project for unified manager access
 class IntegrityValidator:
     """Validates referential integrity across all VE artifacts.
 
@@ -78,13 +82,18 @@ class IntegrityValidator:
     4. Bidirectional consistency (as warnings)
     """
 
-    def __init__(self, project_dir: pathlib.Path):
+    def __init__(self, project_dir: pathlib.Path, project: "Project | None" = None):
         self.project_dir = pathlib.Path(project_dir)
-        self.chunks = Chunks(self.project_dir)
-        self.narratives = Narratives(self.project_dir)
-        self.investigations = Investigations(self.project_dir)
-        self.subsystems = Subsystems(self.project_dir)
-        self.friction = Friction(self.project_dir)
+        if project is None:
+            from project import Project
+            project = Project(self.project_dir)
+        self._project = project
+        # Access managers via project properties
+        self.chunks = self._project.chunks
+        self.narratives = self._project.narratives
+        self.investigations = self._project.investigations
+        self.subsystems = self._project.subsystems
+        self.friction = self._project.friction
 
         # Build in-memory index of existing artifacts
         self._chunk_names: set[str] = set()  # Local chunks (with GOAL.md)
