@@ -17,7 +17,7 @@ code_paths:
 - README.md
 - docs/trunk/SPEC.md
 code_references:
-- ref: src/models.py#SubsystemRelationship
+- ref: src/models/references.py#SubsystemRelationship
   implements: Pydantic model for chunk-to-subsystem relationship (inverse of ChunkRelationship)
 - ref: src/chunks.py#Chunks::validate_subsystem_refs
   implements: Validates subsystem references in chunk frontmatter exist in docs/subsystems/

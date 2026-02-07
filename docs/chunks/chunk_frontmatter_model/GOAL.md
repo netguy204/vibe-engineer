@@ -3,8 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/chunk.py
 - src/chunks.py
+- src/chunk_validation.py
+- src/integrity.py
 - src/ve.py
 - src/task_utils.py
 - src/subsystems.py
@@ -14,10 +16,10 @@ code_paths:
 - tests/test_chunk_overlap.py
 - tests/test_chunk_validate.py
 code_references:
-- ref: src/models.py#ChunkStatus
+- ref: src/models/chunk.py#ChunkStatus
   implements: Chunk lifecycle status StrEnum with FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED,
     HISTORICAL values
-- ref: src/models.py#ChunkFrontmatter
+- ref: src/models/chunk.py#ChunkFrontmatter
   implements: Pydantic model for chunk GOAL.md frontmatter validation with fields for
     status, ticket, parent_chunk, code_paths, code_references, narrative, investigation,
     subsystems, proposed_chunks, dependents, created_after, friction_entries, and bug_type
@@ -30,10 +32,10 @@ code_references:
 - ref: src/chunks.py#Chunks::find_overlapping_chunks
   implements: Uses ChunkStatus.ACTIVE for status comparison and typed frontmatter
     access
-- ref: src/chunks.py#Chunks::validate_chunk_complete
+- ref: src/chunk_validation.py#validate_chunk_complete
   implements: Uses typed ChunkStatus and frontmatter.code_references; calls validate_investigation_ref
     and validate_friction_entries_ref
-- ref: src/chunks.py#Chunks::validate_subsystem_refs
+- ref: src/integrity.py#validate_chunk_subsystem_refs
   implements: Uses typed frontmatter.subsystems access
 - ref: src/chunks.py#Chunks::validate_investigation_ref
   implements: Validates investigation field reference exists in docs/investigations/ (added by investigation_chunk_refs)
