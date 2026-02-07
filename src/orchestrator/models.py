@@ -115,7 +115,7 @@ class WorkUnit(BaseModel):
     # for this work unit, treating the dependencies as authoritative rather than
     # heuristically detected.
     explicit_deps: bool = False
-    # Track how many IMPLEMENT → REVIEW cycles have occurred for loop detection
+    # Chunk: docs/chunks/orch_review_phase - Track how many IMPLEMENT → REVIEW cycles have occurred for loop detection
     review_iterations: int = 0
     # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
     # Track how many times the reviewer was nudged to call the ReviewDecision tool
