@@ -720,6 +720,8 @@ class Scheduler:
             # Create worktree
             logger.info(f"Creating worktree for {chunk}")
             worktree_path = self.worktree_manager.create_worktree(chunk)
+            # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
+            worktree_created = True
 
             # Activate the target chunk, displacing any existing IMPLEMENTING chunk
             try:
@@ -729,6 +731,16 @@ class Scheduler:
                     logger.info(f"Stored displaced chunk '{displaced}' for later restoration")
             except ValueError as e:
                 logger.error(f"Failed to activate chunk {chunk}: {e}")
+                # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
+                # Clean up the worktree since we're returning early after creation
+                if worktree_created:
+                    try:
+                        self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+                        logger.info(f"Cleaned up worktree for {chunk} after activation failure")
+                    except WorktreeError as cleanup_error:
+                        logger.warning(
+                            f"Failed to clean up worktree for {chunk}: {cleanup_error}"
+                        )
                 await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
                 return
 

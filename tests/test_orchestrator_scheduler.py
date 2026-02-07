@@ -1479,6 +1479,89 @@ ticket: null
         content = displaced_goal.read_text()
         assert "status: IMPLEMENTING" in content
 
+    # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
+    @pytest.mark.asyncio
+    async def test_run_work_unit_cleans_up_worktree_on_activation_failure(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """When activate_chunk_in_worktree raises ValueError, the worktree is cleaned up."""
+        # Set up chunk that will fail activation (simulate missing GOAL.md)
+        # The worktree gets created successfully, but activation fails
+
+        # Configure mocks - worktree creation succeeds
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="missing_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Patch activate_chunk_in_worktree to raise ValueError
+        with patch(
+            "orchestrator.scheduler.activate_chunk_in_worktree",
+            side_effect=ValueError("Chunk 'missing_chunk' not found"),
+        ):
+            await scheduler._run_work_unit(work_unit)
+
+        # Worktree should have been cleaned up
+        mock_worktree_manager.remove_worktree.assert_called_once_with(
+            "missing_chunk", remove_branch=False
+        )
+
+        # Work unit should be marked as NEEDS_ATTENTION
+        updated = state_store.get_work_unit("missing_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "Chunk activation failed" in updated.attention_reason
+
+    # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
+    @pytest.mark.asyncio
+    async def test_run_work_unit_logs_cleanup_failure_without_crashing(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """When worktree cleanup fails after activation failure, it logs but doesn't crash."""
+        from orchestrator.worktree import WorktreeError
+
+        # Configure mocks - worktree creation succeeds
+        mock_worktree_manager.create_worktree.return_value = tmp_path
+        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+
+        # Make remove_worktree raise an exception
+        mock_worktree_manager.remove_worktree.side_effect = WorktreeError(
+            "Failed to remove worktree"
+        )
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="failing_chunk",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Patch activate_chunk_in_worktree to raise ValueError
+        with patch(
+            "orchestrator.scheduler.activate_chunk_in_worktree",
+            side_effect=ValueError("Chunk 'failing_chunk' not found"),
+        ):
+            # Should not raise - cleanup failure is logged but doesn't crash
+            await scheduler._run_work_unit(work_unit)
+
+        # remove_worktree was attempted
+        mock_worktree_manager.remove_worktree.assert_called_once()
+
+        # Work unit should still be marked as NEEDS_ATTENTION (original failure)
+        updated = state_store.get_work_unit("failing_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "Chunk activation failed" in updated.attention_reason
+
 
 class TestDeferredWorktreeCreation:
     """Tests for deferred worktree creation.
