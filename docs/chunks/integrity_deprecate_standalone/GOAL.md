@@ -1,18 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/integrity.py
+- src/chunks.py
+- tests/test_integrity.py
 code_references: []
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["chunks_class_decouple"]
-created_after: ["model_package_cleanup", "orchestrator_api_decompose", "task_operations_decompose"]
+depends_on:
+- chunks_class_decouple
+created_after:
+- model_package_cleanup
+- orchestrator_api_decompose
+- task_operations_decompose
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

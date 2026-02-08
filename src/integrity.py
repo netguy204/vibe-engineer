@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import warnings
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, TYPE_CHECKING
 
@@ -244,6 +245,29 @@ class IntegrityValidator:
                 self._chunk_code_files[chunk_name] = file_paths
             else:
                 self._chunk_code_files[chunk_name] = set()
+
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Public single-chunk validation entry point
+    def validate_chunk(
+        self, chunk_name: str
+    ) -> tuple[list[IntegrityError], list[IntegrityWarning]]:
+        """Validate a single chunk's outbound references.
+
+        This provides a focused entry point for validating a single chunk
+        without running the full project-wide validation. Used by Chunks
+        wrapper methods to route validation through the unified IntegrityValidator.
+
+        Args:
+            chunk_name: The chunk directory name to validate.
+
+        Returns:
+            Tuple of (errors, warnings) for the specified chunk.
+        """
+        # Build indexes needed for validation
+        self._build_artifact_index()
+        self._build_parent_chunk_index()
+
+        # Validate the single chunk
+        return self._validate_chunk_outbound(chunk_name)
 
     def validate(self) -> IntegrityResult:
         """Run full referential integrity validation.
@@ -698,10 +722,51 @@ class IntegrityValidator:
         return errors, warnings, files_scanned, chunk_refs_found, subsystem_refs_found
 
 
+# Chunk: docs/chunks/integrity_deprecate_standalone - Helper to convert IntegrityError to string messages
+def _errors_to_messages(errors: list[IntegrityError]) -> list[str]:
+    """Convert IntegrityError objects to string messages.
+
+    Formats errors in the same style as the original standalone functions:
+    "{target_type} '{target_name}' does not exist in docs/{artifact_type}/"
+
+    Args:
+        errors: List of IntegrityError objects.
+
+    Returns:
+        List of error message strings.
+    """
+    messages: list[str] = []
+    for error in errors:
+        # Extract just the target name from the full target path
+        # e.g., "docs/subsystems/foo" -> "foo"
+        target = error.target
+        if target.startswith("docs/"):
+            parts = target.split("/")
+            if len(parts) >= 3:
+                artifact_type = parts[1]  # e.g., "subsystems", "narratives"
+                target_name = parts[2]  # e.g., "foo"
+                messages.append(
+                    f"{artifact_type.rstrip('s').capitalize()} '{target_name}' does not exist in docs/{artifact_type}/"
+                )
+            else:
+                messages.append(error.message)
+        elif target.startswith("FRICTION.md#"):
+            # Handle friction entry references
+            entry_id = target.split("#")[1]
+            messages.append(
+                f"Friction entry '{entry_id}' does not exist in docs/trunk/FRICTION.md"
+            )
+        else:
+            # Fallback to the original message
+            messages.append(error.message)
+    return messages
+
+
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
 # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.subsystems access
 # Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+# Chunk: docs/chunks/integrity_deprecate_standalone - Deprecated, use Chunks methods or IntegrityValidator
 def validate_chunk_subsystem_refs(
     project_dir: pathlib.Path,
     chunk_id: str,
@@ -709,50 +774,36 @@ def validate_chunk_subsystem_refs(
 ) -> list[str]:
     """Validate subsystem references in a chunk's frontmatter.
 
+    .. deprecated::
+        Use Chunks(project_dir).validate_subsystem_refs(chunk_id) or
+        IntegrityValidator(project_dir).validate_chunk(chunk_id) instead.
+
     Checks that each referenced subsystem directory exists in docs/subsystems/.
 
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
-        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
+        chunks: Optional ChunksProtocol instance (ignored, kept for backward compatibility).
 
     Returns:
         List of error messages (empty if all refs valid or no refs).
     """
-    errors: list[str] = []
-
-    # Create Chunks instance if not provided
-    if chunks is None:
-        from chunks import Chunks
-        chunks = Chunks(project_dir)
-
-    # Get chunk frontmatter
-    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
-    if frontmatter is None:
-        return []  # Chunk doesn't exist, nothing to validate
-
-    # Get subsystems field (already validated by ChunkFrontmatter model)
-    if not frontmatter.subsystems:
-        return []
-
-    # Subsystems directory path
-    subsystems_dir = project_dir / "docs" / "subsystems"
-
-    for entry in frontmatter.subsystems:
-        # Check if subsystem directory exists
-        subsystem_path = subsystems_dir / entry.subsystem_id
-        if not subsystem_path.exists():
-            errors.append(
-                f"Subsystem '{entry.subsystem_id}' does not exist in docs/subsystems/"
-            )
-
-    return errors
+    warnings.warn(
+        "validate_chunk_subsystem_refs is deprecated. Use Chunks.validate_subsystem_refs() "
+        "or IntegrityValidator.validate_chunk() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from chunks import Chunks
+    chunk_mgr = Chunks(project_dir)
+    return chunk_mgr.validate_subsystem_refs(chunk_id)
 
 
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
 # Chunk: docs/chunks/investigation_chunk_refs - Validation that referenced investigations exist
 # Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+# Chunk: docs/chunks/integrity_deprecate_standalone - Deprecated, use Chunks methods or IntegrityValidator
 def validate_chunk_investigation_ref(
     project_dir: pathlib.Path,
     chunk_id: str,
@@ -760,50 +811,36 @@ def validate_chunk_investigation_ref(
 ) -> list[str]:
     """Validate investigation reference in a chunk's frontmatter.
 
-    Checks:
-    1. If investigation field is populated, the referenced investigation
-       directory exists in docs/investigations/
+    .. deprecated::
+        Use Chunks(project_dir).validate_investigation_ref(chunk_id) or
+        IntegrityValidator(project_dir).validate_chunk(chunk_id) instead.
+
+    Checks that if investigation field is populated, the referenced investigation
+    directory exists in docs/investigations/.
 
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
-        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
+        chunks: Optional ChunksProtocol instance (ignored, kept for backward compatibility).
 
     Returns:
         List of error messages (empty if valid or no reference).
     """
-    errors: list[str] = []
-
-    # Create Chunks instance if not provided
-    if chunks is None:
-        from chunks import Chunks
-        chunks = Chunks(project_dir)
-
-    # Get chunk frontmatter
-    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
-    if frontmatter is None:
-        return []  # Chunk doesn't exist, nothing to validate
-
-    # Get investigation field (already validated by ChunkFrontmatter model)
-    if not frontmatter.investigation:
-        return []
-
-    # Investigations directory path
-    investigations_dir = project_dir / "docs" / "investigations"
-
-    # Check if investigation directory exists
-    investigation_path = investigations_dir / frontmatter.investigation
-    if not investigation_path.exists():
-        errors.append(
-            f"Investigation '{frontmatter.investigation}' does not exist in docs/investigations/"
-        )
-
-    return errors
+    warnings.warn(
+        "validate_chunk_investigation_ref is deprecated. Use Chunks.validate_investigation_ref() "
+        "or IntegrityValidator.validate_chunk() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from chunks import Chunks
+    chunk_mgr = Chunks(project_dir)
+    return chunk_mgr.validate_investigation_ref(chunk_id)
 
 
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
 # Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+# Chunk: docs/chunks/integrity_deprecate_standalone - Deprecated, use Chunks methods or IntegrityValidator
 def validate_chunk_narrative_ref(
     project_dir: pathlib.Path,
     chunk_id: str,
@@ -811,51 +848,37 @@ def validate_chunk_narrative_ref(
 ) -> list[str]:
     """Validate narrative reference in a chunk's frontmatter.
 
-    Checks:
-    1. If narrative field is populated, the referenced narrative
-       directory exists in docs/narratives/
+    .. deprecated::
+        Use Chunks(project_dir).validate_narrative_ref(chunk_id) or
+        IntegrityValidator(project_dir).validate_chunk(chunk_id) instead.
+
+    Checks that if narrative field is populated, the referenced narrative
+    directory exists in docs/narratives/.
 
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
-        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
+        chunks: Optional ChunksProtocol instance (ignored, kept for backward compatibility).
 
     Returns:
         List of error messages (empty if valid or no reference).
     """
-    errors: list[str] = []
-
-    # Create Chunks instance if not provided
-    if chunks is None:
-        from chunks import Chunks
-        chunks = Chunks(project_dir)
-
-    # Get chunk frontmatter
-    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
-    if frontmatter is None:
-        return []  # Chunk doesn't exist, nothing to validate
-
-    # Get narrative field (already validated by ChunkFrontmatter model)
-    if not frontmatter.narrative:
-        return []
-
-    # Narratives directory path
-    narratives_dir = project_dir / "docs" / "narratives"
-
-    # Check if narrative directory exists
-    narrative_path = narratives_dir / frontmatter.narrative
-    if not narrative_path.exists():
-        errors.append(
-            f"Narrative '{frontmatter.narrative}' does not exist in docs/narratives/"
-        )
-
-    return errors
+    warnings.warn(
+        "validate_chunk_narrative_ref is deprecated. Use Chunks.validate_narrative_ref() "
+        "or IntegrityValidator.validate_chunk() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from chunks import Chunks
+    chunk_mgr = Chunks(project_dir)
+    return chunk_mgr.validate_narrative_ref(chunk_id)
 
 
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
 # Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+# Chunk: docs/chunks/integrity_deprecate_standalone - Deprecated, use Chunks methods or IntegrityValidator
 def validate_chunk_friction_entries_ref(
     project_dir: pathlib.Path,
     chunk_id: str,
@@ -863,54 +886,30 @@ def validate_chunk_friction_entries_ref(
 ) -> list[str]:
     """Validate friction entry references in a chunk's frontmatter.
 
+    .. deprecated::
+        Use Chunks(project_dir).validate_friction_entries_ref(chunk_id) or
+        IntegrityValidator(project_dir).validate_chunk(chunk_id) instead.
+
     Checks that each referenced friction entry ID exists in FRICTION.md.
     If friction_entries is empty, validation passes (optional field).
 
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
-        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
+        chunks: Optional ChunksProtocol instance (ignored, kept for backward compatibility).
 
     Returns:
         List of error messages (empty if valid or no references).
     """
-    errors: list[str] = []
-
-    # Create Chunks instance if not provided
-    if chunks is None:
-        from chunks import Chunks
-        chunks = Chunks(project_dir)
-
-    # Get chunk frontmatter
-    frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
-    if frontmatter is None:
-        return []  # Chunk doesn't exist, nothing to validate
-
-    # Get friction_entries field (already validated by ChunkFrontmatter model)
-    if not frontmatter.friction_entries:
-        return []
-
-    # Parse friction log to get existing entry IDs
-    friction = Friction(project_dir)
-    if not friction.exists():
-        errors.append(
-            f"Friction log does not exist at docs/trunk/FRICTION.md but chunk "
-            f"references friction entries: {[e.entry_id for e in frontmatter.friction_entries]}"
-        )
-        return errors
-
-    # Get all existing friction entry IDs
-    existing_entries = friction.parse_entries()
-    existing_entry_ids = {entry.id for entry in existing_entries}
-
-    # Validate each referenced entry exists
-    for entry_ref in frontmatter.friction_entries:
-        if entry_ref.entry_id not in existing_entry_ids:
-            errors.append(
-                f"Friction entry '{entry_ref.entry_id}' does not exist in docs/trunk/FRICTION.md"
-            )
-
-    return errors
+    warnings.warn(
+        "validate_chunk_friction_entries_ref is deprecated. Use Chunks.validate_friction_entries_ref() "
+        "or IntegrityValidator.validate_chunk() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from chunks import Chunks
+    chunk_mgr = Chunks(project_dir)
+    return chunk_mgr.validate_friction_entries_ref(chunk_id)
 
 
 def validate_integrity(project_dir: pathlib.Path) -> IntegrityResult:
