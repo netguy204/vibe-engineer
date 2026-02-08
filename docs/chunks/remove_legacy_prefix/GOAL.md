@@ -3,25 +3,23 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
+  - src/models/shared.py
+  - src/models/references.py
   - src/chunks.py
   - src/subsystems.py
-  - src/narratives.py
-  - src/investigations.py
+  - src/artifact_manager.py
   - src/cluster_rename.py
-  - src/cli/chunk.py
-  - src/cli/investigation.py
   - docs/trunk/SPEC.md
 code_references:
-  - ref: src/models.py#extract_short_name
+  - ref: src/models/shared.py#extract_short_name
     implements: "Identity function for short name extraction (legacy prefix stripping removed)"
-  - ref: src/models.py#ARTIFACT_ID_PATTERN
+  - ref: src/models/references.py#ARTIFACT_ID_PATTERN
     implements: "Simplified artifact ID pattern accepting only {short_name} format"
-  - ref: src/models.py#CHUNK_ID_PATTERN
+  - ref: src/models/references.py#CHUNK_ID_PATTERN
     implements: "Simplified chunk ID pattern accepting only {short_name} format"
-  - ref: src/models.py#ChunkRelationship::validate_chunk_id
+  - ref: src/models/references.py#ChunkRelationship::validate_chunk_id
     implements: "Chunk ID validation without legacy format branches"
-  - ref: src/models.py#SubsystemRelationship::validate_subsystem_id
+  - ref: src/models/references.py#SubsystemRelationship::validate_subsystem_id
     implements: "Subsystem ID validation without legacy format branches"
   - ref: src/chunks.py#Chunks::resolve_chunk_id
     implements: "Chunk ID resolution using exact match only (legacy prefix match removed)"
@@ -33,12 +31,8 @@ code_references:
     implements: "Subsystem directory validation without legacy format branch"
   - ref: src/subsystems.py#Subsystems::find_by_shortname
     implements: "Direct directory name comparison (extract_short_name call removed)"
-  - ref: src/subsystems.py#Subsystems::find_duplicates
-    implements: "Direct directory name comparison (extract_short_name call removed)"
-  - ref: src/narratives.py#Narratives::find_duplicates
-    implements: "Direct directory name comparison (extract_short_name call removed)"
-  - ref: src/investigations.py#Investigations::find_duplicates
-    implements: "Direct directory name comparison (extract_short_name call removed)"
+  - ref: src/artifact_manager.py#ArtifactManager::find_duplicates
+    implements: "Direct directory name comparison (unified in base class)"
   - ref: src/cluster_rename.py#find_chunks_by_prefix
     implements: "Chunk prefix search without legacy format handling"
   - ref: src/cluster_rename.py#check_rename_collisions

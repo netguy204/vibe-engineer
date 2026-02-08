@@ -398,3 +398,63 @@ class Project:
             result.warnings.extend(sub_result.warnings)
 
         return result
+
+    # Chunk: docs/chunks/chunks_class_decouple - Moved from Chunks class to Project
+    def list_proposed_chunks(self) -> list[dict]:
+        """List all proposed chunks across investigations, narratives, and subsystems.
+
+        This is a cross-artifact query that belongs on Project where all managers
+        are accessible.
+
+        Returns:
+            List of dicts with keys: prompt, chunk_directory, source_type, source_id
+            Filtered to entries where chunk_directory is None (not yet created).
+        """
+        results: list[dict] = []
+
+        # Collect from investigations
+        for inv_id in self.investigations.enumerate_investigations():
+            frontmatter = self.investigations.parse_investigation_frontmatter(inv_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "investigation",
+                        "source_id": inv_id,
+                    })
+
+        # Collect from narratives
+        for narr_id in self.narratives.enumerate_narratives():
+            frontmatter = self.narratives.parse_narrative_frontmatter(narr_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "narrative",
+                        "source_id": narr_id,
+                    })
+
+        # Collect from subsystems
+        for sub_id in self.subsystems.enumerate_subsystems():
+            frontmatter = self.subsystems.parse_subsystem_frontmatter(sub_id)
+            if frontmatter is None:
+                continue
+            for proposed in frontmatter.proposed_chunks:
+                # Only include if chunk hasn't been created yet
+                if not proposed.chunk_directory:
+                    results.append({
+                        "prompt": proposed.prompt,
+                        "chunk_directory": proposed.chunk_directory,
+                        "source_type": "subsystem",
+                        "source_id": sub_id,
+                    })
+
+        return results

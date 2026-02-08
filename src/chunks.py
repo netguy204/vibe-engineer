@@ -60,6 +60,13 @@ from chunk_validation import (
     validate_chunk_complete as _validate_chunk_complete,
     validate_chunk_injectable as _validate_chunk_injectable,
 )
+# Chunk: docs/chunks/chunks_class_decouple - Top-level imports from integrity (no late imports needed)
+from integrity import (
+    validate_chunk_subsystem_refs,
+    validate_chunk_investigation_ref,
+    validate_chunk_narrative_ref,
+    validate_chunk_friction_entries_ref,
+)
 
 if TYPE_CHECKING:
     from investigations import Investigations
@@ -152,8 +159,12 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/chunknaming_drop_ticket - Collision detection ignoring ticket_id
     # Chunk: docs/chunks/implement_chunk_start-ve-001 - Detects existing chunks with same short_name only
-    def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
+    # Chunk: docs/chunks/artifact_pattern_consolidation - Overrides base class to accept legacy ticket_id parameter
+    def find_duplicates(self, short_name: str, ticket_id: str | None = None) -> list[str]:
         """Find existing chunks with the same short_name.
+
+        Overrides the base class method to accept the legacy ticket_id parameter
+        for backward compatibility.
 
         Args:
             short_name: The short name to check for collisions.
@@ -163,13 +174,8 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of existing chunk directory names that would collide.
         """
-        # Match on short_name only - ticket_id is stored in frontmatter, not directory name
-        duplicates = []
-        for name in self.enumerate_chunks():
-            # Directory name is the short name
-            if name == short_name:
-                duplicates.append(name)
-        return duplicates
+        # Delegate to base class - ticket_id is ignored (stored in frontmatter, not directory name)
+        return super().find_duplicates(short_name)
 
     # Chunk: docs/chunks/artifact_list_ordering - Updated to use ArtifactIndex for causal ordering
     # Chunk: docs/chunks/chunk_list_command-ve-002 - Lists chunks in causal order (newest first) using ArtifactIndex
@@ -797,6 +803,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed ChunkStatus and frontmatter.code_references
     # Chunk: docs/chunks/task_chunk_validation - Task-context awareness for validation
     # Chunk: docs/chunks/investigation_chunk_refs - Integration of investigation validation into chunk completion
+    # Chunk: docs/chunks/friction_chunk_linking - Integration of friction entry validation into chunk completion validation
     # Chunk: docs/chunks/chunk_validator_extract - Delegates to chunk_validation module
     def validate_chunk_complete(
         self,
@@ -810,11 +817,17 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return _validate_chunk_complete(self, chunk_id, task_dir)
 
     # Chunk: docs/chunks/project_artifact_registry - Refactored to accept Project for unified manager access
+    # Chunk: docs/chunks/chunks_class_decouple - Deprecated: delegates to Project.list_proposed_chunks()
     def list_proposed_chunks(
         self,
         project: "Project",
     ) -> list[dict]:
         """List all proposed chunks across investigations, narratives, and subsystems.
+
+        DEPRECATED: This method is a cross-artifact query that belongs on Project.
+        Use project.list_proposed_chunks() directly instead.
+
+        This forwarding method is kept for backward compatibility.
 
         Args:
             project: Project instance providing access to all artifact managers.
@@ -823,58 +836,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             List of dicts with keys: prompt, chunk_directory, source_type, source_id
             Filtered to entries where chunk_directory is None (not yet created).
         """
-        # Import Project inside method to avoid circular import
-        # (Chunks is imported by Project)
-        from project import Project
-
-        results: list[dict] = []
-
-        # Collect from investigations
-        for inv_id in project.investigations.enumerate_investigations():
-            frontmatter = project.investigations.parse_investigation_frontmatter(inv_id)
-            if frontmatter is None:
-                continue
-            for proposed in frontmatter.proposed_chunks:
-                # Only include if chunk hasn't been created yet
-                if not proposed.chunk_directory:
-                    results.append({
-                        "prompt": proposed.prompt,
-                        "chunk_directory": proposed.chunk_directory,
-                        "source_type": "investigation",
-                        "source_id": inv_id,
-                    })
-
-        # Collect from narratives
-        for narr_id in project.narratives.enumerate_narratives():
-            frontmatter = project.narratives.parse_narrative_frontmatter(narr_id)
-            if frontmatter is None:
-                continue
-            for proposed in frontmatter.proposed_chunks:
-                # Only include if chunk hasn't been created yet
-                if not proposed.chunk_directory:
-                    results.append({
-                        "prompt": proposed.prompt,
-                        "chunk_directory": proposed.chunk_directory,
-                        "source_type": "narrative",
-                        "source_id": narr_id,
-                    })
-
-        # Collect from subsystems
-        for sub_id in project.subsystems.enumerate_subsystems():
-            frontmatter = project.subsystems.parse_subsystem_frontmatter(sub_id)
-            if frontmatter is None:
-                continue
-            for proposed in frontmatter.proposed_chunks:
-                # Only include if chunk hasn't been created yet
-                if not proposed.chunk_directory:
-                    results.append({
-                        "prompt": proposed.prompt,
-                        "chunk_directory": proposed.chunk_directory,
-                        "source_type": "subsystem",
-                        "source_id": sub_id,
-                    })
-
-        return results
+        return project.list_proposed_chunks()
 
     def get_status(self, chunk_id: str) -> ChunkStatus:
         """Get the current status of a chunk.
@@ -936,6 +898,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_subsystem_refs
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
@@ -947,11 +910,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if all refs valid or no refs).
         """
-        from integrity import validate_chunk_subsystem_refs
-        return validate_chunk_subsystem_refs(self.project_dir, chunk_id)
+        return validate_chunk_subsystem_refs(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_investigation_ref
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 
@@ -963,11 +926,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        from integrity import validate_chunk_investigation_ref
-        return validate_chunk_investigation_ref(self.project_dir, chunk_id)
+        return validate_chunk_investigation_ref(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_narrative_ref
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
         """Validate narrative reference in a chunk's frontmatter.
 
@@ -979,11 +942,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        from integrity import validate_chunk_narrative_ref
-        return validate_chunk_narrative_ref(self.project_dir, chunk_id)
+        return validate_chunk_narrative_ref(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_friction_entries_ref
     # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
         """Validate friction entry references in a chunk's frontmatter.
 
@@ -995,8 +958,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no references).
         """
-        from integrity import validate_chunk_friction_entries_ref
-        return validate_chunk_friction_entries_ref(self.project_dir, chunk_id)
+        return validate_chunk_friction_entries_ref(self.project_dir, chunk_id, chunks=self)
 
     # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
     # Chunk: docs/chunks/orch_inject_validate - Injection-time chunk validation

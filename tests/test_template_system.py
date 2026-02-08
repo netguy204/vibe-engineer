@@ -6,6 +6,26 @@ import pathlib
 import pytest
 
 
+# Chunk: docs/chunks/artifact_pattern_consolidation - Tests for ActiveArtifact base class
+class TestActiveArtifact:
+    """Tests for ActiveArtifact base class."""
+
+    def test_active_artifact_cannot_be_instantiated_directly(self, temp_project):
+        """ActiveArtifact cannot be used directly (abstract base)."""
+        from template_system import ActiveArtifact
+
+        # ActiveArtifact can be instantiated but artifact_dir will raise NotImplementedError
+        artifact = ActiveArtifact(
+            short_name="test",
+            id="test",
+            _project_dir=temp_project,
+        )
+        # Accessing artifact_dir should raise because _artifact_type_dir is not implemented
+        import pytest
+        with pytest.raises(NotImplementedError):
+            _ = artifact.artifact_dir
+
+
 class TestActiveChunk:
     """Tests for ActiveChunk dataclass."""
 
@@ -34,6 +54,19 @@ class TestActiveChunk:
         expected = temp_project / "docs" / "chunks" / "0023-template_unified_module" / "PLAN.md"
         assert chunk.plan_path == expected
         assert isinstance(chunk.plan_path, pathlib.Path)
+
+    def test_active_chunk_artifact_dir_returns_path(self, temp_project):
+        """ActiveChunk.artifact_dir returns Path to chunk directory."""
+        from template_system import ActiveChunk
+
+        chunk = ActiveChunk(
+            short_name="template_unified_module",
+            id="0023-template_unified_module",
+            _project_dir=temp_project,
+        )
+        expected = temp_project / "docs" / "chunks" / "0023-template_unified_module"
+        assert chunk.artifact_dir == expected
+        assert isinstance(chunk.artifact_dir, pathlib.Path)
 
 
 class TestActiveNarrative:

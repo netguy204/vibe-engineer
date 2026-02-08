@@ -159,18 +159,4 @@ class Investigations(ArtifactManager[InvestigationFrontmatter, InvestigationStat
 
         return investigation_path
 
-    def find_duplicates(self, short_name: str) -> list[str]:
-        """Find existing investigations with the same short_name.
-
-        Args:
-            short_name: The short name to check for collisions.
-
-        Returns:
-            List of existing investigation directory names that would collide.
-        """
-        duplicates = []
-        for name in self.enumerate_investigations():
-            # Directory name is the short name
-            if name == short_name:
-                duplicates.append(name)
-        return duplicates
+    # find_duplicates inherited from ArtifactManager base class

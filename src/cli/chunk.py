@@ -743,6 +743,7 @@ def _list_task_proposed_chunks(task_dir: pathlib.Path):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
 # Chunk: docs/chunks/project_artifact_registry - Uses Project for unified manager access
+# Chunk: docs/chunks/chunks_class_decouple - Calls Project.list_proposed_chunks() directly
 def list_proposed_chunks_cmd(project_dir):
     """List all proposed chunks that haven't been created yet."""
     if handle_task_context(project_dir, lambda: _list_task_proposed_chunks(project_dir)):
@@ -750,7 +751,7 @@ def list_proposed_chunks_cmd(project_dir):
 
     # Single-repo mode
     project = Project(project_dir)
-    proposed = project.chunks.list_proposed_chunks(project)
+    proposed = project.list_proposed_chunks()
 
     if not proposed:
         click.echo("No proposed chunks found", err=True)

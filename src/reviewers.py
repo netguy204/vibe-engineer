@@ -1,5 +1,6 @@
 """Reviewers module - business logic for reviewer decision management."""
 # Chunk: docs/chunks/reviewer_decisions_review_cli - Decision review CLI commands
+# Chunk: docs/chunks/chunks_class_decouple - Uses shared frontmatter utilities
 
 from __future__ import annotations
 
@@ -8,9 +9,7 @@ import pathlib
 import re
 from typing import Literal
 
-from pydantic import ValidationError
-import yaml
-
+from frontmatter import parse_frontmatter
 from models import DecisionFrontmatter, FeedbackReview
 
 
@@ -76,6 +75,7 @@ class Reviewers:
                         files.append(f)
         return files
 
+    # Chunk: docs/chunks/chunks_class_decouple - Uses shared parse_frontmatter() from frontmatter.py
     def parse_decision_frontmatter(self, decision_path: pathlib.Path) -> DecisionFrontmatter | None:
         """Parse YAML frontmatter from a decision file.
 
@@ -85,23 +85,7 @@ class Reviewers:
         Returns:
             DecisionFrontmatter if valid, or None if parsing fails.
         """
-        if not decision_path.exists():
-            return None
-
-        content = decision_path.read_text()
-
-        # Extract frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not match:
-            return None
-
-        try:
-            frontmatter = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter, dict):
-                return None
-            return DecisionFrontmatter.model_validate(frontmatter)
-        except (yaml.YAMLError, ValidationError):
-            return None
+        return parse_frontmatter(decision_path, DecisionFrontmatter)
 
     def parse_decision_info(self, decision_path: pathlib.Path) -> DecisionInfo | None:
         """Parse decision file to extract full info.
@@ -148,6 +132,7 @@ class Reviewers:
         except (ValueError, IndexError):
             return None
 
+    # Chunk: docs/chunks/chunks_class_decouple - Uses shared update_frontmatter_field() from frontmatter.py
     def update_operator_review(
         self,
         decision_path: pathlib.Path,
@@ -163,30 +148,8 @@ class Reviewers:
             FileNotFoundError: If decision_path doesn't exist.
             ValueError: If the file has no valid frontmatter.
         """
-        if not decision_path.exists():
-            raise FileNotFoundError(f"Decision file not found: {decision_path}")
-
-        content = decision_path.read_text()
-
-        # Parse frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-        if not match:
-            raise ValueError(f"Could not parse frontmatter in {decision_path}")
-
-        frontmatter_text = match.group(1)
-        body = match.group(2)
-
-        # Parse YAML frontmatter
-        frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-        # Update the operator_review field
-        frontmatter["operator_review"] = review
-
-        # Reconstruct the file
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        new_content = f"---\n{new_frontmatter}---\n{body}"
-
-        decision_path.write_text(new_content)
+        from frontmatter import update_frontmatter_field
+        update_frontmatter_field(decision_path, "operator_review", review)
 
     def is_decision_file(self, path: pathlib.Path) -> bool:
         """Check if a path is a valid decision file.

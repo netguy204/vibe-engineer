@@ -124,6 +124,37 @@ def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
     return extract_frontmatter_dict(file_path)
 
 
+# Chunk: docs/chunks/artifact_pattern_consolidation - Unified created_after normalization
+def _normalize_created_after(value: Any) -> list[str]:
+    """Normalize a created_after value to a list of strings.
+
+    Handles the three valid input forms:
+    - None/null → []
+    - string → [string] (legacy single-value format)
+    - list → list (standard format)
+
+    Args:
+        value: The raw created_after value from YAML.
+
+    Returns:
+        List of artifact names. Returns empty list for None, invalid types,
+        or missing values.
+    """
+    # Handle null/None
+    if value is None:
+        return []
+
+    # Handle legacy single string format
+    if isinstance(value, str):
+        return [value]
+
+    # Should be a list
+    if isinstance(value, list):
+        return value
+
+    return []
+
+
 # Chunk: docs/chunks/artifact_ordering_index - Extracts created_after field from YAML frontmatter
 def _parse_created_after(file_path: Path) -> list[str]:
     """Parse the created_after field from a file's frontmatter.
@@ -140,21 +171,7 @@ def _parse_created_after(file_path: Path) -> list[str]:
     if frontmatter is None:
         return []
 
-    created_after = frontmatter.get("created_after", [])
-
-    # Handle null/None
-    if created_after is None:
-        return []
-
-    # Handle legacy single string format
-    if isinstance(created_after, str):
-        return [created_after]
-
-    # Should be a list
-    if isinstance(created_after, list):
-        return created_after
-
-    return []
+    return _normalize_created_after(frontmatter.get("created_after", []))
 
 
 def _parse_yaml_created_after(file_path: Path) -> list[str]:
@@ -176,21 +193,7 @@ def _parse_yaml_created_after(file_path: Path) -> list[str]:
         if not data:
             return []
 
-        created_after = data.get("created_after", [])
-
-        # Handle null/None
-        if created_after is None:
-            return []
-
-        # Handle legacy single string format
-        if isinstance(created_after, str):
-            return [created_after]
-
-        # Should be a list
-        if isinstance(created_after, list):
-            return created_after
-
-        return []
+        return _normalize_created_after(data.get("created_after", []))
     except (yaml.YAMLError, OSError):
         return []
 

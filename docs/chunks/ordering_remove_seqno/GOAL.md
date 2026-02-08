@@ -3,7 +3,8 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/shared.py
+- src/models/references.py
 - src/chunks.py
 - src/narratives.py
 - src/investigations.py
@@ -18,13 +19,13 @@ code_paths:
 - tests/test_chunk_start.py
 - tests/conftest.py
 code_references:
-  - ref: src/models.py#extract_short_name
+  - ref: src/models/shared.py#extract_short_name
     implements: "Utility to extract short_name from directory names (handles both legacy and new formats)"
-  - ref: src/models.py#ARTIFACT_ID_PATTERN
+  - ref: src/models/references.py#ARTIFACT_ID_PATTERN
     implements: "Regex pattern accepting both legacy NNNN-name and new name-only formats"
-  - ref: src/models.py#ChunkRelationship::validate_chunk_id
+  - ref: src/models/references.py#ChunkRelationship::validate_chunk_id
     implements: "Validator updated to accept both legacy and new chunk ID formats"
-  - ref: src/models.py#SubsystemRelationship::validate_subsystem_id
+  - ref: src/models/references.py#SubsystemRelationship::validate_subsystem_id
     implements: "Validator updated to accept both legacy and new subsystem ID formats"
   - ref: src/chunks.py#Chunks::find_duplicates
     implements: "Collision detection using extract_short_name for both naming patterns"

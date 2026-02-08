@@ -23,6 +23,7 @@ class ArtifactType(StrEnum):
     SUBSYSTEM = "subsystem"
 
 
+# Chunk: docs/chunks/remove_legacy_prefix - Simplified patterns accepting only {short_name} format
 # Regex for validating artifact ID format: {short_name}
 # Lowercase letters, digits, underscores, hyphens (must start with letter)
 ARTIFACT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -31,13 +32,134 @@ ARTIFACT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 CHUNK_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
+# Chunk: docs/chunks/artifact_pattern_consolidation - Unified artifact ID validation helper
+def _validate_artifact_id(v: str, field_name: str = "artifact_id") -> str:
+    """Validate that a value matches the artifact ID pattern.
+
+    Args:
+        v: The value to validate.
+        field_name: The name of the field for error messages.
+
+    Returns:
+        The validated value.
+
+    Raises:
+        ValueError: If the value is empty or doesn't match the pattern.
+    """
+    if not v:
+        raise ValueError(f"{field_name} cannot be empty")
+    if not ARTIFACT_ID_PATTERN.match(v):
+        raise ValueError(
+            f"{field_name} must be lowercase, start with a letter, and contain only "
+            "letters, digits, underscores, and hyphens"
+        )
+    return v
+
+
+# Chunk: docs/chunks/artifact_pattern_consolidation - Generic artifact relationship model
+class ArtifactRelationship(BaseModel):
+    """Generic relationship between workflow artifacts.
+
+    A unified model for expressing relationships between artifacts. This replaces
+    type-specific models (ChunkRelationship, SubsystemRelationship) with a single
+    model parameterized by artifact type.
+
+    Relationship types:
+    - "implements": The artifact directly implements part of the related artifact
+    - "uses": The artifact uses/depends on the related artifact
+
+    Examples:
+        # Chunk implements a subsystem
+        ArtifactRelationship(
+            artifact_type=ArtifactType.SUBSYSTEM,
+            artifact_id="template_system",
+            relationship="implements"
+        )
+
+        # Subsystem references a chunk
+        ArtifactRelationship(
+            artifact_type=ArtifactType.CHUNK,
+            artifact_id="template_rendering",
+            relationship="implements"
+        )
+    """
+
+    artifact_type: ArtifactType
+    artifact_id: str  # format: {short_name}
+    relationship: Literal["implements", "uses"]
+
+    @field_validator("artifact_id")
+    @classmethod
+    def validate_artifact_id(cls, v: str) -> str:
+        """Validate artifact_id matches valid artifact ID pattern."""
+        return _validate_artifact_id(v, "artifact_id")
+
+    def to_chunk_relationship(self) -> "ChunkRelationship":
+        """Convert to ChunkRelationship (for backward compatibility).
+
+        Only valid when artifact_type is CHUNK.
+
+        Raises:
+            ValueError: If artifact_type is not CHUNK.
+        """
+        if self.artifact_type != ArtifactType.CHUNK:
+            raise ValueError(
+                f"Cannot convert {self.artifact_type} relationship to ChunkRelationship"
+            )
+        return ChunkRelationship(
+            chunk_id=self.artifact_id,
+            relationship=self.relationship,
+        )
+
+    def to_subsystem_relationship(self) -> "SubsystemRelationship":
+        """Convert to SubsystemRelationship (for backward compatibility).
+
+        Only valid when artifact_type is SUBSYSTEM.
+
+        Raises:
+            ValueError: If artifact_type is not SUBSYSTEM.
+        """
+        if self.artifact_type != ArtifactType.SUBSYSTEM:
+            raise ValueError(
+                f"Cannot convert {self.artifact_type} relationship to SubsystemRelationship"
+            )
+        return SubsystemRelationship(
+            subsystem_id=self.artifact_id,
+            relationship=self.relationship,
+        )
+
+    @classmethod
+    def from_chunk_relationship(cls, rel: "ChunkRelationship") -> "ArtifactRelationship":
+        """Create from ChunkRelationship (for backward compatibility)."""
+        return cls(
+            artifact_type=ArtifactType.CHUNK,
+            artifact_id=rel.chunk_id,
+            relationship=rel.relationship,
+        )
+
+    @classmethod
+    def from_subsystem_relationship(
+        cls, rel: "SubsystemRelationship"
+    ) -> "ArtifactRelationship":
+        """Create from SubsystemRelationship (for backward compatibility)."""
+        return cls(
+            artifact_type=ArtifactType.SUBSYSTEM,
+            artifact_id=rel.subsystem_id,
+            relationship=rel.relationship,
+        )
+
+
 # Chunk: docs/chunks/subsystem_schemas_and_model - Model for chunk-to-subsystem relationships
+# Chunk: docs/chunks/remove_legacy_prefix - Validation without legacy format branches
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
     Captures how chunks relate to subsystem documentation:
     - "implements": chunk directly implements part of the subsystem
     - "uses": chunk uses/depends on the subsystem
+
+    Note: Consider using ArtifactRelationship for new code. This class is retained
+    for backward compatibility with existing subsystem YAML files.
     """
 
     chunk_id: str  # format: {short_name}
@@ -47,23 +169,20 @@ class ChunkRelationship(BaseModel):
     @classmethod
     def validate_chunk_id(cls, v: str) -> str:
         """Validate chunk_id matches valid artifact ID pattern."""
-        if not v:
-            raise ValueError("chunk_id cannot be empty")
-        if not ARTIFACT_ID_PATTERN.match(v):
-            raise ValueError(
-                "chunk_id must be lowercase, start with a letter, and contain only "
-                "letters, digits, underscores, and hyphens"
-            )
-        return v
+        return _validate_artifact_id(v, "chunk_id")
 
 
 # Chunk: docs/chunks/bidirectional_refs - Pydantic model for chunk-to-subsystem relationship
+# Chunk: docs/chunks/remove_legacy_prefix - Validation without legacy format branches
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
     Captures how a chunk relates to subsystem documentation (inverse of ChunkRelationship):
     - "implements": chunk directly implements part of the subsystem
     - "uses": chunk uses/depends on the subsystem
+
+    Note: Consider using ArtifactRelationship for new code. This class is retained
+    for backward compatibility with existing chunk YAML files.
     """
 
     subsystem_id: str  # format: {short_name}
@@ -73,14 +192,7 @@ class SubsystemRelationship(BaseModel):
     @classmethod
     def validate_subsystem_id(cls, v: str) -> str:
         """Validate subsystem_id matches valid artifact ID pattern."""
-        if not v:
-            raise ValueError("subsystem_id cannot be empty")
-        if not ARTIFACT_ID_PATTERN.match(v):
-            raise ValueError(
-                "subsystem_id must be lowercase, start with a letter, and contain only "
-                "letters, digits, underscores, and hyphens"
-            )
-        return v
+        return _validate_artifact_id(v, "subsystem_id")
 
 
 class ComplianceLevel(StrEnum):
