@@ -1,6 +1,7 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/orch_attention_queue - Attention queue API endpoints
 # Chunk: docs/chunks/orchestrator_api_decompose - Extracted attention queue endpoints
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """Attention queue endpoints for the orchestrator API.
 
 Provides REST endpoints for managing attention queue items and submitting answers.
@@ -23,6 +24,7 @@ from orchestrator.api.common import (
     not_found_response,
 )
 from orchestrator.models import WorkUnitStatus
+from orchestrator.state import StaleWriteError
 from orchestrator.websocket import (
     broadcast_attention_update,
     broadcast_work_unit_update,
@@ -100,6 +102,7 @@ async def attention_endpoint(request: Request) -> JSONResponse:
 
 
 # Chunk: docs/chunks/orch_attention_queue - POST /work-units/{chunk}/answer endpoint for submitting answers
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for answer submissions
 async def answer_endpoint(request: Request):
     """POST /work-units/{chunk}/answer - Submit answer to attention item.
 
@@ -115,6 +118,9 @@ async def answer_endpoint(request: Request):
     unit = store.get_work_unit(chunk)
     if unit is None:
         return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
 
     # Validate work unit is in NEEDS_ATTENTION state
     if unit.status != WorkUnitStatus.NEEDS_ATTENTION:
@@ -153,7 +159,14 @@ async def answer_endpoint(request: Request):
     unit.updated_at = datetime.now(timezone.utc)
 
     try:
-        updated = store.update_work_unit(unit)
+        updated = store.update_work_unit(
+            unit, expected_updated_at=expected_updated_at
+        )
+    except StaleWriteError as e:
+        return JSONResponse(
+            {"error": "Concurrent modification detected", "detail": str(e)},
+            status_code=409,
+        )
     except ValueError as e:
         return error_response(str(e))
 

@@ -1,18 +1,32 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/orchestrator/state.py
+  - src/orchestrator/scheduler.py
+  - src/orchestrator/api/work_units.py
+  - src/orchestrator/api/scheduling.py
+  - src/orchestrator/api/attention.py
+  - src/orchestrator/api/conflicts.py
+  - src/orchestrator/api/worktrees.py
+  - src/orchestrator/__init__.py
+  - tests/test_orchestrator_state.py
 code_references: []
 narrative: arch_review_remediation
 investigation: null
-subsystems: []
+subsystems:
+  - subsystem_id: orchestrator
+    relationship: implements
 friction_entries: []
 bug_type: null
-depends_on: ["sqlite_json_query_fix"]
-created_after: ["model_package_cleanup", "orchestrator_api_decompose", "task_operations_decompose"]
+depends_on:
+- sqlite_json_query_fix
+created_after:
+- model_package_cleanup
+- orchestrator_api_decompose
+- task_operations_decompose
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

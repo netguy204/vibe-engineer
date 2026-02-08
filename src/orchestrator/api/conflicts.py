@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis API endpoints
 # Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE verdict transitions to BLOCKED
 # Chunk: docs/chunks/orchestrator_api_decompose - Extracted conflict endpoints
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """Conflict analysis endpoints for the orchestrator API.
 
 Provides REST endpoints for conflict detection and resolution between
@@ -24,6 +25,7 @@ from orchestrator.api.common import (
 from orchestrator.models import ConflictVerdict, WorkUnitStatus
 from orchestrator.oracle import create_oracle
 from orchestrator.scheduler import unblock_dependents
+from orchestrator.state import StaleWriteError
 from orchestrator.websocket import (
     broadcast_attention_update,
     broadcast_work_unit_update,
@@ -111,6 +113,7 @@ async def analyze_conflicts_endpoint(request: Request) -> JSONResponse:
 
 
 # Chunk: docs/chunks/orch_blocked_lifecycle - SERIALIZE verdict transitions to BLOCKED and clears attention_reason
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for conflict resolution
 async def resolve_conflict_endpoint(request: Request):
     """POST /work-units/{chunk}/resolve - Resolve an ASK_OPERATOR conflict.
 
@@ -130,6 +133,9 @@ async def resolve_conflict_endpoint(request: Request):
     unit = store.get_work_unit(chunk)
     if unit is None:
         return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
 
     content_type = request.headers.get("content-type", "")
     is_form_submission = "application/x-www-form-urlencoded" in content_type
@@ -183,7 +189,14 @@ async def resolve_conflict_endpoint(request: Request):
                 unit.attention_reason = None
 
     try:
-        updated = store.update_work_unit(unit)
+        updated = store.update_work_unit(
+            unit, expected_updated_at=expected_updated_at
+        )
+    except StaleWriteError as e:
+        return JSONResponse(
+            {"error": "Concurrent modification detected", "detail": str(e)},
+            status_code=409,
+        )
     except ValueError as e:
         return error_response(str(e))
 
@@ -207,6 +220,7 @@ async def resolve_conflict_endpoint(request: Request):
     })
 
 
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for retry merge
 async def retry_merge_endpoint(request: Request):
     """POST /work-units/{chunk}/retry-merge - Retry a failed merge to base.
 
@@ -221,6 +235,9 @@ async def retry_merge_endpoint(request: Request):
     unit = store.get_work_unit(chunk)
     if unit is None:
         return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
 
     # Validate work unit is in NEEDS_ATTENTION state with merge failure
     if unit.status != WorkUnitStatus.NEEDS_ATTENTION:
@@ -251,7 +268,10 @@ async def retry_merge_endpoint(request: Request):
         # Still failing - update the error message
         unit.attention_reason = f"Merge to base failed: {e}"
         unit.updated_at = datetime.now(timezone.utc)
-        store.update_work_unit(unit)
+        try:
+            store.update_work_unit(unit, expected_updated_at=expected_updated_at)
+        except StaleWriteError:
+            pass  # Best effort - merge error takes precedence
 
         # Check if form submission for redirect
         content_type = request.headers.get("content-type", "")
@@ -267,7 +287,14 @@ async def retry_merge_endpoint(request: Request):
     unit.updated_at = datetime.now(timezone.utc)
 
     try:
-        updated = store.update_work_unit(unit)
+        updated = store.update_work_unit(
+            unit, expected_updated_at=expected_updated_at
+        )
+    except StaleWriteError as e:
+        return JSONResponse(
+            {"error": "Concurrent modification detected", "detail": str(e)},
+            status_code=409,
+        )
     except ValueError as e:
         return error_response(str(e))
 

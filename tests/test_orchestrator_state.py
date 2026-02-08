@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from orchestrator.models import WorkUnit, WorkUnitPhase, WorkUnitStatus
-from orchestrator.state import StateStore, get_default_db_path
+from orchestrator.state import StateStore, StaleWriteError, get_default_db_path
 
 
 @pytest.fixture
@@ -1153,3 +1153,172 @@ class TestReadyQueueCriticalPath:
         assert len(ready_chunks) == 2
         assert ready_chunks[0] == "chunk_high", f"Expected chunk_high first, got {ready_chunks}"
         assert ready_chunks[1] == "chunk_med", f"Expected chunk_med second, got {ready_chunks}"
+
+
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+class TestOptimisticLocking:
+    """Tests for optimistic locking in work unit updates."""
+
+    def test_stale_write_raises_error(self, store, sample_work_unit):
+        """Updating with stale expected_updated_at raises StaleWriteError."""
+        store.create_work_unit(sample_work_unit)
+
+        # Read the work unit to get its current updated_at
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        stale_timestamp = unit.updated_at
+
+        # Simulate another process updating the work unit
+        unit.status = WorkUnitStatus.RUNNING
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)  # This advances updated_at
+
+        # Now try to update with the stale timestamp
+        unit2 = store.get_work_unit(sample_work_unit.chunk)
+        unit2.priority = 999
+        unit2.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError) as exc_info:
+            store.update_work_unit(unit2, expected_updated_at=stale_timestamp)
+
+        assert exc_info.value.chunk == sample_work_unit.chunk
+        assert exc_info.value.expected_updated_at == stale_timestamp
+
+    def test_update_without_expected_timestamp_succeeds(self, store, sample_work_unit):
+        """Updates without expected_updated_at bypass optimistic locking."""
+        store.create_work_unit(sample_work_unit)
+
+        # Simulate reading, then another update happens, then we update
+        unit = store.get_work_unit(sample_work_unit.chunk)
+
+        # Another process updates the work unit
+        other = store.get_work_unit(sample_work_unit.chunk)
+        other.status = WorkUnitStatus.RUNNING
+        other.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(other)
+
+        # Now we update without expected_updated_at - should succeed despite stale data
+        unit.priority = 100
+        unit.updated_at = datetime.now(timezone.utc)
+
+        updated = store.update_work_unit(unit)
+        assert updated.priority == 100
+
+    def test_update_with_matching_timestamp_succeeds(self, store, sample_work_unit):
+        """Updates with matching expected_updated_at succeed."""
+        store.create_work_unit(sample_work_unit)
+
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        expected = unit.updated_at
+        unit.priority = 200
+        unit.updated_at = datetime.now(timezone.utc)
+
+        updated = store.update_work_unit(unit, expected_updated_at=expected)
+        assert updated.priority == 200
+
+    def test_stale_write_error_message(self, store, sample_work_unit):
+        """StaleWriteError contains helpful debugging information."""
+        store.create_work_unit(sample_work_unit)
+
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        stale_timestamp = unit.updated_at
+
+        # Update to advance the timestamp
+        unit.status = WorkUnitStatus.RUNNING
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)
+
+        unit2 = store.get_work_unit(sample_work_unit.chunk)
+        unit2.priority = 50
+        unit2.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError) as exc_info:
+            store.update_work_unit(unit2, expected_updated_at=stale_timestamp)
+
+        # Check error message contains useful info
+        error_msg = str(exc_info.value)
+        assert sample_work_unit.chunk in error_msg
+        assert "Stale write detected" in error_msg
+        assert "expected updated_at=" in error_msg
+        assert "actual=" in error_msg
+
+
+class TestSchedulerApiRace:
+    """Tests for scheduler/API concurrent modification protection.
+
+    These tests demonstrate the race condition protection that optimistic
+    locking provides when the scheduler and API both try to update the
+    same work unit.
+    """
+
+    def test_api_update_not_lost_during_scheduler_update(self, store):
+        """API-driven priority change is not silently overwritten by scheduler."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="race_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # Simulate scheduler reading the work unit
+        scheduler_view = store.get_work_unit("race_test")
+        scheduler_expected = scheduler_view.updated_at
+
+        # Simulate API updating priority while scheduler has stale view
+        api_view = store.get_work_unit("race_test")
+        api_expected = api_view.updated_at
+        api_view.priority = 100
+        api_view.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(api_view, expected_updated_at=api_expected)
+
+        # Now scheduler tries to update with stale data
+        scheduler_view.status = WorkUnitStatus.RUNNING
+        scheduler_view.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError):
+            store.update_work_unit(scheduler_view, expected_updated_at=scheduler_expected)
+
+        # Verify API's priority change was preserved
+        final = store.get_work_unit("race_test")
+        assert final.priority == 100
+
+    def test_sequential_updates_with_optimistic_locking(self, store):
+        """Sequential updates work correctly when each uses current timestamp."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="sequential_test",
+            phase=WorkUnitPhase.GOAL,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # First update
+        u1 = store.get_work_unit("sequential_test")
+        expected1 = u1.updated_at
+        u1.phase = WorkUnitPhase.PLAN
+        u1.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u1, expected_updated_at=expected1)
+
+        # Second update (re-read to get new timestamp)
+        u2 = store.get_work_unit("sequential_test")
+        expected2 = u2.updated_at
+        u2.phase = WorkUnitPhase.IMPLEMENT
+        u2.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u2, expected_updated_at=expected2)
+
+        # Third update
+        u3 = store.get_work_unit("sequential_test")
+        expected3 = u3.updated_at
+        u3.status = WorkUnitStatus.RUNNING
+        u3.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u3, expected_updated_at=expected3)
+
+        # Verify final state
+        final = store.get_work_unit("sequential_test")
+        assert final.phase == WorkUnitPhase.IMPLEMENT
+        assert final.status == WorkUnitStatus.RUNNING

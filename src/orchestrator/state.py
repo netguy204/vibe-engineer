@@ -4,6 +4,7 @@
 # Chunk: docs/chunks/explicit_deps_workunit_flag - Schema migration and persistence for explicit_deps
 # Chunk: docs/chunks/orch_verify_active - Database migration adding completion_retries column
 # Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis persistence and retrieval
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """SQLite state store for the orchestrator daemon.
 
 Provides persistent storage for work units and their state transitions.
@@ -24,6 +25,33 @@ from orchestrator.models import (
     WorkUnitPhase,
     WorkUnitStatus,
 )
+
+
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+class StaleWriteError(Exception):
+    """Raised when a work unit has been modified since it was read.
+
+    This indicates a concurrent modification - another process updated
+    the work unit between when the caller read it and attempted to write.
+    The caller should re-read the work unit and retry or skip the operation.
+
+    Attributes:
+        chunk: The chunk name that was being updated
+        expected_updated_at: The timestamp the caller expected
+        actual_updated_at: The current timestamp in the database
+    """
+
+    def __init__(
+        self, chunk: str, expected_updated_at: datetime, actual_updated_at: datetime
+    ):
+        self.chunk = chunk
+        self.expected_updated_at = expected_updated_at
+        self.actual_updated_at = actual_updated_at
+        super().__init__(
+            f"Stale write detected for work unit '{chunk}': "
+            f"expected updated_at={expected_updated_at.isoformat()}, "
+            f"actual={actual_updated_at.isoformat()}"
+        )
 
 
 class StateStore:
@@ -473,21 +501,36 @@ class StateStore:
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit update
     # Chunk: docs/chunks/orch_state_transactions - Atomic work unit update with status log
-    def update_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
+    # Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+    def update_work_unit(
+        self,
+        work_unit: WorkUnit,
+        expected_updated_at: Optional[datetime] = None,
+    ) -> WorkUnit:
         """Update an existing work unit.
 
         The SELECT, UPDATE, and status log INSERT are wrapped in a transaction
         to ensure atomicity. The status log is only written if the update
         succeeds, and both changes commit together.
 
+        When expected_updated_at is provided, the update performs optimistic
+        locking: it verifies that the work unit's current updated_at timestamp
+        matches the expected value before writing. This prevents silent overwrites
+        when multiple processes read and modify the same work unit concurrently.
+
         Args:
             work_unit: The work unit with updated values
+            expected_updated_at: If provided, the update will only succeed if
+                the work unit's current updated_at matches this timestamp.
+                Use this to detect concurrent modifications.
 
         Returns:
             The updated work unit
 
         Raises:
             ValueError: If the work unit doesn't exist
+            StaleWriteError: If expected_updated_at is provided and doesn't match
+                the work unit's current updated_at (indicating concurrent modification)
         """
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
@@ -497,6 +540,15 @@ class StateStore:
             old_unit = self.get_work_unit(work_unit.chunk)
             if old_unit is None:
                 raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
+
+            # Optimistic locking check: verify updated_at matches expected value
+            if expected_updated_at is not None:
+                if old_unit.updated_at != expected_updated_at:
+                    raise StaleWriteError(
+                        chunk=work_unit.chunk,
+                        expected_updated_at=expected_updated_at,
+                        actual_updated_at=old_unit.updated_at,
+                    )
 
             self.connection.execute(
                 """

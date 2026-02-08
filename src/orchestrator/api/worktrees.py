@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/orch_worktree_retain - Worktree management endpoints
 # Chunk: docs/chunks/orch_prune_consolidate - Consolidated worktree finalization
 # Chunk: docs/chunks/orchestrator_api_decompose - Extracted worktree management endpoints
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """Worktree management endpoints for the orchestrator API.
 
 Provides REST endpoints for listing, removing, and pruning worktrees.
@@ -20,6 +21,7 @@ from orchestrator.api.common import (
     not_found_response,
 )
 from orchestrator.models import WorktreeInfo, WorkUnitStatus
+from orchestrator.state import StaleWriteError
 from orchestrator.worktree import WorktreeError, WorktreeManager
 
 
@@ -132,6 +134,7 @@ async def remove_worktree_endpoint(request: Request) -> JSONResponse:
 
 
 # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for prune operations
 async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/{chunk}/prune - Prune a retained worktree.
 
@@ -153,6 +156,9 @@ async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
     unit = store.get_work_unit(chunk)
     if unit is None:
         return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
 
     # Must be DONE with retain_worktree set
     if unit.status != WorkUnitStatus.DONE:
@@ -191,7 +197,11 @@ async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
     unit.retain_worktree = False
     unit.worktree = None
     unit.updated_at = datetime.now(timezone.utc)
-    store.update_work_unit(unit)
+    try:
+        store.update_work_unit(unit, expected_updated_at=expected_updated_at)
+    except StaleWriteError:
+        # Best effort - prune succeeded, just flag update failed
+        pass
 
     return JSONResponse({
         "chunk": chunk,
@@ -200,6 +210,7 @@ async def prune_work_unit_endpoint(request: Request) -> JSONResponse:
 
 
 # Chunk: docs/chunks/orch_worktree_retain - POST /work-units/prune for batch cleanup of retained worktrees
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for batch prune operations
 async def prune_all_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/prune - Prune all retained worktrees.
 
@@ -234,6 +245,8 @@ async def prune_all_endpoint(request: Request) -> JSONResponse:
 
     for unit in retained_units:
         chunk = unit.chunk
+        # Capture expected timestamp for optimistic locking
+        expected_updated_at = unit.updated_at
         try:
             worktree_manager.finalize_work_unit(chunk)
 
@@ -241,7 +254,11 @@ async def prune_all_endpoint(request: Request) -> JSONResponse:
             unit.retain_worktree = False
             unit.worktree = None
             unit.updated_at = datetime.now(timezone.utc)
-            store.update_work_unit(unit)
+            try:
+                store.update_work_unit(unit, expected_updated_at=expected_updated_at)
+            except StaleWriteError:
+                # Best effort - prune succeeded, just flag update failed
+                pass
 
             results.append({
                 "chunk": chunk,
