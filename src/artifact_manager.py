@@ -36,12 +36,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
 from state_machine import StateMachine
 
+if TYPE_CHECKING:
+    from artifact_ordering import ArtifactIndex
 
 # Type variables for frontmatter models and status enums
 FrontmatterT = TypeVar("FrontmatterT", bound=BaseModel)
@@ -72,6 +74,7 @@ class ArtifactManager(ABC, Generic[FrontmatterT, StatusT]):
         """
         self._project_dir = Path(project_dir)
         self._state_machine: StateMachine | None = None
+        self._artifact_index: "ArtifactIndex | None" = None
 
     @property
     def project_dir(self) -> Path:
@@ -129,6 +132,22 @@ class ArtifactManager(ABC, Generic[FrontmatterT, StatusT]):
         if self._state_machine is None:
             self._state_machine = StateMachine(self.transition_map, self.status_enum)
         return self._state_machine
+
+    # Chunk: docs/chunks/artifact_index_cache - Cached ArtifactIndex property
+    @property
+    def artifact_index(self) -> "ArtifactIndex":
+        """Get or create a cached ArtifactIndex for this manager.
+
+        This avoids redundant ArtifactIndex instantiation across multiple method
+        calls on the same manager instance. While ArtifactIndex has file-level
+        caching via .artifact-order.json, caching the instance at the manager
+        level eliminates the overhead of loading the cache file repeatedly.
+        """
+        if self._artifact_index is None:
+            from artifact_ordering import ArtifactIndex
+
+            self._artifact_index = ArtifactIndex(self._project_dir)
+        return self._artifact_index
 
     def enumerate_artifacts(self) -> list[str]:
         """List artifact directory names.

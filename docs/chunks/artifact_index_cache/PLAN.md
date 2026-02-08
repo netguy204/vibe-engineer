@@ -1,177 +1,127 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk addresses two performance issues:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Redundant ArtifactIndex instantiation**: Cache `ArtifactIndex` as a lazily-initialized property on `ArtifactManager` so all methods share a single instance per manager lifetime. The dependency chunk `artifact_pattern_consolidation` (ACTIVE) has already established the `ArtifactManager` base class pattern which Chunks inherits from.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **N+1 query patterns in state.py**: Replace the N+1 COUNT(*) queries in `get_ready_queue` and `get_attention_queue` with single SQL queries using LEFT JOIN and subqueries to compute `blocks_count` in one pass. The existing `list_blocked_by_chunk` method already uses the correct `json_each()` pattern for searching JSON arrays.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/artifact_index_cache/GOAL.md)
-with references to the files that you expect to touch.
--->
+The approach follows existing patterns:
+- The lazy property pattern is standard Python (see `_get_state_machine()` on `ArtifactManager`)
+- The SQL optimization follows the `json_each()` pattern already established in `list_blocked_by_chunk`
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS a performance optimization to `ArtifactIndex` caching. The subsystem documents that `ArtifactIndex` provides cached ordering - we're improving that caching by moving it one level up to avoid repeated instantiation.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (STABLE): This chunk IMPLEMENTS a performance fix to the state store. The N+1 query pattern is a local optimization that doesn't affect the subsystem's invariants.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add lazy ArtifactIndex property to ArtifactManager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `_artifact_index` private attribute and an `artifact_index` property to `ArtifactManager` that lazily creates a single `ArtifactIndex` instance. This follows the pattern already used for `_get_state_machine()`.
 
-Example:
+Location: `src/artifact_manager.py`
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+@property
+def artifact_index(self) -> "ArtifactIndex":
+    """Get or create a cached ArtifactIndex for this manager."""
+    if self._artifact_index is None:
+        from artifact_ordering import ArtifactIndex
+        self._artifact_index = ArtifactIndex(self._project_dir)
+    return self._artifact_index
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add `_artifact_index: "ArtifactIndex" | None = None` to `__init__`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Update Chunks methods to use cached artifact_index
+
+Update the four call sites in `src/chunks.py` that instantiate `ArtifactIndex`:
+- `list_chunks()` (line ~186)
+- `get_last_active_chunk()` (line ~264)
+- `create_chunk()` (line ~384)
+- `find_overlapping_chunks()` (line ~739)
+
+Each should change from:
+```python
+artifact_index = ArtifactIndex(self.project_dir)
+```
+to:
+```python
+artifact_index = self.artifact_index
+```
+
+Location: `src/chunks.py`
+
+### Step 3: Fix N+1 in get_attention_queue
+
+Replace the loop-and-count pattern with a single SQL query using a subquery to count blocked work units:
+
+```sql
+SELECT w.*, (
+    SELECT COUNT(*) FROM work_units b
+    WHERE EXISTS (
+        SELECT 1 FROM json_each(b.blocked_by)
+        WHERE value = w.chunk
+    )
+) as blocks_count
+FROM work_units w
+WHERE w.status = ?
+ORDER BY blocks_count DESC, w.updated_at ASC
+```
+
+Location: `src/orchestrator/state.py`, `get_attention_queue()` method (lines ~674-718)
+
+### Step 4: Fix N+1 in get_ready_queue
+
+Replace the loop-and-count pattern with a single SQL query:
+
+```sql
+SELECT w.*, (
+    SELECT COUNT(*) FROM work_units b
+    WHERE b.status IN (?, ?)
+    AND EXISTS (
+        SELECT 1 FROM json_each(b.blocked_by)
+        WHERE value = w.chunk
+    )
+) as blocks_count
+FROM work_units w
+WHERE w.status = ?
+ORDER BY blocks_count DESC, w.priority DESC, w.created_at ASC
+```
+
+Location: `src/orchestrator/state.py`, `get_ready_queue()` method (lines ~721-782)
+
+### Step 5: Add tests for optimized queries
+
+Add tests that verify the optimized queries return identical results to the previous implementation. The existing tests in `test_orchestrator_state.py` (`TestReadyQueueCriticalPath` class) provide good coverage of the expected behavior - verify they still pass.
+
+Also add a simple test that exercises the artifact_index property caching on ArtifactManager to ensure the same instance is returned on repeated access.
+
+Location: `tests/test_artifact_manager.py` (new file or add to existing), `tests/test_orchestrator_state.py`
+
+### Step 6: Run full test suite
+
+Run `uv run pytest tests/` to ensure all existing tests pass with the optimizations.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **artifact_pattern_consolidation** (ACTIVE): This chunk established `ArtifactManager` as the base class. Our change adds a cached property to that base class. This dependency is satisfied.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Query plan performance**: The correlated subquery approach should be efficient for SQLite's query planner, but if work_units tables grow very large, consider adding an index on `blocked_by` (though JSON indexing in SQLite is limited). For typical orchestrator workloads (<1000 work units), this should not be an issue.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Thread safety**: `ArtifactIndex` itself has internal caching. Multiple methods accessing `self.artifact_index` in the same manager instance will share state, which is the intended behavior. SQLite connections are already handled per-StateStore instance with WAL mode.
+
+- **Import cycle**: The lazy import of `ArtifactIndex` in the property getter avoids potential circular import issues between `artifact_manager.py` and `artifact_ordering.py`.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
