@@ -497,6 +497,241 @@ class TestApiRetryScheduling:
         assert updated.next_retry_at is None
 
 
+# Chunk: docs/chunks/orch_session_auto_resume - Session limit retry scheduling tests
+class TestSessionLimitRetryScheduling:
+    """Tests for session limit retry scheduling in the scheduler.
+
+    When an agent hits a session limit with a known reset time, the scheduler
+    should automatically schedule a retry at that time instead of marking
+    the work unit as NEEDS_ATTENTION.
+    """
+
+    @pytest.mark.asyncio
+    async def test_session_limit_with_parseable_time_schedules_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit with parseable reset time schedules retry at that time."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="session_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="session-abc",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("session_limit_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is not None
+        # Verify it's scheduled for 10pm UTC (or tomorrow if 10pm has passed)
+        assert updated.next_retry_at.hour == 22
+        assert updated.next_retry_at.minute == 0
+        assert updated.session_id == "session-abc"
+        assert updated.pending_answer == "continue"
+
+    @pytest.mark.asyncio
+    async def test_session_limit_without_parseable_time_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit without parseable reset time marks NEEDS_ATTENTION."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="unparseable_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # No reset time in the error - can't be parsed
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - please try again later",
+            session_id="session-xyz",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("unparseable_limit_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "limit" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_session_limit_with_timezone_schedules_utc_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit with timezone correctly converts to UTC for retry."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="tz_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm (America/New_York)",
+            session_id="session-tz",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("tz_limit_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is not None
+        assert updated.next_retry_at.tzinfo == timezone.utc
+        # Result should be in UTC (10pm Eastern is 3am or 2am UTC depending on DST)
+
+    @pytest.mark.asyncio
+    async def test_session_limit_logs_scheduled_retry_time(
+        self, scheduler, state_store, mock_worktree_manager, caplog
+    ):
+        """Verify scheduler logs 'Session limit hit, scheduled retry at' message."""
+        import logging
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="log_test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="session-log",
+        )
+
+        with caplog.at_level(logging.INFO):
+            await scheduler._handle_agent_result(work_unit, result)
+
+        assert any("session limit" in record.message.lower() for record in caplog.records)
+        assert any("scheduled retry" in record.message.lower() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_session_limit_checked_before_5xx_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit detection takes priority over 5xx retry logic."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="priority_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Error contains both session limit AND 500-like text
+        # Session limit should take priority
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit (internal error) - resets 10pm",
+            session_id="session-priority",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("priority_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        # Should be scheduled for the reset time, not exponential backoff
+        assert updated.next_retry_at.hour == 22
+
+    @pytest.mark.asyncio
+    async def test_session_limit_preserves_session_id_for_resumption(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session ID is preserved for session resumption after reset."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="resume_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="important-session-123",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("resume_chunk")
+        assert updated.session_id == "important-session-123"
+        assert updated.pending_answer == "continue"
+
+    @pytest.mark.asyncio
+    async def test_5xx_error_still_uses_exponential_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """5xx errors without session limit still use exponential backoff."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="backoff_5xx_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="500 Internal Server Error",
+            session_id="session-5xx",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("backoff_5xx_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.api_retry_count == 1
+        # Should be scheduled with exponential backoff, not at a specific time
+        # Initial delay is 100ms
+        expected_delay = timedelta(milliseconds=100)
+        actual_delay = updated.next_retry_at - now
+        assert actual_delay < timedelta(seconds=1)
+
+
 # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase tests
 class TestRebasePhase:
     """Tests for REBASE phase between IMPLEMENT and REVIEW."""

@@ -57,6 +57,8 @@ from orchestrator.review_routing import (
 )
 from orchestrator.retry import (
     is_retryable_api_error,
+    is_session_limit_error,
+    parse_reset_time,
 )
 
 
@@ -594,7 +596,20 @@ class Scheduler:
             )
 
         elif result.error:
-            # Agent failed - check if this is a retryable API error
+            # Agent failed - check error type in priority order:
+            # 1. Session limit with parseable reset time -> schedule at reset time
+            # 2. 5xx API error -> exponential backoff retry
+            # 3. Other errors -> NEEDS_ATTENTION
+
+            # Chunk: docs/chunks/orch_session_auto_resume - Session limit auto-retry
+            if is_session_limit_error(result.error):
+                reset_time = parse_reset_time(result.error)
+                if reset_time is not None:
+                    # Schedule retry at the reset time
+                    await self._schedule_session_retry(work_unit, result, reset_time)
+                    return
+                # Fall through to NEEDS_ATTENTION if reset time not parseable
+
             # Chunk: docs/chunks/orch_api_retry - Automatic retry for 5xx API errors
             if (
                 is_retryable_api_error(result.error)
@@ -1122,6 +1137,59 @@ class Scheduler:
             f"Retrying {chunk} after API error (attempt {work_unit.api_retry_count}/"
             f"{self.config.api_retry_max_attempts}, backoff {delay_ms}ms): "
             f"{result.error[:100] if result.error else 'unknown error'}"
+        )
+
+        # Broadcast status update
+        await broadcast_work_unit_update(
+            chunk=work_unit.chunk,
+            status=work_unit.status.value,
+            phase=work_unit.phase.value,
+        )
+
+    # Chunk: docs/chunks/orch_session_auto_resume - Schedule retry at session limit reset time
+    async def _schedule_session_retry(
+        self,
+        work_unit: WorkUnit,
+        result: AgentResult,
+        reset_time: datetime,
+    ) -> None:
+        """Schedule a retry for a work unit that hit a session limit.
+
+        Unlike _schedule_api_retry which uses exponential backoff, this method
+        schedules the retry at a specific reset time extracted from the error
+        message.
+
+        The work unit is transitioned back to READY with:
+        - next_retry_at set to the parsed reset time
+        - pending_answer set to "continue" to resume the session
+        - session_id preserved for session resumption
+
+        Note: api_retry_count is NOT incremented since this is a different
+        retry mechanism.
+
+        Args:
+            work_unit: The work unit that hit the session limit
+            result: The AgentResult containing the error and session_id
+            reset_time: The UTC datetime when the session limit resets
+        """
+        chunk = work_unit.chunk
+
+        # Set retry time to the reset time
+        work_unit.next_retry_at = reset_time
+
+        # Set up session resumption with "continue" prompt
+        work_unit.pending_answer = "continue"
+        work_unit.session_id = result.session_id
+
+        # Transition to READY for dispatch loop to pick up
+        work_unit.status = WorkUnitStatus.READY
+        work_unit.attention_reason = None  # Clear any stale reason
+        work_unit.updated_at = datetime.now(timezone.utc)
+
+        self.store.update_work_unit(work_unit)
+
+        logger.info(
+            f"Session limit hit for {chunk}, scheduled retry at {reset_time.isoformat()}"
         )
 
         # Broadcast status update

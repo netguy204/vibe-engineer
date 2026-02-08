@@ -8,153 +8,147 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extends the existing `orch_api_retry` infrastructure to handle a new category of transient errors: session-limit errors that include a deterministic reset time (e.g., "You've hit your limit - resets 10pm").
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
+1. Add a new detection function `is_session_limit_error()` to `retry.py` that identifies session-limit errors with parseable reset times
+2. Add a time parsing function `parse_reset_time()` that extracts and converts reset times to UTC datetime
+3. Integrate session-limit detection into the scheduler's error handling path (`_handle_agent_result`)
+4. Session-limit errors with parseable reset times use `_schedule_session_retry()` with a fixed retry time (not exponential backoff)
+5. Session-limit errors WITHOUT parseable reset times fall through to `NEEDS_ATTENTION` (existing behavior)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Key Design Choice:** This is additive to the existing 5xx retry infrastructure, not a modification. The error handling path checks session-limit first, then falls back to 5xx retry, then falls back to NEEDS_ATTENTION.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_session_auto_resume/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Time Parsing Approach:**
+- Parse reset time strings like "10pm", "10:30pm (America/New_York)", "2024-02-07T22:00:00Z"
+- Support timezone hints in parentheses, defaulting to UTC if not specified
+- Use Python's `datetime` and `zoneinfo` for timezone-aware parsing
+
+**Testing Strategy (per TESTING_PHILOSOPHY.md):**
+- Write failing tests first for the new detection and parsing functions
+- Tests verify semantically meaningful properties (correct UTC datetime, correct error classification)
+- Cover edge cases: various time formats, with/without timezone, unparseable errors
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS additional error handling logic following the orchestrator subsystem's patterns. The existing `is_retryable_api_error()` and `_schedule_api_retry()` set the precedent for error detection and retry scheduling.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `is_session_limit_error()` detection
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create tests in `tests/test_orchestrator_retry.py` that verify:
+- Session-limit errors with reset time ARE detected (e.g., "You've hit your limit - resets 10pm")
+- Session-limit errors with timezone ARE detected (e.g., "...resets 10pm (America/New_York)")
+- Session-limit errors with full timestamp ARE detected (e.g., "...resets 2024-02-07T22:00:00Z")
+- Session-limit errors WITHOUT reset time are NOT detected (trigger NEEDS_ATTENTION fallback)
+- Other error types are NOT detected as session limits
 
-Example:
+Location: `tests/test_orchestrator_retry.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Write failing tests for `parse_reset_time()` function
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Create tests that verify:
+- Parse "10pm" → correct UTC datetime (default UTC if no timezone)
+- Parse "10pm (America/New_York)" → correct UTC datetime (converted from Eastern)
+- Parse "10:30pm (America/Los_Angeles)" → correct UTC datetime (converted from Pacific)
+- Parse "2024-02-07T22:00:00Z" → correct UTC datetime (ISO format)
+- Return None for unparseable strings (not raise exceptions)
 
-Location: src/segment/format.rs
+Location: `tests/test_orchestrator_retry.py`
 
-### Step 2: Implement header serialization
+### Step 3: Implement `is_session_limit_error()` in retry.py
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add function that:
+- Takes an error string as input
+- Uses regex to detect session-limit patterns with reset time indicators
+- Returns `True` if the error matches, `False` otherwise
+- Does NOT parse the time itself (that's `parse_reset_time()`'s job)
 
-### Step 3: ...
+Patterns to match:
+- "you've hit your limit" (case-insensitive) followed by "resets" with a time pattern
+- "session limit" or "rate limit reset" with a time pattern
 
----
+Location: `src/orchestrator/retry.py`
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Implement `parse_reset_time()` in retry.py
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add function that:
+- Takes an error string as input
+- Extracts reset time pattern using regex
+- Parses time with optional timezone in parentheses
+- Converts to UTC datetime
+- Returns `None` if parsing fails
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Use `datetime.strptime()` for time parsing and `zoneinfo.ZoneInfo` for timezone conversion. Handle ambiguous times (e.g., "10pm" means today or tomorrow based on current time).
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Location: `src/orchestrator/retry.py`
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 5: Write failing tests for scheduler session-limit retry behavior
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Create tests in `tests/test_orchestrator_scheduler.py` that verify:
+- Session-limit error with parseable reset time schedules retry at reset time (not NEEDS_ATTENTION)
+- Session-limit error WITHOUT parseable reset time transitions to NEEDS_ATTENTION
+- Retry uses `next_retry_at` set to the parsed reset time
+- Work unit transitions to READY (not NEEDS_ATTENTION)
+- Log message clearly indicates "Session limit hit, scheduled retry at {time}"
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `tests/test_orchestrator_scheduler.py`
+
+### Step 6: Implement session-limit handling in scheduler
+
+Modify `_handle_agent_result()` in `scheduler.py`:
+1. Before checking `is_retryable_api_error()`, check `is_session_limit_error()`
+2. If session-limit detected, call `parse_reset_time()` to get UTC reset time
+3. If reset time parseable, call new `_schedule_session_retry()` method
+4. If reset time NOT parseable, fall through to NEEDS_ATTENTION
+5. Keep existing 5xx retry logic unchanged (order: session-limit → 5xx → NEEDS_ATTENTION)
+
+Add new `_schedule_session_retry()` method:
+- Similar to `_schedule_api_retry()` but uses fixed reset time, not exponential backoff
+- Sets `next_retry_at` to the parsed reset time
+- Sets `pending_answer = "continue"`
+- Preserves `session_id` for resumption
+- Logs "Session limit hit, scheduled retry at {time}"
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 7: Run tests and verify all pass
+
+Run `uv run pytest tests/test_orchestrator_retry.py tests/test_orchestrator_scheduler.py -v` to verify:
+- All new session-limit tests pass
+- All existing `orch_api_retry` tests continue to pass
+- No regressions in scheduler behavior
+
+### Step 8: Update chunk's code_paths in GOAL.md
+
+Add to `code_paths`:
+- `src/orchestrator/retry.py`
+- `src/orchestrator/scheduler.py`
+- `tests/test_orchestrator_retry.py`
+- `tests/test_orchestrator_scheduler.py`
+
+Location: `docs/chunks/orch_session_auto_resume/GOAL.md`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+This chunk builds on:
+- **orch_api_retry** (ACTIVE): Provides the existing retry infrastructure (`is_retryable_api_error()`, `_schedule_api_retry()`, `api_retry_count`, `next_retry_at`)
+- **scheduler_decompose** (ACTIVE): Provides the extracted `retry.py` module where new detection functions will live
 
-If there are no dependencies, delete this section.
--->
+No external libraries needed - uses Python's standard `datetime`, `re`, and `zoneinfo` modules.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Time ambiguity**: If the error says "resets 10pm" and it's currently 11pm, should we assume tomorrow? The implementation should assume "next occurrence" of the given time.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Timezone edge cases**: Daylight saving time transitions could cause unexpected behavior. Using `zoneinfo.ZoneInfo` handles this correctly.
+
+3. **Clock skew**: If the orchestrator's clock differs significantly from Anthropic's, retries might happen too early. Accept this as an inherent limitation.
+
+4. **Regex robustness**: The reset time patterns in real error messages may vary. Start with known patterns and expand based on real-world observations.
+
+5. **Session resumption validity**: If the session has expired by the time of retry, the "continue" prompt may fail. This would result in a new error and the normal retry/NEEDS_ATTENTION flow would handle it.
 
 ## Deviations
 

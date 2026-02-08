@@ -115,3 +115,170 @@ class TestPatternConstants:
         assert "api_error" in _5XX_TEXT_PATTERNS
         assert "rate_limit" in _5XX_TEXT_PATTERNS
         assert "529" in _5XX_TEXT_PATTERNS
+
+
+# Chunk: docs/chunks/orch_session_auto_resume - Session limit error detection and retry
+class TestIsSessionLimitError:
+    """Tests for the is_session_limit_error detection function."""
+
+    def test_detects_limit_with_simple_time(self):
+        """Detects session limit errors with simple reset time."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert is_session_limit_error("You've hit your limit - resets 10pm")
+
+    def test_detects_limit_with_timezone(self):
+        """Detects session limit errors with timezone in parentheses."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert is_session_limit_error(
+            "You've hit your limit - resets 10pm (America/New_York)"
+        )
+        assert is_session_limit_error(
+            "You've hit your limit - resets 10:30pm (America/Los_Angeles)"
+        )
+
+    def test_detects_limit_with_iso_timestamp(self):
+        """Detects session limit errors with full ISO timestamp."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert is_session_limit_error(
+            "You've hit your limit - resets 2024-02-07T22:00:00Z"
+        )
+
+    def test_detects_rate_limit_reset(self):
+        """Detects rate limit reset patterns."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert is_session_limit_error("Rate limit exceeded, resets at 10pm")
+        assert is_session_limit_error("Session limit reached - resets 11:30pm")
+
+    def test_case_insensitive(self):
+        """Detection is case-insensitive."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert is_session_limit_error("YOU'VE HIT YOUR LIMIT - resets 10pm")
+        assert is_session_limit_error("you've hit your limit - RESETS 10PM")
+
+    def test_no_reset_time_returns_false(self):
+        """Session limit without reset time returns False."""
+        from orchestrator.retry import is_session_limit_error
+
+        # These should NOT match - no reset time provided
+        assert not is_session_limit_error("You've hit your limit")
+        assert not is_session_limit_error("Rate limit exceeded")
+        assert not is_session_limit_error("Session limit reached - please try again later")
+
+    def test_unrelated_errors_return_false(self):
+        """Unrelated errors return False."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert not is_session_limit_error("500 Internal Server Error")
+        assert not is_session_limit_error("FileNotFoundError: /path/to/file")
+        assert not is_session_limit_error("Connection timeout")
+        assert not is_session_limit_error("Permission denied")
+
+    def test_empty_and_none(self):
+        """Handles empty string and None gracefully."""
+        from orchestrator.retry import is_session_limit_error
+
+        assert not is_session_limit_error("")
+        assert not is_session_limit_error(None)
+
+
+# Chunk: docs/chunks/orch_session_auto_resume - Reset time parsing
+class TestParseResetTime:
+    """Tests for the parse_reset_time function."""
+
+    def test_parse_simple_pm_time(self):
+        """Parse simple time like '10pm' (default to UTC)."""
+        from datetime import datetime, timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time("You've hit your limit - resets 10pm")
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        assert result.hour == 22
+        assert result.minute == 0
+
+    def test_parse_am_time(self):
+        """Parse AM time like '10am'."""
+        from datetime import timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time("You've hit your limit - resets 10am")
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        assert result.hour == 10
+        assert result.minute == 0
+
+    def test_parse_time_with_minutes(self):
+        """Parse time with minutes like '10:30pm'."""
+        from datetime import timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time("You've hit your limit - resets 10:30pm")
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        assert result.hour == 22
+        assert result.minute == 30
+
+    def test_parse_timezone_america_new_york(self):
+        """Parse time with America/New_York timezone and convert to UTC."""
+        from datetime import timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time(
+            "You've hit your limit - resets 10pm (America/New_York)"
+        )
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        # 10pm Eastern is 3am or 2am UTC depending on DST
+
+    def test_parse_timezone_america_los_angeles(self):
+        """Parse time with America/Los_Angeles timezone and convert to UTC."""
+        from datetime import timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time(
+            "You've hit your limit - resets 10:30pm (America/Los_Angeles)"
+        )
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        # Result should be converted from Pacific to UTC
+
+    def test_parse_iso_timestamp(self):
+        """Parse full ISO timestamp."""
+        from datetime import datetime, timezone
+        from orchestrator.retry import parse_reset_time
+
+        result = parse_reset_time(
+            "You've hit your limit - resets 2024-02-07T22:00:00Z"
+        )
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+        assert result.year == 2024
+        assert result.month == 2
+        assert result.day == 7
+        assert result.hour == 22
+        assert result.minute == 0
+
+    def test_unparseable_returns_none(self):
+        """Unparseable strings return None (not raise exceptions)."""
+        from orchestrator.retry import parse_reset_time
+
+        assert parse_reset_time("You've hit your limit") is None
+        assert parse_reset_time("Random error message") is None
+        assert parse_reset_time("") is None
+        assert parse_reset_time(None) is None
+
+    def test_future_time_assumption(self):
+        """If parsed time is in the past, assume next occurrence (tomorrow)."""
+        from datetime import datetime, timezone
+        from orchestrator.retry import parse_reset_time
+
+        # This test verifies the "next occurrence" behavior
+        result = parse_reset_time("You've hit your limit - resets 11:59pm")
+        assert result is not None
+        # Should be in the future
+        assert result >= datetime.now(timezone.utc)

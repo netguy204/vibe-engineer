@@ -1,20 +1,27 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/retry.py
+- src/orchestrator/scheduler.py
+- tests/test_orchestrator_retry.py
+- tests/test_orchestrator_scheduler.py
 code_references: []
 narrative: null
 investigation: null
 subsystems:
-  - subsystem_id: "orchestrator"
-    relationship: implements
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: null
-created_after: ["artifact_index_cache", "artifact_pattern_consolidation", "chunks_class_decouple", "scheduler_decompose_methods"]
+created_after:
+- artifact_index_cache
+- artifact_pattern_consolidation
+- chunks_class_decouple
+- scheduler_decompose_methods
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
