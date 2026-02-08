@@ -3,6 +3,7 @@
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
 # Chunk: docs/chunks/project_artifact_registry - Updated to use Project for unified manager access
+# Chunk: docs/chunks/chunks_class_decouple - Updated to call Project.list_proposed_chunks() directly
 
 import pathlib
 
@@ -20,7 +21,7 @@ class TestListProposedChunksLogic:
     def test_empty_project_returns_empty_list(self, temp_project):
         """Verify empty project has no proposed chunks."""
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
         assert result == []
 
     def test_investigation_with_proposed_chunks(self, temp_project):
@@ -43,7 +44,7 @@ proposed_chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         # Should only include the one without chunk_directory
         assert len(result) == 1
@@ -69,7 +70,7 @@ proposed_chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 1
         assert result[0]["prompt"] == "Narrative chunk prompt"
@@ -94,7 +95,7 @@ chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         # Should map legacy 'chunks' to 'proposed_chunks'
         assert len(result) == 1
@@ -120,7 +121,7 @@ proposed_chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 1
         assert result[0]["prompt"] == "Consolidation chunk prompt"
@@ -145,7 +146,7 @@ proposed_chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         # Should be empty since the only proposed chunk has been created
         assert result == []
@@ -190,7 +191,7 @@ proposed_chunks:
 """)
 
         project = Project(temp_project)
-        result = project.chunks.list_proposed_chunks(project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 3
         prompts = {r["prompt"] for r in result}
