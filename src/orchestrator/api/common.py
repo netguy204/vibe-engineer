@@ -96,6 +96,7 @@ def get_task_info(request: Request) -> Optional[TaskContextInfo]:
     return getattr(request.app.state, "task_info", None)
 
 
+# Chunk: docs/chunks/orch_task_detection - Chunk directory resolution using task context
 def get_chunk_directory(request: Request, chunk: str) -> Path:
     """Get the chunk directory path, respecting task context.
 

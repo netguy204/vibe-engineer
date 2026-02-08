@@ -33,9 +33,9 @@ code_references:
     implements: "Worktree creation dispatching to single-repo or task context mode"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_create_task_context_worktrees
     implements: "Multi-repo worktree creation under .ve/chunks/<chunk>/work/<repo-name>/"
-  - ref: src/orchestrator/api.py#_get_chunk_directory
+  - ref: src/orchestrator/api/common.py#get_chunk_directory
     implements: "Chunk directory resolution using task context for inject validation"
-  - ref: src/orchestrator/api.py#inject_endpoint
+  - ref: src/orchestrator/api/scheduling.py#inject_endpoint
     implements: "Inject endpoint with task context chunk location resolution"
 narrative: null
 investigation: orch_task_context
