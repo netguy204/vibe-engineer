@@ -79,6 +79,7 @@ from models.chunk import (
     ChunkDependent,
     ChunkFrontmatter,
     ChunkStatus,
+    parse_status_filters,
 )
 
 __all__ = [
@@ -132,4 +133,5 @@ __all__ = [
     "VALID_CHUNK_TRANSITIONS",
     "ChunkDependent",
     "ChunkFrontmatter",
+    "parse_status_filters",
 ]

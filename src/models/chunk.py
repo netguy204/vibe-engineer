@@ -81,3 +81,56 @@ class ChunkFrontmatter(BaseModel):
     friction_entries: list[FrictionEntryReference] = []
     bug_type: BugType | None = None
     depends_on: list[str] | None = None
+
+
+# Chunk: docs/chunks/cli_decompose - Extract pure parsing logic from CLI layer
+def parse_status_filters(
+    status_strings: tuple[str, ...],
+    future_flag: bool = False,
+    active_flag: bool = False,
+    implementing_flag: bool = False,
+) -> tuple[set[ChunkStatus] | None, str | None]:
+    """Parse and validate status filters from CLI options.
+
+    This function is pure parsing logic with no CLI dependencies. It validates
+    status strings and returns either a set of statuses to filter by or an error.
+
+    Args:
+        status_strings: Tuple of status strings (may include comma-separated)
+        future_flag: Whether --future flag was set
+        active_flag: Whether --active flag was set
+        implementing_flag: Whether --implementing flag was set
+
+    Returns:
+        Tuple of (status_set, error_message). status_set is None if no filtering
+        requested, or a set of ChunkStatus values. error_message is None on
+        success, or contains the error message with valid options listed.
+    """
+    statuses: set[ChunkStatus] = set()
+
+    # Add statuses from convenience flags
+    if future_flag:
+        statuses.add(ChunkStatus.FUTURE)
+    if active_flag:
+        statuses.add(ChunkStatus.ACTIVE)
+    if implementing_flag:
+        statuses.add(ChunkStatus.IMPLEMENTING)
+
+    # Parse statuses from option (handles comma-separated and multiple options)
+    for status_str in status_strings:
+        # Split by comma to handle "FUTURE,ACTIVE"
+        parts = [s.strip() for s in status_str.split(",") if s.strip()]
+        for part in parts:
+            # Case-insensitive lookup
+            upper_part = part.upper()
+            try:
+                statuses.add(ChunkStatus(upper_part))
+            except ValueError:
+                valid_statuses = ", ".join(s.value for s in ChunkStatus)
+                return None, f"Invalid status '{part}'. Valid statuses: {valid_statuses}"
+
+    # Return None if no filtering requested (empty set means show all)
+    if not statuses:
+        return None, None
+
+    return statuses, None

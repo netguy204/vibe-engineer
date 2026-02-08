@@ -15,7 +15,7 @@ import click
 from chunks import Chunks
 from external_refs import strip_artifact_path_prefix, is_external_artifact, load_external_ref
 from project import Project
-from models import ChunkStatus, ArtifactType
+from models import ChunkStatus, ArtifactType, parse_status_filters
 from task_utils import (
     is_task_directory,
     create_task_chunk,
@@ -44,6 +44,7 @@ from cli.formatters import (
     artifact_to_json_dict,
     format_grouped_artifact_list,
     format_grouped_artifact_list_json,
+    format_chunk_list_entry,
 )
 
 
@@ -148,9 +149,11 @@ def create(short_names, project_dir, yes, future, ticket, projects):
     # Determine status based on --future flag
     status = "FUTURE" if future else "IMPLEMENTING"
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _start_task_chunks(project_dir, valid_names, ticket_id, status, projects)
+    # Chunk: docs/chunks/cli_decompose - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _start_task_chunks(project_dir, valid_names, ticket_id, status, projects),
+    ):
         # If there were validation errors, exit with error code
         if validation_errors:
             raise SystemExit(1)
@@ -293,56 +296,6 @@ def _start_task_chunks(
         raise SystemExit(1)
 
 
-# Chunk: docs/chunks/chunklist_status_filter - Parse and validate status filters
-def _parse_status_filters(
-    status_option: tuple[str, ...],
-    future_flag: bool,
-    active_flag: bool,
-    implementing_flag: bool,
-) -> tuple[set[ChunkStatus] | None, str | None]:
-    """Parse and validate status filters from CLI options.
-
-    Args:
-        status_option: Tuple of status strings from --status option (may include comma-separated)
-        future_flag: Whether --future flag was set
-        active_flag: Whether --active flag was set
-        implementing_flag: Whether --implementing flag was set
-
-    Returns:
-        Tuple of (status_set, error_message). status_set is None if no filtering requested,
-        or a set of ChunkStatus values. error_message is None on success, or contains
-        the error message with valid options listed.
-    """
-    statuses: set[ChunkStatus] = set()
-
-    # Add statuses from convenience flags
-    if future_flag:
-        statuses.add(ChunkStatus.FUTURE)
-    if active_flag:
-        statuses.add(ChunkStatus.ACTIVE)
-    if implementing_flag:
-        statuses.add(ChunkStatus.IMPLEMENTING)
-
-    # Parse statuses from --status option (handles comma-separated and multiple options)
-    for status_str in status_option:
-        # Split by comma to handle --status FUTURE,ACTIVE
-        parts = [s.strip() for s in status_str.split(",") if s.strip()]
-        for part in parts:
-            # Case-insensitive lookup
-            upper_part = part.upper()
-            try:
-                statuses.add(ChunkStatus(upper_part))
-            except ValueError:
-                valid_statuses = ", ".join(s.value for s in ChunkStatus)
-                return None, f"Invalid status '{part}'. Valid statuses: {valid_statuses}"
-
-    # Return None if no filtering requested (empty set means show all)
-    if not statuses:
-        return None, None
-
-    return statuses, None
-
-
 @chunk.command("list")
 @click.option("--current", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--last-active", is_flag=True, help="Output only the most recently completed ACTIVE chunk")
@@ -390,7 +343,7 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
     with --current, --last-active, and --recent.
     """
     # Parse status filters
-    status_set, error = _parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
+    status_set, error = parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
     if error:
         click.echo(f"Error: {error}", err=True)
         raise SystemExit(1)
@@ -428,9 +381,11 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
         )
         raise SystemExit(1)
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_chunks(current, last_active, recent, status_set, project_dir, json_output)
+    # Chunk: docs/chunks/cli_decompose - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _list_task_chunks(current, last_active, recent, status_set, project_dir, json_output),
+    ):
         return
 
     # Single-repo mode - list from docs/chunks/
@@ -500,6 +455,8 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
 
         for chunk_name in chunk_list:
             chunk_path = project_dir / "docs" / "chunks" / chunk_name
+            is_tip = chunk_name in tips
+
             # Check for external artifact reference before parsing frontmatter
             if is_external_artifact(chunk_path, ArtifactType.CHUNK):
                 external_ref = load_external_ref(chunk_path)
@@ -514,12 +471,12 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                         "repo": external_ref.repo,
                         "artifact_id": external_ref.artifact_id,
                         "track": external_ref.track,
-                        "is_tip": chunk_name in tips,
+                        "is_tip": is_tip,
                     })
                 else:
-                    status = f"EXTERNAL: {external_ref.repo}"
-                    tip_indicator = " *" if chunk_name in tips else ""
-                    click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                    click.echo(format_chunk_list_entry(
+                        chunk_name, "EXTERNAL", is_tip, external_ref=external_ref
+                    ))
             else:
                 frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
                 if frontmatter:
@@ -531,9 +488,9 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                     if json_output:
                         results.append(artifact_to_json_dict(chunk_name, frontmatter, tips))
                     else:
-                        status = chunk_status.value
-                        tip_indicator = " *" if chunk_name in tips else ""
-                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, chunk_status.value, is_tip
+                        ))
                 elif errors:
                     # Chunks with parse errors - skip when filtering
                     if status_set is not None:
@@ -544,14 +501,12 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                             "name": chunk_name,
                             "status": "PARSE_ERROR",
                             "error": errors[0],
-                            "is_tip": chunk_name in tips,
+                            "is_tip": is_tip,
                         })
                     else:
-                        # Show first error for brevity
-                        first_error = errors[0]
-                        status = f"PARSE ERROR: {first_error}"
-                        tip_indicator = " *" if chunk_name in tips else ""
-                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, "PARSE_ERROR", is_tip, error=errors[0]
+                        ))
                 else:
                     # Unknown status - skip when filtering
                     if status_set is not None:
@@ -561,12 +516,12 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                         results.append({
                             "name": chunk_name,
                             "status": "UNKNOWN",
-                            "is_tip": chunk_name in tips,
+                            "is_tip": is_tip,
                         })
                     else:
-                        status = "UNKNOWN"
-                        tip_indicator = " *" if chunk_name in tips else ""
-                        click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, "UNKNOWN", is_tip
+                        ))
 
         if json_output:
             click.echo(json.dumps(results, indent=2))
