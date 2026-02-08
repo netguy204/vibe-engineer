@@ -6,12 +6,6 @@ code_paths:
 - src/template_system.py
 - tests/test_template_system.py
 code_references:
-- ref: src/template_system.py#ActiveChunk
-  implements: Chunk context dataclass with short_name, id, goal_path, plan_path properties
-- ref: src/template_system.py#ActiveNarrative
-  implements: Narrative context dataclass with short_name, id, overview_path properties
-- ref: src/template_system.py#ActiveSubsystem
-  implements: Subsystem context dataclass with short_name, id, overview_path properties
 - ref: src/template_system.py#TemplateContext
   implements: Project context holder ensuring only one active artifact at a time
 - ref: src/template_system.py#list_templates

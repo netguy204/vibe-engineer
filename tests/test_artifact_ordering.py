@@ -12,6 +12,7 @@ from artifact_ordering import (
     ArtifactIndex,
     ArtifactType,
     _enumerate_artifacts,
+    _normalize_created_after,
     _parse_created_after,
     _topological_sort_multi_parent,
 )
@@ -190,6 +191,37 @@ class TestEnumerateArtifacts:
         result = _enumerate_artifacts(narratives_dir, ArtifactType.NARRATIVE)
 
         assert result == {"0001-test"}
+
+
+# Chunk: docs/chunks/artifact_pattern_consolidation - Tests for unified created_after normalization
+class TestNormalizeCreatedAfter:
+    """Tests for _normalize_created_after helper function."""
+
+    def test_none_returns_empty_list(self):
+        """None value returns empty list."""
+        result = _normalize_created_after(None)
+        assert result == []
+
+    def test_empty_list_returns_empty_list(self):
+        """Empty list returns empty list."""
+        result = _normalize_created_after([])
+        assert result == []
+
+    def test_list_returns_list(self):
+        """List value is returned as-is."""
+        result = _normalize_created_after(["first", "second"])
+        assert result == ["first", "second"]
+
+    def test_string_returns_single_element_list(self):
+        """String value is wrapped in a list (legacy format)."""
+        result = _normalize_created_after("single_value")
+        assert result == ["single_value"]
+
+    def test_invalid_type_returns_empty_list(self):
+        """Invalid type (e.g., int, dict) returns empty list."""
+        assert _normalize_created_after(42) == []
+        assert _normalize_created_after({"key": "value"}) == []
+        assert _normalize_created_after(3.14) == []
 
 
 class TestFrontmatterParsing:

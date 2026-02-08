@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/remove_legacy_prefix - Identity function (legacy prefix stripping removed)
 def extract_short_name(dir_name: str) -> str:
     """Extract short name from directory name.
 

@@ -1,177 +1,222 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk consolidates four instances of duplicated patterns. The strategy is to:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Extract and generalize** — Move duplicated code to a single location with appropriate generalization
+2. **Update call sites** — Replace concrete implementations with calls to the unified version
+3. **Maintain behavioral equivalence** — All tests must continue to pass with no behavioral changes
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+For each consolidation target:
+- (a) `find_duplicates`: Extract to `ArtifactManager` base class since all four managers inherit from it
+- (b) `ChunkRelationship`/`SubsystemRelationship`: Create a generic `ArtifactRelationship` model parameterized by `target_type`
+- (c) `_parse_created_after` variants: Extract common normalization logic into a shared helper
+- (d) `Active*` dataclasses: Create a single `ActiveArtifact` with a `type` discriminator field
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/artifact_pattern_consolidation/GOAL.md)
-with references to the files that you expect to touch.
--->
+Testing follows TDD per `docs/trunk/TESTING_PHILOSOPHY.md`: write failing tests for the new unified implementations, then implement to make them pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS consolidation of duplicated artifact manager patterns. The subsystem's Hard Invariant #6 ("Manager class must implement the core interface") will be strengthened by moving `find_duplicates` to the base class.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+- **docs/subsystems/template_system** (status check needed): This chunk USES the template system for `ActiveArtifact` context and will need to update `TemplateContext` to use the unified dataclass.
 
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No known deviations discovered during exploration. The existing patterns are consistent across managers; consolidation is additive.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Unify `_parse_created_after` logic
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**Goal**: Extract the common value normalization logic from `_parse_created_after` and `_parse_yaml_created_after` in `src/artifact_ordering.py`.
 
-Example:
+**Current state** (lines 128-195):
+- `_parse_created_after(file_path)` — parses frontmatter, normalizes `created_after` field
+- `_parse_yaml_created_after(file_path)` — parses YAML file, normalizes `created_after` field
 
-### Step 1: Define the SegmentHeader struct
+Both share identical normalization: handle None → `[]`, handle string → `[string]`, handle list → list.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+**Implementation**:
+1. Create `_normalize_created_after(value: Any) -> list[str]` helper that encapsulates normalization
+2. Update both functions to call the helper
+3. Write test in `tests/test_artifact_ordering.py` verifying normalization behavior
 
-Location: src/segment/format.rs
+**Location**: `src/artifact_ordering.py`
 
-### Step 2: Implement header serialization
+### Step 2: Create generic `ArtifactRelationship` model
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Goal**: Replace `ChunkRelationship` and `SubsystemRelationship` with a single generic model.
 
-### Step 3: ...
+**Current state** (`src/models/references.py` lines 35-83):
+- `ChunkRelationship`: `chunk_id: str`, `relationship: Literal["implements", "uses"]`
+- `SubsystemRelationship`: `subsystem_id: str`, `relationship: Literal["implements", "uses"]`
 
----
+Both have identical validation logic (must match `ARTIFACT_ID_PATTERN`, cannot be empty).
 
-**BACKREFERENCE COMMENTS**
+**Implementation**:
+1. Create `ArtifactRelationship[T]` generic model with:
+   - `artifact_id: str` — generic ID field
+   - `relationship: Literal["implements", "uses"]`
+   - Parameterized by target type for type safety
+2. Create concrete type aliases:
+   - `ChunkRelationship = ArtifactRelationship` (with `artifact_id` aliased as `chunk_id` via model config)
+   - `SubsystemRelationship = ArtifactRelationship` (with `artifact_id` aliased as `subsystem_id`)
+3. Alternatively, use a discriminated union or factory function approach if Pydantic's serialization requires it for backward compatibility with existing YAML (field names in frontmatter must remain `chunk_id` and `subsystem_id`)
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+**Important constraint**: Existing frontmatter uses `chunk_id` and `subsystem_id` field names. The unified model must serialize/deserialize with those names for backward compatibility. This may require using Pydantic's `Field(alias=...)` or keeping thin wrapper classes.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+**Tests**: Update `tests/test_models.py` and `tests/test_subsystems.py` to use new model while preserving all validation behaviors.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**Location**: `src/models/references.py`
 
-Format (place immediately before the symbol):
+### Step 3: Extract `find_duplicates` to `ArtifactManager`
+
+**Goal**: Move the duplicated `find_duplicates` method to the base class.
+
+**Current state** (4 locations):
+- `src/chunks.py:155-172` — `find_duplicates(short_name, ticket_id)` (ticket_id unused)
+- `src/narratives.py:221-235` — `find_duplicates(short_name)`
+- `src/investigations.py:162-176` — `find_duplicates(short_name)`
+- `src/subsystems.py:210-224` — `find_duplicates(shortname)`
+
+All share the same logic: enumerate artifacts, check if `name == short_name`, collect matches.
+
+**Implementation**:
+1. Add to `ArtifactManager` base class:
+   ```python
+   def find_duplicates(self, short_name: str) -> list[str]:
+       """Find existing artifacts with the same short_name."""
+       return [name for name in self.enumerate_artifacts() if name == short_name]
+   ```
+2. Remove implementations from all four subclasses
+3. For `Chunks.find_duplicates`, it has an extra `ticket_id` parameter that is unused. Keep a wrapper for backward compatibility or update all callers to not pass `ticket_id`.
+
+**Tests**: Existing tests for `find_duplicates` should continue to pass. Add a test in `tests/test_artifact_manager.py` (may need to create this file or add to existing test) verifying the base class behavior.
+
+**Location**: `src/artifact_manager.py`, `src/chunks.py`, `src/narratives.py`, `src/investigations.py`, `src/subsystems.py`
+
+### Step 4: Unify `Active*` dataclasses into `ActiveArtifact`
+
+**Goal**: Replace `ActiveChunk`, `ActiveNarrative`, `ActiveSubsystem`, `ActiveInvestigation` with a single `ActiveArtifact` dataclass.
+
+**Current state** (`src/template_system.py` lines 79-142):
+Each has: `short_name: str`, `id: str`, `_project_dir: Path`, and a path property returning the appropriate file path.
+
+**Implementation**:
+1. Create `ActiveArtifact` dataclass:
+   ```python
+   @dataclass
+   class ActiveArtifact:
+       artifact_type: ArtifactType  # CHUNK, NARRATIVE, INVESTIGATION, SUBSYSTEM
+       short_name: str
+       id: str
+       _project_dir: pathlib.Path
+
+       @property
+       def main_path(self) -> pathlib.Path:
+           """Return path to this artifact's main file."""
+           dir_name = ARTIFACT_DIR_NAME[self.artifact_type]
+           main_file = ARTIFACT_MAIN_FILE[self.artifact_type]
+           return self._project_dir / "docs" / dir_name / self.id / main_file
+
+       @property
+       def goal_path(self) -> pathlib.Path:
+           """Return path to GOAL.md (chunks only, raises for others)."""
+           if self.artifact_type != ArtifactType.CHUNK:
+               raise ValueError("goal_path only valid for chunks")
+           return self.main_path
+
+       @property
+       def plan_path(self) -> pathlib.Path:
+           """Return path to PLAN.md (chunks only)."""
+           if self.artifact_type != ArtifactType.CHUNK:
+               raise ValueError("plan_path only valid for chunks")
+           return self._project_dir / "docs" / "chunks" / self.id / "PLAN.md"
+
+       @property
+       def overview_path(self) -> pathlib.Path:
+           """Return path to OVERVIEW.md (narratives, subsystems, investigations)."""
+           if self.artifact_type == ArtifactType.CHUNK:
+               raise ValueError("overview_path not valid for chunks")
+           return self.main_path
+   ```
+2. Keep type aliases for backward compatibility in template code:
+   ```python
+   def ActiveChunk(short_name: str, id: str, _project_dir: Path) -> ActiveArtifact:
+       return ActiveArtifact(ArtifactType.CHUNK, short_name, id, _project_dir)
+   # etc.
+   ```
+3. Update `TemplateContext` to use `active_artifact: ActiveArtifact | None` instead of four separate fields, OR keep the separate fields for backward compatibility with templates that reference `project.active_chunk`, etc.
+
+**Template compatibility concern**: Jinja templates may reference `project.active_chunk.goal_path`. Need to ensure these continue to work. May need to keep the existing field names in `TemplateContext` as aliases.
+
+**Tests**: Update `tests/test_template_system.py` to verify the unified dataclass works correctly for all artifact types.
+
+**Location**: `src/template_system.py`
+
+### Step 5: Update `TemplateContext` for unified artifact
+
+**Goal**: Update `TemplateContext` to work with `ActiveArtifact` while maintaining template compatibility.
+
+**Implementation**:
+1. Keep the existing five fields (`active_chunk`, `active_narrative`, etc.) for backward compatibility
+2. Add helper method or property that returns the unified `ActiveArtifact` when any active artifact is set
+3. Alternatively, convert `active_chunk` etc. to computed properties that wrap/unwrap `ActiveArtifact`
+
+**Backward compatibility path**: Since Jinja templates reference `project.active_chunk.goal_path`, we can make `active_chunk` a property that returns an `ActiveArtifact` (which has `goal_path`). The dataclass behavior should be transparent to templates.
+
+**Location**: `src/template_system.py`
+
+### Step 6: Update call sites and run full test suite
+
+**Goal**: Ensure all callers work correctly with the consolidated implementations.
+
+**Implementation**:
+1. Search for all uses of the old classes/functions
+2. Update imports
+3. Run `uv run pytest tests/` to verify no regressions
+4. Run `uv run ve validate` if applicable to verify artifact integrity
+
+### Step 7: Update GOAL.md with code_paths
+
+**Goal**: Record the files touched by this chunk.
+
+**Implementation**:
+Update `docs/chunks/artifact_pattern_consolidation/GOAL.md` frontmatter:
+```yaml
+code_paths:
+  - src/artifact_ordering.py
+  - src/artifact_manager.py
+  - src/models/references.py
+  - src/template_system.py
+  - src/chunks.py
+  - src/narratives.py
+  - src/investigations.py
+  - src/subsystems.py
+  - tests/test_artifact_ordering.py
+  - tests/test_models.py
+  - tests/test_template_system.py
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk has no external dependencies. The GOAL.md lists `created_after` chunks that are already complete:
+- `model_package_cleanup`
+- `orchestrator_api_decompose`
+- `task_operations_decompose`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Pydantic serialization for relationship models**: The `chunk_id`/`subsystem_id` field names are used in existing frontmatter. Need to verify Pydantic's alias support preserves serialization/deserialization with existing files.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Template backward compatibility**: Jinja templates reference `project.active_chunk.goal_path`. Need to verify the unified `ActiveArtifact` approach doesn't break template rendering. May require keeping separate fields in `TemplateContext`.
+
+3. **`find_duplicates` signature difference**: `Chunks.find_duplicates` takes an unused `ticket_id` parameter. Callers may pass this. Need to check call sites:
+   - If all callers can be updated to not pass it, remove the parameter
+   - If backward compatibility is needed, keep a wrapper method in `Chunks` that ignores the parameter
+
+4. **Import cycles**: Moving validation or types between modules may introduce import cycles. Monitor for this during implementation.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

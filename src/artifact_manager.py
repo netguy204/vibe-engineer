@@ -272,3 +272,22 @@ class ArtifactManager(ABC, Generic[FrontmatterT, StatusT]):
 
         main_path = self.get_main_file_path(artifact_id)
         update_frontmatter_field(main_path, field, value)
+
+    # Chunk: docs/chunks/artifact_pattern_consolidation - Unified duplicate detection
+    def find_duplicates(self, short_name: str) -> list[str]:
+        """Find existing artifacts with the same short_name.
+
+        This provides the base duplicate detection logic that is identical across
+        all artifact types. Subclasses can override if they need different behavior.
+
+        Args:
+            short_name: The short name to check for collisions.
+
+        Returns:
+            List of existing artifact directory names that would collide.
+        """
+        duplicates = []
+        for name in self.enumerate_artifacts():
+            if name == short_name:
+                duplicates.append(name)
+        return duplicates

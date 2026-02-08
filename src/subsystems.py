@@ -207,21 +207,7 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
 
         return subsystem_path
 
-    def find_duplicates(self, shortname: str) -> list[str]:
-        """Find existing subsystems with the same short_name.
-
-        Args:
-            shortname: The short name to check for collisions.
-
-        Returns:
-            List of existing subsystem directory names that would collide.
-        """
-        duplicates = []
-        for name in self.enumerate_subsystems():
-            # Directory name is the short name
-            if name == shortname:
-                duplicates.append(name)
-        return duplicates
+    # find_duplicates inherited from ArtifactManager base class
 
     # Chunk: docs/chunks/bidirectional_refs - Validates chunk references in subsystem frontmatter exist
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:

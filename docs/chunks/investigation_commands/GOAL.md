@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/investigations.py
 - src/cli/investigation.py
-- src/models.py
+- src/models/investigation.py
 - src/templates/commands/investigation-create.md.jinja2
 - tests/test_investigations.py
 code_references:
@@ -17,9 +17,9 @@ code_references:
   implements: Create investigation with sequential numbering and OVERVIEW.md template
 - ref: src/investigations.py#Investigations::parse_investigation_frontmatter
   implements: Parse and validate investigation OVERVIEW.md frontmatter
-- ref: src/models.py#InvestigationStatus
+- ref: src/models/investigation.py#InvestigationStatus
   implements: InvestigationStatus enum with ONGOING, SOLVED, NOTED, DEFERRED values
-- ref: src/models.py#InvestigationFrontmatter
+- ref: src/models/investigation.py#InvestigationFrontmatter
   implements: Pydantic model for investigation frontmatter validation
 - ref: src/cli/investigation.py#investigation
   implements: CLI investigation command group
