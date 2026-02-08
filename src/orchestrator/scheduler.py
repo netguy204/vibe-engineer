@@ -1126,6 +1126,7 @@ class Scheduler:
                 f"Review ESCALATED for {chunk}: {review_result.reason or review_result.summary}"
             )
             work_unit.review_nudge_count = 0  # Reset nudge count
+            work_unit.session_id = result.session_id  # Preserve session for resume with operator answer
             work_unit.updated_at = datetime.now(timezone.utc)
             self.store.update_work_unit(work_unit)
             await self._mark_needs_attention(

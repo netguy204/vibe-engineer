@@ -621,12 +621,15 @@ class AgentRunner:
             # Allow the ReviewDecision MCP tool
             options.allowed_tools.append("mcp__orchestrator__ReviewDecision")
 
-        # Handle resume with answer
+        # Handle resume and/or operator answer
         if resume_session_id:
             options.resume = resume_session_id
-            if answer:
-                # Prepend answer to prompt when resuming
-                prompt = f"User answer: {answer}\n\n{prompt}"
+        if answer:
+            # Inject operator answer into prompt. This applies both when
+            # resuming a suspended session (question flow) and when starting
+            # a fresh session after ESCALATE (where session_id is None but
+            # the operator answered via the attention queue).
+            prompt = f"Operator feedback: {answer}\n\n{prompt}"
 
         session_id: Optional[str] = None
         error: Optional[str] = None
