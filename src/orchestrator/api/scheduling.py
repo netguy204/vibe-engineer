@@ -107,6 +107,7 @@ def _detect_initial_phase(chunk_dir: Path) -> WorkUnitPhase:
 
 
 # Chunk: docs/chunks/explicit_deps_batch_inject - API endpoint extended to accept blocked_by and explicit_deps parameters
+# Chunk: docs/chunks/orch_task_detection - Inject endpoint with task context chunk location resolution
 async def inject_endpoint(request: Request) -> JSONResponse:
     """POST /work-units/inject - Inject a chunk into the work pool.
 

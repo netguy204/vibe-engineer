@@ -17,6 +17,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
+from orchestrator.git_utils import GitError, get_current_branch
+
 if TYPE_CHECKING:
     from orchestrator.models import TaskContextInfo
 
@@ -84,29 +86,10 @@ class WorktreeManager:
         Raises:
             WorktreeError: If not on a branch or git command fails
         """
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise WorktreeError(f"Failed to get current branch: {result.stderr}")
-
-        branch = result.stdout.strip()
-        if branch == "HEAD":
-            # Detached HEAD state - get the commit instead
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=self.project_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                raise WorktreeError("Failed to get current commit in detached HEAD state")
-            return result.stdout.strip()
-
-        return branch
+        try:
+            return get_current_branch(self.project_dir)
+        except GitError as e:
+            raise WorktreeError(str(e)) from e
 
     @property
     def base_branch(self) -> str:
@@ -369,29 +352,10 @@ class WorktreeManager:
         Raises:
             WorktreeError: If not on a branch or git command fails
         """
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise WorktreeError(f"Failed to get current branch: {result.stderr}")
-
-        branch = result.stdout.strip()
-        if branch == "HEAD":
-            # Detached HEAD state - get the commit instead
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=repo_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                raise WorktreeError("Failed to get current commit in detached HEAD state")
-            return result.stdout.strip()
-
-        return branch
+        try:
+            return get_current_branch(repo_dir)
+        except GitError as e:
+            raise WorktreeError(str(e)) from e
 
     def create_worktree(
         self, chunk: str, repo_paths: Optional[list[Path]] = None
