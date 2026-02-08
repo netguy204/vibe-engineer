@@ -17,19 +17,42 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass, field
-from typing import Literal, TYPE_CHECKING
+from typing import Literal, Protocol, TYPE_CHECKING
 
 from backreferences import CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
-from chunks import Chunks
 from external_refs import is_external_artifact
 from friction import Friction
 from investigations import Investigations
-from models import ArtifactType
+from models import ArtifactType, ChunkFrontmatter
 from narratives import Narratives
 from subsystems import Subsystems
 
 if TYPE_CHECKING:
+    from chunks import Chunks
     from project import Project
+
+
+# Chunk: docs/chunks/chunks_class_decouple - Protocol for chunk operations used by integrity validation
+class ChunksProtocol(Protocol):
+    """Protocol defining the interface for chunk operations used by integrity validation.
+
+    This protocol breaks the circular dependency between chunks.py and integrity.py
+    by allowing integrity functions to accept any object satisfying this interface
+    rather than requiring a concrete Chunks instance.
+    """
+
+    @property
+    def chunk_dir(self) -> pathlib.Path:
+        """Return the path to the chunks directory."""
+        ...
+
+    def enumerate_chunks(self) -> list[str]:
+        """List chunk directory names."""
+        ...
+
+    def parse_chunk_frontmatter(self, chunk_id: str) -> ChunkFrontmatter | None:
+        """Parse YAML frontmatter from a chunk's GOAL.md."""
+        ...
 
 
 @dataclass
@@ -678,7 +701,12 @@ class IntegrityValidator:
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
 # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.subsystems access
-def validate_chunk_subsystem_refs(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+# Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+def validate_chunk_subsystem_refs(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
     """Validate subsystem references in a chunk's frontmatter.
 
     Checks that each referenced subsystem directory exists in docs/subsystems/.
@@ -686,14 +714,17 @@ def validate_chunk_subsystem_refs(project_dir: pathlib.Path, chunk_id: str) -> l
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
+        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
 
     Returns:
         List of error messages (empty if all refs valid or no refs).
     """
     errors: list[str] = []
 
-    # Use late import to avoid circular dependency
-    chunks = Chunks(project_dir)
+    # Create Chunks instance if not provided
+    if chunks is None:
+        from chunks import Chunks
+        chunks = Chunks(project_dir)
 
     # Get chunk frontmatter
     frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
@@ -721,7 +752,12 @@ def validate_chunk_subsystem_refs(project_dir: pathlib.Path, chunk_id: str) -> l
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
 # Chunk: docs/chunks/investigation_chunk_refs - Validation that referenced investigations exist
-def validate_chunk_investigation_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+# Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+def validate_chunk_investigation_ref(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
     """Validate investigation reference in a chunk's frontmatter.
 
     Checks:
@@ -731,14 +767,17 @@ def validate_chunk_investigation_ref(project_dir: pathlib.Path, chunk_id: str) -
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
+        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
 
     Returns:
         List of error messages (empty if valid or no reference).
     """
     errors: list[str] = []
 
-    # Use late import to avoid circular dependency
-    chunks = Chunks(project_dir)
+    # Create Chunks instance if not provided
+    if chunks is None:
+        from chunks import Chunks
+        chunks = Chunks(project_dir)
 
     # Get chunk frontmatter
     frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
@@ -764,7 +803,12 @@ def validate_chunk_investigation_ref(project_dir: pathlib.Path, chunk_id: str) -
 
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
-def validate_chunk_narrative_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+# Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+def validate_chunk_narrative_ref(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
     """Validate narrative reference in a chunk's frontmatter.
 
     Checks:
@@ -774,14 +818,17 @@ def validate_chunk_narrative_ref(project_dir: pathlib.Path, chunk_id: str) -> li
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
+        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
 
     Returns:
         List of error messages (empty if valid or no reference).
     """
     errors: list[str] = []
 
-    # Use late import to avoid circular dependency
-    chunks = Chunks(project_dir)
+    # Create Chunks instance if not provided
+    if chunks is None:
+        from chunks import Chunks
+        chunks = Chunks(project_dir)
 
     # Get chunk frontmatter
     frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
@@ -808,7 +855,12 @@ def validate_chunk_narrative_ref(project_dir: pathlib.Path, chunk_id: str) -> li
 # Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
 # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
-def validate_chunk_friction_entries_ref(project_dir: pathlib.Path, chunk_id: str) -> list[str]:
+# Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+def validate_chunk_friction_entries_ref(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
     """Validate friction entry references in a chunk's frontmatter.
 
     Checks that each referenced friction entry ID exists in FRICTION.md.
@@ -817,14 +869,17 @@ def validate_chunk_friction_entries_ref(project_dir: pathlib.Path, chunk_id: str
     Args:
         project_dir: Path to the project directory.
         chunk_id: The chunk ID to validate.
+        chunks: Optional ChunksProtocol instance. If not provided, creates a new Chunks instance.
 
     Returns:
         List of error messages (empty if valid or no references).
     """
     errors: list[str] = []
 
-    # Use late import to avoid circular dependency
-    chunks = Chunks(project_dir)
+    # Create Chunks instance if not provided
+    if chunks is None:
+        from chunks import Chunks
+        chunks = Chunks(project_dir)
 
     # Get chunk frontmatter
     frontmatter = chunks.parse_chunk_frontmatter(chunk_id)
