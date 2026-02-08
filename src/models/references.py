@@ -23,6 +23,7 @@ class ArtifactType(StrEnum):
     SUBSYSTEM = "subsystem"
 
 
+# Chunk: docs/chunks/remove_legacy_prefix - Simplified patterns accepting only {short_name} format
 # Regex for validating artifact ID format: {short_name}
 # Lowercase letters, digits, underscores, hyphens (must start with letter)
 ARTIFACT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -149,6 +150,7 @@ class ArtifactRelationship(BaseModel):
 
 
 # Chunk: docs/chunks/subsystem_schemas_and_model - Model for chunk-to-subsystem relationships
+# Chunk: docs/chunks/remove_legacy_prefix - Validation without legacy format branches
 class ChunkRelationship(BaseModel):
     """Relationship between a subsystem and a chunk.
 
@@ -171,6 +173,7 @@ class ChunkRelationship(BaseModel):
 
 
 # Chunk: docs/chunks/bidirectional_refs - Pydantic model for chunk-to-subsystem relationship
+# Chunk: docs/chunks/remove_legacy_prefix - Validation without legacy format branches
 class SubsystemRelationship(BaseModel):
     """Relationship between a chunk and a subsystem.
 
