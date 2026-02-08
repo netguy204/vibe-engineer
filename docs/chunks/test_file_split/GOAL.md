@@ -1,18 +1,48 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - tests/conftest.py
+  # Scheduler tests split
+  - tests/test_orchestrator_scheduler.py
+  - tests/test_orchestrator_scheduler_dispatch.py
+  - tests/test_orchestrator_scheduler_results.py
+  - tests/test_orchestrator_scheduler_activation.py
+  - tests/test_orchestrator_scheduler_worktree.py
+  - tests/test_orchestrator_scheduler_injection.py
+  - tests/test_orchestrator_scheduler_unblock.py
+  - tests/test_orchestrator_scheduler_review.py
+  # CLI tests split
+  - tests/test_orchestrator_cli.py
+  - tests/test_orchestrator_cli_lifecycle.py
+  - tests/test_orchestrator_cli_workunit.py
+  - tests/test_orchestrator_cli_queue.py
+  - tests/test_orchestrator_cli_inject_batch.py
+  # Agent tests split
+  - tests/test_orchestrator_agent.py
+  - tests/test_orchestrator_agent_skills.py
+  - tests/test_orchestrator_agent_runner.py
+  - tests/test_orchestrator_agent_hooks.py
+  - tests/test_orchestrator_agent_sandbox.py
+  # Worktree tests split
+  - tests/test_orchestrator_worktree.py
+  - tests/test_orchestrator_worktree_basic.py
+  - tests/test_orchestrator_worktree_multirepo.py
 code_references: []
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["scheduler_decompose_methods", "artifact_pattern_consolidation"]
-created_after: ["model_package_cleanup", "orchestrator_api_decompose", "task_operations_decompose"]
+depends_on:
+- scheduler_decompose_methods
+- artifact_pattern_consolidation
+created_after:
+- model_package_cleanup
+- orchestrator_api_decompose
+- task_operations_decompose
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

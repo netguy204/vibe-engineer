@@ -132,3 +132,74 @@ projects:
     (task_dir / ".ve-task.yaml").write_text(config_content)
 
     return task_dir, external_path, project_paths
+
+
+# =============================================================================
+# Orchestrator Scheduler Fixtures
+# =============================================================================
+# These fixtures are used by the orchestrator scheduler test files.
+# Extracted from test_orchestrator_scheduler.py for reuse across split files.
+
+
+@pytest.fixture
+def state_store(tmp_path):
+    """Create a state store for testing."""
+    from orchestrator.state import StateStore
+
+    db_path = tmp_path / "test.db"
+    store = StateStore(db_path)
+    store.initialize()
+    return store
+
+
+@pytest.fixture
+def mock_worktree_manager():
+    """Create a mock worktree manager."""
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    manager = MagicMock()
+    manager.create_worktree.return_value = Path("/tmp/worktree")
+    manager.get_worktree_path.return_value = Path("/tmp/worktree")
+    manager.get_log_path.return_value = Path("/tmp/logs")
+    manager.worktree_exists.return_value = False
+    manager.has_uncommitted_changes.return_value = False
+    manager.has_changes.return_value = False
+    manager.commit_changes.return_value = True
+    return manager
+
+
+@pytest.fixture
+def mock_agent_runner():
+    """Create a mock agent runner."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from orchestrator.models import AgentResult
+
+    runner = MagicMock()
+    runner.run_phase = AsyncMock(
+        return_value=AgentResult(completed=True, suspended=False)
+    )
+    return runner
+
+
+@pytest.fixture
+def orchestrator_config():
+    """Create test config for orchestrator scheduler tests."""
+    from orchestrator.models import OrchestratorConfig
+
+    return OrchestratorConfig(max_agents=2, dispatch_interval_seconds=0.1)
+
+
+@pytest.fixture
+def scheduler(state_store, mock_worktree_manager, mock_agent_runner, orchestrator_config, tmp_path):
+    """Create a scheduler for testing."""
+    from orchestrator.scheduler import Scheduler
+
+    return Scheduler(
+        store=state_store,
+        worktree_manager=mock_worktree_manager,
+        agent_runner=mock_agent_runner,
+        config=orchestrator_config,
+        project_dir=tmp_path,
+    )
