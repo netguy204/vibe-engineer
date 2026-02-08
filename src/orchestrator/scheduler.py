@@ -9,6 +9,7 @@
 # Chunk: docs/chunks/orch_conflict_oracle - Conflict checking and re-analysis during dispatch
 # Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
 # Chunk: docs/chunks/scheduler_decompose - Decomposed into focused modules
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -35,7 +36,7 @@ from orchestrator.models import (
     WorkUnitPhase,
     WorkUnitStatus,
 )
-from orchestrator.state import StateStore
+from orchestrator.state import StateStore, StaleWriteError
 from orchestrator.websocket import broadcast_attention_update, broadcast_work_unit_update
 from orchestrator.worktree import WorktreeManager, WorktreeError
 
@@ -70,6 +71,7 @@ class SchedulerError(Exception):
 
 # Chunk: docs/chunks/orch_manual_done_unblock - Module-level function for unblocking dependents
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition when blockers complete
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
     """Unblock work units that were blocked by a now-completed chunk.
 
@@ -80,6 +82,9 @@ def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
     2. If blocked_by becomes empty and status is BLOCKED or NEEDS_ATTENTION,
        transition to READY and clear attention_reason
 
+    Uses optimistic locking to avoid overwriting concurrent API updates.
+    On stale write, re-reads the work unit and retries.
+
     Args:
         store: The StateStore instance to use for querying and updating work units
         completed_chunk: The chunk name that just completed
@@ -88,31 +93,62 @@ def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
     blocked_units = store.list_blocked_by_chunk(completed_chunk)
 
     for unit in blocked_units:
-        # Remove the completed chunk from blocked_by
-        if completed_chunk in unit.blocked_by:
-            unit.blocked_by.remove(completed_chunk)
-            unit.updated_at = datetime.now(timezone.utc)
+        # Retry loop for optimistic locking
+        max_retries = 3
+        for attempt in range(max_retries):
+            # Capture expected timestamp before modification
+            expected_updated_at = unit.updated_at
 
-            # If no more blockers and status is BLOCKED or NEEDS_ATTENTION,
-            # transition to READY. Work units can be in NEEDS_ATTENTION when
-            # they encountered a conflict that required serialization - once
-            # the blocker completes, they should automatically become READY.
-            if not unit.blocked_by and unit.status in (
-                WorkUnitStatus.BLOCKED,
-                WorkUnitStatus.NEEDS_ATTENTION,
-            ):
-                logger.info(
-                    f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
-                )
-                unit.status = WorkUnitStatus.READY
-                unit.attention_reason = None  # Clear stale reason
+            # Remove the completed chunk from blocked_by
+            if completed_chunk in unit.blocked_by:
+                unit.blocked_by.remove(completed_chunk)
+                unit.updated_at = datetime.now(timezone.utc)
+
+                # If no more blockers and status is BLOCKED or NEEDS_ATTENTION,
+                # transition to READY. Work units can be in NEEDS_ATTENTION when
+                # they encountered a conflict that required serialization - once
+                # the blocker completes, they should automatically become READY.
+                if not unit.blocked_by and unit.status in (
+                    WorkUnitStatus.BLOCKED,
+                    WorkUnitStatus.NEEDS_ATTENTION,
+                ):
+                    logger.info(
+                        f"Unblocking {unit.chunk} - blocker {completed_chunk} completed"
+                    )
+                    unit.status = WorkUnitStatus.READY
+                    unit.attention_reason = None  # Clear stale reason
+                else:
+                    logger.info(
+                        f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "
+                        f"(remaining: {unit.blocked_by})"
+                    )
+
+                try:
+                    store.update_work_unit(unit, expected_updated_at=expected_updated_at)
+                    break  # Success - exit retry loop
+                except StaleWriteError:
+                    if attempt == max_retries - 1:
+                        logger.warning(
+                            f"Failed to unblock {unit.chunk} after {max_retries} attempts "
+                            f"due to concurrent modifications"
+                        )
+                    else:
+                        logger.info(
+                            f"Stale write unblocking {unit.chunk}, retrying "
+                            f"(attempt {attempt + 2}/{max_retries})"
+                        )
+                        # Re-read the work unit for retry
+                        fresh = store.get_work_unit(unit.chunk)
+                        if fresh is None:
+                            # Work unit was deleted - nothing to do
+                            break
+                        if completed_chunk not in fresh.blocked_by:
+                            # Already unblocked by another process
+                            break
+                        unit = fresh
             else:
-                logger.info(
-                    f"Removed {completed_chunk} from {unit.chunk}'s blocked_by "
-                    f"(remaining: {unit.blocked_by})"
-                )
-
-            store.update_work_unit(unit)
+                # completed_chunk not in blocked_by - nothing to do
+                break
 
 
 # Chunk: docs/chunks/scheduler_decompose_methods - Adapter for ReviewRoutingCallbacks protocol
@@ -388,6 +424,7 @@ class Scheduler:
     # Chunk: docs/chunks/orch_activate_on_inject - Integration of chunk activation after worktree creation
     # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason and blocked_by when transitioning to RUNNING
     # Chunk: docs/chunks/orch_attention_queue - Pass pending_answer to agent runner on resume
+    # Chunk: docs/chunks/optimistic_locking - Optimistic locking for dispatch transition
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -396,6 +433,8 @@ class Scheduler:
         """
         chunk = work_unit.chunk
         phase = work_unit.phase
+        # Capture expected timestamp for optimistic locking
+        expected_updated_at = work_unit.updated_at
 
         try:
             # Create worktree
@@ -425,13 +464,29 @@ class Scheduler:
                 await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
                 return
 
-            # Update work unit to RUNNING
+            # Update work unit to RUNNING with optimistic locking
+            # If someone else (e.g., API) updated the work unit since we read it,
+            # we should detect that and skip dispatch rather than overwrite their change.
             work_unit.status = WorkUnitStatus.RUNNING
             work_unit.worktree = str(worktree_path)
             work_unit.attention_reason = None  # Clear any stale reason
             work_unit.blocked_by = []  # Clear stale blockers
             work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
+            try:
+                self.store.update_work_unit(
+                    work_unit, expected_updated_at=expected_updated_at
+                )
+            except StaleWriteError as e:
+                logger.warning(
+                    f"Skipping dispatch for {chunk}: {e}. "
+                    f"Work unit was modified by another process."
+                )
+                # Clean up the worktree we just created
+                try:
+                    self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+                except WorktreeError:
+                    pass
+                return
 
             # Broadcast via WebSocket so dashboard updates
             await broadcast_work_unit_update(

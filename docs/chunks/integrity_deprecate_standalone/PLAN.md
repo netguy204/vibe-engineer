@@ -8,170 +8,224 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The four standalone validation functions in `src/integrity.py` (lines 705-913) duplicate the validation logic already present in `IntegrityValidator._validate_chunk_outbound()`:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+| Standalone Function | IntegrityValidator Method |
+|---------------------|---------------------------|
+| `validate_chunk_subsystem_refs()` | `_validate_chunk_outbound()` → subsystem validation block (lines 399-421) |
+| `validate_chunk_investigation_ref()` | `_validate_chunk_outbound()` → investigation validation block (lines 374-395) |
+| `validate_chunk_narrative_ref()` | `_validate_chunk_outbound()` → narrative validation block (lines 350-371) |
+| `validate_chunk_friction_entries_ref()` | `_validate_chunk_outbound()` → friction entries validation block (lines 424-434) |
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The key differences:
+1. **Return type**: Standalone functions return `list[str]` (error messages), while `IntegrityValidator` returns `IntegrityError` objects
+2. **Instantiation**: Standalone functions optionally create a new `Chunks()` instance if not provided; `IntegrityValidator` accesses managers via `Project`
+3. **Bidirectional checks**: `IntegrityValidator` includes bidirectional consistency warnings; standalone functions do not
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/integrity_deprecate_standalone/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Strategy**: Rather than maintaining two code paths, the `Chunks` wrapper methods will call through to `IntegrityValidator` with a focused scope. We'll add a method `IntegrityValidator.validate_chunk_outbound(chunk_id)` that validates a single chunk and returns structured results that the `Chunks` wrappers can convert to `list[str]`.
+
+This approach:
+- Eliminates code duplication (DRY principle)
+- Preserves the `Chunks` class API for backward compatibility
+- Routes all validation through a single, well-tested code path
+- The standalone functions are marked deprecated with `warnings.warn()` pointing callers to use `IntegrityValidator` or the `Chunks` wrapper methods
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/friction_tracking**: The standalone function `validate_chunk_friction_entries_ref` has a subsystem backreference to friction_tracking. When deprecating this function, the routing through `IntegrityValidator` will preserve this relationship. No action needed beyond ensuring the deprecation warning guides users correctly.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add public single-chunk validation method to IntegrityValidator
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new public method `validate_chunk(self, chunk_name: str) -> tuple[list[IntegrityError], list[IntegrityWarning]]` that:
+1. Builds the artifact index (calls `_build_artifact_index()`)
+2. Builds the bidirectional consistency indexes (calls `_build_parent_chunk_index()`)
+3. Calls `_validate_chunk_outbound(chunk_name)` for the specified chunk
+4. Returns errors and warnings
 
-Example:
+This provides a focused entry point for validating a single chunk without running the full project-wide validation.
 
-### Step 1: Define the SegmentHeader struct
+**Location**: `src/integrity.py`, add method to `IntegrityValidator` class (around line 248, before `validate()`)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+**Test**: Add test in `tests/test_integrity.py` to verify single-chunk validation works correctly.
 
-Location: src/segment/format.rs
+### Step 2: Add helper to convert IntegrityError to string messages
 
-### Step 2: Implement header serialization
+Add a helper function `_errors_to_messages(errors: list[IntegrityError]) -> list[str]` that converts `IntegrityError` objects to the string format used by the existing standalone functions.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+The format should match the current behavior: `"{target_type} '{target_name}' does not exist in docs/{artifact_type}/"`.
 
-### Step 3: ...
+**Location**: `src/integrity.py`, module-level function near the standalone functions
 
----
+### Step 3: Update Chunks wrapper methods to use IntegrityValidator
 
-**BACKREFERENCE COMMENTS**
+Modify the four wrapper methods in `Chunks` to route through `IntegrityValidator.validate_chunk()`:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
+    """Validate subsystem references in a chunk's frontmatter."""
+    from project import Project
+    project = Project(self.project_dir)
+    validator = IntegrityValidator(self.project_dir, project=project)
+    errors, _ = validator.validate_chunk(chunk_id)
+    # Filter to only subsystem-related errors
+    return _errors_to_messages([e for e in errors if e.link_type == "chunk→subsystem"])
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Apply similar pattern to:
+- `validate_investigation_ref()` → filter `link_type == "chunk→investigation"`
+- `validate_narrative_ref()` → filter `link_type == "chunk→narrative"`
+- `validate_friction_entries_ref()` → filter `link_type == "chunk→friction"`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Location**: `src/chunks.py`, methods around lines 902-961
+
+**Note**: The `Chunks` wrapper methods now accept `self` (already have access to `self.project_dir`) and can construct a `Project` internally. The `ChunksProtocol` and the `chunks` parameter on standalone functions become unnecessary for the wrapper methods.
+
+### Step 4: Add deprecation warnings to standalone functions
+
+Mark the four standalone functions as deprecated using `warnings.warn()`:
+
+```python
+import warnings
+
+def validate_chunk_subsystem_refs(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
+    """Validate subsystem references in a chunk's frontmatter.
+
+    .. deprecated::
+        Use Chunks(project_dir).validate_subsystem_refs(chunk_id) or
+        IntegrityValidator(project_dir).validate_chunk(chunk_id) instead.
+    """
+    warnings.warn(
+        "validate_chunk_subsystem_refs is deprecated. Use Chunks.validate_subsystem_refs() "
+        "or IntegrityValidator.validate_chunk() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    # Existing implementation continues to work for backward compatibility
+    ...
+```
+
+Apply the same pattern to all four functions.
+
+**Location**: `src/integrity.py`, lines 705-913
+
+### Step 5: Remove redundant Chunks instantiation from standalone functions
+
+The standalone functions currently create a new `Chunks()` instance when `chunks=None`. Since these functions are now deprecated and callers should use the `Chunks` wrapper methods or `IntegrityValidator` directly, we can simplify the deprecated functions to:
+1. Keep the function signature for backward compatibility
+2. Emit deprecation warning
+3. Delegate to the new unified code path via `Chunks` class methods
+
+```python
+def validate_chunk_subsystem_refs(
+    project_dir: pathlib.Path,
+    chunk_id: str,
+    chunks: ChunksProtocol | None = None,
+) -> list[str]:
+    """..."""
+    warnings.warn(...)
+    from chunks import Chunks
+    chunk_mgr = Chunks(project_dir)
+    return chunk_mgr.validate_subsystem_refs(chunk_id)
+```
+
+This ensures the deprecated functions route through the same code path as the recommended API.
+
+**Location**: `src/integrity.py`, lines 705-913
+
+### Step 6: Update imports in chunks.py
+
+Update `chunks.py` to:
+1. Import `IntegrityValidator` and `_errors_to_messages` from `integrity`
+2. Remove imports of the four standalone validation functions (they're now deprecated)
+
+The imports currently at lines 65-68:
+```python
+from integrity import (
+    validate_chunk_subsystem_refs,
+    validate_chunk_investigation_ref,
+    validate_chunk_narrative_ref,
+    validate_chunk_friction_entries_ref,
+)
+```
+
+Should be replaced with:
+```python
+from integrity import IntegrityValidator, _errors_to_messages
+```
+
+**Location**: `src/chunks.py`, lines 65-68
+
+### Step 7: Verify existing tests pass
+
+Run the existing test suites to ensure:
+1. `tests/test_chunks.py::TestValidateSubsystemRefs` continues to pass (tests the `Chunks` wrapper methods)
+2. `tests/test_integrity.py` continues to pass (tests `IntegrityValidator`)
+
+The wrapper methods should produce identical results to the previous implementation.
+
+**Command**: `uv run pytest tests/test_chunks.py tests/test_integrity.py -v`
+
+### Step 8: Add deprecation warning tests
+
+Add tests to verify that calling the deprecated standalone functions emits `DeprecationWarning`:
+
+```python
+def test_validate_chunk_subsystem_refs_emits_deprecation_warning(self, temp_project):
+    """Standalone function emits deprecation warning."""
+    import warnings
+    from integrity import validate_chunk_subsystem_refs
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        validate_chunk_subsystem_refs(temp_project, "nonexistent")
+
+    assert len(w) == 1
+    assert issubclass(w[0].category, DeprecationWarning)
+    assert "deprecated" in str(w[0].message).lower()
+```
+
+**Location**: `tests/test_integrity.py`, new test class `TestDeprecatedStandaloneFunctions`
+
+### Step 9: Update chunk backreferences
+
+Update or remove backreferences in the deprecated functions to point to this chunk, indicating they are deprecated.
+
+The current backreferences like:
+```python
+# Chunk: docs/chunks/chunks_decompose - Standalone validation functions extracted from Chunks class
+# Chunk: docs/chunks/chunks_class_decouple - Accepts ChunksProtocol to break circular import
+```
+
+Should be updated to include:
+```python
+# Chunk: docs/chunks/integrity_deprecate_standalone - Deprecated, use Chunks methods or IntegrityValidator
+```
+
+**Location**: `src/integrity.py`, comments above each standalone function
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **chunks_class_decouple** (ACTIVE): This chunk restructured the `Chunks` class and introduced the `ChunksProtocol` to break circular imports between `chunks.py` and `integrity.py`. With that decoupling in place, there's no longer a reason to maintain the standalone functions as a separate code path.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Performance impact of index building**: The new `validate_chunk()` method calls `_build_artifact_index()` and `_build_parent_chunk_index()` which iterate over all artifacts. For single-chunk validation, this is more work than the standalone functions did. However:
+   - The `Chunks` wrapper methods are typically called for single-chunk validation during `ve chunk validate` or similar CLI commands
+   - The full `IntegrityValidator.validate()` already builds these indexes anyway
+   - The index building is O(n) in the number of artifacts, which is typically small (<100)
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+   **Mitigation**: If profiling shows this is a problem, we can add lazy initialization or caching to the indexes. For now, correctness over optimization.
+
+2. **ChunksProtocol may become unused**: After this change, the `ChunksProtocol` in `integrity.py` may only be used by the deprecated standalone functions. Consider whether to keep it for backward compatibility or remove it entirely in a future cleanup.
+
+3. **Bidirectional warnings**: The standalone functions never returned bidirectional warnings (they only checked existence). The new routing through `IntegrityValidator` does produce warnings, but the `Chunks` wrapper methods only return errors. This is consistent with current behavior but may be surprising to users who expected warnings from `Chunks` methods. The warnings are still available via `IntegrityValidator.validate_chunk()` directly.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION, not at planning time. -->

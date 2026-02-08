@@ -21,22 +21,26 @@ code_references:
     implements: "Moved TF-IDF clustering function"
   - ref: src/cluster_analysis.py#suggest_prefix
     implements: "Moved TF-IDF prefix suggestion function"
+  - ref: src/integrity.py#IntegrityValidator::validate_chunk
+    implements: "New unified single-chunk validation entry point used by Chunks wrapper methods"
+  - ref: src/integrity.py#_errors_to_messages
+    implements: "Helper function to convert IntegrityError objects to formatted string messages"
   - ref: src/integrity.py#validate_chunk_subsystem_refs
-    implements: "Standalone validation for subsystem references"
+    implements: "Deprecated standalone validation for subsystem references (now delegates to IntegrityValidator)"
   - ref: src/integrity.py#validate_chunk_investigation_ref
-    implements: "Standalone validation for investigation reference"
+    implements: "Deprecated standalone validation for investigation reference (now delegates to IntegrityValidator)"
   - ref: src/integrity.py#validate_chunk_narrative_ref
-    implements: "Standalone validation for narrative reference"
+    implements: "Deprecated standalone validation for narrative reference (now delegates to IntegrityValidator)"
   - ref: src/integrity.py#validate_chunk_friction_entries_ref
-    implements: "Standalone validation for friction entries"
+    implements: "Deprecated standalone validation for friction entries (now delegates to IntegrityValidator)"
   - ref: src/chunks.py#Chunks::validate_subsystem_refs
-    implements: "Thin wrapper delegating to integrity module"
+    implements: "Wrapper method routing through IntegrityValidator.validate_chunk() with filtering"
   - ref: src/chunks.py#Chunks::validate_investigation_ref
-    implements: "Thin wrapper delegating to integrity module"
+    implements: "Wrapper method routing through IntegrityValidator.validate_chunk() with filtering"
   - ref: src/chunks.py#Chunks::validate_narrative_ref
-    implements: "Thin wrapper delegating to integrity module"
+    implements: "Wrapper method routing through IntegrityValidator.validate_chunk() with filtering"
   - ref: src/chunks.py#Chunks::validate_friction_entries_ref
-    implements: "Thin wrapper delegating to integrity module"
+    implements: "Wrapper method routing through IntegrityValidator.validate_chunk() with filtering"
 narrative: arch_consolidation
 investigation: null
 subsystems:
