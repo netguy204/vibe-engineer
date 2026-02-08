@@ -671,6 +671,7 @@ class StateStore:
     # Queue operations
 
     # Chunk: docs/chunks/orch_attention_queue - Query NEEDS_ATTENTION work units ordered by blocks count and time
+    # Chunk: docs/chunks/artifact_index_cache - Optimized to use single SQL query with subquery
     def get_attention_queue(self) -> list[tuple[WorkUnit, int]]:
         """Get NEEDS_ATTENTION work units ordered by priority.
 
@@ -683,41 +684,34 @@ class StateStore:
             is the number of other work units that have this chunk in
             their blocked_by list.
         """
-        # Query NEEDS_ATTENTION work units
+        # Single query with subquery to compute blocks_count
+        # Uses json_each() to search the blocked_by JSON array
         cursor = self.connection.execute(
             """
-            SELECT * FROM work_units
-            WHERE status = ?
-            ORDER BY updated_at ASC
+            SELECT w.*, (
+                SELECT COUNT(*) FROM work_units b
+                WHERE EXISTS (
+                    SELECT 1 FROM json_each(b.blocked_by)
+                    WHERE value = w.chunk
+                )
+            ) as blocks_count
+            FROM work_units w
+            WHERE w.status = ?
+            ORDER BY blocks_count DESC, w.updated_at ASC
             """,
             (WorkUnitStatus.NEEDS_ATTENTION.value,),
         )
-        attention_units = [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
-        if not attention_units:
-            return []
-
-        # Compute blocks_count for each attention unit
-        # This is the number of work units that have this chunk in their blocked_by
         results: list[tuple[WorkUnit, int]] = []
-        for unit in attention_units:
-            # Count work units that are blocked by this chunk
-            cursor = self.connection.execute(
-                """
-                SELECT COUNT(*) FROM work_units
-                WHERE blocked_by LIKE ?
-                """,
-                (f'%"{unit.chunk}"%',),
-            )
-            blocks_count = cursor.fetchone()[0]
-            results.append((unit, blocks_count))
-
-        # Sort by blocks_count descending, then by updated_at ascending (already sorted)
-        results.sort(key=lambda x: (-x[1], x[0].updated_at))
+        for row in cursor.fetchall():
+            work_unit = self._row_to_work_unit(row)
+            blocks_count = row["blocks_count"]
+            results.append((work_unit, blocks_count))
 
         return results
 
     # Chunk: docs/chunks/orch_ready_critical_path - Critical-path scheduling for ready queue
+    # Chunk: docs/chunks/artifact_index_cache - Optimized to use single SQL query with subquery
     def get_ready_queue(self, limit: Optional[int] = None) -> list[WorkUnit]:
         """Get READY work units ordered by critical-path priority.
 
@@ -736,50 +730,37 @@ class StateStore:
         Returns:
             List of READY work units in scheduling order
         """
-        # Query all READY work units first
-        cursor = self.connection.execute(
-            """
-            SELECT * FROM work_units
-            WHERE status = ?
-            """,
-            (WorkUnitStatus.READY.value,),
+        # Single query with subquery to compute blocks_count
+        # Uses json_each() to search the blocked_by JSON array
+        # Only counts BLOCKED or READY work units as blockers
+        query = """
+            SELECT w.*, (
+                SELECT COUNT(*) FROM work_units b
+                WHERE b.status IN (?, ?)
+                AND EXISTS (
+                    SELECT 1 FROM json_each(b.blocked_by)
+                    WHERE value = w.chunk
+                )
+            ) as blocks_count
+            FROM work_units w
+            WHERE w.status = ?
+            ORDER BY blocks_count DESC, w.priority DESC, w.created_at ASC
+        """
+
+        params: tuple = (
+            WorkUnitStatus.BLOCKED.value,
+            WorkUnitStatus.READY.value,
+            WorkUnitStatus.READY.value,
         )
-        ready_units = [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
-        if not ready_units:
-            return []
-
-        # Compute blocks_count for each ready unit
-        # This is the number of BLOCKED or READY work units that have this chunk
-        # in their blocked_by list
-        results: list[tuple[WorkUnit, int]] = []
-        for unit in ready_units:
-            # Count work units that are blocked by this chunk and are still waiting
-            cursor = self.connection.execute(
-                """
-                SELECT COUNT(*) FROM work_units
-                WHERE blocked_by LIKE ? AND status IN (?, ?)
-                """,
-                (
-                    f'%"{unit.chunk}"%',
-                    WorkUnitStatus.BLOCKED.value,
-                    WorkUnitStatus.READY.value,
-                ),
-            )
-            blocks_count = cursor.fetchone()[0]
-            results.append((unit, blocks_count))
-
-        # Sort by blocks_count DESC, priority DESC, created_at ASC
-        results.sort(key=lambda x: (-x[1], -x[0].priority, x[0].created_at))
-
-        # Extract just the work units
-        sorted_units = [unit for unit, _ in results]
-
-        # Apply limit if specified
+        # Apply LIMIT at SQL level if specified
         if limit is not None:
-            sorted_units = sorted_units[:limit]
+            query += " LIMIT ?"
+            params = params + (limit,)
 
-        return sorted_units
+        cursor = self.connection.execute(query, params)
+
+        return [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
     # Chunk: docs/chunks/orch_blocked_lifecycle - Query for work units blocked by a specific chunk
     def list_blocked_by_chunk(self, chunk: str) -> list[WorkUnit]:
