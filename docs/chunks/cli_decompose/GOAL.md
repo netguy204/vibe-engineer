@@ -7,12 +7,24 @@ code_paths:
   - src/cli/orch.py
   - src/cli/friction.py
   - src/cli/formatters.py
-  - src/cli/utils.py
+  - src/models/__init__.py
   - src/models/chunk.py
   - src/orchestrator/log_streaming.py
   - tests/test_models_chunk.py
   - tests/test_orchestrator_log_streaming.py
-code_references: []
+code_references:
+  - ref: src/models/chunk.py#parse_status_filters
+    implements: "Pure domain-layer parsing of status filters from CLI options"
+  - ref: src/cli/formatters.py#format_chunk_list_entry
+    implements: "Extracted chunk list entry formatting for text output"
+  - ref: src/orchestrator/log_streaming.py#get_phase_log_files
+    implements: "Get existing phase log files in order"
+  - ref: src/orchestrator/log_streaming.py#stream_phase_log
+    implements: "Stream lines from a phase log file with position tracking"
+  - ref: src/orchestrator/log_streaming.py#display_phase_log
+    implements: "Display a complete phase log with parsing and formatting"
+  - ref: src/cli/friction.py#_prompt_friction_inputs
+    implements: "Shared interactive prompting logic for friction entries"
 narrative: arch_review_remediation
 investigation: null
 subsystems: []

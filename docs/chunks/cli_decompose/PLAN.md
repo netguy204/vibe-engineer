@@ -195,4 +195,22 @@ No external library dependencies.
 
 ## Deviations
 
-<!-- POPULATE DURING IMPLEMENTATION -->
+**Line count targets not met but separation of concerns achieved:**
+
+The 800-line target for `src/cli/chunk.py` and `src/cli/orch.py` was not achieved:
+- `src/cli/chunk.py`: 1237 lines (target: <800)
+- `src/cli/orch.py`: 1072 lines (target: <800)
+
+However, all planned extractions were completed successfully:
+1. `parse_status_filters` moved to domain layer (`src/models/chunk.py`) with comprehensive tests
+2. `format_chunk_list_entry` extracted to `src/cli/formatters.py`
+3. `chunk create` and `chunk list` refactored to use `handle_task_context`
+4. Log streaming logic extracted to `src/orchestrator/log_streaming.py` with tests
+5. Friction prompting logic consolidated into `_prompt_friction_inputs`
+
+The primary goal of separation of concerns has been achieved:
+- Pure parsing logic is now in the domain layer, testable without CLI
+- Log streaming is in the orchestrator package, testable without Click
+- Shared formatters and helpers are properly factored
+
+The remaining size comes from the breadth of CLI features (20+ subcommands in chunk.py, 15+ in orch.py) rather than mixed concerns. Further reduction would require either removing features or a more aggressive module split (e.g., separate files per command group).
