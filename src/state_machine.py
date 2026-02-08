@@ -55,9 +55,18 @@ class StateMachine:
         Raises:
             ValueError: If the transition is not valid, with a descriptive message
                        that includes either the list of valid transitions or
-                       indicates that the current state is terminal.
+                       indicates that the current state is terminal. Also raises
+                       if the current status is not in the transition map.
         """
-        valid_transitions = self._transition_map.get(current, set())
+        # Check if the current status is mapped before looking up transitions
+        if current not in self._transition_map:
+            raise ValueError(
+                f"Status {current.value} is not in the transition map. "
+                f"This is a configuration error: all {self._status_enum.__name__} values "
+                f"must be defined in the transition map."
+            )
+
+        valid_transitions = self._transition_map[current]
 
         if new in valid_transitions:
             return  # Valid transition

@@ -26,6 +26,7 @@ from typing import Optional, Tuple
 
 import uvicorn
 
+from orchestrator.git_utils import GitError, get_current_branch
 from orchestrator.models import (
     OrchestratorConfig,
     OrchestratorState,
@@ -539,31 +540,10 @@ def _get_current_branch(project_dir: Path) -> str:
     Raises:
         DaemonError: If not in a git repo or git command fails
     """
-    import subprocess
-
-    result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=project_dir,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise DaemonError(f"Failed to get current branch: {result.stderr}")
-
-    branch = result.stdout.strip()
-    if branch == "HEAD":
-        # Detached HEAD state - get the commit instead
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise DaemonError("Failed to get current commit in detached HEAD state")
-        return result.stdout.strip()
-
-    return branch
+    try:
+        return get_current_branch(project_dir)
+    except GitError as e:
+        raise DaemonError(str(e)) from e
 
 
 def _load_config(store: StateStore) -> OrchestratorConfig:

@@ -25,7 +25,7 @@ from task_utils import (
     parse_projects_option,
     check_task_project_context,
 )
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
 from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
 from cli.formatters import (
@@ -55,7 +55,7 @@ def subsystem():
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 def list_subsystems(json_output, project_dir):
     """List all subsystems."""
-    from artifact_ordering import ArtifactIndex, ArtifactType
+    from artifact_ordering import ArtifactIndex
 
     # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
     if handle_task_context(project_dir, lambda: _list_task_subsystems(project_dir, json_output)):

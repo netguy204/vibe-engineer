@@ -9,21 +9,6 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
-# Chunk: docs/chunks/remove_legacy_prefix - Identity function (legacy prefix stripping removed)
-def extract_short_name(dir_name: str) -> str:
-    """Extract short name from directory name.
-
-    This is an identity function - directory names are always the short name.
-
-    Args:
-        dir_name: The directory name (same as short name)
-
-    Returns:
-        The short name (unchanged)
-    """
-    return dir_name
-
-
 def _require_valid_dir_name(value: str, field_name: str) -> str:
     """Validate a directory name, raising ValueError if invalid."""
     errors = validate_identifier(value, field_name, allow_dot=True, max_length=31)

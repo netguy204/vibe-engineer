@@ -118,3 +118,32 @@ class TestStateMachine:
         error_msg = str(exc_info.value)
         # ACTIVE can transition to SUPERSEDED or HISTORICAL
         assert "SUPERSEDED" in error_msg or "HISTORICAL" in error_msg
+
+    def test_unmapped_state_raises_explicit_error(self):
+        """Unmapped state should raise a configuration error, not be treated as terminal."""
+        from enum import StrEnum
+
+        class TestStatus(StrEnum):
+            """Test status enum with more values than the transition map."""
+
+            A = "A"
+            B = "B"
+            C = "C"  # This one will be missing from the transition map
+
+        # Intentionally leave C out of the transition map
+        partial_transition_map = {
+            TestStatus.A: {TestStatus.B},
+            TestStatus.B: set(),  # B is terminal
+            # TestStatus.C is missing - this should raise an error
+        }
+
+        sm = StateMachine(partial_transition_map, TestStatus)
+
+        # Transitioning FROM an unmapped state should raise a configuration error
+        with pytest.raises(ValueError) as exc_info:
+            sm.validate_transition(TestStatus.C, TestStatus.A)
+
+        error_msg = str(exc_info.value)
+        assert "not in the transition map" in error_msg
+        assert "configuration error" in error_msg
+        assert "TestStatus" in error_msg

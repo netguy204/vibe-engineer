@@ -31,7 +31,7 @@ from task_utils import (
 )
 from cluster_analysis import check_cluster_size, format_cluster_warning
 from chunks import get_chunk_prefix
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
 from cli.utils import (
     validate_short_name,

@@ -1,8 +1,20 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/state_machine.py
+  - src/models/shared.py
+  - src/models/__init__.py
+  - src/orchestrator/git_utils.py
+  - src/orchestrator/worktree.py
+  - src/orchestrator/daemon.py
+  - src/orchestrator/agent.py
+  - src/cli/chunk.py
+  - src/cli/narrative.py
+  - src/cli/subsystem.py
+  - src/cli/investigation.py
+  - tests/test_state_machine.py
 code_references: []
 narrative: arch_review_remediation
 investigation: null
@@ -10,9 +22,11 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["model_package_cleanup", "orchestrator_api_decompose", "task_operations_decompose"]
+created_after:
+- model_package_cleanup
+- orchestrator_api_decompose
+- task_operations_decompose
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

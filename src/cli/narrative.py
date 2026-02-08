@@ -24,7 +24,7 @@ from task_utils import (
     parse_projects_option,
     check_task_project_context,
 )
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
 from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
 from cli.formatters import artifact_to_json_dict
