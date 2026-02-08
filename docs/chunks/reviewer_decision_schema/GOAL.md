@@ -21,6 +21,12 @@ code_references:
     implements: "Tests for DecisionFrontmatter validation (union type discrimination)"
   - ref: tests/test_models.py#TestDecisionFrontmatterIntegration
     implements: "Integration test parsing prototype decision template"
+  - ref: src/models/reviewer.py#ReviewerDecision
+    implements: "Per-file decision schema enum (APPROVE/FEEDBACK/ESCALATE)"
+  - ref: src/models/reviewer.py#FeedbackReview
+    implements: "Structured feedback variant for operator review"
+  - ref: src/models/reviewer.py#DecisionFrontmatter
+    implements: "Per-file decision frontmatter schema"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

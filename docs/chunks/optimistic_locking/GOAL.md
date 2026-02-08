@@ -25,6 +25,18 @@ code_references:
     implements: "Unit tests for StaleWriteError and optimistic locking behavior"
   - ref: tests/test_orchestrator_state.py#TestSchedulerApiRace
     implements: "Integration tests for scheduler/API concurrent modification protection"
+  - ref: src/orchestrator/__init__.py
+    implements: "Export StaleWriteError for optimistic locking"
+  - ref: src/orchestrator/api/attention.py
+    implements: "Optimistic locking for answer submissions"
+  - ref: src/orchestrator/api/conflicts.py
+    implements: "Optimistic locking for conflict resolution and retry merge"
+  - ref: src/orchestrator/api/scheduling.py
+    implements: "Optimistic locking for priority updates"
+  - ref: src/orchestrator/api/work_units.py
+    implements: "Optimistic locking for API updates"
+  - ref: src/orchestrator/api/worktrees.py
+    implements: "Optimistic locking for prune operations"
 narrative: arch_review_remediation
 investigation: null
 subsystems:

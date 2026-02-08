@@ -27,6 +27,8 @@ code_references:
     implements: "Tests for review phase output parsing"
   - ref: tests/test_orchestrator_retry.py
     implements: "Tests for retryable API error detection"
+  - ref: src/orchestrator/scheduler.py
+    implements: "Decomposed into focused modules"
 narrative: arch_decompose
 investigation: null
 subsystems: []

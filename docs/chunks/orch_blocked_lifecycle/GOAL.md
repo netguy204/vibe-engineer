@@ -25,6 +25,8 @@ code_references:
     implements: "Unit tests for automatic unblocking when blockers complete"
   - ref: tests/test_orchestrator_state.py#TestListBlockedByChunk
     implements: "Unit tests for list_blocked_by_chunk query method"
+  - ref: src/orchestrator/api/conflicts.py
+    implements: "SERIALIZE verdict transitions to BLOCKED and clears attention_reason"
 narrative: null
 investigation: null
 subsystems: []

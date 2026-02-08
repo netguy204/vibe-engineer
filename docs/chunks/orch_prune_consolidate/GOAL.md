@@ -18,6 +18,8 @@ code_references:
     implements: "Batch worktree prune using finalize_work_unit"
   - ref: tests/test_orchestrator_worktree.py#TestFinalizeWorkUnit
     implements: "Unit tests for finalize_work_unit method"
+  - ref: src/orchestrator/api/worktrees.py
+    implements: "Consolidated worktree finalization in prune endpoint"
 narrative: arch_consolidation
 investigation: null
 subsystems:

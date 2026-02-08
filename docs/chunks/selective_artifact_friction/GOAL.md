@@ -28,6 +28,10 @@ code_references:
   implements: Retrieve external friction sources from friction log
 - ref: tests/test_task_friction_log.py
   implements: Integration tests for task-aware friction logging
+- ref: src/models/friction.py#ExternalFrictionSource
+  implements: "External friction source reference schema"
+- ref: src/models/friction.py#FrictionFrontmatter
+  implements: "Friction log frontmatter schema"
 narrative: null
 investigation: selective_artifact_linking
 subsystems:

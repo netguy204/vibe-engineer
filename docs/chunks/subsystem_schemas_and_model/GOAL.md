@@ -32,6 +32,12 @@ code_references:
   implements: Unit tests for SubsystemFrontmatter validation
 - ref: tests/test_subsystems.py#TestSubsystems
   implements: Unit tests for Subsystems utility class
+- ref: src/models/references.py#ChunkRelationship
+  implements: "Model for chunk-to-subsystem relationships"
+- ref: src/models/subsystem.py#SubsystemStatus
+  implements: "Subsystem status enum for documentation lifecycle"
+- ref: src/models/subsystem.py#SubsystemFrontmatter
+  implements: "Frontmatter schema for subsystem OVERVIEW.md"
 narrative: subsystem_documentation
 created_after:
 - future_chunk_creation

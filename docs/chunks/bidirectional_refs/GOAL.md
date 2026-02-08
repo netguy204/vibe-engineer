@@ -31,6 +31,10 @@ code_references:
   implements: Template updated with subsystems field and documentation
 - ref: src/cli/subsystem.py#validate
   implements: "CLI subsystem validate command after CLI modularization"
+- ref: src/chunk_validation.py#validate_chunk_complete
+  implements: "Extended to include subsystem reference validation"
+- ref: src/integrity.py#validate_chunk_subsystem_refs
+  implements: "Validates subsystem references in chunk frontmatter exist"
 narrative: subsystem_documentation
 created_after:
 - subsystem_template

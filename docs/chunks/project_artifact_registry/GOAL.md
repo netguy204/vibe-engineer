@@ -26,6 +26,8 @@ code_references:
     implements: "Accepts optional Project for unified manager access, eliminating five separate manager constructions"
   - ref: src/task/artifact_ops.py#list_task_proposed_chunks
     implements: "Uses Project for unified manager access when listing proposed chunks in task context"
+  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
+    implements: "Uses Project for unified manager access"
 narrative: arch_decompose
 investigation: null
 subsystems: []

@@ -32,6 +32,8 @@ code_references:
     implements: "Cross-artifact query moved from Chunks to Project where all managers are accessible"
   - ref: src/reviewers.py#Reviewers::parse_decision_frontmatter
     implements: "Uses shared parse_frontmatter() from frontmatter.py instead of manual regex"
+  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
+    implements: "Calls Project.list_proposed_chunks() directly"
 narrative: arch_review_remediation
 investigation: null
 subsystems: []

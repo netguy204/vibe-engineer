@@ -63,6 +63,8 @@ code_references:
     implements: "ve orch work-unit status command"
   - ref: src/cli/orch.py#work_unit_delete
     implements: "ve orch work-unit delete command"
+  - ref: src/orchestrator/api/work_units.py
+    implements: "REST endpoints for work unit CRUD and daemon status"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

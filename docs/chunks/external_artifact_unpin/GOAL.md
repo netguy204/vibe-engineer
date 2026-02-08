@@ -38,6 +38,8 @@ code_references:
   implements: "External resolve CLI without --at-pinned option"
 - ref: docs/subsystems/cross_repo_operations/OVERVIEW.md
   implements: "Updated subsystem invariant: external refs always resolve to HEAD"
+- ref: src/task_utils.py
+  implements: "External artifact unpinning re-export module"
 subsystems:
 - subsystem_id: cross_repo_operations
   relationship: implements

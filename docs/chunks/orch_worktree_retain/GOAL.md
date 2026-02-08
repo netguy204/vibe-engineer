@@ -45,6 +45,8 @@ code_references:
   implements: CLI command to prune specific or all retained worktrees
 - ref: src/cli/orch.py#orch_inject
   implements: CLI inject command with --retain flag support
+- ref: src/orchestrator/api/worktrees.py
+  implements: "Worktree management endpoints (list, remove, prune, batch prune)"
 narrative: null
 investigation: null
 subsystems: []

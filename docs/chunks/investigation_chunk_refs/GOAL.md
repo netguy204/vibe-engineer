@@ -24,6 +24,10 @@ code_references:
     implements: "Workflow guidance for populating investigation field from proposed_chunks"
   - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
     implements: "Tests for investigation reference validation"
+  - ref: src/chunk_validation.py#validate_chunk_complete
+    implements: "Integration of investigation validation into chunk completion"
+  - ref: src/integrity.py#validate_chunk_investigation_ref
+    implements: "Validation that referenced investigations exist"
 narrative: null
 subsystems: []
 created_after:

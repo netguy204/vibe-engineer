@@ -25,6 +25,8 @@ code_references:
     implements: "Display a complete phase log with parsing and formatting"
   - ref: src/cli/friction.py#_prompt_friction_inputs
     implements: "Shared interactive prompting logic for friction entries"
+  - ref: src/cli/orch.py#orch_tail
+    implements: "Refactored to use log_streaming module"
 narrative: arch_review_remediation
 investigation: null
 subsystems: []

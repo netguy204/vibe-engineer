@@ -20,6 +20,8 @@ code_references:
     implements: "Subsystem error parser alias delegating to base class"
   - ref: src/chunks.py#plan_has_content
     implements: "Specific exception handling replacing bare except clause"
+  - ref: src/chunk_validation.py#plan_has_content
+    implements: "Specific exception handling in extracted validation module"
   - ref: tests/test_artifact_manager_errors.py
     implements: "Test coverage for error surfacing methods"
 narrative: arch_consolidation

@@ -24,6 +24,8 @@ code_references:
     implements: "Error handling branching for retryable vs non-retryable errors"
   - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
     implements: "Reset retry state on successful phase advancement"
+  - ref: src/orchestrator/retry.py
+    implements: "Pattern matching for retryable API errors"
 narrative: null
 investigation: null
 subsystems: []
