@@ -662,7 +662,7 @@ class Scheduler:
         # Get worktree path for verification
         worktree_path = self.worktree_manager.get_worktree_path(chunk)
 
-        # Verify the chunk's GOAL.md has status: ACTIVE
+        # Verify the chunk's GOAL.md has reached a completed status
         verification = verify_chunk_active_status(worktree_path, chunk)
         logger.info(
             f"Verification result for {chunk}: {verification.status.value}"
@@ -726,8 +726,8 @@ class Scheduler:
             await self._mark_needs_attention(work_unit, verification.error)
             return
 
-        # Status is ACTIVE - proceed with commit/merge
-        logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
+        # Status is post-IMPLEMENTING - proceed with commit/merge
+        logger.info(f"Chunk {chunk} verified completed, proceeding to commit/merge")
 
         # Check for uncommitted changes that need to be committed
         # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
