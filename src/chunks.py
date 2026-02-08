@@ -60,6 +60,13 @@ from chunk_validation import (
     validate_chunk_complete as _validate_chunk_complete,
     validate_chunk_injectable as _validate_chunk_injectable,
 )
+# Chunk: docs/chunks/chunks_class_decouple - Top-level imports from integrity (no late imports needed)
+from integrity import (
+    validate_chunk_subsystem_refs,
+    validate_chunk_investigation_ref,
+    validate_chunk_narrative_ref,
+    validate_chunk_friction_entries_ref,
+)
 
 if TYPE_CHECKING:
     from investigations import Investigations
@@ -891,7 +898,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_subsystem_refs
-    # Chunk: docs/chunks/chunks_class_decouple - Passes self to avoid late imports
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
@@ -903,12 +910,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if all refs valid or no refs).
         """
-        from integrity import validate_chunk_subsystem_refs
         return validate_chunk_subsystem_refs(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_investigation_ref
-    # Chunk: docs/chunks/chunks_class_decouple - Passes self to avoid late imports
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 
@@ -920,12 +926,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        from integrity import validate_chunk_investigation_ref
         return validate_chunk_investigation_ref(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_narrative_ref
-    # Chunk: docs/chunks/chunks_class_decouple - Passes self to avoid late imports
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
         """Validate narrative reference in a chunk's frontmatter.
 
@@ -937,12 +942,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        from integrity import validate_chunk_narrative_ref
         return validate_chunk_narrative_ref(self.project_dir, chunk_id, chunks=self)
 
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_friction_entries_ref
     # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
-    # Chunk: docs/chunks/chunks_class_decouple - Passes self to avoid late imports
+    # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
         """Validate friction entry references in a chunk's frontmatter.
 
@@ -954,7 +958,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no references).
         """
-        from integrity import validate_chunk_friction_entries_ref
         return validate_chunk_friction_entries_ref(self.project_dir, chunk_id, chunks=self)
 
     # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
