@@ -5,6 +5,7 @@ parent_chunk: null
 code_paths:
   - src/orchestrator/models.py
   - src/orchestrator/scheduler.py
+  - src/orchestrator/review_parsing.py
   - src/orchestrator/agent.py
   - src/orchestrator/state.py
   - tests/test_orchestrator_scheduler.py
@@ -19,11 +20,11 @@ code_references:
     implements: "Structured representation of a single review issue"
   - ref: src/orchestrator/models.py#ReviewResult
     implements: "Structured output from /chunk-review skill"
-  - ref: src/orchestrator/scheduler.py#create_review_feedback_file
+  - ref: src/orchestrator/review_parsing.py#create_review_feedback_file
     implements: "Creates REVIEW_FEEDBACK.md with reviewer feedback for implementer"
-  - ref: src/orchestrator/scheduler.py#parse_review_decision
+  - ref: src/orchestrator/review_parsing.py#parse_review_decision
     implements: "Parse YAML decision block from /chunk-review skill output"
-  - ref: src/orchestrator/scheduler.py#load_reviewer_config
+  - ref: src/orchestrator/review_parsing.py#load_reviewer_config
     implements: "Load reviewer config for loop detection settings"
   - ref: src/orchestrator/scheduler.py#Scheduler::_handle_review_result
     implements: "Route work unit based on review decision (APPROVE/FEEDBACK/ESCALATE)"
