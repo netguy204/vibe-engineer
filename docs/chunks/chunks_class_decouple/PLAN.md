@@ -1,177 +1,106 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk addresses three related coupling issues identified in the architecture review. The strategy is to make surgical changes that reduce coupling without changing external behavior:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Move `list_proposed_chunks` to `Project`**: The method queries across investigations, narratives, and subsystems — a cross-artifact operation that belongs on the class that owns all managers. Currently it lives on `Chunks` and accepts a `Project` instance as a parameter. We'll move the method body to `Project` and keep a thin forwarding method on `Chunks` for backward compatibility during transition.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Break circular imports via protocols**: The `integrity.py` module imports `Chunks` at the top level, and `chunks.py` has late imports to `integrity.py` inside method bodies. We'll define a minimal protocol that captures what integrity functions need, and have them accept the protocol instead of the concrete `Chunks` type. This eliminates the need for late imports in either direction.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunks_class_decouple/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Consolidate frontmatter parsing**: `Reviewers.parse_decision_frontmatter` manually parses YAML with its own regex, duplicating logic already in `frontmatter.py`. We'll update it to use the shared `parse_frontmatter()` function.
+
+Testing follows TESTING_PHILOSOPHY.md: each change should maintain existing behavior. We'll run the existing test suite after each step to verify no regressions.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk modifies the `Chunks` class and the `Project` class, both core parts of this subsystem. The changes maintain compliance with the subsystem's invariants — `Chunks` still implements the manager class pattern, and `Project` already provides unified access to all managers.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define a protocol for chunk-related operations used by integrity.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a minimal protocol in `integrity.py` (or a new `protocols.py` if we want it reusable) that captures what the integrity validation functions need from `Chunks`. This allows integrity functions to accept the protocol instead of the concrete type.
 
-Example:
+Examine what `integrity.py` actually needs from `Chunks`:
+- `enumerate_chunks()`
+- `parse_chunk_frontmatter()`
+- `chunk_dir` property (for path construction)
 
-### Step 1: Define the SegmentHeader struct
+Define a `ChunksProtocol` that exposes these. Update the standalone validation functions to accept this protocol.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/integrity.py` (add protocol definition at top)
 
-Location: src/segment/format.rs
+### Step 2: Remove late imports from integrity.py standalone functions
 
-### Step 2: Implement header serialization
+With the protocol in place, the standalone functions (`validate_chunk_subsystem_refs`, `validate_chunk_investigation_ref`, `validate_chunk_narrative_ref`, `validate_chunk_friction_entries_ref`) can accept the protocol rather than creating their own `Chunks` instance.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+However, these are standalone functions that take `project_dir` and internally create a `Chunks` instance. The cleaner fix is to have them accept an optional `chunks` parameter (protocol-typed). When provided, use it; when not, create a new instance. This preserves backward compatibility for existing callers while allowing callers with an existing `Chunks` instance to avoid re-instantiation.
 
-### Step 3: ...
+Location: `src/integrity.py` (lines ~678-858)
 
----
+### Step 3: Update chunks.py to remove late imports from integrity
 
-**BACKREFERENCE COMMENTS**
+The `Chunks` class methods that call integrity functions (`validate_subsystem_refs`, `validate_investigation_ref`, `validate_narrative_ref`, `validate_friction_entries_ref`) currently use late imports to avoid circular dependency. After Step 2, these methods can pass `self` (which satisfies the protocol) to the integrity functions, eliminating the late imports.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Check if we can now move the import to the top level. If not (if `integrity.py` still imports `Chunks` directly for `IntegrityValidator`), we may need to adjust `IntegrityValidator` similarly.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Location: `src/chunks.py` (lines ~938-999)
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 4: Move list_proposed_chunks to Project
 
-Format (place immediately before the symbol):
+The `list_proposed_chunks` method on `Chunks` (lines ~813-877) takes a `Project` parameter and queries all three artifact types. Move this method body to `Project` (no parameter needed since `Project` owns all managers).
+
+Add a deprecation forwarding method on `Chunks` that calls `project.list_proposed_chunks()` for backward compatibility during the transition. The forwarding method keeps the same signature but delegates to Project.
+
+Location:
+- `src/project.py` (add new method)
+- `src/chunks.py` (replace implementation with forwarding call)
+
+### Step 5: Update callers of Chunks.list_proposed_chunks
+
+Search the codebase for callers of `chunks.list_proposed_chunks(project)` and update them to use `project.list_proposed_chunks()` directly.
+
+This eliminates the awkward pattern of passing `Project` to a method on `Chunks` that could be on `Project` itself.
+
+Location: CLI code and tests that call this method
+
+### Step 6: Update Reviewers.parse_decision_frontmatter to use frontmatter.py
+
+The `Reviewers.parse_decision_frontmatter` method (lines 79-104) uses manual regex to extract YAML frontmatter. Replace this with a call to `parse_frontmatter()` from `frontmatter.py`.
+
+Since `DecisionFrontmatter` is already a Pydantic model, we can use:
+```python
+from frontmatter import parse_frontmatter
+return parse_frontmatter(decision_path, DecisionFrontmatter)
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+Location: `src/reviewers.py` (lines 79-104)
+
+### Step 7: Verify all tests pass and no late imports remain
+
+Run the full test suite to verify no regressions. Grep for late imports in `chunks.py` and `integrity.py` to confirm the circular dependency is broken.
+
+Commands:
+```bash
+uv run pytest tests/
+grep -n "from integrity import\|from chunks import" src/chunks.py src/integrity.py
 ```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None — this chunk has `depends_on: []` and requires no other chunks to complete first.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **IntegrityValidator still imports Chunks**: The `IntegrityValidator` class directly instantiates `Chunks` in its `__init__`. If we need to fully break the import cycle, we may need to make `IntegrityValidator` also accept managers via protocol or constructor injection. However, since the goal specifically mentions breaking the circular import between the *standalone functions* and `Chunks`, and those functions use late imports in method bodies, addressing those may be sufficient.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Backward compatibility for list_proposed_chunks**: Some callers may be using `chunks.list_proposed_chunks(project)`. The forwarding method ensures these don't break, but we should consider whether to deprecate the method formally.
+
+3. **DecisionFrontmatter validation strictness**: The current manual parsing in `Reviewers` may be more lenient than the Pydantic model. Switching to `parse_frontmatter()` might surface validation errors that were previously silently ignored. Test with existing decision files to verify.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
