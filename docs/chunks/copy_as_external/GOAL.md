@@ -18,6 +18,8 @@ code_references:
     implements: "Test suite for copy_artifact_as_external functionality"
   - ref: src/cli/artifact.py#copy_external
     implements: "CLI artifact copy-external command after CLI modularization"
+  - ref: src/task_utils.py
+    implements: "Artifact copy-external command implementation re-export module"
 narrative: null
 subsystems: []
 created_after: ["ordering_audit_seqnums", "cluster_rename", "cluster_prefix_suggest", "task_list_proposed"]

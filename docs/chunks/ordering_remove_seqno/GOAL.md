@@ -59,6 +59,8 @@ code_references:
     implements: "Compute transitive ancestors for causal ordering (used by find_overlapping_chunks)"
   - ref: scripts/migrate_artifact_names.py
     implements: "Migration script to rename directories and update frontmatter references"
+  - ref: src/task_utils.py
+    implements: "Short name format for task chunk creation re-export module"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts

@@ -11,7 +11,6 @@ Existing `from models import X` statements continue to work via these re-exports
 from models.shared import (
     SHA_PATTERN,
     TaskConfig,
-    extract_short_name,
 )
 
 # Reference types used across multiple artifacts
@@ -79,11 +78,11 @@ from models.chunk import (
     ChunkDependent,
     ChunkFrontmatter,
     ChunkStatus,
+    parse_status_filters,
 )
 
 __all__ = [
     # Shared utilities
-    "extract_short_name",
     "SHA_PATTERN",
     "TaskConfig",
     # Reference types
@@ -132,4 +131,5 @@ __all__ = [
     "VALID_CHUNK_TRANSITIONS",
     "ChunkDependent",
     "ChunkFrontmatter",
+    "parse_status_filters",
 ]

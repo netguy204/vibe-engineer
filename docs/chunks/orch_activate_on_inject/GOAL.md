@@ -3,21 +3,23 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
+  - src/orchestrator/activation.py
   - src/orchestrator/scheduler.py
   - src/orchestrator/models.py
   - src/orchestrator/state.py
-  - src/orchestrator/api.py
+  - src/orchestrator/api/scheduling.py
+  - tests/test_orchestrator_activation.py
   - tests/test_orchestrator_scheduler.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#activate_chunk_in_worktree
+  - ref: src/orchestrator/activation.py#activate_chunk_in_worktree
     implements: "Activate target chunk in worktree, displacing any existing IMPLEMENTING chunk"
-  - ref: src/orchestrator/scheduler.py#restore_displaced_chunk
+  - ref: src/orchestrator/activation.py#restore_displaced_chunk
     implements: "Restore a displaced chunk back to IMPLEMENTING before merge"
-  - ref: src/orchestrator/scheduler.py#verify_chunk_active_status
+  - ref: src/orchestrator/activation.py#verify_chunk_active_status
     implements: "Refactored to use Chunks class for frontmatter parsing"
   - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
     implements: "Integration of chunk activation after worktree creation"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+  - ref: src/orchestrator/scheduler.py#Scheduler::_finalize_completed_work_unit
     implements: "Restore displaced chunk before merge when work unit completes"
   - ref: src/orchestrator/models.py#WorkUnit
     implements: "Added displaced_chunk field to track displaced IMPLEMENTING chunks"
@@ -25,11 +27,11 @@ code_references:
     implements: "Database migration adding displaced_chunk column"
   - ref: src/orchestrator/state.py#StateStore::_row_to_work_unit
     implements: "Handle displaced_chunk column in row-to-model conversion"
-  - ref: src/orchestrator/api.py#_parse_chunk_status
+  - ref: src/orchestrator/api/scheduling.py#_parse_chunk_status
     implements: "Refactored to use Chunks class for consistent frontmatter parsing"
-  - ref: tests/test_orchestrator_scheduler.py#TestActivateChunkInWorktree
+  - ref: tests/test_orchestrator_activation.py#TestActivateChunkInWorktree
     implements: "Unit tests for activate_chunk_in_worktree helper"
-  - ref: tests/test_orchestrator_scheduler.py#TestRestoreDisplacedChunk
+  - ref: tests/test_orchestrator_activation.py#TestRestoreDisplacedChunk
     implements: "Unit tests for restore_displaced_chunk helper"
   - ref: tests/test_orchestrator_scheduler.py#TestChunkActivationInWorkUnit
     implements: "Integration tests for chunk activation during work unit execution"

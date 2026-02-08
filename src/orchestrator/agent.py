@@ -291,6 +291,12 @@ def create_question_intercept_hook(
 ) -> dict[str, list[HookMatcher]]:
     """Create a PreToolUse hook that intercepts AskUserQuestion calls.
 
+    IMPORTANT: This hook is defined but non-functional. PreToolUse hooks in the
+    Claude Agent SDK do not fire for built-in tools like AskUserQuestion. The
+    actual capture happens via message parsing in run_orchestrator_agent(), which
+    extracts AskUserQuestion calls from AssistantMessage content. This hook is
+    retained for potential future SDK compatibility.
+
     When AskUserQuestion is called, extracts the question data and calls
     on_question callback, then returns a result that blocks the tool and
     stops the agent loop.
@@ -366,6 +372,12 @@ def create_review_decision_hook(
     on_decision: Callable[[ReviewToolDecision], None],
 ) -> dict[str, list[HookMatcher]]:
     """Create a PreToolUse hook that intercepts ReviewDecision tool calls.
+
+    IMPORTANT: This hook is defined but non-functional. PreToolUse hooks in the
+    Claude Agent SDK do not fire for MCP tools like mcp__orchestrator__ReviewDecision.
+    The actual capture happens via message parsing in run_orchestrator_agent(), which
+    extracts ReviewDecision calls from AssistantMessage content. This hook is retained
+    for potential future SDK compatibility.
 
     When the reviewer agent calls the ReviewDecision tool, this hook captures
     the decision data and allows the tool to succeed from the agent's perspective.

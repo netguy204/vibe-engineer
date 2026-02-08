@@ -61,12 +61,8 @@ from chunk_validation import (
     validate_chunk_injectable as _validate_chunk_injectable,
 )
 # Chunk: docs/chunks/chunks_class_decouple - Top-level imports from integrity (no late imports needed)
-from integrity import (
-    validate_chunk_subsystem_refs,
-    validate_chunk_investigation_ref,
-    validate_chunk_narrative_ref,
-    validate_chunk_friction_entries_ref,
-)
+# Chunk: docs/chunks/integrity_deprecate_standalone - Updated to use IntegrityValidator and _errors_to_messages
+from integrity import IntegrityValidator, _errors_to_messages
 
 if TYPE_CHECKING:
     from investigations import Investigations
@@ -899,10 +895,11 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
     # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_subsystem_refs
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
         """Validate subsystem references in a chunk's frontmatter.
 
-        Delegates to integrity.validate_chunk_subsystem_refs().
+        Routes through IntegrityValidator.validate_chunk() for unified validation.
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -910,15 +907,22 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if all refs valid or no refs).
         """
-        return validate_chunk_subsystem_refs(self.project_dir, chunk_id, chunks=self)
+        from project import Project
+        project = Project(self.project_dir)
+        validator = IntegrityValidator(self.project_dir, project=project)
+        errors, _ = validator.validate_chunk(chunk_id)
+        # Filter to only subsystem-related errors
+        subsystem_errors = [e for e in errors if e.link_type == "chunk→subsystem"]
+        return _errors_to_messages(subsystem_errors)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_investigation_ref
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
         """Validate investigation reference in a chunk's frontmatter.
 
-        Delegates to integrity.validate_chunk_investigation_ref().
+        Routes through IntegrityValidator.validate_chunk() for unified validation.
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -926,15 +930,22 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        return validate_chunk_investigation_ref(self.project_dir, chunk_id, chunks=self)
+        from project import Project
+        project = Project(self.project_dir)
+        validator = IntegrityValidator(self.project_dir, project=project)
+        errors, _ = validator.validate_chunk(chunk_id)
+        # Filter to only investigation-related errors
+        investigation_errors = [e for e in errors if e.link_type == "chunk→investigation"]
+        return _errors_to_messages(investigation_errors)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_narrative_ref
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
         """Validate narrative reference in a chunk's frontmatter.
 
-        Delegates to integrity.validate_chunk_narrative_ref().
+        Routes through IntegrityValidator.validate_chunk() for unified validation.
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -942,15 +953,22 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no reference).
         """
-        return validate_chunk_narrative_ref(self.project_dir, chunk_id, chunks=self)
+        from project import Project
+        project = Project(self.project_dir)
+        validator = IntegrityValidator(self.project_dir, project=project)
+        errors, _ = validator.validate_chunk(chunk_id)
+        # Filter to only narrative-related errors
+        narrative_errors = [e for e in errors if e.link_type == "chunk→narrative"]
+        return _errors_to_messages(narrative_errors)
 
     # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_friction_entries_ref
     # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_friction_entries_ref(self, chunk_id: str) -> list[str]:
         """Validate friction entry references in a chunk's frontmatter.
 
-        Delegates to integrity.validate_chunk_friction_entries_ref().
+        Routes through IntegrityValidator.validate_chunk() for unified validation.
 
         Args:
             chunk_id: The chunk ID to validate.
@@ -958,7 +976,13 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of error messages (empty if valid or no references).
         """
-        return validate_chunk_friction_entries_ref(self.project_dir, chunk_id, chunks=self)
+        from project import Project
+        project = Project(self.project_dir)
+        validator = IntegrityValidator(self.project_dir, project=project)
+        errors, _ = validator.validate_chunk(chunk_id)
+        # Filter to only friction-related errors
+        friction_errors = [e for e in errors if e.link_type == "chunk→friction"]
+        return _errors_to_messages(friction_errors)
 
     # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
     # Chunk: docs/chunks/orch_inject_validate - Injection-time chunk validation

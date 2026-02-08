@@ -21,6 +21,10 @@ chunks:
     relationship: implements
   - chunk_id: orchestrator_api_decompose
     relationship: implements
+  - chunk_id: orch_session_auto_resume
+    relationship: implements
+  - chunk_id: optimistic_locking
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module

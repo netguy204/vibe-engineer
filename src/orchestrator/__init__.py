@@ -11,7 +11,8 @@ from orchestrator.models import (
     WorkUnitPhase,
     WorkUnitStatus,
 )
-from orchestrator.state import StateStore, get_default_db_path
+# Chunk: docs/chunks/optimistic_locking - Export StaleWriteError for optimistic locking
+from orchestrator.state import StateStore, StaleWriteError, get_default_db_path
 from orchestrator.daemon import (
     DaemonError,
     start_daemon,
@@ -60,6 +61,7 @@ __all__ = [
     "WorkUnitStatus",
     # State
     "StateStore",
+    "StaleWriteError",
     "get_default_db_path",
     # Daemon
     "DaemonError",

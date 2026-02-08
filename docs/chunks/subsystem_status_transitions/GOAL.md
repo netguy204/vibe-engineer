@@ -20,6 +20,8 @@ code_references:
   implements: CLI command with ID resolution and error handling (SC 2, 5, 6)
 - ref: tests/test_subsystem_status.py
   implements: Comprehensive test coverage for all success criteria
+- ref: src/models/subsystem.py#VALID_STATUS_TRANSITIONS
+  implements: "State machine rules for status transitions"
 narrative: subsystem_documentation
 subsystems: []
 created_after:

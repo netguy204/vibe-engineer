@@ -75,6 +75,8 @@ chunks:
     relationship: implements
   - chunk_id: validation_error_surface
     relationship: implements
+  - chunk_id: artifact_pattern_consolidation
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class

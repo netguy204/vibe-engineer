@@ -20,6 +20,10 @@ code_references:
     implements: "Pass projects to chunk template in task context"
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Full org/repo format examples in task context"
+  - ref: src/models/references.py#SymbolicReference
+    implements: "Improved org/repo format error messages"
+  - ref: src/task/artifact_ops.py#create_task_chunk
+    implements: "Pass projects to chunk template in task context"
 narrative: null
 investigation: null
 subsystems: []

@@ -71,6 +71,8 @@ code_references:
     implements: "ve orch resolve CLI command for operator resolution"
   - ref: src/cli/orch.py#orch_analyze
     implements: "ve orch analyze CLI command for manual conflict analysis"
+  - ref: src/orchestrator/api/conflicts.py
+    implements: "Conflict analysis API endpoints"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

@@ -23,6 +23,8 @@ code_references:
     implements: "Template with friction_entries field and documentation comment explaining format"
   - ref: tests/test_chunk_validate.py#TestFrictionEntryRefValidation
     implements: "Test class validating friction entry reference validation behavior"
+  - ref: src/integrity.py#validate_chunk_friction_entries_ref
+    implements: "Validation method checking friction entry references exist in FRICTION.md"
 narrative: null
 investigation: friction_log_artifact
 subsystems: []

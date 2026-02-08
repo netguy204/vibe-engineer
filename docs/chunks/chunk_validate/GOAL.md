@@ -29,6 +29,10 @@ code_references:
   implements: Test coverage for narrative reference validation
 - ref: src/cli/chunk.py#validate
   implements: "CLI chunk validate command after CLI modularization"
+- ref: src/integrity.py#validate_chunk_investigation_ref
+  implements: "Validation that referenced investigations exist"
+- ref: src/integrity.py#validate_chunk_narrative_ref
+  implements: "Validation that referenced narratives exist"
 created_after:
 - chunk_overlap_command
 ---

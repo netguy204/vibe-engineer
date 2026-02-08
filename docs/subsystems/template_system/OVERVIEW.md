@@ -31,6 +31,8 @@ chunks:
     relationship: implements
   - chunk_id: reviewer_decision_template
     relationship: uses
+  - chunk_id: artifact_pattern_consolidation
+    relationship: implements
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass

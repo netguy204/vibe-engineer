@@ -1,5 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/test_file_split - Split large scheduler test file
+# Chunk: docs/chunks/deferred_worktree_creation - Tests verifying worktree creation at dispatch time
 """Tests for deferred worktree creation in the orchestrator scheduler.
 
 These tests verify that worktrees are created at dispatch time (when

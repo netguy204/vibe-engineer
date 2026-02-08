@@ -25,6 +25,8 @@ code_references:
     implements: "Unit tests for reviewer stats validation"
   - ref: tests/test_models.py#TestReviewerMetadataIntegration
     implements: "Integration test verifying baseline METADATA.yaml parses"
+  - ref: src/models/reviewer.py#TrustLevel
+    implements: "Reviewer agent trust level and metadata models"
 narrative: null
 investigation: orchestrator_quality_assurance
 subsystems: []

@@ -21,6 +21,8 @@ code_references:
   implements: "CLI command integration tests"
 - ref: src/cli/artifact.py#remove_external
   implements: "CLI artifact remove-external command after CLI modularization"
+- ref: src/task_utils.py
+  implements: "Artifact remove-external command implementation re-export module"
 narrative: null
 investigation: selective_artifact_linking
 subsystems: []

@@ -24,6 +24,8 @@ code_references:
     implements: "Test suite for batch injection with dependency ordering"
   - ref: src/orchestrator/dependencies.py
     implements: "Dependency resolution functions (extracted from CLI layer)"
+  - ref: src/orchestrator/api/scheduling.py
+    implements: "API endpoint extended to accept blocked_by and explicit_deps parameters"
 narrative: explicit_chunk_deps
 investigation: null
 subsystems: []

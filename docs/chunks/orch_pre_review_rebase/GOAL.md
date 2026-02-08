@@ -11,7 +11,13 @@ code_paths:
 - src/templates/commands/chunk-rebase.md.jinja2
 - .claude/commands/chunk-rebase.md
 - tests/test_orchestrator_scheduler.py
-code_references: []
+code_references:
+  - ref: src/orchestrator/models.py#WorkUnitPhase
+    implements: "REBASE phase between IMPLEMENT and REVIEW"
+  - ref: src/orchestrator/log_streaming.py#PHASE_ORDER
+    implements: "REBASE phase in log file iteration order"
+  - ref: src/orchestrator/agent.py#PHASE_SKILL_FILES
+    implements: "REBASE skill for pre-review trunk integration"
 narrative: arch_consolidation
 investigation: null
 subsystems: []

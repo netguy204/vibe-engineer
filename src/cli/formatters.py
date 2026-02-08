@@ -4,12 +4,14 @@ Common formatting functions used across artifact CLI modules to eliminate
 duplication and cross-module private imports.
 """
 # Chunk: docs/chunks/cli_formatters_extract - Extract shared formatters from CLI modules
+# Chunk: docs/chunks/cli_decompose - Chunk list entry formatting
 
 import json
 
 import click
 
 from models import ChunkStatus
+from models.references import ExternalArtifactRef
 
 
 def artifact_to_json_dict(
@@ -188,3 +190,36 @@ def format_grouped_artifact_list_json(
                 results.append(result)
 
     click.echo(json.dumps(results, indent=2))
+
+
+# Chunk: docs/chunks/cli_decompose - Extract chunk list formatting
+def format_chunk_list_entry(
+    chunk_name: str,
+    status: str,
+    is_tip: bool,
+    error: str | None = None,
+    external_ref: ExternalArtifactRef | None = None,
+) -> str:
+    """Format a single chunk list entry for text output.
+
+    Args:
+        chunk_name: The chunk directory name
+        status: Status string (e.g., "FUTURE", "EXTERNAL", "PARSE_ERROR", "UNKNOWN")
+        is_tip: Whether this chunk is a DAG tip
+        error: Optional error message for PARSE_ERROR chunks
+        external_ref: Optional external reference for EXTERNAL chunks
+
+    Returns:
+        Formatted string for output
+    """
+    tip_indicator = " *" if is_tip else ""
+
+    # Format status based on type
+    if external_ref is not None:
+        status_display = f"EXTERNAL: {external_ref.repo}"
+    elif error is not None:
+        status_display = f"PARSE ERROR: {error}"
+    else:
+        status_display = status
+
+    return f"docs/chunks/{chunk_name} [{status_display}]{tip_indicator}"

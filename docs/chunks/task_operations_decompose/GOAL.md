@@ -132,7 +132,9 @@ code_references:
     implements: "Cross-repo chunk overlap detection"
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+  - subsystem_id: cross_repo_operations
+    relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []

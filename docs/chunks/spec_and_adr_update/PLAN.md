@@ -8,170 +8,104 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a documentation-only chunk that brings trunk documents (SPEC.md and DECISIONS.md) into alignment with the current implementation. No code changes are required.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach:
+1. **Fix command references**: Search SPEC.md for all occurrences of `ve chunk start` and replace with `ve chunk create`. This was renamed but the spec was not updated.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Add orchestrator worktree context**: The SPEC.md documents the single-IMPLEMENTING constraint (line ~216) but doesn't explain how the orchestrator maintains this via worktrees. Add a clarifying note that each worktree has at most one IMPLEMENTING chunk, and the orchestrator manages multiple worktrees in parallel.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/spec_and_adr_update/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Record missing ADRs**: Add three architectural decision records to DECISIONS.md following the existing format (DEC-001 through DEC-006 already exist):
+   - **DEC-007**: Orchestrator daemon + HTTP API architecture
+   - **DEC-008**: Pydantic for frontmatter models
+   - **DEC-009**: ArtifactManager Template Method pattern
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this documentation-only chunk.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Fix `ve chunk start` references in SPEC.md
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Search for and replace `ve chunk start` with `ve chunk create` at line ~443 (the CLI command section). Verify:
+- Command signature is updated
+- All occurrences in the file are updated
+- The command description still makes sense (the actual CLI uses "create" as the primary command with "start" as an alias)
 
-Example:
+Location: `docs/trunk/SPEC.md`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add orchestrator worktree note to IMPLEMENTING constraint
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a clarifying note after the IMPLEMENTING status description (line ~216) explaining:
+- The single-IMPLEMENTING constraint applies per-worktree
+- The orchestrator manages multiple parallel worktrees
+- Each worktree has its own IMPLEMENTING chunk scope
+- This preserves the constraint's intent (focused work) while enabling parallel execution
 
-Location: src/segment/format.rs
+Location: `docs/trunk/SPEC.md` (Status Values section, around line 216)
 
-### Step 2: Implement header serialization
+### Step 3: Add DEC-007 - Orchestrator Daemon Architecture
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add an ADR documenting the orchestrator's daemon + HTTP API design:
 
-### Step 3: ...
+**Context**: The orchestrator needs to manage long-running work across CLI invocations
+**Decision**: Persistent daemon process with Unix socket (local) + TCP port (dashboard)
+**Alternatives considered**:
+- Direct CLI execution (no parallelism across invocations)
+- Background jobs with polling (complex state management)
+- Separate microservice (operational overhead)
 
----
+**Rationale**: Daemon provides single point of coordination; HTTP API enables browser dashboard and programmatic access; Unix socket provides fast local IPC
 
-**BACKREFERENCE COMMENTS**
+Location: `docs/trunk/DECISIONS.md`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: Add DEC-008 - Pydantic for Frontmatter Models
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Add an ADR documenting the choice of Pydantic for frontmatter validation:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**Context**: Frontmatter needs schema validation with clear error messages
+**Decision**: Use Pydantic BaseModel for all frontmatter schemas
+**Alternatives considered**:
+- Manual dict validation (error-prone, verbose)
+- dataclasses with validators (less powerful validation)
+- marshmallow (another schema library, less pythonic)
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+**Rationale**: Pydantic provides type coercion, validation, and serialization in one package; BaseModel inheritance enables shared behavior; StrEnum integration for status types
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `docs/trunk/DECISIONS.md`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 5: Add DEC-009 - ArtifactManager Template Method Pattern
+
+Add an ADR documenting the ArtifactManager abstract base class:
+
+**Context**: Four artifact types (chunks, narratives, investigations, subsystems) share common lifecycle operations
+**Decision**: Template Method pattern via `ArtifactManager` ABC with abstract properties
+**Alternatives considered**:
+- Composition with helper functions (duplicated method calls)
+- Mixin classes (complex inheritance, harder to reason about)
+- Standalone functions per artifact type (code duplication)
+
+**Rationale**: Template Method captures shared algorithm (parse frontmatter, validate status, enumerate artifacts) while allowing subclasses to define artifact-specific configuration
+
+Location: `docs/trunk/DECISIONS.md`
+
+### Step 6: Verify consistency
+
+- Read through all changes to ensure no contradictions with actual CLI behavior
+- Verify ADR numbering follows the existing convention (DEC-007, DEC-008, DEC-009)
+- Verify ADR format matches existing entries in DECISIONS.md
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No dependencies. This is a documentation-only chunk that can be completed independently.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **ADR scope**: The three ADRs cover significant architectural decisions but are retrospective (capturing existing decisions rather than making new ones). Ensure the rationale accurately reflects why these decisions were made, not just what was decided.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Worktree explanation**: The orchestrator worktree model is subtle. The note should be clear that the constraint's purpose (focused work, predictable state) is preserved even with parallel worktrees. May need to iterate on wording.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*(To be populated during implementation)*
