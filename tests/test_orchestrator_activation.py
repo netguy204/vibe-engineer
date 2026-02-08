@@ -121,6 +121,7 @@ status: FUTURE
         assert "post-IMPLEMENTING" in result.error
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Unit tests for activate_chunk_in_worktree helper
 class TestActivateChunkInWorktree:
     """Tests for activate_chunk_in_worktree function."""
 
@@ -215,6 +216,7 @@ status: ACTIVE
             activate_chunk_in_worktree(tmp_path, "test_chunk")
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Unit tests for restore_displaced_chunk helper
 class TestRestoreDisplacedChunk:
     """Tests for restore_displaced_chunk function."""
 

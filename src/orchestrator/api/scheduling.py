@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/orch_scheduling - Inject, queue, prioritize and config endpoints
 # Chunk: docs/chunks/explicit_deps_batch_inject - Batch injection with explicit_deps parameter
 # Chunk: docs/chunks/orchestrator_api_decompose - Extracted scheduling endpoints
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """Scheduling endpoints for the orchestrator API.
 
 Provides REST endpoints for work unit injection, queue management,
@@ -31,6 +32,7 @@ from orchestrator.models import (
     WorkUnitPhase,
     WorkUnitStatus,
 )
+from orchestrator.state import StaleWriteError
 from orchestrator.websocket import broadcast_work_unit_update
 
 
@@ -244,6 +246,7 @@ async def queue_endpoint(request: Request) -> JSONResponse:
     })
 
 
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for priority updates
 async def prioritize_endpoint(request: Request) -> JSONResponse:
     """PATCH /work-units/{chunk}/priority - Update work unit priority."""
     chunk = request.path_params["chunk"]
@@ -253,6 +256,9 @@ async def prioritize_endpoint(request: Request) -> JSONResponse:
     unit = store.get_work_unit(chunk)
     if unit is None:
         return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
 
     try:
         body = await request.json()
@@ -271,7 +277,14 @@ async def prioritize_endpoint(request: Request) -> JSONResponse:
     unit.updated_at = datetime.now(timezone.utc)
 
     try:
-        updated = store.update_work_unit(unit)
+        updated = store.update_work_unit(
+            unit, expected_updated_at=expected_updated_at
+        )
+    except StaleWriteError as e:
+        return JSONResponse(
+            {"error": "Concurrent modification detected", "detail": str(e)},
+            status_code=409,
+        )
     except ValueError as e:
         return error_response(str(e))
 
