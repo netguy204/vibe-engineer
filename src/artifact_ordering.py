@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from external_refs import ARTIFACT_MAIN_FILE, ARTIFACT_DIR_NAME, is_external_artifact
+# Chunk: docs/chunks/consolidate_ext_refs - Import ArtifactType from models.py instead of defining locally
 from models import ArtifactType
 
 

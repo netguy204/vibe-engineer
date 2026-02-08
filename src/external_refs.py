@@ -103,6 +103,7 @@ def detect_artifact_type_from_path(path: Path) -> ArtifactType:
     )
 
 
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to return ExternalArtifactRef
 def load_external_ref(path: Path) -> ExternalArtifactRef:
     """Load and validate external.yaml from artifact path.
 
@@ -270,6 +271,7 @@ def strip_artifact_path_prefix(
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use artifact_type and artifact_id fields
 def create_external_yaml(
     project_path: Path,
     short_name: str,

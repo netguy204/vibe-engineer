@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/external_refs.py
 - src/task_utils.py
-- src/sync.py
+- src/task/artifact_ops.py
 - src/external_resolve.py
 - src/artifact_ordering.py
 - tests/test_external_refs.py
@@ -27,7 +27,7 @@ code_references:
     implements: "Load ExternalArtifactRef from external.yaml"
   - ref: src/external_refs.py#create_external_yaml
     implements: "Create external.yaml for any artifact type"
-  - ref: src/task_utils.py#is_external_chunk
+  - ref: src/task/artifact_ops.py#is_external_chunk
     implements: "Convenience wrapper using is_external_artifact for chunks"
   - ref: src/artifact_ordering.py#_enumerate_artifacts
     implements: "Updated to use is_external_artifact from external_refs"

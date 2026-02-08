@@ -24,7 +24,7 @@ code_references:
     implements: "Refactored to accept Project instance instead of three separate manager parameters"
   - ref: src/integrity.py#IntegrityValidator::__init__
     implements: "Accepts optional Project for unified manager access, eliminating five separate manager constructions"
-  - ref: src/task_utils.py#list_task_proposed_chunks
+  - ref: src/task/artifact_ops.py#list_task_proposed_chunks
     implements: "Uses Project for unified manager access when listing proposed chunks in task context"
 narrative: arch_decompose
 investigation: null

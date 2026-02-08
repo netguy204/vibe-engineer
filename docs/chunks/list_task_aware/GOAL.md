@@ -4,12 +4,12 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/ve.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - tests/test_task_chunk_list.py
 code_references:
-- ref: src/task_utils.py#list_task_chunks
+- ref: src/task/artifact_ops.py#list_task_chunks
   implements: List chunks from external repo with status and dependents
-- ref: src/task_utils.py#get_current_task_chunk
+- ref: src/task/artifact_ops.py#get_current_task_chunk
   implements: Get current IMPLEMENTING chunk from external repo
 - ref: src/ve.py#list_chunks
   implements: CLI command with task directory detection

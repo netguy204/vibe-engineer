@@ -247,6 +247,8 @@ def add_dependents_to_subsystem(
 # Chunk: docs/chunks/coderef_format_prompting - Pass projects to chunk template in task context
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef format for dependents
 # Chunk: docs/chunks/future_chunk_creation - Extended with status parameter for cross-repo chunk creation supporting FUTURE/IMPLEMENTING
+# Chunk: docs/chunks/ordering_remove_seqno - Multi-repo chunk creation updated for short_name format
+# Chunk: docs/chunks/selective_project_linking - Optional project filtering for task chunk creation
 def create_task_chunk(
     task_dir: Path,
     short_name: str,

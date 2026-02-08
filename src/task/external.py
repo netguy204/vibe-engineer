@@ -31,6 +31,7 @@ from task.exceptions import TaskCopyExternalError, TaskRemoveExternalError
 from task.artifact_ops import append_dependent_to_artifact
 
 
+# Chunk: docs/chunks/remove_external_ref - Helper to remove dependent entry from artifact frontmatter
 def remove_dependent_from_artifact(
     artifact_path: Path,
     artifact_type: ArtifactType,
@@ -217,6 +218,7 @@ def copy_artifact_as_external(
     }
 
 
+# Chunk: docs/chunks/remove_external_ref - Core function removing external.yaml and updating dependents
 def remove_artifact_from_external(
     task_dir: Path,
     artifact_path: str,

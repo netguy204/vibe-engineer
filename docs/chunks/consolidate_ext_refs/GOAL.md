@@ -3,21 +3,22 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/references.py
+- src/models/chunk.py
 - src/artifact_ordering.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - src/external_refs.py
 - tests/test_task_models.py
 - tests/test_task_utils.py
 - tests/test_chunks.py
 code_references:
-  - ref: src/models.py#ArtifactType
+  - ref: src/models/references.py#ArtifactType
     implements: "Moved ArtifactType enum from artifact_ordering.py to models.py"
-  - ref: src/models.py#ExternalArtifactRef
+  - ref: src/models/references.py#ExternalArtifactRef
     implements: "Generic external artifact reference model with artifact_type and artifact_id fields"
-  - ref: src/models.py#ChunkDependent
+  - ref: src/models/chunk.py#ChunkDependent
     implements: "Updated to use ExternalArtifactRef for cross-repo references"
-  - ref: src/models.py#ChunkFrontmatter
+  - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Updated dependents field to use ExternalArtifactRef"
   - ref: src/artifact_ordering.py
     implements: "Import ArtifactType from models.py instead of defining locally"
@@ -25,9 +26,9 @@ code_references:
     implements: "Updated to return ExternalArtifactRef"
   - ref: src/external_refs.py#create_external_yaml
     implements: "Updated to use artifact_type and artifact_id fields"
-  - ref: src/task_utils.py#create_task_chunk
+  - ref: src/task/artifact_ops.py#create_task_chunk
     implements: "Updated to use ExternalArtifactRef format for dependents"
-  - ref: src/task_utils.py#list_task_chunks
+  - ref: src/task/artifact_ops.py#list_task_chunks
     implements: "Updated to handle ExternalArtifactRef objects"
 narrative: null
 subsystems:

@@ -264,20 +264,14 @@ These chunks established the patterns this decomposition follows (package struct
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+### Generic `create_task_artifact` and `list_task_artifacts` Not Implemented
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+**What changed**: The plan called for consolidating `create_task_chunk`, `create_task_narrative`, `create_task_investigation`, and `create_task_subsystem` into a single generic `create_task_artifact()` function parameterized by artifact type. Similarly for the `list_task_*` functions.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+**Why**: Artifact-specific parameters made a clean generic interface impractical:
+- `create_task_chunk()` accepts `ticket_id` and `status` parameters not applicable to other types
+- Each artifact type uses different manager classes with different creation method signatures
+- Each `list_task_*` function parses frontmatter differently and returns type-specific data
+- A generic function would require extensive `if artifact_type == X` branching or complex `**kwargs` handling, providing no real simplification over the current type-specific implementations
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+**Impact**: The type-specific implementations remain. The `add_dependents_to_artifact()` function was successfully generified (with type-specific wrappers for backward compatibility) since it has a uniform interface across types. This achieves the goal of cohesive module organization without forcing an artificial generic abstraction.

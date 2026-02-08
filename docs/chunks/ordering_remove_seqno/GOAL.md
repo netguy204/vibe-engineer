@@ -52,7 +52,7 @@ code_references:
     implements: "Validate directory name pattern for both formats"
   - ref: src/external_refs.py#create_external_yaml
     implements: "Create external.yaml using short_name only directory format"
-  - ref: src/task_utils.py#create_task_chunk
+  - ref: src/task/artifact_ops.py#create_task_chunk
     implements: "Multi-repo chunk creation updated for short_name format"
   - ref: src/artifact_ordering.py#ArtifactIndex::get_ancestors
     implements: "Compute transitive ancestors for causal ordering (used by find_overlapping_chunks)"

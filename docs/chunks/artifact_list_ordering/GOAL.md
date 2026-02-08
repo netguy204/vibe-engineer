@@ -8,7 +8,7 @@ code_paths:
 - src/cli/narrative.py
 - src/cli/subsystem.py
 - src/cli/investigation.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - tests/test_chunk_list.py
 - tests/test_subsystem_list.py
 - tests/test_investigation_list.py
@@ -30,9 +30,9 @@ code_references:
   implements: CLI command using ArtifactIndex for causal ordering with tip indicators
 - ref: src/cli/investigation.py#list_investigations
   implements: CLI command using ArtifactIndex for causal ordering with tip indicators
-- ref: src/task_utils.py#get_next_chunk_id
+- ref: src/task/artifact_ops.py#get_next_chunk_id
   implements: Updated to use enumerate_chunks for directory-based ID calculation
-- ref: src/task_utils.py#list_task_chunks
+- ref: src/task/artifact_ops.py#list_task_chunks
   implements: Updated for new list_chunks return type
 - ref: tests/test_chunks.py#TestListChunks
   implements: Updated tests for new list_chunks return type

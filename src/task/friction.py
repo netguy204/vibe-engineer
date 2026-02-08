@@ -22,6 +22,7 @@ from task.config import (
 from task.exceptions import TaskFrictionError
 
 
+# Chunk: docs/chunks/selective_artifact_friction - Add external friction source reference to project FRICTION.md
 def add_external_friction_source(
     project_path: Path,
     external_repo_ref: str,
@@ -90,6 +91,7 @@ def add_external_friction_source(
     friction_path.write_text(new_content)
 
 
+# Chunk: docs/chunks/selective_artifact_friction - Task-aware friction entry creation with external references
 def create_task_friction_entry(
     task_dir: Path,
     title: str,

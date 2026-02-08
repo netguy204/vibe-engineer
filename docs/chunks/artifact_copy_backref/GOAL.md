@@ -3,12 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/task_utils.py
+- src/task/artifact_ops.py
+- src/task/external.py
 - tests/test_artifact_copy_external.py
 code_references:
-  - ref: src/task_utils.py#append_dependent_to_artifact
+  - ref: src/task/artifact_ops.py#append_dependent_to_artifact
     implements: "Append dependent entry with idempotency - reads existing frontmatter, checks for duplicates by (repo, artifact_type, artifact_id) key, updates pinned SHA if exists or appends new entry"
-  - ref: src/task_utils.py#copy_artifact_as_external
+  - ref: src/task/external.py#copy_artifact_as_external
     implements: "Back-reference update for copy-external - calls append_dependent_to_artifact() after creating external.yaml"
   - ref: tests/test_artifact_copy_external.py#TestCopyArtifactAsExternalBackReference
     implements: "Test suite for back-reference creation, preservation of existing dependents, idempotency, and all artifact types"

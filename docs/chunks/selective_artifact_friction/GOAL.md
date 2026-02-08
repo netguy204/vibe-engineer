@@ -14,11 +14,11 @@ code_references:
   implements: External friction source reference schema for task contexts
 - ref: src/models.py#FrictionFrontmatter
   implements: Friction log frontmatter schema with external_friction_sources field
-- ref: src/task_utils.py#TaskFrictionError
+- ref: src/task/exceptions.py#TaskFrictionError
   implements: Error class for task-aware friction operations
-- ref: src/task_utils.py#create_task_friction_entry
+- ref: src/task/friction.py#create_task_friction_entry
   implements: Task-aware friction entry creation with external references
-- ref: src/task_utils.py#add_external_friction_source
+- ref: src/task/friction.py#add_external_friction_source
   implements: Add external friction source reference to project FRICTION.md
 - ref: src/ve.py#log_entry
   implements: CLI handler for task-aware friction logging with --projects flag

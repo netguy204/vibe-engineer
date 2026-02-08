@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/chunks.py
 - src/ve.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - src/templates/commands/chunk-create.md.jinja2
 - tests/test_chunks.py
 code_references:
@@ -13,7 +13,7 @@ code_references:
   implements: "Collision detection ignoring ticket_id (matches on short_name only)"
 - ref: src/chunks.py#Chunks::create_chunk
   implements: "Directory naming without ticket suffix (ticket in frontmatter only)"
-- ref: src/task_utils.py#create_task_chunk
+- ref: src/task/artifact_ops.py#create_task_chunk
   implements: "Task context chunk creation without ticket in directory name"
 - ref: src/cli/utils.py#validate_combined_chunk_name
   implements: "Chunk name validation after CLI modularization"

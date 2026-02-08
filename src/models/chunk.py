@@ -49,6 +49,7 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Model for chunk GOAL.md frontmatter with dependents
+# Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef for cross-repo references
 class ChunkDependent(BaseModel):
     """Frontmatter schema for chunk GOAL.md files with dependents."""
 
@@ -59,6 +60,7 @@ class ChunkDependent(BaseModel):
 # Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
 # Chunk: docs/chunks/investigation_chunk_refs - Optional investigation field in chunk frontmatter schema
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field to chunk frontmatter schema
+# Chunk: docs/chunks/consolidate_ext_refs - Updated dependents field to use ExternalArtifactRef
 class ChunkFrontmatter(BaseModel):
     """Frontmatter schema for chunk GOAL.md files.
 

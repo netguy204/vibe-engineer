@@ -3,34 +3,39 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/task_utils.py
+- src/models/shared.py
+- src/models/references.py
+- src/models/chunk.py
+- src/task/config.py
+- src/task/artifact_ops.py
+- src/task/exceptions.py
 - src/external_refs.py
-- src/ve.py
+- src/cli/chunk.py
 - tests/test_task_chunk_create.py
 - tests/test_task_models.py
+- tests/test_task_utils.py
 code_references:
-- ref: src/models.py#_require_valid_repo_ref
+- ref: src/models/shared.py#_require_valid_repo_ref
   implements: Validator for GitHub org/repo format
-- ref: src/models.py#TaskConfig
+- ref: src/models/shared.py#TaskConfig
   implements: Model with org/repo format validation for external_artifact_repo and projects
-- ref: src/models.py#ExternalArtifactRef
+- ref: src/models/references.py#ExternalArtifactRef
   implements: Unified model for both external.yaml and dependents list (replaced ExternalChunkRef)
-- ref: src/models.py#ChunkDependent
+- ref: src/models/chunk.py#ChunkDependent
   implements: Model for chunk GOAL.md frontmatter with dependents
-- ref: src/task_utils.py#resolve_repo_directory
+- ref: src/task/config.py#resolve_repo_directory
   implements: Resolves org/repo reference to filesystem path
-- ref: src/task_utils.py#get_next_chunk_id
+- ref: src/task/artifact_ops.py#get_next_chunk_id
   implements: Calculates next sequential chunk ID for a project
 - ref: src/external_refs.py#create_external_yaml
   implements: Writes external.yaml in project's chunk directory
-- ref: src/task_utils.py#add_dependents_to_chunk
+- ref: src/task/artifact_ops.py#add_dependents_to_chunk
   implements: Updates GOAL.md frontmatter with dependents
-- ref: src/task_utils.py#TaskChunkError
+- ref: src/task/exceptions.py#TaskChunkError
   implements: Exception class for user-friendly error messages
-- ref: src/task_utils.py#create_task_chunk
+- ref: src/task/artifact_ops.py#create_task_chunk
   implements: Orchestrator for multi-repo chunk creation
-- ref: src/ve.py#_start_task_chunk
+- ref: src/cli/chunk.py#_start_task_chunks
   implements: CLI handler for cross-repo mode output
 - ref: tests/test_task_chunk_create.py
   implements: Integration tests for task-aware chunk creation
@@ -38,8 +43,6 @@ code_references:
   implements: Unit tests for TaskConfig, ExternalArtifactRef, ChunkDependent
 - ref: tests/test_task_utils.py
   implements: Unit tests for task utility functions
-- ref: src/cli/chunk.py#_start_task_chunks
-  implements: "CLI handler for cross-repo mode after CLI modularization"
 narrative: cross_repo_chunks
 created_after:
 - task_init

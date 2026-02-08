@@ -19,6 +19,7 @@ from task_utils import (
 )
 
 
+# Chunk: docs/chunks/artifact_promote - CLI command group for artifact management commands
 @click.group()
 def artifact():
     """Artifact management commands."""

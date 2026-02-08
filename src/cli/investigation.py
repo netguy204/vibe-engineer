@@ -44,6 +44,7 @@ def investigation():
     pass
 
 
+# Chunk: docs/chunks/task_aware_investigations - CLI command extended with task directory detection
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -77,6 +78,7 @@ def create_investigation(short_name, project_dir, projects):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/task_aware_investigations - Handler for task directory investigation creation
 def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle investigation creation in task directory (cross-repo mode)."""
     # Parse and validate projects option
@@ -106,6 +108,7 @@ def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects
         click.echo(f"Created reference in {project_ref}: {investigation_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/task_aware_investigations - CLI command extended with task directory detection
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
@@ -176,6 +179,7 @@ def list_investigations(state, json_output, project_dir):
 
 
 # Chunk: docs/chunks/cli_json_output - JSON output for task context investigation listing
+# Chunk: docs/chunks/task_aware_investigations - Handler for task directory investigation listing
 def _list_task_investigations(task_dir: pathlib.Path, json_output: bool = False):
     """Handle investigation listing in task directory (cross-repo mode)."""
     try:

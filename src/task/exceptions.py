@@ -18,6 +18,7 @@ class TaskError(Exception):
     pass
 
 
+# Chunk: docs/chunks/chunk_create_task_aware - Exception class for user-friendly error messages
 class TaskChunkError(TaskError):
     """Error during task chunk creation with user-friendly message."""
 
@@ -30,6 +31,7 @@ class TaskNarrativeError(TaskError):
     pass
 
 
+# Chunk: docs/chunks/task_aware_investigations - Error class for task investigation operations
 class TaskInvestigationError(TaskError):
     """Error during task investigation creation with user-friendly message."""
 
@@ -42,6 +44,7 @@ class TaskSubsystemError(TaskError):
     pass
 
 
+# Chunk: docs/chunks/artifact_promote - Exception class for user-friendly promotion error messages
 class TaskPromoteError(TaskError):
     """Error during artifact promotion with user-friendly message."""
 
@@ -60,12 +63,14 @@ class TaskCopyExternalError(TaskError):
     pass
 
 
+# Chunk: docs/chunks/remove_external_ref - Error class for remove-external failures
 class TaskRemoveExternalError(TaskError):
     """Error during artifact removal from external with user-friendly message."""
 
     pass
 
 
+# Chunk: docs/chunks/selective_artifact_friction - Error class for task-aware friction operations
 class TaskFrictionError(TaskError):
     """Error during task friction logging with user-friendly message."""
 

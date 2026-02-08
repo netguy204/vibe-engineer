@@ -8,7 +8,7 @@ code_paths:
 - src/external_resolve.py
 - src/sync.py
 - src/ve.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - src/templates/commands/chunk-complete.md.jinja2
 - docs/subsystems/cross_repo_operations/OVERVIEW.md
 - tests/test_sync.py
@@ -26,13 +26,13 @@ code_references:
   implements: "External resolution always using HEAD (pinned logic removed)"
 - ref: src/external_resolve.py#resolve_artifact_single_repo
   implements: "Single-repo resolution always using HEAD/track"
-- ref: src/task_utils.py#create_task_chunk
+- ref: src/task/artifact_ops.py#create_task_chunk
   implements: "Chunk creation without pinned SHA parameter"
-- ref: src/task_utils.py#create_task_narrative
+- ref: src/task/artifact_ops.py#create_task_narrative
   implements: "Narrative creation without pinned SHA parameter"
-- ref: src/task_utils.py#create_task_investigation
+- ref: src/task/artifact_ops.py#create_task_investigation
   implements: "Investigation creation without pinned SHA parameter"
-- ref: src/task_utils.py#create_task_subsystem
+- ref: src/task/artifact_ops.py#create_task_subsystem
   implements: "Subsystem creation without pinned SHA parameter"
 - ref: src/ve.py#resolve
   implements: "External resolve CLI without --at-pinned option"

@@ -7,11 +7,11 @@ code_paths:
 - src/ve.py
 - tests/test_artifact_remove_external.py
 code_references:
-- ref: src/task_utils.py#TaskRemoveExternalError
+- ref: src/task/exceptions.py#TaskRemoveExternalError
   implements: "Error class for remove-external failures with user-friendly messages"
-- ref: src/task_utils.py#remove_dependent_from_artifact
+- ref: src/task/external.py#remove_dependent_from_artifact
   implements: "Helper to remove dependent entry from artifact frontmatter"
-- ref: src/task_utils.py#remove_artifact_from_external
+- ref: src/task/external.py#remove_artifact_from_external
   implements: "Core function removing external.yaml and updating dependents"
 - ref: src/ve.py#remove_external
   implements: "CLI command ve artifact remove-external"
