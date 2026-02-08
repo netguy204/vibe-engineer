@@ -152,8 +152,12 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/chunknaming_drop_ticket - Collision detection ignoring ticket_id
     # Chunk: docs/chunks/implement_chunk_start-ve-001 - Detects existing chunks with same short_name only
-    def find_duplicates(self, short_name: str, ticket_id: str | None) -> list[str]:
+    # Chunk: docs/chunks/artifact_pattern_consolidation - Overrides base class to accept legacy ticket_id parameter
+    def find_duplicates(self, short_name: str, ticket_id: str | None = None) -> list[str]:
         """Find existing chunks with the same short_name.
+
+        Overrides the base class method to accept the legacy ticket_id parameter
+        for backward compatibility.
 
         Args:
             short_name: The short name to check for collisions.
@@ -163,13 +167,8 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Returns:
             List of existing chunk directory names that would collide.
         """
-        # Match on short_name only - ticket_id is stored in frontmatter, not directory name
-        duplicates = []
-        for name in self.enumerate_chunks():
-            # Directory name is the short name
-            if name == short_name:
-                duplicates.append(name)
-        return duplicates
+        # Delegate to base class - ticket_id is ignored (stored in frontmatter, not directory name)
+        return super().find_duplicates(short_name)
 
     # Chunk: docs/chunks/artifact_list_ordering - Updated to use ArtifactIndex for causal ordering
     # Chunk: docs/chunks/chunk_list_command-ve-002 - Lists chunks in causal order (newest first) using ArtifactIndex

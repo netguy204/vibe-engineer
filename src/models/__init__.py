@@ -18,6 +18,7 @@ from models.shared import (
 from models.references import (
     ARTIFACT_ID_PATTERN,
     CHUNK_ID_PATTERN,
+    ArtifactRelationship,
     ArtifactType,
     ChunkRelationship,
     CodeRange,
@@ -86,6 +87,7 @@ __all__ = [
     "SHA_PATTERN",
     "TaskConfig",
     # Reference types
+    "ArtifactRelationship",
     "ArtifactType",
     "ARTIFACT_ID_PATTERN",
     "CHUNK_ID_PATTERN",
