@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Starlette app factory with REST endpoints for work unit CRUD
 # Chunk: docs/chunks/orchestrator_api_decompose - Application factory with modular route imports
 """HTTP API application factory for the orchestrator daemon.
 

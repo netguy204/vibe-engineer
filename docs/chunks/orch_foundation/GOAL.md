@@ -8,7 +8,7 @@ code_paths:
 - src/orchestrator/models.py
 - src/orchestrator/state.py
 - src/orchestrator/daemon.py
-- src/orchestrator/api.py
+- src/orchestrator/api/app.py
 - src/orchestrator/client.py
 - src/ve.py
 - tests/test_orchestrator_state.py
@@ -39,7 +39,7 @@ code_references:
     implements: "Daemon running status check via PID file"
   - ref: src/orchestrator/daemon.py#get_daemon_status
     implements: "Comprehensive daemon status including uptime and work unit counts"
-  - ref: src/orchestrator/api.py#create_app
+  - ref: src/orchestrator/api/app.py#create_app
     implements: "Starlette app factory with REST endpoints for work unit CRUD"
   - ref: src/orchestrator/client.py#OrchestratorClient
     implements: "HTTP client for CLI-to-daemon communication via Unix socket"

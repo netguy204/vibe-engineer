@@ -13,11 +13,11 @@ code_paths:
 - tests/test_orchestrator_cli.py
 - tests/test_orchestrator_api.py
 code_references:
-  - ref: src/orchestrator/api.py#_get_goal_summary
+  - ref: src/orchestrator/api/attention.py#_get_goal_summary
     implements: "Extract goal summary from chunk's GOAL.md Minor Goal section"
-  - ref: src/orchestrator/api.py#attention_endpoint
+  - ref: src/orchestrator/api/attention.py#attention_endpoint
     implements: "GET /attention endpoint returning prioritized queue with enriched items"
-  - ref: src/orchestrator/api.py#answer_endpoint
+  - ref: src/orchestrator/api/attention.py#answer_endpoint
     implements: "POST /work-units/{chunk}/answer endpoint for submitting answers"
   - ref: src/orchestrator/state.py#StateStore::_migrate_v6
     implements: "Database migration adding pending_answer column"

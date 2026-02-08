@@ -26,6 +26,7 @@ from orchestrator.models import (
 )
 
 
+# Chunk: docs/chunks/orch_state_transactions - Concurrency model documentation
 class StateStore:
     """SQLite-based state store for work units.
 
