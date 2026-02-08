@@ -183,3 +183,28 @@ class TestArtifactManagerBase:
         assert result is not None
         assert result.title == "New Title"
         assert result.status == StubStatus.DRAFT  # Unchanged
+
+    # Chunk: docs/chunks/artifact_index_cache - Test cached ArtifactIndex property
+    def test_artifact_index_property_caches_instance(self, tmp_path):
+        """artifact_index property returns the same instance on repeated access."""
+        manager = ConcreteTestManager(tmp_path)
+
+        # Access the property twice
+        index1 = manager.artifact_index
+        index2 = manager.artifact_index
+
+        # Should be the exact same instance (identity, not equality)
+        assert index1 is index2
+
+    def test_artifact_index_property_is_lazily_initialized(self, tmp_path):
+        """artifact_index is only created when first accessed."""
+        manager = ConcreteTestManager(tmp_path)
+
+        # Before access, the private attribute should be None
+        assert manager._artifact_index is None
+
+        # Access the property
+        _ = manager.artifact_index
+
+        # Now the private attribute should be set
+        assert manager._artifact_index is not None

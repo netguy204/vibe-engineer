@@ -40,7 +40,7 @@ from backreferences import (
 )
 from consolidation import ConsolidationResult, consolidate_chunks
 from cluster_analysis import SuggestPrefixResult, ClusterResult, cluster_chunks, suggest_prefix
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactType
 from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
 import repo_cache
 from models import (
@@ -179,6 +179,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/artifact_list_ordering - Updated to use ArtifactIndex for causal ordering
     # Chunk: docs/chunks/chunk_list_command-ve-002 - Lists chunks in causal order (newest first) using ArtifactIndex
+    # Chunk: docs/chunks/artifact_index_cache - Uses cached artifact_index property
     def list_chunks(self) -> list[str]:
         """List all chunks in causal order (newest first).
 
@@ -190,8 +191,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             List of chunk directory names, ordered newest first.
             Returns empty list if no chunks exist.
         """
-        artifact_index = ArtifactIndex(self.project_dir)
-        ordered = artifact_index.get_ordered(ArtifactType.CHUNK)
+        ordered = self.artifact_index.get_ordered(ArtifactType.CHUNK)
         # Reverse to get newest first (ArtifactIndex returns oldest first)
         return list(reversed(ordered))
 
@@ -253,6 +253,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return active_chunks
 
     # Chunk: docs/chunks/chunk_last_active - Core ACTIVE tip lookup with mtime-based selection
+    # Chunk: docs/chunks/artifact_index_cache - Uses cached artifact_index property
     def get_last_active_chunk(self) -> str | None:
         """Return the most recently completed ACTIVE tip chunk.
 
@@ -268,8 +269,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             The chunk directory name if an ACTIVE tip exists, None otherwise.
         """
         # Get all tips from the artifact index
-        artifact_index = ArtifactIndex(self.project_dir)
-        tips = artifact_index.find_tips(ArtifactType.CHUNK)
+        tips = self.artifact_index.find_tips(ArtifactType.CHUNK)
 
         # Filter to only ACTIVE status
         active_tips = []
@@ -387,9 +387,9 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
                     f"Run 've chunk complete' first."
                 )
 
+        # Chunk: docs/chunks/artifact_index_cache - Uses cached artifact_index property
         # Get current chunk tips for created_after field
-        artifact_index = ArtifactIndex(self.project_dir)
-        tips = artifact_index.find_tips(ArtifactType.CHUNK)
+        tips = self.artifact_index.find_tips(ArtifactType.CHUNK)
 
         # Build directory name using short_name only (ticket_id goes in frontmatter, not directory)
         chunk_path = self.chunk_dir / short_name
@@ -742,9 +742,9 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             if not target_refs_dict:
                 return []
 
+        # Chunk: docs/chunks/artifact_index_cache - Uses cached artifact_index property
         # Get ancestors of the target chunk (all chunks created before it)
-        artifact_index = ArtifactIndex(self.project_dir)
-        target_ancestors = artifact_index.get_ancestors(ArtifactType.CHUNK, chunk_name)
+        target_ancestors = self.artifact_index.get_ancestors(ArtifactType.CHUNK, chunk_name)
 
         # Find all ACTIVE chunks that are ancestors (created before target)
         affected = []
