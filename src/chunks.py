@@ -803,6 +803,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed ChunkStatus and frontmatter.code_references
     # Chunk: docs/chunks/task_chunk_validation - Task-context awareness for validation
     # Chunk: docs/chunks/investigation_chunk_refs - Integration of investigation validation into chunk completion
+    # Chunk: docs/chunks/friction_chunk_linking - Integration of friction entry validation into chunk completion validation
     # Chunk: docs/chunks/chunk_validator_extract - Delegates to chunk_validation module
     def validate_chunk_complete(
         self,
