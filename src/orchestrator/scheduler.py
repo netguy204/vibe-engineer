@@ -30,10 +30,6 @@ from orchestrator.models import (
     AgentResult,
     ConflictVerdict,
     OrchestratorConfig,
-    ReviewDecision,
-    ReviewIssue,
-    ReviewResult,
-    ReviewToolDecision,
     TaskContextInfo,
     WorkUnit,
     WorkUnitPhase,
@@ -52,9 +48,11 @@ from orchestrator.activation import (
     restore_displaced_chunk,
 )
 from orchestrator.review_parsing import (
-    create_review_feedback_file,
-    parse_review_decision,
     load_reviewer_config,
+)
+from orchestrator.review_routing import (
+    ReviewRoutingConfig,
+    route_review_decision,
 )
 from orchestrator.retry import (
     is_retryable_api_error,
@@ -115,6 +113,42 @@ def unblock_dependents(store: StateStore, completed_chunk: str) -> None:
                 )
 
             store.update_work_unit(unit)
+
+
+# Chunk: docs/chunks/scheduler_decompose_methods - Adapter for ReviewRoutingCallbacks protocol
+class _SchedulerReviewCallbacks:
+    """Adapter implementing ReviewRoutingCallbacks for the Scheduler.
+
+    This class adapts the Scheduler's methods to the ReviewRoutingCallbacks
+    protocol, allowing the review_routing module to interact with the
+    scheduler without direct coupling.
+    """
+
+    def __init__(self, scheduler: "Scheduler"):
+        """Initialize with a reference to the scheduler.
+
+        Args:
+            scheduler: The Scheduler instance to delegate to
+        """
+        self._scheduler = scheduler
+
+    async def advance_phase(self, work_unit: WorkUnit) -> None:
+        """Advance work unit to the next phase."""
+        await self._scheduler._advance_phase(work_unit)
+
+    async def mark_needs_attention(self, work_unit: WorkUnit, reason: str) -> None:
+        """Mark work unit as needing operator attention."""
+        await self._scheduler._mark_needs_attention(work_unit, reason)
+
+    def update_work_unit(self, work_unit: WorkUnit) -> None:
+        """Persist work unit changes to the store."""
+        self._scheduler.store.update_work_unit(work_unit)
+
+    async def broadcast_work_unit_update(
+        self, chunk: str, status: str, phase: str
+    ) -> None:
+        """Broadcast work unit status change via WebSocket."""
+        await broadcast_work_unit_update(chunk=chunk, status=status, phase=phase)
 
 
 # Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
@@ -581,153 +615,8 @@ class Scheduler:
         next_phase = next_phase_map.get(current_phase)
 
         if next_phase is None:
-            # Work unit complete - verify ACTIVE status before commit/merge
-            logger.info(f"Work unit {chunk} completed all phases")
-
-            # Get worktree path for verification
-            worktree_path = self.worktree_manager.get_worktree_path(chunk)
-
-            # Verify the chunk's GOAL.md has status: ACTIVE
-            verification = verify_chunk_active_status(worktree_path, chunk)
-            logger.info(
-                f"Verification result for {chunk}: {verification.status.value}"
-            )
-
-            if verification.status == VerificationStatus.IMPLEMENTING:
-                # Agent didn't finish marking ACTIVE - check retry count
-                if work_unit.completion_retries >= self.config.max_completion_retries:
-                    logger.warning(
-                        f"Chunk {chunk} still IMPLEMENTING after "
-                        f"{work_unit.completion_retries} retries"
-                    )
-                    await self._mark_needs_attention(
-                        work_unit,
-                        f"Chunk status still IMPLEMENTING after "
-                        f"{work_unit.completion_retries} retries",
-                    )
-                    return
-
-                # Resume the agent to finish marking ACTIVE
-                work_unit.completion_retries += 1
-                work_unit.updated_at = datetime.now(timezone.utc)
-                self.store.update_work_unit(work_unit)
-
-                logger.info(
-                    f"Resuming agent for {chunk} to mark ACTIVE "
-                    f"(attempt {work_unit.completion_retries})"
-                )
-
-                log_dir = self.worktree_manager.get_log_path(chunk)
-                log_callback = create_log_callback(
-                    chunk, WorkUnitPhase.COMPLETE, log_dir
-                )
-
-                try:
-                    result = await self.agent_runner.resume_for_active_status(
-                        chunk=chunk,
-                        worktree_path=worktree_path,
-                        session_id=work_unit.session_id,
-                        log_callback=log_callback,
-                    )
-
-                    # Update session_id if it changed
-                    if result.session_id:
-                        work_unit.session_id = result.session_id
-                        self.store.update_work_unit(work_unit)
-
-                    # Re-handle the result (will call _advance_phase again if completed)
-                    await self._handle_agent_result(work_unit, result)
-                except Exception as e:
-                    logger.error(f"Error resuming agent for {chunk}: {e}")
-                    await self._mark_needs_attention(
-                        work_unit, f"Resume for ACTIVE status failed: {e}"
-                    )
-                return
-
-            elif verification.status == VerificationStatus.ERROR:
-                logger.error(
-                    f"Verification error for {chunk}: {verification.error}"
-                )
-                await self._mark_needs_attention(work_unit, verification.error)
-                return
-
-            # Status is ACTIVE - proceed with commit/merge
-            logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
-
-            # Check for uncommitted changes that need to be committed
-            # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
-            if self.worktree_manager.has_uncommitted_changes(chunk):
-                logger.info(f"Uncommitted changes detected for {chunk}, committing")
-                try:
-                    committed = self.worktree_manager.commit_changes(chunk)
-                    if committed:
-                        logger.info(f"Committed changes for {chunk}")
-                    else:
-                        logger.info(f"No changes to commit for {chunk}")
-                except WorktreeError as e:
-                    logger.error(f"Error committing changes for {chunk}: {e}")
-                    await self._mark_needs_attention(work_unit, f"Commit error: {e}")
-                    return
-
-            # Restore any displaced chunk to IMPLEMENTING before the merge
-            if work_unit.displaced_chunk:
-                logger.info(
-                    f"Restoring displaced chunk '{work_unit.displaced_chunk}' "
-                    f"to IMPLEMENTING before merge"
-                )
-                restore_displaced_chunk(worktree_path, work_unit.displaced_chunk)
-
-            # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
-            # If retain_worktree is set, skip worktree removal and merge.
-            # The worktree stays on its branch for debugging/inspection.
-            # Use `ve orch prune` to clean up retained worktrees later.
-            if work_unit.retain_worktree:
-                logger.info(
-                    f"Retaining worktree for {chunk} at {worktree_path} "
-                    f"(branch: {self.worktree_manager.get_branch_name(chunk)})"
-                )
-                # Skip worktree removal and merge - leave everything in place
-            else:
-                # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
-                # Commit changes, remove worktree, merge to base, cleanup branch
-                try:
-                    logger.info(f"Finalizing worktree for {chunk}")
-                    self.worktree_manager.finalize_work_unit(chunk)
-                except WorktreeError as e:
-                    logger.error(f"Failed to finalize {chunk}: {e}")
-                    # Mark as needs attention - worktree may remain for investigation
-                    reason = f"Finalization failed: {e}"
-                    work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
-                    work_unit.attention_reason = reason
-                    work_unit.updated_at = datetime.now(timezone.utc)
-                    self.store.update_work_unit(work_unit)
-
-                    # Broadcast via WebSocket so dashboard updates
-                    await broadcast_attention_update("added", work_unit.chunk, reason)
-                    await broadcast_work_unit_update(
-                        chunk=work_unit.chunk,
-                        status=work_unit.status.value,
-                        phase=work_unit.phase.value,
-                    )
-                    return
-
-            work_unit.status = WorkUnitStatus.DONE
-            work_unit.session_id = None
-            # Chunk: docs/chunks/orch_api_retry - Reset retry state on successful completion
-            work_unit.api_retry_count = 0
-            work_unit.next_retry_at = None
-            work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
-
-            # Broadcast via WebSocket so dashboard updates
-            await broadcast_work_unit_update(
-                chunk=work_unit.chunk,
-                status=work_unit.status.value,
-                phase=work_unit.phase.value,
-            )
-
-            self._unblock_dependents(chunk)
-
+            # Chunk: docs/chunks/scheduler_decompose_methods - Extracted completion logic
+            await self._finalize_completed_work_unit(work_unit)
         else:
             # Advance to next phase
             logger.info(f"Work unit {chunk} advancing to phase {next_phase.value}")
@@ -751,6 +640,168 @@ class Scheduler:
             # Phase advancement may provide more precise information for conflict analysis
             # (e.g., PLAN.md now exists with Location: lines)
             await self._reanalyze_conflicts(chunk)
+
+    # Chunk: docs/chunks/scheduler_decompose_methods - Extracted from _advance_phase
+    async def _finalize_completed_work_unit(self, work_unit: WorkUnit) -> None:
+        """Finalize a work unit that has completed all phases.
+
+        This method handles the completion/cleanup logic:
+        - Verify chunk ACTIVE status
+        - Handle IMPLEMENTING status retries
+        - Commit uncommitted changes
+        - Restore displaced chunks
+        - Handle retained worktrees vs finalization
+        - Transition to DONE and unblock dependents
+
+        Args:
+            work_unit: The work unit to finalize
+        """
+        chunk = work_unit.chunk
+        logger.info(f"Work unit {chunk} completed all phases")
+
+        # Get worktree path for verification
+        worktree_path = self.worktree_manager.get_worktree_path(chunk)
+
+        # Verify the chunk's GOAL.md has status: ACTIVE
+        verification = verify_chunk_active_status(worktree_path, chunk)
+        logger.info(
+            f"Verification result for {chunk}: {verification.status.value}"
+        )
+
+        if verification.status == VerificationStatus.IMPLEMENTING:
+            # Agent didn't finish marking ACTIVE - check retry count
+            if work_unit.completion_retries >= self.config.max_completion_retries:
+                logger.warning(
+                    f"Chunk {chunk} still IMPLEMENTING after "
+                    f"{work_unit.completion_retries} retries"
+                )
+                await self._mark_needs_attention(
+                    work_unit,
+                    f"Chunk status still IMPLEMENTING after "
+                    f"{work_unit.completion_retries} retries",
+                )
+                return
+
+            # Resume the agent to finish marking ACTIVE
+            work_unit.completion_retries += 1
+            work_unit.updated_at = datetime.now(timezone.utc)
+            self.store.update_work_unit(work_unit)
+
+            logger.info(
+                f"Resuming agent for {chunk} to mark ACTIVE "
+                f"(attempt {work_unit.completion_retries})"
+            )
+
+            log_dir = self.worktree_manager.get_log_path(chunk)
+            log_callback = create_log_callback(
+                chunk, WorkUnitPhase.COMPLETE, log_dir
+            )
+
+            try:
+                result = await self.agent_runner.resume_for_active_status(
+                    chunk=chunk,
+                    worktree_path=worktree_path,
+                    session_id=work_unit.session_id,
+                    log_callback=log_callback,
+                )
+
+                # Update session_id if it changed
+                if result.session_id:
+                    work_unit.session_id = result.session_id
+                    self.store.update_work_unit(work_unit)
+
+                # Re-handle the result (will call _advance_phase again if completed)
+                await self._handle_agent_result(work_unit, result)
+            except Exception as e:
+                logger.error(f"Error resuming agent for {chunk}: {e}")
+                await self._mark_needs_attention(
+                    work_unit, f"Resume for ACTIVE status failed: {e}"
+                )
+            return
+
+        elif verification.status == VerificationStatus.ERROR:
+            logger.error(
+                f"Verification error for {chunk}: {verification.error}"
+            )
+            await self._mark_needs_attention(work_unit, verification.error)
+            return
+
+        # Status is ACTIVE - proceed with commit/merge
+        logger.info(f"Chunk {chunk} verified ACTIVE, proceeding to commit/merge")
+
+        # Check for uncommitted changes that need to be committed
+        # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
+        if self.worktree_manager.has_uncommitted_changes(chunk):
+            logger.info(f"Uncommitted changes detected for {chunk}, committing")
+            try:
+                committed = self.worktree_manager.commit_changes(chunk)
+                if committed:
+                    logger.info(f"Committed changes for {chunk}")
+                else:
+                    logger.info(f"No changes to commit for {chunk}")
+            except WorktreeError as e:
+                logger.error(f"Error committing changes for {chunk}: {e}")
+                await self._mark_needs_attention(work_unit, f"Commit error: {e}")
+                return
+
+        # Restore any displaced chunk to IMPLEMENTING before the merge
+        if work_unit.displaced_chunk:
+            logger.info(
+                f"Restoring displaced chunk '{work_unit.displaced_chunk}' "
+                f"to IMPLEMENTING before merge"
+            )
+            restore_displaced_chunk(worktree_path, work_unit.displaced_chunk)
+
+        # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
+        # If retain_worktree is set, skip worktree removal and merge.
+        # The worktree stays on its branch for debugging/inspection.
+        # Use `ve orch prune` to clean up retained worktrees later.
+        if work_unit.retain_worktree:
+            logger.info(
+                f"Retaining worktree for {chunk} at {worktree_path} "
+                f"(branch: {self.worktree_manager.get_branch_name(chunk)})"
+            )
+            # Skip worktree removal and merge - leave everything in place
+        else:
+            # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
+            # Commit changes, remove worktree, merge to base, cleanup branch
+            try:
+                logger.info(f"Finalizing worktree for {chunk}")
+                self.worktree_manager.finalize_work_unit(chunk)
+            except WorktreeError as e:
+                logger.error(f"Failed to finalize {chunk}: {e}")
+                # Mark as needs attention - worktree may remain for investigation
+                reason = f"Finalization failed: {e}"
+                work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+                work_unit.attention_reason = reason
+                work_unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(work_unit)
+
+                # Broadcast via WebSocket so dashboard updates
+                await broadcast_attention_update("added", work_unit.chunk, reason)
+                await broadcast_work_unit_update(
+                    chunk=work_unit.chunk,
+                    status=work_unit.status.value,
+                    phase=work_unit.phase.value,
+                )
+                return
+
+        work_unit.status = WorkUnitStatus.DONE
+        work_unit.session_id = None
+        # Chunk: docs/chunks/orch_api_retry - Reset retry state on successful completion
+        work_unit.api_retry_count = 0
+        work_unit.next_retry_at = None
+        work_unit.updated_at = datetime.now(timezone.utc)
+        self.store.update_work_unit(work_unit)
+
+        # Broadcast via WebSocket so dashboard updates
+        await broadcast_work_unit_update(
+            chunk=work_unit.chunk,
+            status=work_unit.status.value,
+            phase=work_unit.phase.value,
+        )
+
+        self._unblock_dependents(chunk)
 
     async def _check_conflicts(self, work_unit: WorkUnit) -> list[str]:
         """Check for conflicts with active work units and return blocking chunks.
@@ -922,6 +973,7 @@ class Scheduler:
 
     # Chunk: docs/chunks/orch_review_phase - Route work unit based on review decision (APPROVE/FEEDBACK/ESCALATE)
     # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
+    # Chunk: docs/chunks/scheduler_decompose_methods - Delegated to review_routing module
     async def _handle_review_result(
         self,
         work_unit: WorkUnit,
@@ -930,209 +982,40 @@ class Scheduler:
     ) -> None:
         """Handle the result of a REVIEW phase execution.
 
-        Routes the work unit based on the review decision:
-        - APPROVE: Proceed to COMPLETE phase
-        - FEEDBACK: Return to IMPLEMENT phase with iteration increment
-        - ESCALATE: Mark NEEDS_ATTENTION with escalation reason
-
-        The decision is obtained from (in order of preference):
-        1. ReviewDecision tool call captured in AgentResult.review_decision
-        2. REVIEW_DECISION.yaml file (fallback for backward compatibility)
-        3. Agent log parsing (final fallback)
-
-        If no decision is found after max nudges, escalates to NEEDS_ATTENTION.
+        Thin wrapper that delegates to the review_routing module. Routes the
+        work unit based on the review decision using a three-priority fallback
+        chain for decision parsing.
 
         Args:
             work_unit: The work unit in REVIEW phase
             worktree_path: Path to the worktree
             result: AgentResult from the review phase
         """
-        chunk = work_unit.chunk
-
         # Load reviewer config for loop detection settings
         reviewer_config = load_reviewer_config(self.project_dir)
         max_iterations = reviewer_config["loop_detection"]["max_iterations"]
 
-        # Check if we've hit the max iterations before even parsing the decision
-        current_iteration = work_unit.review_iterations + 1
-        if current_iteration > max_iterations:
-            logger.warning(
-                f"Chunk {chunk} exceeded max review iterations ({max_iterations})"
-            )
-            await self._mark_needs_attention(
-                work_unit,
-                f"Auto-escalated: exceeded maximum review iterations ({max_iterations}). "
-                f"The implementation may need significant rework or the requirements "
-                f"may be unclear.",
-            )
-            return
+        # Create routing configuration
+        config = ReviewRoutingConfig(
+            max_iterations=max_iterations,
+            max_nudges=3,
+        )
 
-        review_result = None
+        # Create callbacks adapter that binds scheduler methods
+        callbacks = _SchedulerReviewCallbacks(self)
 
-        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-        # Priority 1: Check if review decision was captured from tool call
-        if result.review_decision is not None:
-            logger.info(
-                f"Review decision captured from tool call for {chunk}: "
-                f"{result.review_decision.decision}"
-            )
-            # Convert ReviewToolDecision to ReviewResult
-            decision_str = result.review_decision.decision.upper()
-            if decision_str in [d.value for d in ReviewDecision]:
-                # Convert issues from tool format to ReviewIssue format
-                issues = []
-                if result.review_decision.issues:
-                    for issue_dict in result.review_decision.issues:
-                        if isinstance(issue_dict, dict):
-                            issues.append(ReviewIssue(
-                                location=issue_dict.get("location", "unknown"),
-                                concern=issue_dict.get("concern", ""),
-                                suggestion=issue_dict.get("suggestion"),
-                            ))
+        # Get log directory for fallback parsing
+        log_dir = self.worktree_manager.get_log_path(work_unit.chunk)
 
-                review_result = ReviewResult(
-                    decision=ReviewDecision(decision_str),
-                    summary=result.review_decision.summary,
-                    issues=issues,
-                    reason=result.review_decision.reason,
-                    iteration=current_iteration,
-                )
-                # Reset nudge count since tool was called successfully
-                work_unit.review_nudge_count = 0
-            else:
-                logger.warning(
-                    f"Invalid decision value from tool call: {decision_str}"
-                )
-
-        # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-        # If no tool decision and agent completed, implement nudging
-        if review_result is None and result.completed:
-            # No tool call - increment nudge count and decide whether to nudge or escalate
-            work_unit.review_nudge_count += 1
-            work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
-
-            max_nudges = 3
-            if work_unit.review_nudge_count < max_nudges:
-                # Continue the session with a nudge prompt
-                logger.info(
-                    f"Reviewer for {chunk} did not call ReviewDecision tool, "
-                    f"nudging (attempt {work_unit.review_nudge_count}/{max_nudges})"
-                )
-                # Mark as needing to resume with nudge
-                # The nudge will be handled in the next dispatch cycle
-                work_unit.pending_answer = (
-                    "You completed the review but did not call the ReviewDecision tool. "
-                    "Please call the ReviewDecision tool now to submit your final decision. "
-                    "The tool accepts: decision (APPROVE, FEEDBACK, or ESCALATE), "
-                    "summary (brief explanation), and optional issues or reason."
-                )
-                work_unit.session_id = result.session_id  # Keep session for resume
-                work_unit.status = WorkUnitStatus.READY  # Ready to resume
-                work_unit.updated_at = datetime.now(timezone.utc)
-                self.store.update_work_unit(work_unit)
-
-                await broadcast_work_unit_update(
-                    chunk=work_unit.chunk,
-                    status=work_unit.status.value,
-                    phase=work_unit.phase.value,
-                )
-                return  # Will resume in next dispatch cycle
-
-            # Max nudges reached - fall back to file/log parsing
-            logger.warning(
-                f"Reviewer for {chunk} did not call ReviewDecision tool after "
-                f"{max_nudges} nudges, falling back to file/log parsing"
-            )
-
-        # Priority 2 (fallback): Try to read from REVIEW_DECISION.yaml file
-        if review_result is None:
-            decision_file = worktree_path / "docs" / "chunks" / chunk / "REVIEW_DECISION.yaml"
-            if decision_file.exists():
-                try:
-                    with open(decision_file) as f:
-                        content = f.read()
-                        review_result = parse_review_decision(f"```yaml\n{content}\n```")
-                except Exception as e:
-                    logger.warning(f"Error reading decision file: {e}")
-
-        # Priority 3 (fallback): Try parsing from agent logs
-        if review_result is None:
-            log_dir = self.worktree_manager.get_log_path(chunk)
-            review_log = log_dir / "review.txt"
-            if review_log.exists():
-                try:
-                    log_content = review_log.read_text()
-                    review_result = parse_review_decision(log_content)
-                except Exception as e:
-                    logger.warning(f"Error parsing review log: {e}")
-
-        # If still no decision after all fallbacks, escalate to NEEDS_ATTENTION
-        if review_result is None:
-            logger.error(
-                f"Could not determine review decision for {chunk} after "
-                f"{work_unit.review_nudge_count} nudges and file/log fallback"
-            )
-            await self._mark_needs_attention(
-                work_unit,
-                f"Review completed but could not determine decision. "
-                f"Reviewer did not call ReviewDecision tool after {work_unit.review_nudge_count} "
-                f"nudges and no decision found in files/logs.",
-            )
-            return
-
-        # Route based on decision
-        if review_result.decision == ReviewDecision.APPROVE:
-            logger.info(f"Review APPROVED for {chunk}: {review_result.summary}")
-            # Reset nudge count and proceed to COMPLETE phase
-            work_unit.review_nudge_count = 0
-            work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
-            await self._advance_phase(work_unit)
-
-        elif review_result.decision == ReviewDecision.FEEDBACK:
-            logger.info(
-                f"Review FEEDBACK for {chunk} (iteration {current_iteration}): "
-                f"{review_result.summary}"
-            )
-
-            # Create the feedback file for the implementer
-            create_review_feedback_file(
-                worktree_path,
-                chunk,
-                review_result,
-                current_iteration,
-            )
-
-            # Increment iteration counter and return to IMPLEMENT phase
-            work_unit.review_iterations = current_iteration
-            work_unit.review_nudge_count = 0  # Reset nudge count
-            work_unit.phase = WorkUnitPhase.IMPLEMENT
-            work_unit.status = WorkUnitStatus.READY
-            work_unit.session_id = None  # Fresh session for re-implementation
-            work_unit.attention_reason = None
-            work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
-
-            # Broadcast via WebSocket
-            await broadcast_work_unit_update(
-                chunk=work_unit.chunk,
-                status=work_unit.status.value,
-                phase=work_unit.phase.value,
-            )
-
-        elif review_result.decision == ReviewDecision.ESCALATE:
-            logger.warning(
-                f"Review ESCALATED for {chunk}: {review_result.reason or review_result.summary}"
-            )
-            work_unit.review_nudge_count = 0  # Reset nudge count
-            work_unit.session_id = result.session_id  # Preserve session for resume with operator answer
-            work_unit.updated_at = datetime.now(timezone.utc)
-            self.store.update_work_unit(work_unit)
-            await self._mark_needs_attention(
-                work_unit,
-                f"Review escalated: {review_result.reason or review_result.summary}",
-            )
+        # Delegate to review_routing module
+        await route_review_decision(
+            work_unit=work_unit,
+            worktree_path=worktree_path,
+            result=result,
+            config=config,
+            callbacks=callbacks,
+            log_dir=log_dir,
+        )
 
     # Chunk: docs/chunks/orch_api_retry - Schedule retry with exponential backoff for 5xx API errors
     async def _schedule_api_retry(

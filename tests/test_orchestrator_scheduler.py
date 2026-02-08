@@ -3835,7 +3835,7 @@ class TestReviewDecisionParsing:
 
     def test_parse_approve_decision(self):
         """Parse valid APPROVE YAML."""
-        from orchestrator.scheduler import parse_review_decision
+        from orchestrator.review_parsing import parse_review_decision
 
         output = """The review is complete.
 
@@ -3854,7 +3854,7 @@ Done.
 
     def test_parse_feedback_decision(self):
         """Parse FEEDBACK with issues list."""
-        from orchestrator.scheduler import parse_review_decision
+        from orchestrator.review_parsing import parse_review_decision
 
         output = """Review findings:
 
@@ -3879,7 +3879,7 @@ iteration: 1
 
     def test_parse_escalate_decision(self):
         """Parse ESCALATE with reason."""
-        from orchestrator.scheduler import parse_review_decision
+        from orchestrator.review_parsing import parse_review_decision
 
         output = """```yaml
 decision: ESCALATE
@@ -3894,7 +3894,7 @@ reason: AMBIGUITY - Requirements are unclear
 
     def test_parse_malformed_yaml(self):
         """Graceful handling of parse errors."""
-        from orchestrator.scheduler import parse_review_decision
+        from orchestrator.review_parsing import parse_review_decision
 
         output = """```yaml
 this is not: valid yaml: with: too many: colons
@@ -3907,7 +3907,7 @@ decision: [malformed]
 
     def test_parse_fallback_decision_line(self):
         """Parse simple decision line as fallback."""
-        from orchestrator.scheduler import parse_review_decision
+        from orchestrator.review_parsing import parse_review_decision
 
         output = """
 Review complete.
@@ -3924,7 +3924,7 @@ class TestReviewFeedbackFile:
 
     def test_create_review_feedback_file(self, tmp_path):
         """Verify file is created with correct content."""
-        from orchestrator.scheduler import create_review_feedback_file
+        from orchestrator.review_parsing import create_review_feedback_file
         from orchestrator.models import ReviewResult, ReviewDecision, ReviewIssue
 
         chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
@@ -3959,7 +3959,7 @@ class TestReviewFeedbackFile:
 
     def test_feedback_file_includes_iteration_count(self, tmp_path):
         """Check iteration tracking in feedback file."""
-        from orchestrator.scheduler import create_review_feedback_file
+        from orchestrator.review_parsing import create_review_feedback_file
         from orchestrator.models import ReviewResult, ReviewDecision
 
         chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
