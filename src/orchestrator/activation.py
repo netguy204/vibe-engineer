@@ -19,14 +19,15 @@ from typing import Optional
 from chunks import Chunks
 from frontmatter import update_frontmatter_field
 from models import ChunkStatus
+from models.chunk import VALID_CHUNK_TRANSITIONS
 
 logger = logging.getLogger(__name__)
 
 
 class VerificationStatus(StrEnum):
-    """Result of verifying chunk ACTIVE status."""
+    """Result of verifying chunk completion status."""
 
-    ACTIVE = "ACTIVE"  # Status is ACTIVE, proceed with commit/merge
+    COMPLETED = "COMPLETED"  # Post-IMPLEMENTING status, proceed with commit/merge
     IMPLEMENTING = "IMPLEMENTING"  # Still IMPLEMENTING, needs retry
     ERROR = "ERROR"  # Error parsing or reading GOAL.md
 
@@ -39,18 +40,34 @@ class VerificationResult:
     error: Optional[str] = None
 
 
+def _is_post_implementing(status: ChunkStatus) -> bool:
+    """Check if a chunk status is reachable from IMPLEMENTING in the state machine.
+
+    Returns True for ACTIVE, SUPERSEDED, and HISTORICAL — any status that
+    indicates the chunk has moved past the IMPLEMENTING phase.
+    """
+    reachable: set[ChunkStatus] = set()
+    frontier = set(VALID_CHUNK_TRANSITIONS.get(ChunkStatus.IMPLEMENTING, set()))
+    while frontier - reachable:
+        reachable |= frontier
+        frontier = {t for s in frontier for t in VALID_CHUNK_TRANSITIONS.get(s, set())}
+    return status in reachable
+
+
 # Chunk: docs/chunks/orch_activate_on_inject - Refactored to use Chunks class for frontmatter parsing
 def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationResult:
-    """Verify that a chunk's GOAL.md has status: ACTIVE.
+    """Verify that a chunk's GOAL.md has moved past IMPLEMENTING.
 
-    Uses the Chunks class to parse frontmatter and check the status field.
+    Checks whether the chunk status is reachable from IMPLEMENTING in
+    the chunk state machine (ACTIVE, SUPERSEDED, HISTORICAL). IMPLEMENTING
+    means the agent hasn't finished yet; FUTURE is unexpected at this point.
 
     Args:
         worktree_path: Path to the worktree containing the chunk
         chunk: The chunk directory name
 
     Returns:
-        VerificationResult indicating ACTIVE, IMPLEMENTING, or ERROR
+        VerificationResult indicating COMPLETED, IMPLEMENTING, or ERROR
     """
     chunks = Chunks(worktree_path)
 
@@ -63,15 +80,17 @@ def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationR
                 error=f"Chunk '{chunk}' not found or GOAL.md missing",
             )
 
-        if frontmatter.status == ChunkStatus.ACTIVE:
-            return VerificationResult(status=VerificationStatus.ACTIVE)
+        if _is_post_implementing(frontmatter.status):
+            return VerificationResult(status=VerificationStatus.COMPLETED)
         elif frontmatter.status == ChunkStatus.IMPLEMENTING:
             return VerificationResult(status=VerificationStatus.IMPLEMENTING)
         else:
-            # Other statuses like FUTURE, SUPERSEDED, etc. are unexpected here
             return VerificationResult(
                 status=VerificationStatus.ERROR,
-                error=f"Unexpected status '{frontmatter.status.value}' in GOAL.md (expected ACTIVE)",
+                error=(
+                    f"Unexpected status '{frontmatter.status.value}' in GOAL.md"
+                    f" (expected post-IMPLEMENTING status)"
+                ),
             )
 
     except Exception as e:

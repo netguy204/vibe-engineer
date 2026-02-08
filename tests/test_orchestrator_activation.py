@@ -23,7 +23,7 @@ class TestVerificationStatus:
 
     def test_enum_values(self):
         """All expected status values exist."""
-        assert VerificationStatus.ACTIVE == "ACTIVE"
+        assert VerificationStatus.COMPLETED == "COMPLETED"
         assert VerificationStatus.IMPLEMENTING == "IMPLEMENTING"
         assert VerificationStatus.ERROR == "ERROR"
 
@@ -33,8 +33,8 @@ class TestVerificationResult:
 
     def test_result_with_status_only(self):
         """Result can be created with status only."""
-        result = VerificationResult(status=VerificationStatus.ACTIVE)
-        assert result.status == VerificationStatus.ACTIVE
+        result = VerificationResult(status=VerificationStatus.COMPLETED)
+        assert result.status == VerificationStatus.COMPLETED
         assert result.error is None
 
     def test_result_with_error(self):
@@ -51,7 +51,7 @@ class TestVerifyChunkActiveStatus:
     """Tests for verify_chunk_active_status function."""
 
     def test_active_status(self, tmp_path):
-        """Returns ACTIVE when chunk has status: ACTIVE."""
+        """Returns COMPLETED when chunk has status: ACTIVE."""
         chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
         chunk_dir.mkdir(parents=True)
         goal_md = chunk_dir / "GOAL.md"
@@ -63,7 +63,23 @@ status: ACTIVE
 """)
 
         result = verify_chunk_active_status(tmp_path, "test_chunk")
-        assert result.status == VerificationStatus.ACTIVE
+        assert result.status == VerificationStatus.COMPLETED
+        assert result.error is None
+
+    def test_historical_status(self, tmp_path):
+        """Returns COMPLETED when chunk has status: HISTORICAL."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text("""---
+status: HISTORICAL
+---
+
+# Chunk Goal
+""")
+
+        result = verify_chunk_active_status(tmp_path, "test_chunk")
+        assert result.status == VerificationStatus.COMPLETED
         assert result.error is None
 
     def test_implementing_status(self, tmp_path):
@@ -89,7 +105,7 @@ status: IMPLEMENTING
         assert "not found" in result.error.lower()
 
     def test_unexpected_status(self, tmp_path):
-        """Returns ERROR for unexpected status values."""
+        """Returns ERROR for non-completed, non-implementing status."""
         chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
         chunk_dir.mkdir(parents=True)
         goal_md = chunk_dir / "GOAL.md"
@@ -102,7 +118,7 @@ status: FUTURE
 
         result = verify_chunk_active_status(tmp_path, "test_chunk")
         assert result.status == VerificationStatus.ERROR
-        assert "Unexpected status" in result.error
+        assert "post-IMPLEMENTING" in result.error
 
 
 class TestActivateChunkInWorktree:

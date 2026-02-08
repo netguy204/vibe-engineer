@@ -791,7 +791,7 @@ ticket: null
 
         result = verify_chunk_active_status(tmp_path, "test_chunk")
 
-        assert result.status == VerificationStatus.ACTIVE
+        assert result.status == VerificationStatus.COMPLETED
         assert result.error is None
 
     def test_returns_implementing_when_status_implementing(self, tmp_path):
