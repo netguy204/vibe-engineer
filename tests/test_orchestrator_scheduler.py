@@ -2,6 +2,7 @@
 # Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
 # Chunk: docs/chunks/orch_verify_active - Unit and integration tests for ACTIVE status verification
 # Chunk: docs/chunks/orch_broadcast_invariant - Test coverage for WebSocket broadcast invariant
+# Chunk: docs/chunks/deferred_worktree_creation - Tests verifying worktree creation at dispatch time
 """Tests for the orchestrator scheduler."""
 
 import asyncio
@@ -1373,6 +1374,7 @@ ticket: null
         restore_displaced_chunk(tmp_path, "nonexistent_chunk")
 
 
+# Chunk: docs/chunks/orch_activate_on_inject - Integration tests for chunk activation during work unit execution
 class TestChunkActivationInWorkUnit:
     """Tests for chunk activation during work unit execution."""
 

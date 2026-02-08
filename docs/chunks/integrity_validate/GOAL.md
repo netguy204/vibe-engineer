@@ -17,6 +17,8 @@ code_references:
     implements: "Core validator class for project-wide artifact reference validation"
   - ref: src/integrity.py#IntegrityValidator::validate
     implements: "Main validation entry point orchestrating all checks"
+  - ref: src/integrity.py#IntegrityValidator::validate_chunk
+    implements: "Public single-chunk validation entry point for focused validation routing"
   - ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
     implements: "Validates chunk→narrative, chunk→investigation, chunk→subsystem, chunk→friction, chunk→chunk references"
   - ref: src/integrity.py#IntegrityValidator::_validate_narrative_chunk_refs

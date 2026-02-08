@@ -728,6 +728,7 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
 @click.argument("chunk")
 @click.option("-f", "--follow", is_flag=True, help="Follow log output in real-time")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_decompose - Refactored to use log_streaming module
 def orch_tail(chunk, follow, project_dir):
     """Stream log output for an orchestrator work unit.
 
@@ -741,8 +742,13 @@ def orch_tail(chunk, follow, project_dir):
         parse_log_file,
         format_entry,
         format_phase_header,
+        parse_log_line,
     )
-    from orchestrator.models import WorkUnitPhase
+    from orchestrator.log_streaming import (
+        get_phase_log_files,
+        display_phase_log,
+        PHASE_ORDER,
+    )
 
     # Normalize chunk path
     chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
@@ -762,45 +768,8 @@ def orch_tail(chunk, follow, project_dir):
         click.echo(f"No logs yet for chunk '{chunk}'. The work unit may not have started.", err=True)
         raise SystemExit(1)
 
-    # Phase order for iteration
-    # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
-    phase_order = [
-        WorkUnitPhase.GOAL,
-        WorkUnitPhase.PLAN,
-        WorkUnitPhase.IMPLEMENT,
-        WorkUnitPhase.REBASE,
-        WorkUnitPhase.REVIEW,
-        WorkUnitPhase.COMPLETE,
-    ]
-
-    def get_phase_log_files() -> list[tuple[WorkUnitPhase, pathlib.Path]]:
-        """Get list of existing phase log files in order."""
-        result = []
-        for phase in phase_order:
-            log_file = log_dir / f"{phase.value.lower()}.txt"
-            if log_file.exists():
-                result.append((phase, log_file))
-        return result
-
-    def display_phase_log(phase: WorkUnitPhase, log_file: pathlib.Path, show_header: bool = True):
-        """Display a phase log file."""
-        entries = parse_log_file(log_file)
-        if not entries:
-            return
-
-        # Show phase header
-        if show_header and entries:
-            header = format_phase_header(phase.value, entries[0].timestamp)
-            click.echo(f"\n{header}\n")
-
-        # Display entries
-        for entry in entries:
-            lines = format_entry(entry)
-            for line in lines:
-                click.echo(line)
-
     # Basic mode: display all existing logs
-    phase_logs = get_phase_log_files()
+    phase_logs = get_phase_log_files(log_dir)
 
     if not phase_logs:
         click.echo(f"No logs yet for chunk '{chunk}'. The work unit may not have started.", err=True)
@@ -808,7 +777,7 @@ def orch_tail(chunk, follow, project_dir):
 
     # Display existing phase logs
     for phase, log_file in phase_logs:
-        display_phase_log(phase, log_file)
+        display_phase_log(phase, log_file, output=click.echo)
 
     if not follow:
         return
@@ -836,7 +805,6 @@ def orch_tail(chunk, follow, project_dir):
                         # Parse and display new lines
                         for line in new_content.strip().split("\n"):
                             if line.strip():
-                                from orchestrator.log_parser import parse_log_line
                                 entry = parse_log_line(line)
                                 if entry:
                                     lines = format_entry(entry)
@@ -847,8 +815,8 @@ def orch_tail(chunk, follow, project_dir):
 
             # Check for next phase log file
             next_phase_idx = current_phase_idx + 1
-            if next_phase_idx < len(phase_order):
-                next_phase = phase_order[next_phase_idx]
+            if next_phase_idx < len(PHASE_ORDER):
+                next_phase = PHASE_ORDER[next_phase_idx]
                 next_log = log_dir / f"{next_phase.value.lower()}.txt"
                 if next_log.exists():
                     # New phase started

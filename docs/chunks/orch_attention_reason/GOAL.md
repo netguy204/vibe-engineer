@@ -6,7 +6,7 @@ code_paths:
 - src/orchestrator/models.py
 - src/orchestrator/state.py
 - src/orchestrator/scheduler.py
-- src/ve.py
+- src/cli/orch.py
 - tests/test_orchestrator_state.py
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_cli.py
@@ -27,10 +27,6 @@ code_references:
     implements: "Setting attention_reason when marking work unit as NEEDS_ATTENTION"
   - ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
     implements: "Capturing question text as attention_reason for suspended agents"
-  - ref: src/ve.py#orch_ps
-    implements: "Displaying truncated attention_reason in ps output"
-  - ref: src/ve.py#work_unit_show
-    implements: "Displaying full attention_reason in work-unit show command"
   - ref: tests/test_orchestrator_state.py#TestAttentionReasonPersistence
     implements: "State persistence tests for attention_reason field"
   - ref: tests/test_orchestrator_scheduler.py#TestAttentionReason
