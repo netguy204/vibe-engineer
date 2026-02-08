@@ -371,17 +371,21 @@ def validate_chunk_complete(
             warnings.extend(symbol_warnings)
 
     # Validate subsystem references
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     subsystem_errors = validation_chunks.validate_subsystem_refs(chunk_name_to_validate)
     errors.extend(subsystem_errors)
 
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     investigation_errors = validation_chunks.validate_investigation_ref(chunk_name_to_validate)
     errors.extend(investigation_errors)
 
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     narrative_errors = validation_chunks.validate_narrative_ref(chunk_name_to_validate)
     errors.extend(narrative_errors)
 
     # Subsystem: docs/subsystems/friction_tracking - Friction log management
     # Chunk: docs/chunks/friction_chunk_linking - Integration of friction entry validation into chunk completion validation
+    # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     friction_errors = validation_chunks.validate_friction_entries_ref(chunk_name_to_validate)
     errors.extend(friction_errors)
 

@@ -247,6 +247,7 @@ class IntegrityValidator:
                 self._chunk_code_files[chunk_name] = set()
 
     # Chunk: docs/chunks/integrity_deprecate_standalone - Public single-chunk validation entry point
+    # Chunk: docs/chunks/chunks_decompose - Validation entry point used by Chunks wrapper methods
     def validate_chunk(
         self, chunk_name: str
     ) -> tuple[list[IntegrityError], list[IntegrityWarning]]:
@@ -723,6 +724,7 @@ class IntegrityValidator:
 
 
 # Chunk: docs/chunks/integrity_deprecate_standalone - Helper to convert IntegrityError to string messages
+# Chunk: docs/chunks/chunks_decompose - Error message formatting used by Chunks wrapper methods
 def _errors_to_messages(errors: list[IntegrityError]) -> list[str]:
     """Convert IntegrityError objects to string messages.
 
