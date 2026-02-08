@@ -218,6 +218,8 @@ subsystems:
 - `SUPERSEDED`: Another chunk has modified the code this chunk governed
 - `HISTORICAL`: Significant drift from current code; kept for archaeology only
 
+**Orchestrator and Parallel Worktrees**: The single-IMPLEMENTING constraint applies *per worktree*. When the orchestrator manages parallel execution, it creates isolated git worktrees for each chunk. Each worktree has at most one IMPLEMENTING chunk, preserving the constraint's intent (focused work, predictable state). This enables parallel chunk execution without violating the invariant that guides an agent's attention. See `docs/trunk/ORCHESTRATOR.md` for details on the worktree-based execution model.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | status | enum | Current lifecycle state of the chunk |
@@ -440,9 +442,11 @@ Initialize a task directory for cross-repository work.
   - Error if any repository is not VE-initialized (missing `docs/chunks/`)
 - **Exit codes**: 0 on success, 1 on validation error
 
-#### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
+#### ve chunk create SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
 
 Create a new chunk directory with goal and plan templates.
+
+Alias: `ve chunk start` (deprecated, same behavior)
 
 - **Arguments**:
   - `SHORT_NAME` (required): Identifier for the chunk

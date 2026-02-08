@@ -233,3 +233,84 @@ By always resolving to HEAD, we:
 - The `pinned` field in existing external.yaml files is parsed but ignored for backward compatibility
 
 **Revisit If**: A concrete use case emerges where point-in-time artifact snapshots are needed and git history is insufficient.
+
+---
+
+### DEC-007: Orchestrator Daemon with HTTP API
+
+**Date**: 2026-02-07
+
+**Status**: ACCEPTED
+
+**Decision**: The orchestrator runs as a persistent daemon process, exposing a Unix socket for local CLI communication and a TCP port for the browser-based dashboard.
+
+**Context**: The orchestrator needs to coordinate long-running work across multiple CLI invocations. Chunks may take minutes to hours to complete, and the orchestrator must track state, manage worktrees, and report progress across these spans.
+
+**Alternatives Considered**:
+- Direct CLI execution (no daemon): Each `ve orch inject` would run to completion. This prevents parallelism across invocations and loses state between commands.
+- Background jobs with polling: CLI spawns background processes and polls for status. Complex state management, race conditions, and no central coordination.
+- Separate microservice: Full server deployment with Docker/systemd. Significant operational overhead for a developer tool.
+
+**Rationale**: A daemon provides a single point of coordination while remaining lightweight. The Unix socket enables fast local IPC for CLI commands (`ve orch status`, `ve orch inject`). The TCP port enables the browser dashboard to display real-time progress and allows programmatic access for CI integration.
+
+**Consequences**:
+- The daemon must be started before orchestrator commands work (`ve orch start`)
+- State persists across CLI invocations
+- Dashboard can show live progress via HTTP polling or WebSocket
+- Shutdown requires explicit `ve orch stop` or process termination
+
+**Revisit If**: If the daemon model proves too heavy for casual use, consider an on-demand spawn model where the daemon starts automatically on first use and shuts down after idle timeout.
+
+---
+
+### DEC-008: Pydantic for Frontmatter Models
+
+**Date**: 2026-02-07
+
+**Status**: ACCEPTED
+
+**Decision**: Use Pydantic `BaseModel` for all frontmatter schema definitions, including chunk, subsystem, investigation, and narrative frontmatter.
+
+**Context**: Frontmatter validation is central to the ve workflow. Invalid frontmatter should produce clear error messages. The schema must be enforceable at parse time and serializable back to YAML.
+
+**Alternatives Considered**:
+- Manual dict validation: Parse YAML to dict, validate keys manually. Error-prone, verbose, inconsistent error messages across artifact types.
+- dataclasses with validators: Python dataclasses with custom `__post_init__` validation. Less powerful validation primitives, no built-in serialization.
+- marshmallow: Established schema library. More verbose than Pydantic, less Pythonic field definition syntax, weaker IDE support.
+
+**Rationale**: Pydantic provides type coercion, validation, and serialization in one package. `BaseModel` inheritance enables shared behavior (e.g., common fields across artifact types). `StrEnum` integration provides type-safe status values. Validation errors include field paths and expected types, making debugging straightforward.
+
+**Consequences**:
+- Pydantic is a runtime dependency
+- Schema changes require updating model definitions
+- Custom validators can be added for complex rules (e.g., status transition validation)
+- YAML round-tripping works via `model.model_dump()` and `ruamel.yaml`
+
+**Revisit If**: If Pydantic's validation overhead becomes measurable in large projects (1000+ chunks), or if a lighter-weight alternative emerges that provides comparable developer experience.
+
+---
+
+### DEC-009: ArtifactManager Template Method Pattern
+
+**Date**: 2026-02-07
+
+**Status**: ACCEPTED
+
+**Decision**: Use the Template Method pattern via an `ArtifactManager` abstract base class to share common artifact lifecycle operations across chunks, narratives, investigations, and subsystems.
+
+**Context**: The four artifact types share common operations: parse frontmatter, validate status, enumerate artifacts in a directory, update status. Each artifact type has its own directory structure and frontmatter schema, but the lifecycle algorithm is the same.
+
+**Alternatives Considered**:
+- Composition with helper functions: Each manager imports and calls shared functions. Leads to duplicated method calls and inconsistent signatures across managers.
+- Mixin classes: Define mixins for parse, validate, enumerate. Complex inheritance hierarchy, harder to reason about method resolution order.
+- Standalone functions per artifact type: Fully separate implementations for each artifact. Significant code duplication, divergent behavior over time.
+
+**Rationale**: Template Method captures the shared algorithm (enumerate directory, parse file, validate frontmatter, return typed result) while allowing subclasses to define artifact-specific configuration via abstract properties. Subclasses define `artifact_dir`, `frontmatter_model`, and `file_name` properties; the base class provides `list()`, `get()`, and `validate()` methods.
+
+**Consequences**:
+- New artifact types require only a subclass with three property definitions
+- Shared behavior changes propagate to all artifact types automatically
+- Testing can focus on the base class algorithm and subclass configuration
+- The pattern is explicit—reading `ArtifactManager` reveals the lifecycle contract
+
+**Revisit If**: If artifact types diverge significantly in their lifecycle needs (e.g., one needs async operations, another needs caching), the Template Method may become a constraint rather than an enabler.
