@@ -76,69 +76,101 @@ class RenderResult:
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/artifact_pattern_consolidation - Base class for active artifact contexts
 @dataclass
-class ActiveChunk:
-    """Represents an active chunk context for template rendering."""
+class ActiveArtifact:
+    """Base class for active artifact contexts in template rendering.
+
+    Captures the common properties shared across all workflow artifact types
+    (chunk, narrative, subsystem, investigation). Subclasses add artifact-specific
+    path properties.
+    """
 
     short_name: str
     id: str
     _project_dir: pathlib.Path
+
+    @property
+    def artifact_dir(self) -> pathlib.Path:
+        """Return path to this artifact's directory.
+
+        Subclasses override _artifact_type_dir to customize the directory name.
+        """
+        return self._project_dir / "docs" / self._artifact_type_dir / self.id
+
+    @property
+    def _artifact_type_dir(self) -> str:
+        """Return the artifact type directory name (e.g., 'chunks', 'narratives').
+
+        Subclasses override this to specify their directory.
+        """
+        raise NotImplementedError("Subclasses must implement _artifact_type_dir")
+
+
+# Subsystem: docs/subsystems/template_system - Unified template rendering
+@dataclass
+class ActiveChunk(ActiveArtifact):
+    """Represents an active chunk context for template rendering."""
+
+    @property
+    def _artifact_type_dir(self) -> str:
+        return "chunks"
 
     @property
     def goal_path(self) -> pathlib.Path:
         """Return path to this chunk's GOAL.md file."""
-        return self._project_dir / "docs" / "chunks" / self.id / "GOAL.md"
+        return self.artifact_dir / "GOAL.md"
 
     @property
     def plan_path(self) -> pathlib.Path:
         """Return path to this chunk's PLAN.md file."""
-        return self._project_dir / "docs" / "chunks" / self.id / "PLAN.md"
+        return self.artifact_dir / "PLAN.md"
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
-class ActiveNarrative:
+class ActiveNarrative(ActiveArtifact):
     """Represents an active narrative context for template rendering."""
 
-    short_name: str
-    id: str
-    _project_dir: pathlib.Path
+    @property
+    def _artifact_type_dir(self) -> str:
+        return "narratives"
 
     @property
     def overview_path(self) -> pathlib.Path:
         """Return path to this narrative's OVERVIEW.md file."""
-        return self._project_dir / "docs" / "narratives" / self.id / "OVERVIEW.md"
+        return self.artifact_dir / "OVERVIEW.md"
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 @dataclass
-class ActiveSubsystem:
+class ActiveSubsystem(ActiveArtifact):
     """Represents an active subsystem context for template rendering."""
 
-    short_name: str
-    id: str
-    _project_dir: pathlib.Path
+    @property
+    def _artifact_type_dir(self) -> str:
+        return "subsystems"
 
     @property
     def overview_path(self) -> pathlib.Path:
         """Return path to this subsystem's OVERVIEW.md file."""
-        return self._project_dir / "docs" / "subsystems" / self.id / "OVERVIEW.md"
+        return self.artifact_dir / "OVERVIEW.md"
 
 
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/investigation_commands - Template context for investigation rendering
 @dataclass
-class ActiveInvestigation:
+class ActiveInvestigation(ActiveArtifact):
     """Represents an active investigation context for template rendering."""
 
-    short_name: str
-    id: str
-    _project_dir: pathlib.Path
+    @property
+    def _artifact_type_dir(self) -> str:
+        return "investigations"
 
     @property
     def overview_path(self) -> pathlib.Path:
         """Return path to this investigation's OVERVIEW.md file."""
-        return self._project_dir / "docs" / "investigations" / self.id / "OVERVIEW.md"
+        return self.artifact_dir / "OVERVIEW.md"
 
 
 # Migration context for templates

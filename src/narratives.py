@@ -218,18 +218,4 @@ class Narratives(ArtifactManager[NarrativeFrontmatter, NarrativeStatus]):
 
         return narrative_path
 
-    def find_duplicates(self, short_name: str) -> list[str]:
-        """Find existing narratives with the same short_name.
-
-        Args:
-            short_name: The short name to check for collisions.
-
-        Returns:
-            List of existing narrative directory names that would collide.
-        """
-        duplicates = []
-        for name in self.enumerate_narratives():
-            # Directory name is the short name
-            if name == short_name:
-                duplicates.append(name)
-        return duplicates
+    # find_duplicates inherited from ArtifactManager base class

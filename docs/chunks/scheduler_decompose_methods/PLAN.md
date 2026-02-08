@@ -8,170 +8,184 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk continues the decomposition work started by `scheduler_decompose` (which extracted `activation.py`, `review_parsing.py`, and `retry.py`). We now decompose the two remaining oversized methods:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`_advance_phase`** (lines 562-753, ~192 lines): Extract completion/cleanup logic into `_finalize_completed_work_unit()`
+2. **`_handle_review_result`** (lines 925-1135, ~210 lines): Extract into a standalone `review_routing.py` module
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The decomposition follows the same patterns established by the prior chunk:
+- Extract pure functions where possible to enable isolated testing
+- Keep scheduler-specific state management in the Scheduler class
+- New modules are thin wrappers around the extracted logic
+- No behavioral changes — pure refactoring
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/scheduler_decompose_methods/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per `docs/trunk/TESTING_PHILOSOPHY.md`, existing tests must continue to pass without modification. New unit tests will be added for the extracted modules to enable isolated testing of the completion and routing logic.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS decomposition of the scheduler, which is core to the orchestrator subsystem. The extraction follows the existing patterns established by `scheduler_decompose`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Extract `_finalize_completed_work_unit()` method
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+The `_advance_phase` method contains two distinct responsibilities:
+1. **Phase progression** (lines 568-580, 731-753): Determining next phase and transitioning
+2. **Completion/cleanup** (lines 583-729): ACTIVE verification, commits, restoration, finalization, DONE transition
 
-Example:
+Extract the completion block (when `next_phase is None`) into a new private method `_finalize_completed_work_unit()`. This method will:
+- Verify chunk ACTIVE status via `verify_chunk_active_status()`
+- Handle IMPLEMENTING status retries
+- Commit uncommitted changes via `worktree_manager.commit_changes()`
+- Restore displaced chunks via `restore_displaced_chunk()`
+- Handle retained worktrees vs finalization
+- Transition to DONE and unblock dependents
 
-### Step 1: Define the SegmentHeader struct
+After extraction, `_advance_phase` will be ~80 lines:
+- Phase progression map
+- Early return call to `_finalize_completed_work_unit()` when `next_phase is None`
+- Phase advancement logic (update phase, status, broadcast, reanalyze)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/orchestrator/scheduler.py`
 
-Location: src/segment/format.rs
+Backreference: Add `# Chunk: docs/chunks/scheduler_decompose_methods` to the new method
 
-### Step 2: Implement header serialization
+### Step 2: Create `review_routing.py` module
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Create a new module at `src/orchestrator/review_routing.py` that extracts the review decision routing logic from `_handle_review_result`.
 
-### Step 3: ...
+The module will contain:
 
----
+```python
+# Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/scheduler_decompose_methods - Extracted from scheduler.py
 
-**BACKREFERENCE COMMENTS**
+async def route_review_decision(
+    work_unit: WorkUnit,
+    worktree_path: Path,
+    result: AgentResult,
+    config: ReviewRoutingConfig,
+    callbacks: ReviewRoutingCallbacks,
+) -> None:
+    """Route work unit based on review decision.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+    Handles:
+    1. Review tool decision parsing (priority 1)
+    2. Nudge logic when tool wasn't called
+    3. File fallback parsing (priority 2)
+    4. Log parsing fallback (priority 3)
+    5. APPROVE/FEEDBACK/ESCALATE routing
+    """
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+The module will define:
+- `ReviewRoutingConfig`: dataclass with `max_iterations`, `max_nudges`, `log_dir_getter`
+- `ReviewRoutingCallbacks`: protocol/dataclass with callbacks for:
+  - `advance_phase(work_unit)` - for APPROVE routing
+  - `mark_needs_attention(work_unit, reason)` - for ESCALATE routing
+  - `update_work_unit(work_unit)` - for state persistence
+  - `broadcast_work_unit_update(chunk, status, phase)` - for WebSocket updates
+- Helper functions for the three-priority fallback chain
+
+This keeps the review routing logic testable in isolation while allowing the scheduler to provide its concrete implementations.
+
+Location: `src/orchestrator/review_routing.py`
+
+### Step 3: Wire `review_routing.py` into scheduler
+
+Update `scheduler.py` to import and use the new `review_routing` module:
+
+1. Add import: `from orchestrator.review_routing import route_review_decision, ReviewRoutingConfig, ReviewRoutingCallbacks`
+2. Replace `_handle_review_result` body with a thin wrapper that:
+   - Creates `ReviewRoutingConfig` from `self.config` and `self.worktree_manager`
+   - Creates `ReviewRoutingCallbacks` binding `self._advance_phase`, `self._mark_needs_attention`, etc.
+   - Calls `route_review_decision()`
+
+The `_handle_review_result` method will become ~20 lines of configuration and delegation.
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 4: Add tests for `review_routing.py`
+
+Create `tests/test_orchestrator_review_routing.py` with isolated tests for:
+
+1. **Decision routing tests**:
+   - APPROVE decision calls `advance_phase` callback
+   - FEEDBACK decision creates feedback file, returns to IMPLEMENT
+   - ESCALATE decision calls `mark_needs_attention` callback
+
+2. **Fallback chain tests**:
+   - Priority 1: Tool decision used when present
+   - Priority 2: File fallback when no tool decision
+   - Priority 3: Log fallback when no file
+   - Escalation when all fallbacks fail
+
+3. **Nudge logic tests**:
+   - Nudge increment when tool not called
+   - Max nudges triggers fallback parsing
+   - Nudge count reset on successful tool call
+
+4. **Loop detection tests**:
+   - Max iterations exceeded triggers escalation
+
+Use mock callbacks to test routing logic in isolation without needing a full scheduler.
+
+Location: `tests/test_orchestrator_review_routing.py`
+
+### Step 5: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the files touched:
+- `src/orchestrator/scheduler.py`
+- `src/orchestrator/review_routing.py` (new)
+- `tests/test_orchestrator_review_routing.py` (new)
+
+### Step 6: Verify all tests pass
+
+Run the full test suite to ensure no behavioral regressions:
+
+```bash
+uv run pytest tests/ -x -v
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Specifically verify:
+- All existing `test_orchestrator_scheduler.py` tests pass unchanged
+- All existing `test_orchestrator_review_parsing.py` tests pass unchanged
+- New `test_orchestrator_review_routing.py` tests pass
+- Integration tests that exercise the full phase lifecycle pass
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 7: Measure line count reduction
+
+Verify success criteria:
+- `scheduler.py` is reduced by at least 200 lines (target: ~1063 lines or less)
+- `_advance_phase` is under 80 lines
+- `review_routing.py` is testable in isolation
+
+```bash
+wc -l src/orchestrator/scheduler.py
+grep -n "async def _advance_phase" src/orchestrator/scheduler.py -A100 | head -100
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Prior chunk `scheduler_decompose` must be complete (ACTIVE status) — already satisfied
+- Existing `review_parsing.py` module — already exists
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Callback pattern complexity**: The `ReviewRoutingCallbacks` pattern adds indirection. Alternative: extract pure functions that return routing decisions, let scheduler apply them. Decided to use callbacks for consistency with async nature of `_advance_phase` and `_mark_needs_attention`.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **`_finalize_completed_work_unit` naming**: Consider alternatives:
+   - `_handle_completion()` — ambiguous
+   - `_complete_work_unit()` — could be confused with COMPLETE phase
+   - `_finalize_completed_work_unit()` — verbose but precise ✓
+
+3. **WebSocket broadcast in extracted module**: The review routing needs to broadcast updates. Options:
+   - Pass broadcast function as callback (chosen)
+   - Import broadcast directly (creates tight coupling to websocket module)
+   - Return events for scheduler to broadcast (more complex)
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

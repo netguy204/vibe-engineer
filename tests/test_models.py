@@ -5,8 +5,11 @@ import pytest
 from pydantic import ValidationError
 
 from models import (
+    ArtifactRelationship,
+    ArtifactType,
     SymbolicReference,
     SubsystemRelationship,
+    ChunkRelationship,
     InvestigationFrontmatter,
     InvestigationStatus,
     ChunkFrontmatter,
@@ -77,6 +80,175 @@ class TestSymbolicReference:
         with pytest.raises(ValidationError) as exc_info:
             SymbolicReference(ref="src/foo.py#Foo::", implements="Something")
         assert "empty component" in str(exc_info.value).lower()
+
+
+# Chunk: docs/chunks/artifact_pattern_consolidation - Tests for generic ArtifactRelationship model
+class TestArtifactRelationship:
+    """Tests for ArtifactRelationship model."""
+
+    def test_valid_relationship_with_chunk_type(self):
+        """Valid relationship with CHUNK type parses successfully."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.CHUNK,
+            artifact_id="my_chunk",
+            relationship="implements",
+        )
+        assert rel.artifact_type == ArtifactType.CHUNK
+        assert rel.artifact_id == "my_chunk"
+        assert rel.relationship == "implements"
+
+    def test_valid_relationship_with_subsystem_type(self):
+        """Valid relationship with SUBSYSTEM type parses successfully."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.SUBSYSTEM,
+            artifact_id="template_system",
+            relationship="uses",
+        )
+        assert rel.artifact_type == ArtifactType.SUBSYSTEM
+        assert rel.artifact_id == "template_system"
+        assert rel.relationship == "uses"
+
+    def test_invalid_empty_artifact_id(self):
+        """Empty artifact_id fails validation."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactRelationship(
+                artifact_type=ArtifactType.CHUNK,
+                artifact_id="",
+                relationship="implements",
+            )
+        assert "artifact_id" in str(exc_info.value).lower()
+
+    def test_invalid_artifact_id_format_uppercase(self):
+        """Uppercase artifact_id fails validation."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactRelationship(
+                artifact_type=ArtifactType.CHUNK,
+                artifact_id="MyChunk",
+                relationship="implements",
+            )
+        assert "artifact_id" in str(exc_info.value).lower()
+
+    def test_invalid_artifact_id_format_starts_with_digit(self):
+        """artifact_id starting with digit fails validation."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactRelationship(
+                artifact_type=ArtifactType.CHUNK,
+                artifact_id="123chunk",
+                relationship="implements",
+            )
+        assert "artifact_id" in str(exc_info.value).lower()
+
+    def test_invalid_relationship_type(self):
+        """Invalid relationship type fails validation."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactRelationship(
+                artifact_type=ArtifactType.CHUNK,
+                artifact_id="my_chunk",
+                relationship="extends",
+            )
+        assert "relationship" in str(exc_info.value).lower()
+
+    def test_to_chunk_relationship_with_chunk_type(self):
+        """to_chunk_relationship converts correctly when artifact_type is CHUNK."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.CHUNK,
+            artifact_id="my_chunk",
+            relationship="implements",
+        )
+        chunk_rel = rel.to_chunk_relationship()
+        assert isinstance(chunk_rel, ChunkRelationship)
+        assert chunk_rel.chunk_id == "my_chunk"
+        assert chunk_rel.relationship == "implements"
+
+    def test_to_chunk_relationship_with_wrong_type_raises(self):
+        """to_chunk_relationship raises ValueError when artifact_type is not CHUNK."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.SUBSYSTEM,
+            artifact_id="template_system",
+            relationship="implements",
+        )
+        with pytest.raises(ValueError) as exc_info:
+            rel.to_chunk_relationship()
+        assert "subsystem" in str(exc_info.value).lower()
+
+    def test_to_subsystem_relationship_with_subsystem_type(self):
+        """to_subsystem_relationship converts correctly when artifact_type is SUBSYSTEM."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.SUBSYSTEM,
+            artifact_id="template_system",
+            relationship="uses",
+        )
+        subsystem_rel = rel.to_subsystem_relationship()
+        assert isinstance(subsystem_rel, SubsystemRelationship)
+        assert subsystem_rel.subsystem_id == "template_system"
+        assert subsystem_rel.relationship == "uses"
+
+    def test_to_subsystem_relationship_with_wrong_type_raises(self):
+        """to_subsystem_relationship raises ValueError when artifact_type is not SUBSYSTEM."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.CHUNK,
+            artifact_id="my_chunk",
+            relationship="implements",
+        )
+        with pytest.raises(ValueError) as exc_info:
+            rel.to_subsystem_relationship()
+        assert "chunk" in str(exc_info.value).lower()
+
+    def test_from_chunk_relationship(self):
+        """from_chunk_relationship creates ArtifactRelationship correctly."""
+        chunk_rel = ChunkRelationship(chunk_id="my_chunk", relationship="implements")
+        rel = ArtifactRelationship.from_chunk_relationship(chunk_rel)
+        assert rel.artifact_type == ArtifactType.CHUNK
+        assert rel.artifact_id == "my_chunk"
+        assert rel.relationship == "implements"
+
+    def test_from_subsystem_relationship(self):
+        """from_subsystem_relationship creates ArtifactRelationship correctly."""
+        subsystem_rel = SubsystemRelationship(
+            subsystem_id="template_system", relationship="uses"
+        )
+        rel = ArtifactRelationship.from_subsystem_relationship(subsystem_rel)
+        assert rel.artifact_type == ArtifactType.SUBSYSTEM
+        assert rel.artifact_id == "template_system"
+        assert rel.relationship == "uses"
+
+    def test_roundtrip_chunk_relationship(self):
+        """from_chunk_relationship → to_chunk_relationship roundtrips correctly."""
+        original = ChunkRelationship(chunk_id="my_chunk", relationship="implements")
+        intermediate = ArtifactRelationship.from_chunk_relationship(original)
+        recovered = intermediate.to_chunk_relationship()
+        assert recovered.chunk_id == original.chunk_id
+        assert recovered.relationship == original.relationship
+
+    def test_roundtrip_subsystem_relationship(self):
+        """from_subsystem_relationship → to_subsystem_relationship roundtrips correctly."""
+        original = SubsystemRelationship(
+            subsystem_id="template_system", relationship="uses"
+        )
+        intermediate = ArtifactRelationship.from_subsystem_relationship(original)
+        recovered = intermediate.to_subsystem_relationship()
+        assert recovered.subsystem_id == original.subsystem_id
+        assert recovered.relationship == original.relationship
+
+    def test_supports_narrative_type(self):
+        """ArtifactRelationship supports NARRATIVE artifact type."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.NARRATIVE,
+            artifact_id="my_narrative",
+            relationship="implements",
+        )
+        assert rel.artifact_type == ArtifactType.NARRATIVE
+        assert rel.artifact_id == "my_narrative"
+
+    def test_supports_investigation_type(self):
+        """ArtifactRelationship supports INVESTIGATION artifact type."""
+        rel = ArtifactRelationship(
+            artifact_type=ArtifactType.INVESTIGATION,
+            artifact_id="my_investigation",
+            relationship="uses",
+        )
+        assert rel.artifact_type == ArtifactType.INVESTIGATION
+        assert rel.artifact_id == "my_investigation"
 
 
 class TestSubsystemRelationship:
