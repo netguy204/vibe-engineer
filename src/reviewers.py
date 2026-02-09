@@ -24,6 +24,21 @@ class DecisionInfo:
     frontmatter: DecisionFrontmatter
 
 
+# Chunk: docs/chunks/reviewer_decisions_dedup - Shared dataclass for curated decision listing
+@dataclass
+class CuratedDecision:
+    """A curated decision result with metadata for sorting.
+
+    Represents a decision file that has been reviewed by an operator
+    (operator_review is not None), along with its modification time for
+    sorting by recency.
+    """
+
+    path: pathlib.Path
+    frontmatter: DecisionFrontmatter
+    mtime: float  # modification time for sorting
+
+
 class Reviewers:
     """Business logic for reviewer operations."""
 
@@ -199,6 +214,64 @@ class Reviewers:
             if info and info.frontmatter.operator_review is None:
                 pending.append(info)
         return pending
+
+    # Chunk: docs/chunks/reviewer_decisions_dedup - Shared helper for curated decision listing
+    def list_curated_decisions(
+        self,
+        reviewer: str,
+        limit: int | None = None,
+    ) -> list[CuratedDecision]:
+        """List curated decisions for a reviewer, sorted by recency.
+
+        Curated decisions are those with operator_review set (not None).
+        This method encapsulates the common "glob, parse, filter curated,
+        sort by mtime, limit" pipeline used by CLI commands.
+
+        Args:
+            reviewer: Reviewer name (e.g., "baseline").
+            limit: Maximum number of decisions to return. If None, returns all.
+
+        Returns:
+            List of CuratedDecision, sorted by modification time (newest first).
+        """
+        import os
+
+        decisions_dir = self.get_decisions_dir(reviewer)
+        if not decisions_dir.exists():
+            return []
+
+        curated_decisions: list[CuratedDecision] = []
+
+        for filepath in decisions_dir.glob("*.md"):
+            # Use parse_decision_frontmatter to avoid raw YAML parsing
+            frontmatter = self.parse_decision_frontmatter(filepath)
+            if frontmatter is None:
+                # Skip files with invalid/missing frontmatter
+                continue
+
+            # Filter for curated decisions (operator_review is not None)
+            if frontmatter.operator_review is None:
+                continue
+
+            # Get modification time for sorting
+            mtime = os.path.getmtime(filepath)
+
+            curated_decisions.append(
+                CuratedDecision(
+                    path=filepath,
+                    frontmatter=frontmatter,
+                    mtime=mtime,
+                )
+            )
+
+        # Sort by modification time (newest first)
+        curated_decisions.sort(key=lambda x: x.mtime, reverse=True)
+
+        # Limit results if requested
+        if limit is not None:
+            curated_decisions = curated_decisions[:limit]
+
+        return curated_decisions
 
 
 def validate_decision_path(project_dir: pathlib.Path, path_str: str) -> tuple[pathlib.Path | None, str | None]:
