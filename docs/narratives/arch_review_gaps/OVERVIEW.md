@@ -108,6 +108,19 @@ proposed_chunks:
       remaining callers to import from the `task` package directly.
     chunk_directory: dead_code_removal
     depends_on: []
+  - prompt: >
+      Make orchestrator crash recovery phase-aware. Currently
+      `_recover_from_crash()` treats all RUNNING work units identically,
+      clearing the worktree reference and resetting to READY. When
+      re-dispatched, `_run_work_unit()` unconditionally calls
+      `activate_chunk_in_worktree()` which expects FUTURE status. This only
+      works for PLAN phase -- all later phases have the chunk in
+      IMPLEMENTING, ACTIVE, or HISTORICAL on the branch. Fix
+      `_run_work_unit()` to only call activation during PLAN phase, and fix
+      recovery to preserve the worktree reference when the worktree
+      directory still exists.
+    chunk_directory: phase_aware_recovery
+    depends_on: []
 created_after: ["explicit_chunk_deps"]
 ---
 
@@ -149,6 +162,8 @@ The findings fall into three categories:
 
 9. **Remove dead code** -- Delete `_start_task_chunk`, simplify `validate_combined_chunk_name`, plan `task_utils.py` removal. Independent.
 
+10. **Phase-aware crash recovery** -- Make `_run_work_unit()` skip activation for non-PLAN phases; preserve worktree references during recovery. Independent.
+
 ## Completion Criteria
 
 When this narrative is complete:
@@ -162,4 +177,5 @@ When this narrative is complete:
 - Network-dependent tests can be skipped in offline/CI environments
 - The click dependency has a lower version bound
 - No dead or unreachable code identified by the review remains in the codebase
+- Daemon restarts correctly resume work units at any phase without activation failures
 - All existing tests continue to pass
