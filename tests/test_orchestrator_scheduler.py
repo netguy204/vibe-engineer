@@ -934,3 +934,155 @@ status: ACTIVE
         assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
         assert "question" in updated.attention_reason.lower()
         assert updated.session_id == "session-123"
+
+
+# Chunk: docs/chunks/persist_retry_state - Tests for crash recovery retry preservation
+class TestCrashRecoveryRetryPreservation:
+    """Tests for preserving retry backoff state across daemon restarts.
+
+    When the orchestrator daemon restarts and finds RUNNING work units,
+    it should preserve the retry backoff state for units that were mid-retry.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_preserves_retry_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Crash recovery with api_retry_count > 0 sets next_retry_at appropriately."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=3,  # Mid-retry
+            next_retry_at=None,  # Cleared when dispatch happened
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        await scheduler._recover_from_crash()
+
+        updated = state_store.get_work_unit("retry_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is not None
+        # The backoff should be in the future
+        assert updated.next_retry_at > now
+        # For retry count 3, backoff = min(100ms * 2^(3-1), 5000ms) = 400ms
+        expected_delay = timedelta(milliseconds=400)
+        actual_delay = updated.next_retry_at - now
+        assert actual_delay >= expected_delay - timedelta(milliseconds=50)
+        assert actual_delay <= expected_delay + timedelta(milliseconds=100)
+
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_no_retry_for_zero_count(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Crash recovery with api_retry_count == 0 does NOT set next_retry_at."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="no_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,  # No retries in progress
+            next_retry_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        await scheduler._recover_from_crash()
+
+        updated = state_store.get_work_unit("no_retry_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is None
+
+    @pytest.mark.asyncio
+    async def test_recovered_unit_respects_backoff_timing(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """After recovery, a work unit with next_retry_at in the future is NOT dispatched."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="backoff_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=3,
+            next_retry_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        # Perform crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify the unit has next_retry_at set
+        recovered = state_store.get_work_unit("backoff_chunk")
+        assert recovered.status == WorkUnitStatus.READY
+        assert recovered.next_retry_at is not None
+        assert recovered.next_retry_at > datetime.now(timezone.utc)
+
+        # Now run dispatch tick - should NOT dispatch because of backoff
+        await scheduler._dispatch_tick()
+
+        # Should NOT have dispatched (still in backoff)
+        assert "backoff_chunk" not in scheduler._running_agents
+
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_uses_exponential_backoff_formula(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify recovery uses the same exponential backoff formula as _schedule_api_retry."""
+        now = datetime.now(timezone.utc)
+
+        # Test multiple retry counts to verify exponential progression
+        test_cases = [
+            (1, 100),    # 100ms * 2^0 = 100ms
+            (2, 200),    # 100ms * 2^1 = 200ms
+            (3, 400),    # 100ms * 2^2 = 400ms
+            (4, 800),    # 100ms * 2^3 = 800ms
+            (5, 1600),   # 100ms * 2^4 = 1600ms
+            (10, 5000),  # Would be 100ms * 2^9 = 51200ms, but capped at 5000ms
+        ]
+
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        for retry_count, expected_ms in test_cases:
+            work_unit = WorkUnit(
+                chunk=f"exp_chunk_{retry_count}",
+                phase=WorkUnitPhase.IMPLEMENT,
+                status=WorkUnitStatus.RUNNING,
+                worktree="/tmp/worktree",
+                api_retry_count=retry_count,
+                next_retry_at=None,
+                created_at=now,
+                updated_at=now,
+            )
+            state_store.create_work_unit(work_unit)
+
+        await scheduler._recover_from_crash()
+
+        for retry_count, expected_ms in test_cases:
+            updated = state_store.get_work_unit(f"exp_chunk_{retry_count}")
+            assert updated.status == WorkUnitStatus.READY
+            assert updated.next_retry_at is not None
+            expected_delay = timedelta(milliseconds=expected_ms)
+            actual_delay = updated.next_retry_at - now
+            # Allow tolerance for execution time
+            assert actual_delay >= expected_delay - timedelta(milliseconds=50), \
+                f"retry_count={retry_count}: delay too short"
+            assert actual_delay <= expected_delay + timedelta(milliseconds=200), \
+                f"retry_count={retry_count}: delay too long"

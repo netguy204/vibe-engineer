@@ -308,10 +308,12 @@ class Scheduler:
                 for task in tasks:
                     task.cancel()
 
+    # Chunk: docs/chunks/persist_retry_state - Preserve retry backoff across daemon restarts
     async def _recover_from_crash(self) -> None:
         """Recover from a previous daemon crash.
 
         - Mark RUNNING work units as READY
+        - Preserve retry backoff for units that were mid-retry
         - Clean up orphaned worktrees (respecting retain_worktree flag)
         """
         logger.info("Checking for recovery from previous crash...")
@@ -325,6 +327,16 @@ class Scheduler:
             unit.status = WorkUnitStatus.READY
             unit.worktree = None
             unit.updated_at = datetime.now(timezone.utc)
+
+            # Preserve retry backoff across daemon restart
+            if unit.api_retry_count > 0:
+                backoff = self._compute_retry_backoff(unit.api_retry_count)
+                unit.next_retry_at = datetime.now(timezone.utc) + backoff
+                logger.info(
+                    f"Preserving retry backoff for {unit.chunk} "
+                    f"(attempt {unit.api_retry_count}, backoff {backoff.total_seconds():.1f}s)"
+                )
+
             self.store.update_work_unit(unit)
 
         # Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
@@ -1087,6 +1099,23 @@ class Scheduler:
             log_dir=log_dir,
         )
 
+    def _compute_retry_backoff(self, retry_count: int) -> timedelta:
+        """Compute exponential backoff delay for a retry attempt.
+
+        Uses the formula: delay = min(initial * 2^(retry_count-1), max_delay)
+
+        Args:
+            retry_count: Current retry attempt number (1-indexed)
+
+        Returns:
+            timedelta representing the backoff delay
+        """
+        delay_ms = min(
+            self.config.api_retry_initial_delay_ms * (2 ** (retry_count - 1)),
+            self.config.api_retry_max_delay_ms,
+        )
+        return timedelta(milliseconds=delay_ms)
+
     # Chunk: docs/chunks/orch_api_retry - Schedule retry with exponential backoff for 5xx API errors
     async def _schedule_api_retry(
         self,
@@ -1112,15 +1141,11 @@ class Scheduler:
         # Increment retry count
         work_unit.api_retry_count += 1
 
-        # Calculate exponential backoff delay
-        # delay = min(initial * 2^(retry_count-1), max_delay)
-        delay_ms = min(
-            self.config.api_retry_initial_delay_ms * (2 ** (work_unit.api_retry_count - 1)),
-            self.config.api_retry_max_delay_ms,
-        )
+        # Calculate exponential backoff delay using helper
+        backoff = self._compute_retry_backoff(work_unit.api_retry_count)
 
         # Set next retry time
-        work_unit.next_retry_at = datetime.now(timezone.utc) + timedelta(milliseconds=delay_ms)
+        work_unit.next_retry_at = datetime.now(timezone.utc) + backoff
 
         # Set up session resumption with "continue" prompt
         work_unit.pending_answer = "continue"
@@ -1135,7 +1160,7 @@ class Scheduler:
 
         logger.info(
             f"Retrying {chunk} after API error (attempt {work_unit.api_retry_count}/"
-            f"{self.config.api_retry_max_attempts}, backoff {delay_ms}ms): "
+            f"{self.config.api_retry_max_attempts}, backoff {backoff.total_seconds() * 1000:.0f}ms): "
             f"{result.error[:100] if result.error else 'unknown error'}"
         )
 
