@@ -302,3 +302,224 @@ class TestSchedulerLifecycle:
 
         assert scheduler._stop_event.is_set()
         await stop_task
+
+
+# Chunk: docs/chunks/dispatch_toctou_guard - TOCTOU guard tests for status verification
+class TestTOCTOUGuard:
+    """Tests for the TOCTOU guard in _run_work_unit().
+
+    The TOCTOU guard re-reads the work unit from the store before creating
+    a worktree, preventing wasted work when the status has changed via an
+    API mutation between _dispatch_tick() and _run_work_unit() execution.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_skips_when_status_changed_to_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Work unit is skipped if status changes from READY to NEEDS_ATTENTION.
+
+        Simulates an API mutation that marks the work unit as NEEDS_ATTENTION
+        between the time _dispatch_tick() reads the queue and _run_work_unit()
+        begins execution. The guard should detect this and skip worktree creation.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="toctou_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate an API mutation: change status to NEEDS_ATTENTION
+        # This happens AFTER _dispatch_tick() reads the queue but BEFORE
+        # _run_work_unit() is called
+        updated_unit = state_store.get_work_unit("toctou_test")
+        updated_unit.status = WorkUnitStatus.NEEDS_ATTENTION
+        updated_unit.attention_reason = "Simulated API mutation"
+        updated_unit.updated_at = datetime.now(timezone.utc)
+        state_store.update_work_unit(updated_unit)
+
+        # Call _run_work_unit with the stale work_unit (still shows READY)
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify: no worktree was created
+        mock_worktree_manager.create_worktree.assert_not_called()
+        # Verify: agent was not run
+        mock_agent_runner.run_phase.assert_not_called()
+
+        # Verify: the work unit still has NEEDS_ATTENTION status (not overwritten)
+        final_unit = state_store.get_work_unit("toctou_test")
+        assert final_unit.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert final_unit.attention_reason == "Simulated API mutation"
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_skips_when_status_changed_to_blocked(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Work unit is skipped if status changes from READY to BLOCKED.
+
+        Tests another status change scenario - work unit marked as BLOCKED
+        by an API call after dispatch queue was read.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="blocked_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate an API mutation: change status to BLOCKED
+        updated_unit = state_store.get_work_unit("blocked_test")
+        updated_unit.status = WorkUnitStatus.BLOCKED
+        updated_unit.blocked_by = ["some_other_chunk"]
+        updated_unit.updated_at = datetime.now(timezone.utc)
+        state_store.update_work_unit(updated_unit)
+
+        # Call _run_work_unit with the stale work_unit
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify: no worktree was created
+        mock_worktree_manager.create_worktree.assert_not_called()
+        # Verify: agent was not run
+        mock_agent_runner.run_phase.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_skips_when_work_unit_deleted(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Work unit is skipped if it was deleted from the store.
+
+        Tests edge case where the work unit was removed entirely after
+        dispatch queue was read.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="deleted_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Delete the work unit before _run_work_unit runs
+        state_store.delete_work_unit("deleted_test")
+
+        # Call _run_work_unit with the stale work_unit
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify: no worktree was created
+        mock_worktree_manager.create_worktree.assert_not_called()
+        # Verify: agent was not run
+        mock_agent_runner.run_phase.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_work_unit_proceeds_when_status_still_ready(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Work unit proceeds normally when status is still READY on re-read.
+
+        Tests the happy path: the work unit status hasn't changed, so
+        worktree creation and agent execution should proceed.
+        """
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="happy_path_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # No status change - work unit is still READY
+
+        # Call _run_work_unit with mocked activation
+        with patch.object(
+            activate_chunk_in_worktree, "__module__", "orchestrator.activation"
+        ):
+            with patch(
+                "orchestrator.scheduler.activate_chunk_in_worktree",
+                return_value=None,  # No displaced chunk
+            ):
+                await scheduler._run_work_unit(work_unit)
+
+        # Verify: worktree was created
+        mock_worktree_manager.create_worktree.assert_called_once_with("happy_path_test")
+        # Verify: agent was run
+        mock_agent_runner.run_phase.assert_called_once()
+
+        # Verify: work unit transitioned to RUNNING (then to whatever agent result does)
+        final_unit = state_store.get_work_unit("happy_path_test")
+        # After successful agent run, status should advance (depends on agent result)
+        # With the mock returning AgentResult(completed=True), it should advance phase
+        assert final_unit.status == WorkUnitStatus.READY  # Advanced to next phase
+        assert final_unit.phase == WorkUnitPhase.IMPLEMENT  # PLAN -> IMPLEMENT
+
+    @pytest.mark.asyncio
+    async def test_toctou_guard_preserves_optimistic_locking_guard(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """TOCTOU guard and optimistic locking guard work together.
+
+        The TOCTOU guard catches status changes before worktree creation.
+        The optimistic locking guard (StaleWriteError) catches changes during
+        the RUNNING transition. Both guards should remain in place.
+
+        This test verifies the optimistic locking guard still works by having
+        the status change AFTER the TOCTOU check but BEFORE the update_work_unit
+        call that transitions to RUNNING.
+        """
+        from orchestrator.state import StaleWriteError
+        from orchestrator.worktree import WorktreeError
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="optimistic_lock_test",
+            phase=WorkUnitPhase.PLAN,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # We need to simulate the race condition where:
+        # 1. TOCTOU guard passes (status is READY on re-read)
+        # 2. Worktree is created
+        # 3. Before update_work_unit(), an API mutation changes the work unit
+        # 4. update_work_unit() should raise StaleWriteError
+
+        original_update = state_store.update_work_unit
+        call_count = 0
+
+        def update_with_race_condition(unit, expected_updated_at=None):
+            nonlocal call_count
+            call_count += 1
+            # On the first update (the RUNNING transition), simulate a race
+            if call_count == 1 and expected_updated_at is not None:
+                # Modify the work unit in the DB before our update
+                fresh = state_store.get_work_unit(unit.chunk)
+                fresh.priority = 999  # Arbitrary change to bump updated_at
+                fresh.updated_at = datetime.now(timezone.utc)
+                original_update(fresh)  # This changes updated_at
+
+            # Now call the original - this should raise StaleWriteError
+            return original_update(unit, expected_updated_at=expected_updated_at)
+
+        state_store.update_work_unit = update_with_race_condition
+
+        # Call _run_work_unit
+        await scheduler._run_work_unit(work_unit)
+
+        # Verify: worktree was created (TOCTOU passed)
+        mock_worktree_manager.create_worktree.assert_called_once()
+        # Verify: worktree was removed (StaleWriteError cleanup)
+        mock_worktree_manager.remove_worktree.assert_called_once()
+        # Verify: agent was NOT run (we returned early after StaleWriteError)
+        mock_agent_runner.run_phase.assert_not_called()

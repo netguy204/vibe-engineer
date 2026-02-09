@@ -1,9 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/scheduler.py
+- src/orchestrator/scheduler.py
 code_references: []
 narrative: arch_review_gaps
 investigation: null
@@ -11,9 +11,15 @@ subsystems: []
 friction_entries: []
 bug_type: implementation
 depends_on: []
-created_after: ["cli_decompose", "integrity_deprecate_standalone", "low_priority_cleanup", "optimistic_locking", "spec_and_adr_update", "test_file_split", "orch_session_auto_resume"]
+created_after:
+- cli_decompose
+- integrity_deprecate_standalone
+- low_priority_cleanup
+- optimistic_locking
+- spec_and_adr_update
+- test_file_split
+- orch_session_auto_resume
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

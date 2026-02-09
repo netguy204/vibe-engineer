@@ -427,6 +427,7 @@ class Scheduler:
     # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason and blocked_by when transitioning to RUNNING
     # Chunk: docs/chunks/orch_attention_queue - Pass pending_answer to agent runner on resume
     # Chunk: docs/chunks/optimistic_locking - Optimistic locking for dispatch transition
+    # Chunk: docs/chunks/dispatch_toctou_guard - TOCTOU guard for status verification before worktree creation
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -435,6 +436,28 @@ class Scheduler:
         """
         chunk = work_unit.chunk
         phase = work_unit.phase
+
+        # TOCTOU Guard: Re-read the work unit from the store to verify it is still
+        # in READY status. Between _dispatch_tick() reading the ready queue and this
+        # method executing, an API-driven status change could have modified the work
+        # unit (e.g., PATCH /work-units/{chunk} to NEEDS_ATTENTION). This guard
+        # prevents wasted work (worktree creation, activation) when the work unit
+        # is no longer eligible for dispatch.
+        fresh_unit = self.store.get_work_unit(chunk)
+        if fresh_unit is None:
+            logger.warning(
+                f"Skipping dispatch for {chunk}: work unit was deleted"
+            )
+            return
+        if fresh_unit.status != WorkUnitStatus.READY:
+            logger.warning(
+                f"Skipping dispatch for {chunk}: status changed from READY to "
+                f"{fresh_unit.status.value} before worktree creation"
+            )
+            return
+
+        # Use the fresh work unit for the rest of the method
+        work_unit = fresh_unit
         # Capture expected timestamp for optimistic locking
         expected_updated_at = work_unit.updated_at
 
