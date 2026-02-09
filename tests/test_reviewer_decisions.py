@@ -676,3 +676,220 @@ class TestReviewerDecisionsNudge:
         # But only one nudge (for the feedback decision)
         assert result.output.count("NOTE TO AGENT:") == 1
         assert "docs/reviewers/baseline/decisions/mix_feedback_1.md" in result.output
+
+
+class TestDecisionsListSubcommand:
+    """Tests for the `decisions list` subcommand.
+
+    Chunk: docs/chunks/reviewer_decisions_dedup - Verify decisions list subcommand behavior
+    """
+
+    def test_list_subcommand_exists(self, runner):
+        """Help text available for decisions list subcommand."""
+        result = runner.invoke(cli, ["reviewer", "decisions", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--recent" in result.output
+        assert "--reviewer" in result.output
+
+    def test_list_requires_recent_option(self, runner, initialized_project):
+        """The --recent option is required for list subcommand."""
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--project-dir", str(initialized_project)],
+        )
+        # Should fail due to missing required option
+        assert result.exit_code != 0
+        assert "Missing option" in result.output or "--recent" in result.output
+
+    def test_list_produces_same_format_as_group_handler(self, runner, reviewer_decisions_dir, initialized_project):
+        """decisions list produces same format as decisions --recent (minus nudge)."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "chunk_1",
+            "APPROVE",
+            "Test decision",
+            operator_review="good",
+        )
+
+        # Run both commands
+        group_result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        list_result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+
+        assert group_result.exit_code == 0
+        assert list_result.exit_code == 0
+
+        # Both should contain the same core content
+        assert "## docs/reviewers/baseline/decisions/chunk_1.md" in group_result.output
+        assert "## docs/reviewers/baseline/decisions/chunk_1.md" in list_result.output
+        assert "**Decision**: APPROVE" in group_result.output
+        assert "**Decision**: APPROVE" in list_result.output
+        assert "**Operator review**: good" in group_result.output
+        assert "**Operator review**: good" in list_result.output
+
+    def test_list_respects_recent_option(self, runner, reviewer_decisions_dir, initialized_project):
+        """--recent option limits output in list subcommand."""
+        # Create 5 curated decisions
+        for i in range(5):
+            write_decision_file(
+                reviewer_decisions_dir,
+                f"chunk_{i}_1",
+                "APPROVE",
+                f"Decision {i}",
+                operator_review="good",
+            )
+            time.sleep(0.05)  # Ensure different modification times
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "2", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Should show exactly 2 decisions (the most recent ones)
+        assert result.output.count("## docs/reviewers/") == 2
+        assert "chunk_4_1.md" in result.output
+        assert "chunk_3_1.md" in result.output
+
+    def test_list_respects_reviewer_option(self, runner, initialized_project):
+        """--reviewer option uses different reviewer directory."""
+        # Create custom reviewer decisions directory
+        custom_dir = initialized_project / "docs" / "reviewers" / "custom" / "decisions"
+        custom_dir.mkdir(parents=True)
+
+        write_decision_file(
+            custom_dir,
+            "custom_decision_1",
+            "APPROVE",
+            "Custom reviewer decision",
+            operator_review="good",
+        )
+
+        # Also create baseline to verify we're not reading from it
+        baseline_dir = initialized_project / "docs" / "reviewers" / "baseline" / "decisions"
+        baseline_dir.mkdir(parents=True)
+        write_decision_file(
+            baseline_dir,
+            "baseline_decision_1",
+            "APPROVE",
+            "Baseline decision",
+            operator_review="good",
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "5", "--reviewer", "custom",
+             "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Should show custom reviewer's decision
+        assert "custom_decision_1.md" in result.output
+        # Should NOT show baseline decision
+        assert "baseline_decision_1.md" not in result.output
+
+    def test_list_does_not_include_nudge(self, runner, reviewer_decisions_dir, initialized_project):
+        """decisions list does NOT include nudge note for FeedbackReview entries."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "feedback_chunk_1",
+            "FEEDBACK",
+            "Decision with feedback",
+            operator_review={"feedback": "Should have been APPROVE"},
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Operator review should be shown
+        assert "feedback: Should have been APPROVE" in result.output
+        # But nudge should NOT appear (this is the key behavioral difference)
+        assert "NOTE TO AGENT:" not in result.output
+
+    def test_list_vs_group_nudge_difference(self, runner, reviewer_decisions_dir, initialized_project):
+        """decisions list and decisions --recent differ only in nudge behavior."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "feedback_chunk_1",
+            "FEEDBACK",
+            "Decision with feedback",
+            operator_review={"feedback": "Detailed feedback here"},
+        )
+
+        # Run both commands
+        group_result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+        list_result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "1", "--project-dir", str(initialized_project)],
+        )
+
+        assert group_result.exit_code == 0
+        assert list_result.exit_code == 0
+
+        # Group handler should include nudge
+        assert "NOTE TO AGENT:" in group_result.output
+
+        # List subcommand should NOT include nudge
+        assert "NOTE TO AGENT:" not in list_result.output
+
+        # Both should have the same core content (aside from nudge)
+        assert "feedback: Detailed feedback here" in group_result.output
+        assert "feedback: Detailed feedback here" in list_result.output
+
+    def test_list_no_decisions_directory(self, runner, initialized_project):
+        """Empty output when decisions directory doesn't exist."""
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "5", "--project-dir", str(initialized_project)],
+        )
+        # Should succeed but output nothing
+        assert result.exit_code == 0
+        assert "## docs/reviewers/" not in result.output
+
+    def test_list_empty_decisions_directory(self, runner, reviewer_decisions_dir, initialized_project):
+        """Empty output when decisions directory exists but is empty."""
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "5", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+        assert "## docs/reviewers/" not in result.output
+
+    def test_list_only_curated_decisions(self, runner, reviewer_decisions_dir, initialized_project):
+        """Only decisions with operator_review appear in list output."""
+        write_decision_file(
+            reviewer_decisions_dir,
+            "curated_1",
+            "APPROVE",
+            "Curated decision",
+            operator_review="good",
+        )
+        write_decision_file(
+            reviewer_decisions_dir,
+            "uncurated_1",
+            "FEEDBACK",
+            "Uncurated decision",
+            operator_review=None,
+        )
+
+        result = runner.invoke(
+            cli,
+            ["reviewer", "decisions", "list", "--recent", "10", "--project-dir", str(initialized_project)],
+        )
+        assert result.exit_code == 0
+
+        # Should include curated decision
+        assert "curated_1.md" in result.output
+        # Should NOT include uncurated decision
+        assert "uncurated_1.md" not in result.output
