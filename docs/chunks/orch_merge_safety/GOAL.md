@@ -15,10 +15,12 @@ code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::_load_base_branch
     implements: "Load persisted base branch for merge operations"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_without_checkout
-    implements: "Checkout-free merge to avoid disrupting user's working directory"
-  - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_via_index
+    implements: "Checkout-free merge delegation to orchestrator.merge module"
+  - ref: src/orchestrator/merge.py#merge_without_checkout
+    implements: "Primary checkout-free merge using git merge-tree --write-tree (Git 2.38+)"
+  - ref: src/orchestrator/merge.py#merge_via_index
     implements: "Fallback checkout-free merge for older Git versions"
-  - ref: src/orchestrator/worktree.py#WorktreeManager::_update_working_tree_if_on_branch
+  - ref: src/orchestrator/merge.py#update_working_tree_if_on_branch
     implements: "Update working tree after ref update when user is on target branch"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_to_base_single_repo
     implements: "Single-repo merge using checkout-free strategy"
