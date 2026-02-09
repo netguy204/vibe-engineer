@@ -1,20 +1,25 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/activation.py
+- tests/test_orchestrator_phase_recovery.py
 code_references: []
 narrative: arch_review_gaps
 investigation: null
-subsystems: []
+subsystems:
+  - subsystem_id: orchestrator
+    relationship: implements
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["dev_tooling_infra", "dispatch_toctou_guard", "finalization_recovery"]
+created_after:
+- dev_tooling_infra
+- dispatch_toctou_guard
+- finalization_recovery
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
