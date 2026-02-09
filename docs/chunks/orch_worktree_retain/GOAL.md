@@ -6,7 +6,8 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/worktree.py
 - src/orchestrator/models.py
-- src/orchestrator/api.py
+- src/orchestrator/api/scheduling.py
+- src/orchestrator/api/worktrees.py
 - src/cli/orch.py
 - src/orchestrator/templates/dashboard.html
 - tests/test_orchestrator_worktree.py
@@ -23,15 +24,15 @@ code_references:
   implements: Orphan recovery that preserves worktrees instead of deleting them
 - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
   implements: Worktree retention logic on completion based on retain_worktree flag
-- ref: src/orchestrator/api.py#inject_endpoint
+- ref: src/orchestrator/api/scheduling.py#inject_endpoint
   implements: API endpoint with retain_worktree parameter support
-- ref: src/orchestrator/api.py#list_worktrees_endpoint
+- ref: src/orchestrator/api/worktrees.py#list_worktrees_endpoint
   implements: GET /worktrees endpoint returning worktree status information
-- ref: src/orchestrator/api.py#remove_worktree_endpoint
+- ref: src/orchestrator/api/worktrees.py#remove_worktree_endpoint
   implements: DELETE /worktrees/{chunk} endpoint for explicit worktree removal
-- ref: src/orchestrator/api.py#prune_work_unit_endpoint
+- ref: src/orchestrator/api/worktrees.py#prune_work_unit_endpoint
   implements: POST /work-units/{chunk}/prune for merging and cleaning retained worktree
-- ref: src/orchestrator/api.py#prune_all_endpoint
+- ref: src/orchestrator/api/worktrees.py#prune_all_endpoint
   implements: POST /work-units/prune for batch cleanup of retained worktrees
 - ref: src/cli/orch.py#worktree
   implements: CLI subgroup for worktree management commands
