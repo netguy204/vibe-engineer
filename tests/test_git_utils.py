@@ -287,6 +287,7 @@ class TestWorktreeSupport:
         assert SHA_PATTERN.match(sha)
 
 
+@pytest.mark.network
 class TestResolveRemoteRef:
     """Tests for resolve_remote_ref function."""
 

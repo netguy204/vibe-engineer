@@ -8,170 +8,173 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds crash recovery for incomplete work unit finalization to the orchestrator scheduler. The existing `_recover_from_crash()` method handles orphaned RUNNING work units by resetting them to READY. We need to extend it to also detect and handle a more subtle failure mode: work units that crashed during the `finalize_work_unit()` sequence (commit → remove worktree → merge).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The key insight is that after a crash during finalization:
+1. The work unit is in COMPLETE phase (or DONE status but with incomplete merge)
+2. The worktree has been removed (by `remove_worktree()` which runs before `merge_to_base()`)
+3. The `orch/<chunk>` branch exists with commits ahead of the persisted base branch
+4. The merge to base was never completed
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Recovery strategy:**
+- **Auto-recovery path**: If the merge would be clean (fast-forward or no conflicts), complete it automatically and transition to DONE
+- **Escalation path**: If the merge has conflicts, transition to NEEDS_ATTENTION with a descriptive message
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/finalization_recovery/GOAL.md)
-with references to the files that you expect to touch.
--->
+We will add a new helper method `_recover_incomplete_finalization()` to the Scheduler, called from `_recover_from_crash()`. This method will use the existing `WorktreeManager` infrastructure:
+- `_branch_exists()` to check if the orch branch still exists
+- `_load_base_branch()` to get the persisted base branch for the chunk
+- `has_changes()` to check if the branch has commits ahead of base
+- `merge_to_base()` to attempt the merge (raises `WorktreeError` on conflict)
+- `delete_branch()` to clean up after successful merge
+
+The implementation follows the existing patterns in the orchestrator subsystem (DEC-009: ArtifactManager Template Method Pattern applies to the subsystem's consistent use of lifecycle methods).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS additional crash recovery logic for the orchestrator scheduler, specifically extending `_recover_from_crash()` to handle incomplete finalization. The implementation follows the subsystem's existing patterns for state transitions and logging.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No deviations from subsystem patterns are expected.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add helper method to detect incomplete finalization
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new private method `_find_incomplete_finalizations()` to the `Scheduler` class that:
+1. Lists all work units in COMPLETE phase or DONE status
+2. For each, checks if the `orch/<chunk>` branch exists
+3. If branch exists and worktree does NOT exist (using `worktree_exists()`), checks if branch has commits ahead of base
+4. Returns a list of chunk names needing recovery
 
-Example:
+Location: `src/orchestrator/scheduler.py`
 
-### Step 1: Define the SegmentHeader struct
+```python
+def _find_incomplete_finalizations(self) -> list[str]:
+    """Find work units that crashed during finalization.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    Looks for work units where:
+    - Status is DONE or phase is COMPLETE
+    - The orch/<chunk> branch still exists
+    - The worktree has been removed
+    - The branch has commits ahead of base (merge wasn't completed)
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Returns:
+        List of chunk names needing finalization recovery
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 2: Add recovery method for incomplete finalization
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add a new private method `_recover_incomplete_finalization()` to handle a single chunk's recovery:
+
+1. Load the persisted base branch for the chunk
+2. Attempt to merge the branch to base using `merge_to_base()`
+3. On success:
+   - Log a warning about the auto-recovery
+   - If work unit is in COMPLETE phase, transition to DONE
+   - Call `unblock_dependents()` to unblock any waiting work
+4. On `WorktreeError` (conflict):
+   - Transition work unit to NEEDS_ATTENTION
+   - Set `attention_reason` to explain the issue and dangling branch name
+
+Location: `src/orchestrator/scheduler.py`
+
+```python
+def _recover_incomplete_finalization(self, chunk: str) -> None:
+    """Recover a work unit that crashed during finalization.
+
+    Attempts to complete the merge to base. On conflict, escalates
+    to NEEDS_ATTENTION with a descriptive message.
+
+    Args:
+        chunk: The chunk name to recover
+    """
+```
+
+### Step 3: Integrate recovery into _recover_from_crash()
+
+Modify `_recover_from_crash()` to call the new recovery logic after handling orphaned RUNNING work units:
+
+1. Call `_find_incomplete_finalizations()` to get chunks needing recovery
+2. For each chunk, call `_recover_incomplete_finalization()`
+3. Preserve existing behavior for RUNNING work units and orphaned worktrees
+
+Location: `src/orchestrator/scheduler.py` (modify existing method)
+
+The ordering matters: process RUNNING units first (existing behavior), then check for incomplete finalizations (new behavior).
+
+### Step 4: Add test for auto-recovery success case
+
+Write a test that simulates the crash-during-finalization scenario where merge is clean:
+
+1. Create a git repo with initial commit
+2. Create a StateStore and WorktreeManager
+3. Create a worktree, make a commit on the branch
+4. Remove the worktree (but NOT merge/delete branch)
+5. Create a work unit in COMPLETE phase
+6. Run `_recover_from_crash()`
+7. Assert: work unit is now DONE, branch is deleted, merge happened
+
+Location: `tests/test_orchestrator_scheduler.py` (new class `TestFinalizationRecovery`)
+
+### Step 5: Add test for conflict escalation case
+
+Write a test that simulates the crash-during-finalization scenario where merge has conflicts:
+
+1. Create a git repo with initial commit
+2. Create a worktree, make a commit on the branch
+3. Make a conflicting commit on the base branch
+4. Remove the worktree (but NOT merge/delete branch)
+5. Create a work unit in COMPLETE phase
+6. Run `_recover_from_crash()`
+7. Assert: work unit is now NEEDS_ATTENTION, attention_reason mentions the branch name
+
+Location: `tests/test_orchestrator_scheduler.py` (add to `TestFinalizationRecovery` class)
+
+### Step 6: Add test verifying existing crash recovery is preserved
+
+Write a regression test to ensure existing behavior isn't broken:
+
+1. Create a work unit in RUNNING status
+2. Run `_recover_from_crash()`
+3. Assert: work unit is reset to READY (existing behavior still works)
+
+Location: `tests/test_orchestrator_scheduler.py` (add to `TestFinalizationRecovery` class)
+
+### Step 7: Add logging for recovery events
+
+Ensure all recovery events are logged at WARNING level:
+- "Found incomplete finalization for {chunk}: branch {branch} exists but merge not completed"
+- "Auto-recovered incomplete finalization for {chunk}: merged to {base_branch}"
+- "Incomplete finalization for {chunk} has merge conflict: escalating to NEEDS_ATTENTION"
+
+Location: `src/orchestrator/scheduler.py` (within the new methods)
+
+### Step 8: Handle edge case - branch exists but no changes
+
+Add logic to handle the case where the branch exists but has no commits ahead of base (rare but possible if crash happened after merge but before branch deletion):
+
+1. In `_find_incomplete_finalizations()`, use `has_changes()` to filter
+2. If branch exists but no changes, just delete the branch (cleanup)
+
+Location: `src/orchestrator/scheduler.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **Existing infrastructure**: This chunk builds on existing `WorktreeManager` methods (`_branch_exists`, `_load_base_branch`, `has_changes`, `merge_to_base`, `delete_branch`, `worktree_exists`) and `StateStore` work unit operations.
+- **No new dependencies required**: All git operations use the existing worktree module.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Race condition with concurrent recovery**: If the daemon restarts while a finalization is already in progress (another process), the recovery logic might interfere. This is low-risk because:
+   - The daemon uses a PID file to prevent multiple instances
+   - The worktree removal happens before merge, so the absence of worktree is a strong signal
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Multi-repo (task context) mode**: The current implementation focuses on single-repo mode. Multi-repo would need to recover all repo merges. This is acceptable for now as multi-repo orchestration is less common and the recovery would simply escalate to NEEDS_ATTENTION if any repo has issues.
+
+3. **Branch name conflicts**: If someone manually creates a branch with the `orch/` prefix, recovery might incorrectly try to merge it. This is low-risk because the recovery also checks for a matching work unit in COMPLETE phase.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
