@@ -330,8 +330,16 @@ class Scheduler:
             logger.warning(f"Found orphaned RUNNING work unit: {unit.chunk}")
             # Mark as READY to retry
             unit.status = WorkUnitStatus.READY
-            unit.worktree = None
             unit.updated_at = datetime.now(timezone.utc)
+
+            # Chunk: docs/chunks/phase_aware_recovery - Preserve worktree if still exists
+            # Only clear the worktree reference if the worktree no longer exists.
+            # This enables recovery to resume from the existing worktree rather than
+            # recreating it and potentially hitting activation failures for post-PLAN phases.
+            if unit.worktree and self.worktree_manager.worktree_exists(unit.chunk):
+                logger.info(f"Preserving existing worktree for {unit.chunk}")
+            else:
+                unit.worktree = None
 
             # Preserve retry backoff across daemon restart
             if unit.api_retry_count > 0:
@@ -607,26 +615,31 @@ class Scheduler:
             # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
             worktree_created = True
 
-            # Activate the target chunk, displacing any existing IMPLEMENTING chunk
-            try:
-                displaced = activate_chunk_in_worktree(worktree_path, chunk)
-                if displaced:
-                    work_unit.displaced_chunk = displaced
-                    logger.info(f"Stored displaced chunk '{displaced}' for later restoration")
-            except ValueError as e:
-                logger.error(f"Failed to activate chunk {chunk}: {e}")
-                # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
-                # Clean up the worktree since we're returning early after creation
-                if worktree_created:
-                    try:
-                        self.worktree_manager.remove_worktree(chunk, remove_branch=False)
-                        logger.info(f"Cleaned up worktree for {chunk} after activation failure")
-                    except WorktreeError as cleanup_error:
-                        logger.warning(
-                            f"Failed to clean up worktree for {chunk}: {cleanup_error}"
-                        )
-                await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
-                return
+            # Chunk: docs/chunks/phase_aware_recovery - Phase-aware activation check
+            # Only activate during PLAN phase. Later phases already have the chunk
+            # in the correct status on the branch (IMPLEMENTING, ACTIVE, HISTORICAL).
+            # Calling activation on post-PLAN phases would fail because activation
+            # expects FUTURE status.
+            if phase == WorkUnitPhase.PLAN:
+                try:
+                    displaced = activate_chunk_in_worktree(worktree_path, chunk)
+                    if displaced:
+                        work_unit.displaced_chunk = displaced
+                        logger.info(f"Stored displaced chunk '{displaced}' for later restoration")
+                except ValueError as e:
+                    logger.error(f"Failed to activate chunk {chunk}: {e}")
+                    # Chunk: docs/chunks/orch_worktree_cleanup - Worktree cleanup on activation failure
+                    # Clean up the worktree since we're returning early after creation
+                    if worktree_created:
+                        try:
+                            self.worktree_manager.remove_worktree(chunk, remove_branch=False)
+                            logger.info(f"Cleaned up worktree for {chunk} after activation failure")
+                        except WorktreeError as cleanup_error:
+                            logger.warning(
+                                f"Failed to clean up worktree for {chunk}: {cleanup_error}"
+                            )
+                    await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
+                    return
 
             # Update work unit to RUNNING with optimistic locking
             # If someone else (e.g., API) updated the work unit since we read it,

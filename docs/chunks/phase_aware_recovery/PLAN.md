@@ -8,153 +8,171 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The fix addresses a semantic mismatch where `_run_work_unit()` unconditionally
+calls `activate_chunk_in_worktree()` regardless of which phase is being executed.
+Activation is a PLAN-phase concept (transitioning a chunk from FUTURE to
+IMPLEMENTING), but post-PLAN phases already have the chunk in IMPLEMENTING,
+ACTIVE, or HISTORICAL status on the branch.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The solution has two parts:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Phase-aware activation in `_run_work_unit()`**: Only call activation during
+   the PLAN phase. For all other phases, the worktree creation is sufficient
+   since the chunk is already in the correct status on the branch.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/phase_aware_recovery/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Worktree preservation in `_recover_from_crash()`**: If the worktree
+   directory still exists on disk after a crash, preserve the worktree reference
+   on the work unit rather than unconditionally clearing it. This avoids needless
+   worktree recreation and the activation failure that follows.
+
+This follows the existing patterns in the scheduler:
+- Phase-specific handling already exists (e.g., REVIEW phase routing in
+  `_handle_agent_result`, REBASE phase advancement)
+- The worktree manager already has idempotent worktree creation
+
+Tests will follow TDD principles per docs/trunk/TESTING_PHILOSOPHY.md, writing
+failing tests first for each behavior change.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS
+  phase-aware recovery behavior within the orchestrator subsystem. The chunk
+  modifies `scheduler.py` and `activation.py`, both of which are core
+  orchestrator components.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The orchestrator subsystem status is DOCUMENTED, so discovered deviations will
+be logged but not fixed as part of this work.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for phase-aware activation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_orchestrator_scheduler.py` (or a new focused test
+module `tests/test_orchestrator_phase_recovery.py`) that verify:
 
-Example:
+1. `_run_work_unit()` calls `activate_chunk_in_worktree()` during PLAN phase
+2. `_run_work_unit()` does NOT call activation during IMPLEMENT phase
+3. `_run_work_unit()` does NOT call activation during REBASE phase
+4. `_run_work_unit()` does NOT call activation during REVIEW phase
+5. `_run_work_unit()` does NOT call activation during COMPLETE phase
 
-### Step 1: Define the SegmentHeader struct
+Use mock patching to verify `activate_chunk_in_worktree` call counts.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_phase_recovery.py`
 
-Location: src/segment/format.rs
+### Step 2: Implement phase-aware activation check
 
-### Step 2: Implement header serialization
+Modify `_run_work_unit()` in `src/orchestrator/scheduler.py` to conditionally
+call `activate_chunk_in_worktree()` only when `work_unit.phase == WorkUnitPhase.PLAN`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+The change wraps the existing activation call in a phase check:
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Only activate during PLAN phase. Later phases already have the chunk
+# in the correct status on the branch (IMPLEMENTING, ACTIVE, HISTORICAL).
+if phase == WorkUnitPhase.PLAN:
+    try:
+        displaced = activate_chunk_in_worktree(worktree_path, chunk)
+        if displaced:
+            work_unit.displaced_chunk = displaced
+            logger.info(f"Stored displaced chunk '{displaced}' for later restoration")
+    except ValueError as e:
+        # ... existing error handling ...
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add a backreference comment:
+```python
+# Chunk: docs/chunks/phase_aware_recovery - Phase-aware activation check
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/scheduler.py`, around line 610-630
 
-## Dependencies
+### Step 3: Write failing tests for worktree preservation in recovery
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Add tests that verify `_recover_from_crash()` behavior:
 
-If there are no dependencies, delete this section.
--->
+1. RUNNING work unit with worktree that still exists → worktree reference preserved
+2. RUNNING work unit with worktree that no longer exists → worktree reference cleared
+3. After recovery with preserved worktree, dispatch tick re-uses existing worktree
+
+These tests will use the mock worktree manager to simulate the worktree existence
+check.
+
+Location: `tests/test_orchestrator_phase_recovery.py`
+
+### Step 4: Implement worktree preservation in crash recovery
+
+Modify `_recover_from_crash()` in `src/orchestrator/scheduler.py` to check if
+the worktree directory still exists before clearing the worktree reference:
+
+```python
+for unit in running_units:
+    logger.warning(f"Found orphaned RUNNING work unit: {unit.chunk}")
+    unit.status = WorkUnitStatus.READY
+
+    # Chunk: docs/chunks/phase_aware_recovery - Preserve worktree if still exists
+    # Only clear the worktree reference if the worktree no longer exists.
+    # This enables recovery to resume from the existing worktree rather than
+    # recreating it and potentially hitting activation failures.
+    if unit.worktree and self.worktree_manager.worktree_exists(unit.chunk):
+        logger.info(f"Preserving existing worktree for {unit.chunk}")
+    else:
+        unit.worktree = None
+
+    unit.updated_at = datetime.now(timezone.utc)
+    # ... rest of existing logic ...
+```
+
+Location: `src/orchestrator/scheduler.py`, around line 329-345
+
+### Step 5: Write integration tests for crash recovery at each phase
+
+Add end-to-end tests that simulate daemon restart during each phase and verify
+successful re-dispatch:
+
+1. Crash during PLAN phase (chunk is FUTURE) → recovery succeeds, PLAN resumes
+2. Crash during IMPLEMENT phase (chunk is IMPLEMENTING) → recovery succeeds, IMPLEMENT resumes
+3. Crash during REBASE phase (chunk is IMPLEMENTING) → recovery succeeds
+4. Crash during REVIEW phase (chunk is IMPLEMENTING) → recovery succeeds
+5. Crash during COMPLETE phase (chunk is ACTIVE/HISTORICAL) → recovery succeeds without activation failure
+
+These tests set up realistic chunk GOAL.md status for each phase scenario.
+
+Location: `tests/test_orchestrator_phase_recovery.py`
+
+### Step 6: Verify existing tests pass
+
+Run the full orchestrator test suite to ensure no regressions:
+
+```bash
+uv run pytest tests/test_orchestrator*.py -v
+```
+
+All existing tests must continue to pass.
+
+### Step 7: Add backreference comments to modified code
+
+Ensure all modified sections have appropriate chunk backreference comments
+following the format:
+
+```python
+# Chunk: docs/chunks/phase_aware_recovery - <brief description>
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Worktree state consistency**: If a worktree exists but is in an
+   inconsistent state (e.g., uncommitted changes from a previous crash), will
+   resume behave correctly? The existing TOCTOU guard and worktree creation
+   should handle this, but needs verification.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Displaced chunk handling on resume**: When recovering with an existing
+   worktree, the displaced_chunk field should already be set from the original
+   dispatch. Verify this is preserved through recovery.
+
+3. **WorktreeManager.worktree_exists() implementation**: Need to verify this
+   method exists and correctly checks for the worktree directory on disk.
+   If not, may need to add it.
 
 ## Deviations
 
@@ -169,9 +187,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
