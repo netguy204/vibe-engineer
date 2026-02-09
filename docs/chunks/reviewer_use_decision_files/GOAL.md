@@ -8,14 +8,12 @@ code_paths:
 - src/reviewers.py
 - tests/test_chunk_review_skill.py
 code_references:
-  - ref: src/ve.py#decisions
-    implements: "Added --recent flag for few-shot context retrieval"
   - ref: src/templates/commands/chunk-review.md.jinja2
     implements: "Updated skill template using per-file decision workflow"
   - ref: tests/test_chunk_review_skill.py
     implements: "Tests verifying skill template uses new decision commands"
   - ref: src/cli/reviewer.py#decisions
-    implements: "CLI reviewer decisions --recent after CLI modularization"
+    implements: "CLI reviewer decisions --recent for few-shot context retrieval"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

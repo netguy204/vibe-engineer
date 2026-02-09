@@ -8,153 +8,163 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk extracts duplicated decision-listing logic from the CLI layer into a shared helper method in the `Reviewers` class. The approach follows DEC-009 (ArtifactManager Template Method Pattern) by keeping domain logic in domain classes and presentation in CLI commands.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The key insight is that both the `decisions` group handler's `--recent` path (lines 74-128) and the `decisions list` subcommand (lines 185-274) implement the same pipeline:
+1. Glob decision files in a reviewer's decisions directory
+2. Parse YAML frontmatter (manually, bypassing the existing `parse_decision_frontmatter()` method)
+3. Filter for curated decisions (`operator_review` is not None)
+4. Sort by modification time (newest first)
+5. Limit to N results
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The current implementations differ only in:
+- The group handler adds a "NOTE TO AGENT" nudge for `FeedbackReview` entries
+- The group handler defaults reviewer to "baseline" when `--reviewer` isn't specified
+- The subcommand requires `--recent` as an option; the group handler treats it as optional
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/reviewer_decisions_dedup/GOAL.md)
-with references to the files that you expect to touch.
--->
+The fix consolidates the data-fetching pipeline into a `list_curated_decisions()` method on `Reviewers`, returning structured data. Both CLI call sites then format the data identically, with the group handler adding the nudge note for `FeedbackReview` entries.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+This follows the project's testing philosophy by writing tests first for the new domain method, then refactoring the CLI to delegate to it.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `CuratedDecision` dataclass to `Reviewers`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a dataclass to represent a curated decision result:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+@dataclass
+class CuratedDecision:
+    path: pathlib.Path
+    frontmatter: DecisionFrontmatter
+    mtime: float  # modification time for sorting
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This provides structured data for the CLI to format, keeping presentation separate from data retrieval.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/reviewers.py`
 
-## Dependencies
+### Step 2: Write failing tests for `Reviewers.list_curated_decisions()`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Write tests that verify:
+- Returns only decisions with non-null `operator_review`
+- Sorts by modification time (newest first)
+- Respects the `limit` parameter
+- Returns empty list when no decisions exist
+- Returns empty list when no curated decisions exist
+- Uses `parse_decision_frontmatter()` internally (no raw YAML parsing)
 
-If there are no dependencies, delete this section.
--->
+Location: `tests/test_reviewers.py` (create if needed)
+
+### Step 3: Implement `Reviewers.list_curated_decisions()`
+
+Add the method to `Reviewers`:
+
+```python
+def list_curated_decisions(
+    self,
+    reviewer: str,
+    limit: int | None = None,
+) -> list[CuratedDecision]:
+    """List curated decisions for a reviewer, sorted by recency.
+
+    Args:
+        reviewer: Reviewer name (e.g., "baseline").
+        limit: Maximum number of decisions to return. If None, returns all.
+
+    Returns:
+        List of CuratedDecision, sorted by modification time (newest first).
+    """
+```
+
+The implementation:
+1. Gets the decisions directory via `self.get_decisions_dir(reviewer)`
+2. Returns empty list if directory doesn't exist
+3. Globs `*.md` files
+4. For each file, calls `self.parse_decision_frontmatter()` (reusing existing method)
+5. Filters for `frontmatter.operator_review is not None`
+6. Sorts by `os.path.getmtime()` descending
+7. Slices to `[:limit]` if limit is provided
+8. Returns list of `CuratedDecision` instances
+
+Location: `src/reviewers.py`
+
+### Step 4: Verify tests pass
+
+Run `uv run pytest tests/test_reviewers.py -v` to confirm the new method works correctly.
+
+### Step 5: Extract CLI formatting helper
+
+Create a helper function in `src/cli/reviewer.py` to format a `CuratedDecision` for output:
+
+```python
+def _format_curated_decision(
+    decision: CuratedDecision,
+    project_dir: pathlib.Path,
+    include_nudge: bool = False,
+) -> str:
+    """Format a curated decision for CLI output."""
+```
+
+This helper:
+- Computes the relative path from `project_dir`
+- Formats the markdown output (header, decision, summary, operator review)
+- Conditionally appends the nudge note if `include_nudge=True` and `operator_review` is a `FeedbackReview`
+
+This keeps the formatting logic in one place, eliminating the duplication.
+
+Location: `src/cli/reviewer.py`
+
+### Step 6: Refactor `decisions` group handler to use shared helper
+
+Replace the `--recent` code path (lines 74-128) with:
+1. Call `reviewers.list_curated_decisions(reviewer_name, limit=recent)`
+2. Format each result using `_format_curated_decision(..., include_nudge=True)`
+3. Output via `click.echo()`
+
+This eliminates the raw YAML parsing and manual glob/filter/sort logic.
+
+Location: `src/cli/reviewer.py`
+
+### Step 7: Refactor `decisions list` subcommand to use shared helper
+
+Replace the implementation (lines 185-274) with:
+1. Call `reviewers.list_curated_decisions(reviewer_name, limit=recent)`
+2. Format each result using `_format_curated_decision(..., include_nudge=False)`
+3. Output via `click.echo()`
+
+Note: The `list` subcommand does NOT include the nudge note. This is the intentional behavioral difference preserved per the success criteria.
+
+Location: `src/cli/reviewer.py`
+
+### Step 8: Verify existing CLI tests still pass
+
+Run `uv run pytest tests/test_reviewer_decisions.py -v` to confirm:
+- All existing tests for `decisions --recent` pass
+- The nudge tests still pass (since the group handler still emits nudges)
+
+### Step 9: Add tests for `decisions list` subcommand
+
+The existing test file `tests/test_reviewer_decisions.py` only tests the group handler's `--recent` path. Add tests for the `decisions list` subcommand that verify:
+- It produces the same output format (minus the nudge)
+- It respects `--recent` and `--reviewer` options
+- It does NOT include the nudge note for `FeedbackReview` entries
+
+This ensures the two paths produce consistent output.
+
+Location: `tests/test_reviewer_decisions.py` (add new test class `TestDecisionsListSubcommand`)
+
+### Step 10: Update code_paths and verify all tests pass
+
+Run `uv run pytest tests/ -v --tb=short` to verify all tests pass after refactoring.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Behavioral parity**: The current implementations may have subtle differences beyond the nudge note. During refactoring, carefully verify output format matches for both paths.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **mtime precision**: Sorting by modification time may behave differently on different filesystems. The existing tests use `time.sleep(0.1)` to ensure ordering, which should continue to work.
+
+- **Error handling**: The current implementations have slightly different error handling (the group handler silently returns on missing directory; the subcommand does the same). The shared helper should preserve this behavior.
 
 ## Deviations
 
