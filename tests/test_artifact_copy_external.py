@@ -14,10 +14,10 @@ import yaml
 from click.testing import CliRunner
 
 from ve import cli
-from task_utils import (
+from external_refs import load_external_ref
+from task import (
     copy_artifact_as_external,
     TaskCopyExternalError,
-    load_external_ref,
 )
 from conftest import make_ve_initialized_git_repo, setup_task_directory
 

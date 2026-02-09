@@ -11,7 +11,7 @@ import pathlib
 
 import click
 
-from task_utils import (
+from task import (
     promote_artifact,
     TaskPromoteError,
     copy_artifact_as_external,
@@ -105,7 +105,7 @@ def remove_external(artifact_path, target_project, cwd):
 
     TARGET_PROJECT accepts flexible formats: "acme/proj" or just "proj" (if unambiguous).
     """
-    from task_utils import remove_artifact_from_external, TaskRemoveExternalError
+    from task import remove_artifact_from_external, TaskRemoveExternalError
 
     try:
         result = remove_artifact_from_external(

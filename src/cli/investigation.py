@@ -15,7 +15,7 @@ import click
 from external_refs import strip_artifact_path_prefix
 from investigations import Investigations
 from models import InvestigationStatus, ArtifactType
-from task_utils import (
+from task import (
     create_task_investigation,
     list_task_artifacts_grouped,
     TaskInvestigationError,

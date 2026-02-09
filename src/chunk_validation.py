@@ -165,7 +165,7 @@ def _validate_symbol_exists_with_context(
             ]
 
         # Resolve the project path
-        from task_utils import load_task_config, resolve_repo_directory
+        from task import load_task_config, resolve_repo_directory
 
         try:
             config = load_task_config(task_dir)

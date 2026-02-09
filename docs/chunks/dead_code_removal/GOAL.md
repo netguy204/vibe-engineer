@@ -1,11 +1,35 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/chunk.py
-  - src/cli/utils.py
-  - src/task_utils.py
+- src/cli/chunk.py
+- src/cli/utils.py
+- src/task_utils.py
+- src/task/__init__.py
+- src/orchestrator/models.py
+- src/external_resolve.py
+- src/cluster_analysis.py
+- src/cli/narrative.py
+- src/cli/subsystem.py
+- src/cli/investigation.py
+- src/cli/external.py
+- src/cli/friction.py
+- src/cli/artifact.py
+- src/chunk_validation.py
+- src/chunks.py
+- tests/test_task_narrative_create.py
+- tests/test_task_subsystem_discover.py
+- tests/test_task_utils.py
+- tests/test_task_context_cmds.py
+- tests/test_task_init.py
+- tests/test_task_investigation_create.py
+- tests/test_task_chunk_create.py
+- tests/test_external_resolve.py
+- tests/test_chunk_list_proposed.py
+- tests/test_artifact_promote.py
+- tests/test_artifact_remove_external.py
+- tests/test_artifact_copy_external.py
 code_references: []
 narrative: arch_review_gaps
 investigation: null
@@ -13,9 +37,15 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["cli_decompose", "integrity_deprecate_standalone", "low_priority_cleanup", "optimistic_locking", "spec_and_adr_update", "test_file_split", "orch_session_auto_resume"]
+created_after:
+- cli_decompose
+- integrity_deprecate_standalone
+- low_priority_cleanup
+- optimistic_locking
+- spec_and_adr_update
+- test_file_split
+- orch_session_auto_resume
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

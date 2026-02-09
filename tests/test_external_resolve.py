@@ -19,7 +19,7 @@ from external_resolve import (
     resolve_artifact_single_repo,
 )
 from models import ArtifactType
-from task_utils import TaskChunkError
+from task import TaskChunkError
 
 
 class TestFindChunkInProject:

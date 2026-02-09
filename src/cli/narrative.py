@@ -16,7 +16,7 @@ from chunks import Chunks
 from external_refs import strip_artifact_path_prefix
 from narratives import Narratives
 from models import NarrativeStatus, ArtifactType
-from task_utils import (
+from task import (
     create_task_narrative,
     list_task_narratives,
     TaskNarrativeError,

@@ -5,15 +5,14 @@
 import pytest
 from pydantic import ValidationError
 
-from task_utils import (
+from external_refs import load_external_ref, create_external_yaml
+from task import (
     is_task_directory,
     is_external_chunk,
     load_task_config,
-    load_external_ref,
     resolve_repo_directory,
     resolve_project_ref,
     get_next_chunk_id,
-    create_external_yaml,
     add_dependents_to_chunk,
 )
 from models import TaskConfig, ExternalArtifactRef, ArtifactType

@@ -10,10 +10,10 @@ import pytest
 from click.testing import CliRunner
 
 from ve import cli
-from task_utils import (
+from external_refs import load_external_ref
+from task import (
     promote_artifact,
     TaskPromoteError,
-    load_external_ref,
     load_task_config,
 )
 from conftest import make_ve_initialized_git_repo, setup_task_directory

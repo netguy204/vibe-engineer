@@ -679,7 +679,7 @@ def suggest_prefix(
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
     from chunks import Chunks, extract_goal_text, get_chunk_prefix
-    from task_utils import is_task_directory, load_task_config, resolve_repo_directory
+    from task import is_task_directory, load_task_config, resolve_repo_directory
 
     project_dir = Path(project_dir)
 

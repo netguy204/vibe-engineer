@@ -13,7 +13,7 @@ import pathlib
 import click
 
 from models import ArtifactType
-from task_utils import TaskChunkError
+from task import TaskChunkError
 from external_refs import ARTIFACT_MAIN_FILE
 from cli.utils import handle_task_context
 from external_resolve import (
@@ -132,7 +132,7 @@ def _resolve_external_task_directory(
 ):
     """Handle resolve in task directory mode."""
     from external_refs import ARTIFACT_DIR_NAME
-    from task_utils import load_task_config, resolve_repo_directory
+    from task import load_task_config, resolve_repo_directory
 
     # Parse project:artifact format if present
     if ":" in local_artifact_id:
