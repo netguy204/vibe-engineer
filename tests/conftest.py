@@ -3,15 +3,10 @@
 import os
 import pathlib
 import subprocess
-import sys
 import tempfile
 
 import pytest
 from click.testing import CliRunner
-
-
-# Add src to path for imports
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
 from ve import cli
 from chunks import Chunks

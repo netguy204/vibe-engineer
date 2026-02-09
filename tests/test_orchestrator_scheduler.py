@@ -1086,3 +1086,308 @@ class TestCrashRecoveryRetryPreservation:
                 f"retry_count={retry_count}: delay too short"
             assert actual_delay <= expected_delay + timedelta(milliseconds=200), \
                 f"retry_count={retry_count}: delay too long"
+
+
+# Chunk: docs/chunks/finalization_recovery - Crash recovery for incomplete finalization
+class TestFinalizationRecovery:
+    """Tests for recovery from crashes during work unit finalization.
+
+    When a daemon crashes after remove_worktree() but before merge_to_base(),
+    the work unit's changes survive only as an unmerged branch. These tests
+    verify that the scheduler can detect and recover from this scenario.
+    """
+
+    @pytest.mark.asyncio
+    async def test_auto_recovery_success_case(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Auto-recover incomplete finalization when merge is clean.
+
+        Simulates a crash after worktree removal but before merge, where
+        the merge can be completed automatically (no conflicts).
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase (crashed during finalization)
+        work_unit = WorkUnit(
+            chunk="recovery_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,  # Was running when it crashed
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure mocks to simulate crash-during-finalization scenario:
+        # - Branch exists (orch/recovery_test)
+        # - Worktree does NOT exist (was removed before crash)
+        # - Branch has changes ahead of base (merge wasn't completed)
+        # - Merge succeeds (no conflicts)
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.return_value = None  # Success
+        mock_worktree_manager.get_branch_name.return_value = "orch/recovery_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify merge_to_base was called to complete the merge
+        mock_worktree_manager.merge_to_base.assert_called_once_with(
+            "recovery_test", delete_branch=True
+        )
+
+        # Verify work unit is now DONE
+        updated = state_store.get_work_unit("recovery_test")
+        assert updated.status == WorkUnitStatus.DONE
+
+    @pytest.mark.asyncio
+    async def test_conflict_escalation_case(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Escalate to NEEDS_ATTENTION when merge has conflicts.
+
+        Simulates a crash where the subsequent merge cannot complete
+        due to conflicts. The work unit should be marked NEEDS_ATTENTION
+        with a descriptive reason including the branch name.
+        """
+        from orchestrator.worktree import WorktreeError
+
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase
+        work_unit = WorkUnit(
+            chunk="conflict_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure mocks for crash scenario with merge conflict
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.side_effect = WorktreeError(
+            "Merge conflict between orch/conflict_test and main"
+        )
+        mock_worktree_manager.get_branch_name.return_value = "orch/conflict_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify work unit is now NEEDS_ATTENTION with descriptive reason
+        updated = state_store.get_work_unit("conflict_test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "orch/conflict_test" in updated.attention_reason
+        assert "conflict" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_existing_crash_recovery_preserved(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify existing crash recovery behavior is preserved.
+
+        RUNNING work units should still be reset to READY, which is the
+        pre-existing behavior that must not be broken.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in RUNNING status (orphaned agent)
+        work_unit = WorkUnit(
+            chunk="orphan_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # No incomplete finalizations (no matching branches)
+        mock_worktree_manager._branch_exists.return_value = False
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify work unit was reset to READY (existing behavior)
+        updated = state_store.get_work_unit("orphan_test")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.worktree is None
+
+    @pytest.mark.asyncio
+    async def test_branch_exists_no_changes_cleanup(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Clean up dangling branch when it has no changes ahead of base.
+
+        If a branch exists but has no commits ahead of base, just delete
+        the branch without trying to merge.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase
+        work_unit = WorkUnit(
+            chunk="no_changes_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure: branch exists, no worktree, NO changes
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+        mock_worktree_manager.get_branch_name.return_value = "orch/no_changes_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify branch was deleted (not merged)
+        mock_worktree_manager.delete_branch.assert_called_once_with("no_changes_test")
+        mock_worktree_manager.merge_to_base.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_done_status_with_dangling_branch(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Handle DONE work unit with dangling branch.
+
+        Rare case: work unit is DONE but branch still exists with changes.
+        This could happen if merge_to_base succeeded but delete_branch failed.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a DONE work unit with dangling branch
+        work_unit = WorkUnit(
+            chunk="done_dangling_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.DONE,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure: branch exists, no worktree, has changes
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.get_branch_name.return_value = "orch/done_dangling_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Should still attempt to merge
+        mock_worktree_manager.merge_to_base.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_worktree_exists_not_incomplete_finalization(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Skip recovery when worktree still exists.
+
+        If the worktree exists, the crash happened before worktree removal,
+        which is a different scenario handled by the existing RUNNING→READY logic.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase with worktree
+        work_unit = WorkUnit(
+            chunk="worktree_exists_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure: branch exists AND worktree exists
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = True
+        mock_worktree_manager.list_worktrees.return_value = ["worktree_exists_test"]
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Should NOT attempt merge (worktree exists = not incomplete finalization)
+        mock_worktree_manager.merge_to_base.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_recovery_unblocks_dependents(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify that auto-recovery unblocks dependent work units.
+
+        When a work unit is auto-recovered, its dependents should be unblocked.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create the work unit that will be recovered
+        work_unit = WorkUnit(
+            chunk="blocker_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a work unit blocked by the first one
+        blocked_unit = WorkUnit(
+            chunk="blocked_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_test"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocked_unit)
+
+        # Configure for successful recovery
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.return_value = None
+        mock_worktree_manager.get_branch_name.return_value = "orch/blocker_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify blocked work unit was unblocked
+        updated_blocked = state_store.get_work_unit("blocked_test")
+        assert updated_blocked.status == WorkUnitStatus.READY
+        assert "blocker_test" not in updated_blocked.blocked_by
+
+    @pytest.mark.asyncio
+    async def test_recovery_logs_warning_for_detected_incomplete(
+        self, scheduler, state_store, mock_worktree_manager, caplog
+    ):
+        """Verify warnings are logged for detected incomplete finalizations."""
+        import logging
+
+        now = datetime.now(timezone.utc)
+
+        work_unit = WorkUnit(
+            chunk="log_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.get_branch_name.return_value = "orch/log_test"
+
+        with caplog.at_level(logging.WARNING):
+            await scheduler._recover_from_crash()
+
+        # Check that appropriate warnings were logged
+        assert any("incomplete finalization" in record.message.lower() for record in caplog.records)

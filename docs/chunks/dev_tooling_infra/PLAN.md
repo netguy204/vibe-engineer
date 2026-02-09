@@ -1,177 +1,152 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk addresses four independent development infrastructure improvements
+identified in the architecture review. The changes are all configuration and
+cleanup — no new feature code is required.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The strategy:
+1. Make minimal, targeted edits to `pyproject.toml` for dependency pins, markers,
+   coverage config, and dev dependencies
+2. Remove dead code from `tests/conftest.py` (the redundant `sys.path` hack)
+3. Add `@pytest.mark.network` decorators to the `TestResolveRemoteRef` class
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Each change is independently verifiable. The final validation step confirms all
+tests still pass.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/dev_tooling_infra/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per docs/trunk/TESTING_PHILOSOPHY.md, this chunk does not add new tests because:
+- The click pin is a constraint, not behavior
+- The marker registration is verified by running pytest with marker exclusion
+- The sys.path removal is validated by existing tests passing
+- The coverage config is validated by running pytest --cov
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Pin click dependency to >=8.0
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Edit `pyproject.toml` line 9 to change `"click"` to `"click>=8.0"`.
 
-Example:
+**Rationale**: The codebase uses Click features available since 8.0 (e.g.,
+`CliRunner`, modern decorator patterns). Pinning the lower bound prevents
+installation of incompatible older versions.
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
+Location: `pyproject.toml`
 
 ---
 
-**BACKREFERENCE COMMENTS**
+### Step 2: Register the `network` marker in pytest configuration
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add a `markers` list to `[tool.pytest.ini_options]` in `pyproject.toml`:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```toml
+markers = [
+    "network: marks tests as requiring network access (deselect with '-m \"not network\"')",
+]
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This must be done before adding the marker to tests, as pytest will warn about
+unknown markers.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `pyproject.toml`
 
-## Dependencies
+---
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 3: Add pytest-cov to dev dependencies
 
-If there are no dependencies, delete this section.
--->
+Add `"pytest-cov"` to the `[dependency-groups]` `dev` array in `pyproject.toml`.
+
+Location: `pyproject.toml`
+
+---
+
+### Step 4: Configure coverage reporting
+
+Add coverage configuration to `pyproject.toml`. Two options:
+
+**Option A** (recommended): Add to `[tool.pytest.ini_options]` addopts:
+```toml
+addopts = "--cov=src --cov-report=term-missing"
+```
+
+**Option B**: Add a separate `[tool.coverage.run]` section:
+```toml
+[tool.coverage.run]
+source = ["src"]
+```
+
+Option A is preferred because it means `uv run pytest` automatically produces
+coverage output without requiring the user to remember `--cov`. However, this
+may be noisy for quick test runs. We'll use Option B (explicit `--cov` flag)
+to keep default test runs fast while still enabling coverage on demand.
+
+Location: `pyproject.toml`
+
+---
+
+### Step 5: Mark network-dependent tests
+
+Add `@pytest.mark.network` decorator to all test methods in the
+`TestResolveRemoteRef` class (lines 290-339 in `tests/test_git_utils.py`).
+
+The class contains 6 test methods that make live HTTP requests to github.com:
+- `test_resolves_head_from_remote`
+- `test_resolves_branch_from_remote`
+- `test_raises_for_inaccessible_remote`
+- `test_raises_for_nonexistent_ref`
+- `test_sha_is_exactly_40_characters`
+- `test_expands_github_shorthand`
+
+Apply the decorator at the class level to mark all methods at once:
+
+```python
+@pytest.mark.network
+class TestResolveRemoteRef:
+    """Tests for resolve_remote_ref function."""
+```
+
+Location: `tests/test_git_utils.py`
+
+---
+
+### Step 6: Remove redundant sys.path manipulation
+
+Delete line 14 from `tests/conftest.py`:
+```python
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
+```
+
+Also remove `sys` from imports (line 6) if it's no longer used elsewhere.
+
+**Rationale**: `pyproject.toml` line 35 already sets `pythonpath = ["src"]` in
+`[tool.pytest.ini_options]`, making the manual path insertion redundant.
+
+Location: `tests/conftest.py`
+
+---
+
+### Step 7: Verify all changes
+
+Run the following commands to verify the changes:
+
+1. `uv run pytest -m "not network"` — Should pass with no "unknown marker" warnings
+2. `uv run pytest` — All tests should still pass
+3. `uv run pytest --cov` — Should produce coverage output for `src/`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Click version compatibility**: The codebase uses Click features from 8.0+.
+  If tests fail after pinning, it would indicate the codebase needs older Click
+  features — unlikely but possible.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **sys.path removal side effects**: The `pythonpath` setting in pyproject.toml
+  should be sufficient. If imports fail after removal, it means pytest isn't
+  using the pyproject.toml config (which would be a deeper configuration issue).
+
+- **Coverage report format**: The default `term-missing` format is verbose. If
+  the team prefers a different format (e.g., `html`, `xml` for CI), this can be
+  adjusted in follow-up work.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*

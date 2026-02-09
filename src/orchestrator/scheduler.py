@@ -10,6 +10,7 @@
 # Chunk: docs/chunks/orch_broadcast_invariant - WebSocket broadcasting invariant documentation
 # Chunk: docs/chunks/scheduler_decompose - Decomposed into focused modules
 # Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+# Chunk: docs/chunks/finalization_recovery - Crash recovery for incomplete finalization
 """Scheduler for dispatching work units to agents.
 
 The scheduler runs a background loop that:
@@ -312,9 +313,13 @@ class Scheduler:
     async def _recover_from_crash(self) -> None:
         """Recover from a previous daemon crash.
 
-        - Mark RUNNING work units as READY
-        - Preserve retry backoff for units that were mid-retry
-        - Clean up orphaned worktrees (respecting retain_worktree flag)
+        Recovery steps:
+        1. Mark RUNNING work units as READY (for retry)
+        2. Preserve retry backoff for units that were mid-retry
+        3. Detect orphaned worktrees (respecting retain_worktree flag)
+        4. Recover incomplete finalizations (Chunk: finalization_recovery)
+           - Detect work units whose worktree was removed but merge wasn't completed
+           - Auto-merge if possible, or escalate to NEEDS_ATTENTION on conflict
         """
         logger.info("Checking for recovery from previous crash...")
 
@@ -374,6 +379,128 @@ class Scheduler:
                 f"({self.config.worktree_warning_threshold}). Consider running "
                 f"'ve orch worktree prune' to free up disk space."
             )
+
+        # Chunk: docs/chunks/finalization_recovery - Recover incomplete finalizations
+        # After handling RUNNING work units, check for work units that crashed during
+        # finalization (worktree removed but merge not completed)
+        incomplete_finalizations = self._find_incomplete_finalizations()
+        for chunk in incomplete_finalizations:
+            self._recover_incomplete_finalization(chunk)
+
+    # Chunk: docs/chunks/finalization_recovery - Detect work units that crashed during finalization
+    def _find_incomplete_finalizations(self) -> list[str]:
+        """Find work units that crashed during finalization.
+
+        Looks for work units where:
+        - Status is DONE or phase is COMPLETE
+        - The orch/<chunk> branch still exists
+        - The worktree has been removed
+        - The branch has commits ahead of base (merge wasn't completed)
+
+        Returns:
+            List of chunk names needing finalization recovery
+        """
+        incomplete = []
+
+        # Get work units in terminal state that might have incomplete finalization
+        # Check COMPLETE phase (normal finalization crash) or DONE status (rare case)
+        complete_phase_units = [
+            u for u in self.store.list_work_units()
+            if u.phase == WorkUnitPhase.COMPLETE
+        ]
+        done_units = self.store.list_work_units(status=WorkUnitStatus.DONE)
+
+        # Deduplicate by chunk name (a DONE unit in COMPLETE phase appears in both lists)
+        seen_chunks: set[str] = set()
+        candidates = []
+        for unit in complete_phase_units + done_units:
+            if unit.chunk not in seen_chunks:
+                seen_chunks.add(unit.chunk)
+                candidates.append(unit)
+
+        for unit in candidates:
+            chunk = unit.chunk
+            branch = self.worktree_manager.get_branch_name(chunk)
+
+            # Check if branch exists
+            if not self.worktree_manager._branch_exists(branch):
+                continue
+
+            # Check if worktree has been removed (crash was after worktree removal)
+            if self.worktree_manager.worktree_exists(chunk):
+                continue  # Worktree still exists, not an incomplete finalization
+
+            # Check if branch has changes ahead of base (merge wasn't completed)
+            # If no changes, just need branch cleanup
+            has_changes = self.worktree_manager.has_changes(chunk)
+            if has_changes:
+                logger.warning(
+                    f"Found incomplete finalization for {chunk}: branch {branch} exists "
+                    f"but merge not completed"
+                )
+                incomplete.append(chunk)
+            else:
+                # Branch exists but no changes - just clean up the branch
+                logger.info(
+                    f"Found dangling branch for {chunk} with no changes, cleaning up"
+                )
+                self.worktree_manager.delete_branch(chunk)
+
+        return incomplete
+
+    # Chunk: docs/chunks/finalization_recovery - Recover a single incomplete finalization
+    def _recover_incomplete_finalization(self, chunk: str) -> None:
+        """Recover a work unit that crashed during finalization.
+
+        Attempts to complete the merge to base. On conflict, escalates
+        to NEEDS_ATTENTION with a descriptive message.
+
+        Args:
+            chunk: The chunk name to recover
+        """
+        branch = self.worktree_manager.get_branch_name(chunk)
+
+        try:
+            # Attempt to complete the merge
+            self.worktree_manager.merge_to_base(chunk, delete_branch=True)
+
+            logger.warning(
+                f"Auto-recovered incomplete finalization for {chunk}: merged to base"
+            )
+
+            # Get the work unit to update status and unblock dependents
+            unit = self.store.get_work_unit(chunk)
+            if unit is not None:
+                # If still in COMPLETE phase, transition to DONE
+                if unit.phase == WorkUnitPhase.COMPLETE and unit.status != WorkUnitStatus.DONE:
+                    unit.status = WorkUnitStatus.DONE
+                    unit.session_id = None
+                    unit.api_retry_count = 0
+                    unit.next_retry_at = None
+                    unit.updated_at = datetime.now(timezone.utc)
+                    self.store.update_work_unit(unit)
+
+                    # Unblock any dependents that were waiting on this chunk
+                    unblock_dependents(self.store, chunk)
+
+        except WorktreeError as e:
+            # Merge conflict - escalate to NEEDS_ATTENTION
+            logger.warning(
+                f"Incomplete finalization for {chunk} has merge conflict: "
+                f"escalating to NEEDS_ATTENTION"
+            )
+
+            unit = self.store.get_work_unit(chunk)
+            if unit is not None:
+                reason = (
+                    f"Crash during finalization left unmerged branch '{branch}'. "
+                    f"Merge conflict: {e}. Manually complete the merge and run "
+                    f"'git branch -d {branch}' to clean up."
+                )
+                unit.status = WorkUnitStatus.NEEDS_ATTENTION
+                unit.attention_reason = reason
+                unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(unit)
 
     async def _dispatch_tick(self) -> None:
         """Execute one dispatch cycle.
@@ -439,6 +566,7 @@ class Scheduler:
     # Chunk: docs/chunks/orch_unblock_transition - Clear attention_reason and blocked_by when transitioning to RUNNING
     # Chunk: docs/chunks/orch_attention_queue - Pass pending_answer to agent runner on resume
     # Chunk: docs/chunks/optimistic_locking - Optimistic locking for dispatch transition
+    # Chunk: docs/chunks/dispatch_toctou_guard - TOCTOU guard for status verification before worktree creation
     async def _run_work_unit(self, work_unit: WorkUnit) -> None:
         """Execute a single work unit.
 
@@ -447,6 +575,28 @@ class Scheduler:
         """
         chunk = work_unit.chunk
         phase = work_unit.phase
+
+        # TOCTOU Guard: Re-read the work unit from the store to verify it is still
+        # in READY status. Between _dispatch_tick() reading the ready queue and this
+        # method executing, an API-driven status change could have modified the work
+        # unit (e.g., PATCH /work-units/{chunk} to NEEDS_ATTENTION). This guard
+        # prevents wasted work (worktree creation, activation) when the work unit
+        # is no longer eligible for dispatch.
+        fresh_unit = self.store.get_work_unit(chunk)
+        if fresh_unit is None:
+            logger.warning(
+                f"Skipping dispatch for {chunk}: work unit was deleted"
+            )
+            return
+        if fresh_unit.status != WorkUnitStatus.READY:
+            logger.warning(
+                f"Skipping dispatch for {chunk}: status changed from READY to "
+                f"{fresh_unit.status.value} before worktree creation"
+            )
+            return
+
+        # Use the fresh work unit for the rest of the method
+        work_unit = fresh_unit
         # Capture expected timestamp for optimistic locking
         expected_updated_at = work_unit.updated_at
 
