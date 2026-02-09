@@ -11,6 +11,79 @@ after the initial clone.
 
 import subprocess
 from pathlib import Path
+from typing import Callable, TypeVar
+
+T = TypeVar("T")
+
+
+def _run_git(
+    *args: str, cwd: Path | None = None, error_msg: str
+) -> subprocess.CompletedProcess[str]:
+    """Run a git command with standard arguments and error handling.
+
+    Wraps subprocess.run with check=True, capture_output=True, text=True.
+    Catches CalledProcessError and re-raises as ValueError with the provided
+    error message and stderr content.
+
+    Args:
+        *args: Git command arguments (e.g., "fetch", "--all", "--quiet")
+        cwd: Working directory for the git command (optional, e.g., for clone)
+        error_msg: Base error message to use if the command fails
+
+    Returns:
+        CompletedProcess result on success
+
+    Raises:
+        ValueError: If the git command fails, with error_msg and stderr details
+    """
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError(
+            f"{error_msg}: {e.stderr.strip() if e.stderr else 'unknown error'}"
+        ) from e
+
+
+def _with_fetch_retry(fn: Callable[[], T], cache_path: Path) -> T:
+    """Execute a function with retry-after-fetch on ValueError.
+
+    If fn() raises ValueError, attempts to fetch from remote and retries.
+    This encapsulates the common pattern of trying an operation, fetching
+    if it fails (e.g., unknown ref), then retrying.
+
+    Args:
+        fn: Callable that may raise ValueError (typically a git operation)
+        cache_path: Path to the cached repository for fetching
+
+    Returns:
+        The result of fn() (either on first success or after retry)
+
+    Raises:
+        ValueError: If fn() fails both before and after fetch
+    """
+    try:
+        return fn()
+    except ValueError:
+        # Ref might be unknown, try fetching first
+        try:
+            subprocess.run(
+                ["git", "fetch", "--all", "--quiet"],
+                cwd=cache_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError:
+            # Fetch failed, but retry the original operation anyway
+            pass
+        # Retry after fetch (let any exception propagate)
+        return fn()
 
 
 def get_cache_dir() -> Path:
@@ -49,6 +122,10 @@ def _repo_to_url(repo: str) -> str:
 
 def _is_bare_repo(path: Path) -> bool:
     """Check if a git repository is a bare clone (no working tree).
+
+    Note: This function intentionally does not use _run_git because its
+    error-handling semantics differ. Instead of raising ValueError on failure,
+    it returns False (treating failures as "not a bare repo").
 
     Args:
         path: Path to the git repository
@@ -108,41 +185,24 @@ def ensure_cached(repo: str) -> Path:
             _remove_directory(cache_path)
         else:
             # Regular repo: fetch and reset to latest
-            try:
-                subprocess.run(
-                    ["git", "fetch", "--all", "--quiet"],
-                    cwd=cache_path,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                # Reset to origin/HEAD to ensure working tree reflects latest
-                subprocess.run(
-                    ["git", "reset", "--hard", "origin/HEAD"],
-                    cwd=cache_path,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-            except subprocess.CalledProcessError as e:
-                raise ValueError(
-                    f"Failed to fetch/reset '{repo}': {e.stderr.strip() if e.stderr else 'unknown error'}"
-                ) from e
+            _run_git(
+                "fetch", "--all", "--quiet",
+                cwd=cache_path,
+                error_msg=f"Failed to fetch/reset '{repo}'",
+            )
+            _run_git(
+                "reset", "--hard", "origin/HEAD",
+                cwd=cache_path,
+                error_msg=f"Failed to fetch/reset '{repo}'",
+            )
             return cache_path
 
     # Clone as regular repo (not --bare)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        subprocess.run(
-            ["git", "clone", "--quiet", url, str(cache_path)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError as e:
-        raise ValueError(
-            f"Failed to clone '{repo}': {e.stderr.strip() if e.stderr else 'repository not accessible'}"
-        ) from e
+    _run_git(
+        "clone", "--quiet", url, str(cache_path),
+        error_msg=f"Failed to clone '{repo}'",
+    )
 
     return cache_path
 
@@ -195,23 +255,7 @@ def get_file_at_ref(repo: str, ref: str, file_path: str) -> str:
                 f"{e.stderr.strip() if e.stderr else 'file or ref not found'}"
             ) from e
 
-    try:
-        return try_read()
-    except ValueError:
-        # Ref might be unknown, try fetching first
-        try:
-            subprocess.run(
-                ["git", "fetch", "--all", "--quiet"],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError:
-            # Fetch failed, but re-raise original error
-            pass
-        # Retry after fetch
-        return try_read()
+    return _with_fetch_retry(try_read, cache_path)
 
 
 def resolve_ref(repo: str, ref: str) -> str:
@@ -248,23 +292,7 @@ def resolve_ref(repo: str, ref: str) -> str:
                 f"{e.stderr.strip() if e.stderr else 'ref not found'}"
             ) from e
 
-    try:
-        return try_resolve()
-    except ValueError:
-        # Ref might be unknown, try fetching first
-        try:
-            subprocess.run(
-                ["git", "fetch", "--all", "--quiet"],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError:
-            # Fetch failed, but re-raise original error
-            pass
-        # Retry after fetch
-        return try_resolve()
+    return _with_fetch_retry(try_resolve, cache_path)
 
 
 def list_directory_at_ref(repo: str, ref: str, dir_path: str) -> list[str]:
@@ -310,20 +338,4 @@ def list_directory_at_ref(repo: str, ref: str, dir_path: str) -> list[str]:
                 f"{e.stderr.strip() if e.stderr else 'directory not found'}"
             ) from e
 
-    try:
-        return try_list()
-    except ValueError:
-        # Ref might be unknown, try fetching first
-        try:
-            subprocess.run(
-                ["git", "fetch", "--all", "--quiet"],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError:
-            # Fetch failed, but re-raise original error
-            pass
-        # Retry after fetch
-        return try_list()
+    return _with_fetch_retry(try_list, cache_path)
