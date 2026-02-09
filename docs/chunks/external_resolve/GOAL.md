@@ -5,12 +5,10 @@ parent_chunk: null
 code_paths:
 - src/repo_cache.py
 - src/external_resolve.py
-- src/sync.py
-- src/ve.py
+- src/cli/external.py
 - tests/test_repo_cache.py
 - tests/test_external_resolve.py
 - tests/test_external_resolve_cli.py
-- tests/test_sync.py
 code_references:
 - ref: src/repo_cache.py
   implements: Repository cache infrastructure for single-repo mode operations
@@ -22,6 +20,10 @@ code_references:
   implements: Read file content at specific git ref using git show
 - ref: src/repo_cache.py#resolve_ref
   implements: Resolve git ref to SHA using rev-parse
+- ref: src/repo_cache.py#_run_git
+  implements: Helper for running git commands with standard error handling
+- ref: src/repo_cache.py#_with_fetch_retry
+  implements: Helper that wraps operations with retry-after-fetch pattern
 - ref: src/external_resolve.py
   implements: External chunk resolution logic for both modes
 - ref: src/external_resolve.py#ResolveResult
@@ -30,14 +32,11 @@ code_references:
   implements: Task directory mode resolution using local worktrees
 - ref: src/external_resolve.py#resolve_single_repo
   implements: Single repo mode resolution using repo cache
-- ref: src/sync.py#sync_single_repo
-  implements: Updated to use repo_cache.resolve_ref instead of git ls-remote
-- ref: src/ve.py#external
+- ref: src/cli/external.py#external
   implements: External command group
-- ref: src/ve.py#resolve
-  implements: ve external resolve CLI command with --at-pinned, --goal-only, --plan-only,
-    --project options
-- ref: src/ve.py#_display_resolve_result
+- ref: src/cli/external.py#resolve
+  implements: ve external resolve CLI command with --main-only, --secondary-only, --project options
+- ref: src/cli/external.py#_display_resolve_result
   implements: Output formatting for resolve command
 - ref: tests/test_repo_cache.py
   implements: Unit tests for repo cache module
@@ -45,8 +44,6 @@ code_references:
   implements: Unit tests for external resolve module
 - ref: tests/test_external_resolve_cli.py
   implements: CLI integration tests for ve external resolve
-- ref: src/cli/external.py#resolve
-  implements: "CLI external resolve command after CLI modularization"
 narrative: cross_repo_chunks
 subsystems: []
 created_after:

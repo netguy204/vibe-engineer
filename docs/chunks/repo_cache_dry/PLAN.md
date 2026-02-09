@@ -8,170 +8,115 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a pure refactoring chunk that extracts two copy-pasted patterns in `src/repo_cache.py` into reusable internal helpers:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`_run_git(*args, cwd, error_msg)`** - Wraps `subprocess.run` with the standard arguments (`check=True`, `capture_output=True`, `text=True`) and error translation (catch `CalledProcessError`, re-raise as `ValueError` with formatted message).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **`_with_fetch_retry(fn, cache_path)`** - Encapsulates the try/catch/fetch/retry pattern that appears identically in `get_file_at_ref`, `resolve_ref`, and `list_directory_at_ref`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/repo_cache_dry/GOAL.md)
-with references to the files that you expect to touch.
--->
+The refactor follows the DRY principle: each pattern should have a single authoritative implementation. This makes future changes safer (fix in one place, applied everywhere) and reduces the module's surface area.
+
+**Testing strategy**: Per `docs/trunk/TESTING_PHILOSOPHY.md`, this is pure refactoring with no behavioral changes. All existing tests in `tests/test_repo_cache.py` should pass without modification. We'll add targeted unit tests for the new helpers to verify their contracts, but the primary verification is that existing tests continue to pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The module header references `docs/subsystems/cross_repo_operations`. This chunk does not change the subsystem's public interface or patterns—it only consolidates internal implementation details. No subsystem updates are required.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `_run_git` helper
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a private `_run_git(*args, cwd, error_msg)` helper that:
+- Accepts variable git command arguments, a `cwd` path, and an `error_msg` string
+- Calls `subprocess.run` with `check=True`, `capture_output=True`, `text=True`
+- Catches `subprocess.CalledProcessError` and re-raises as `ValueError` using the provided `error_msg` (with `stderr` appended if available)
+- Returns the `CompletedProcess` result on success
 
-Example:
+Location: `src/repo_cache.py`, after the import block and before `get_cache_dir`.
 
-### Step 1: Define the SegmentHeader struct
+**Note on `_is_bare_repo`**: This function intentionally deviates from the standard pattern—it catches `CalledProcessError` and returns `False` instead of raising. Add a comment explaining this deviation. The function remains inline because its error-handling semantics differ from `_run_git`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Migrate `ensure_cached` to use `_run_git`
 
-Location: src/segment/format.rs
+Replace the three `subprocess.run` call sites in `ensure_cached`:
+1. `git fetch --all --quiet` (lines 112-118)
+2. `git reset --hard origin/HEAD` (lines 120-126)
+3. `git clone --quiet` (lines 136-141)
 
-### Step 2: Implement header serialization
+Each site currently has its own try/except block. After migration, these become single `_run_git` calls with appropriate error messages.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Verify existing tests pass: `pytest tests/test_repo_cache.py -k TestEnsureCached`
 
-### Step 3: ...
+### Step 3: Add `_with_fetch_retry` helper
 
----
+Create a private `_with_fetch_retry(fn, cache_path)` helper that:
+- Takes a callable `fn` (that may raise `ValueError`) and a `cache_path`
+- Tries calling `fn()`
+- On `ValueError`, attempts `git fetch --all --quiet` at `cache_path`
+- If fetch succeeds, retries `fn()` and returns its result (letting any exception propagate)
+- If fetch fails, re-raises the original `ValueError`
 
-**BACKREFERENCE COMMENTS**
+This encapsulates the identical logic currently in:
+- `get_file_at_ref` (lines 198-214)
+- `resolve_ref` (lines 251-267)
+- `list_directory_at_ref` (lines 313-329)
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/repo_cache.py`, after `_run_git`.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Migrate `get_file_at_ref` to use `_with_fetch_retry`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Replace the try/fetch/retry block (lines 198-214) with a single call to `_with_fetch_retry`.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+The nested `try_read()` function remains as the inner callable passed to `_with_fetch_retry`.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Verify existing tests pass: `pytest tests/test_repo_cache.py -k TestGetFileAtRef`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 5: Migrate `resolve_ref` to use `_with_fetch_retry`
 
-## Dependencies
+Replace the try/fetch/retry block (lines 251-267) with a single call to `_with_fetch_retry`.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+The nested `try_resolve()` function remains as the inner callable.
 
-If there are no dependencies, delete this section.
--->
+Verify existing tests pass: `pytest tests/test_repo_cache.py -k TestResolveRef`
+
+### Step 6: Migrate `list_directory_at_ref` to use `_with_fetch_retry`
+
+Replace the try/fetch/retry block (lines 313-329) with a single call to `_with_fetch_retry`.
+
+The nested `try_list()` function remains as the inner callable.
+
+Verify existing tests pass: `pytest tests/test_repo_cache.py -k TestListDirectoryAtRef`
+
+### Step 7: Add unit tests for new helpers
+
+Add targeted tests for the extracted helpers in `tests/test_repo_cache.py`:
+
+**For `_run_git`:**
+- `test_run_git_returns_result_on_success`: Verify successful command returns `CompletedProcess`
+- `test_run_git_raises_valueerror_with_message`: Verify failed command raises `ValueError` with the provided error message and stderr content
+
+**For `_with_fetch_retry`:**
+- `test_with_fetch_retry_returns_on_first_success`: When `fn()` succeeds immediately, return its value without fetching
+- `test_with_fetch_retry_fetches_and_retries_on_error`: When `fn()` fails, fetch, then retry and return the retried value
+- `test_with_fetch_retry_propagates_error_after_retry_fails`: When retry also fails, propagate the error from the retry (not the original)
+
+Location: `tests/test_repo_cache.py`
+
+### Step 8: Run full test suite and verify
+
+Run `uv run pytest tests/test_repo_cache.py` to verify:
+- All existing tests pass without modification
+- New helper tests pass
+- No regressions in behavior
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Error message consistency**: The new helpers must preserve the exact error messages from the current implementation to avoid breaking any code that parses or logs these messages. Each migration step should verify error message content in tests.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Fetch failure handling**: The current pattern silently swallows fetch failures and retries the original operation. This is intentional (the fetch might fail for network reasons, but the ref might already be local). The `_with_fetch_retry` helper must preserve this behavior.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

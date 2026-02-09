@@ -16,7 +16,7 @@ code_references:
     implements: "Returns filesystem path to cached repo working tree"
   - ref: src/repo_cache.py#list_directory_at_ref
     implements: "Lists files in a directory at a specific ref using git ls-tree"
-  - ref: src/ve.py#_display_resolve_result
+  - ref: src/cli/external.py#_display_resolve_result
     implements: "CLI output format with path, context, and directory listing"
   - ref: src/cli/external.py#resolve
     implements: "CLI external resolve with enhanced output after CLI modularization"

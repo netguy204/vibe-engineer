@@ -18,6 +18,8 @@ from repo_cache import (
     list_directory_at_ref,
     _repo_to_url,
     _is_bare_repo,
+    _run_git,
+    _with_fetch_retry,
 )
 
 
@@ -543,3 +545,166 @@ class TestEnsureCachedBareCloneMigration:
         assert len(rmtree_called) == 1
         # Should have cloned (without --bare)
         assert any("clone" in cmd and "--bare" not in cmd for cmd in commands_called)
+
+
+class TestRunGit:
+    """Tests for _run_git helper function."""
+
+    def test_returns_result_on_success(self, tmp_path, monkeypatch):
+        """Verify successful command returns CompletedProcess."""
+        expected_stdout = "output content"
+
+        def mock_run(args, **kwargs):
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = expected_stdout
+            mock.stderr = ""
+            return mock
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        result = _run_git("status", cwd=tmp_path, error_msg="Failed")
+
+        assert result.stdout == expected_stdout
+        assert result.returncode == 0
+
+    def test_raises_valueerror_with_message(self, tmp_path, monkeypatch):
+        """Verify failed command raises ValueError with the provided error message and stderr content."""
+        stderr_content = "fatal: not a git repository"
+
+        def mock_run(args, **kwargs):
+            raise subprocess.CalledProcessError(
+                returncode=128, cmd=args, stderr=stderr_content
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        with pytest.raises(ValueError) as exc_info:
+            _run_git("status", cwd=tmp_path, error_msg="Test error message")
+
+        error_str = str(exc_info.value)
+        # Should include both the custom error message and the stderr content
+        assert "Test error message" in error_str
+        assert stderr_content in error_str
+
+    def test_raises_valueerror_with_unknown_error_fallback(self, tmp_path, monkeypatch):
+        """Verify failed command with empty stderr uses 'unknown error' fallback."""
+
+        def mock_run(args, **kwargs):
+            raise subprocess.CalledProcessError(returncode=128, cmd=args, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        with pytest.raises(ValueError) as exc_info:
+            _run_git("status", cwd=tmp_path, error_msg="Test error")
+
+        error_str = str(exc_info.value)
+        assert "unknown error" in error_str
+
+
+class TestWithFetchRetry:
+    """Tests for _with_fetch_retry helper function."""
+
+    def test_returns_on_first_success(self, tmp_path, monkeypatch):
+        """When fn() succeeds immediately, return its value without fetching."""
+        fetch_called = []
+
+        def mock_run(args, **kwargs):
+            if "fetch" in args:
+                fetch_called.append(True)
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = ""
+            mock.stderr = ""
+            return mock
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        def successful_fn():
+            return "success_value"
+
+        result = _with_fetch_retry(successful_fn, tmp_path)
+
+        assert result == "success_value"
+        # fetch should NOT be called when fn succeeds on first try
+        assert len(fetch_called) == 0
+
+    def test_fetches_and_retries_on_error(self, tmp_path, monkeypatch):
+        """When fn() fails, fetch, then retry and return the retried value."""
+        call_count = [0]
+        fetch_called = []
+
+        def mock_run(args, **kwargs):
+            if "fetch" in args:
+                fetch_called.append(True)
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = ""
+            mock.stderr = ""
+            return mock
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        def fn_fails_first():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("First call failed")
+            return "retry_success"
+
+        result = _with_fetch_retry(fn_fails_first, tmp_path)
+
+        assert result == "retry_success"
+        assert call_count[0] == 2  # fn called twice
+        assert len(fetch_called) == 1  # fetch called once
+
+    def test_propagates_error_after_retry_fails(self, tmp_path, monkeypatch):
+        """When retry also fails, propagate the error from the retry (not the original)."""
+        call_count = [0]
+
+        def mock_run(args, **kwargs):
+            # fetch succeeds
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = ""
+            mock.stderr = ""
+            return mock
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        def fn_always_fails():
+            call_count[0] += 1
+            raise ValueError(f"Error from call {call_count[0]}")
+
+        with pytest.raises(ValueError) as exc_info:
+            _with_fetch_retry(fn_always_fails, tmp_path)
+
+        # Should propagate the error from the retry (second call)
+        assert "Error from call 2" in str(exc_info.value)
+
+    def test_retries_even_if_fetch_fails(self, tmp_path, monkeypatch):
+        """When fetch fails, still retry the original operation."""
+        call_count = [0]
+
+        def mock_run(args, **kwargs):
+            # fetch fails
+            if "fetch" in args:
+                raise subprocess.CalledProcessError(128, args, stderr="network error")
+            mock = MagicMock()
+            mock.returncode = 0
+            mock.stdout = ""
+            mock.stderr = ""
+            return mock
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        def fn_fails_then_succeeds():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("First call failed")
+            return "retry_success_after_fetch_fail"
+
+        result = _with_fetch_retry(fn_fails_then_succeeds, tmp_path)
+
+        # Should still retry even though fetch failed
+        assert result == "retry_success_after_fetch_fail"
+        assert call_count[0] == 2
