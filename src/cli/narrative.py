@@ -235,6 +235,7 @@ def status(narrative_id, new_status, project_dir):
 @click.option("--name", required=True, help="Short name for the consolidated narrative")
 @click.option("--description", default="Consolidated narrative", help="Description for the narrative")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/narrative_compact_extract - Refactored to delegate to domain method
 def compact(chunk_ids, name, description, project_dir):
     """Consolidate multiple chunks into a single narrative.
 
@@ -245,9 +246,6 @@ def compact(chunk_ids, name, description, project_dir):
     Example:
         ve narrative compact chunk_a chunk_b chunk_c --name my_narrative
     """
-    import re
-    import yaml
-
     if len(chunk_ids) < 2:
         click.echo("Error: Need at least 2 chunks to consolidate", err=True)
         raise SystemExit(1)
@@ -265,37 +263,16 @@ def compact(chunk_ids, name, description, project_dir):
             raise SystemExit(1)
         normalized_ids.append(normalized)
 
-    # Create the narrative
+    # Delegate to domain method for file manipulation
     narratives = Narratives(project_dir)
 
     try:
-        narrative_path = narratives.create_narrative(name)
+        narrative_path = narratives.compact(normalized_ids, name, description)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    # Update OVERVIEW.md with chunk references
-    overview_path = narrative_path / "OVERVIEW.md"
-    content = overview_path.read_text()
-
-    # Parse existing frontmatter
-    match = re.match(r"^(---\s*\n)(.*?)(\n---)", content, re.DOTALL)
-    if match:
-        frontmatter = yaml.safe_load(match.group(2))
-        if not isinstance(frontmatter, dict):
-            frontmatter = {}
-
-        # Add proposed_chunks listing the consolidated chunks
-        frontmatter["proposed_chunks"] = [
-            {"prompt": f"Consolidated from {chunk_id}", "chunk_directory": chunk_id}
-            for chunk_id in normalized_ids
-        ]
-        frontmatter["advances_trunk_goal"] = description
-
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        rest_of_file = content[match.end():]
-        overview_path.write_text(f"---\n{new_frontmatter}---{rest_of_file}")
-
+    # Output formatting
     relative_path = narrative_path.relative_to(project_dir)
     click.echo(f"Created narrative: {relative_path}")
     click.echo("")

@@ -8,153 +8,140 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extract the file manipulation logic from `src/cli/narrative.py:compact()` (lines 233-304) into a new `Narratives.compact()` domain method in `src/narratives.py`. This follows the existing layering pattern where CLI commands delegate file I/O to domain classes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach:
+1. Create `Narratives.compact()` method that accepts validated chunk IDs and description
+2. The method reuses `create_narrative()` to create the directory, then uses `frontmatter.py` utilities (`extract_frontmatter_dict`, `update_frontmatter_field` pattern) to update the OVERVIEW.md frontmatter
+3. Refactor the CLI `compact` command to delegate to the domain method, keeping only input validation (chunk existence via `Chunks`) and output formatting
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This aligns with:
+- **DEC-009 (ArtifactManager Template Method Pattern)**: The `Narratives` class already follows the manager pattern; adding `compact()` extends it consistently
+- **workflow_artifacts subsystem (Hard Invariant #6)**: Manager classes implement the core interface; adding domain methods follows this pattern
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/narrative_compact_extract/GOAL.md)
-with references to the files that you expect to touch.
--->
+The existing `frontmatter.py` module provides `extract_frontmatter_dict()` and `update_frontmatter_field()`. However, `update_frontmatter_field()` updates a single field at a time. For `compact()` we need to update two fields (`proposed_chunks` and `advances_trunk_goal`). We can either:
+1. Call `update_frontmatter_field()` twice (simple but reads/writes file twice)
+2. Add a new `update_frontmatter_fields()` helper for batch updates
+
+Option 1 is simpler and the file is small; the double read/write is negligible. We'll use that.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk IMPLEMENTS the extraction of domain logic from CLI to the `Narratives` manager class, following the subsystem's manager class pattern (Hard Invariant #6: "Manager class must implement the core interface"). The `compact()` method being added follows the pattern established by other manager methods like `create_narrative()`.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system indirectly via `create_narrative()` which already delegates to `render_to_directory()`.
 
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The existing `compact` CLI command is a deviation from the workflow_artifacts subsystem pattern -- it directly manipulates files rather than delegating to the domain layer. This chunk resolves that deviation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `Narratives.compact()`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a new test class `TestNarrativeCompact` in `tests/test_narratives.py` that verifies:
+1. `compact()` creates a narrative directory with OVERVIEW.md
+2. `compact()` populates `proposed_chunks` in frontmatter with entries for each chunk ID
+3. `compact()` populates `advances_trunk_goal` with the provided description
+4. `compact()` returns the created narrative path
+5. `compact()` raises `ValueError` if the narrative name already exists (collision detection)
 
-Example:
+These tests should fail initially because `Narratives.compact()` doesn't exist yet.
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_narratives.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Implement `Narratives.compact()` domain method
 
-Location: src/segment/format.rs
+Add the `compact()` method to the `Narratives` class in `src/narratives.py`:
 
-### Step 2: Implement header serialization
+```python
+def compact(self, chunk_ids: list[str], name: str, description: str) -> pathlib.Path:
+    """Consolidate chunks into a narrative.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+    Creates a new narrative and populates its frontmatter with references to
+    the consolidated chunks.
 
-### Step 3: ...
+    Args:
+        chunk_ids: List of chunk directory names to consolidate
+        name: Short name for the narrative (already validated)
+        description: Description to set in advances_trunk_goal
 
----
+    Returns:
+        Path to the created narrative directory
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Raises:
+        ValueError: If narrative with same name already exists
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implementation:
+1. Call `self.create_narrative(name)` to create the directory (reuses collision detection)
+2. Build the `proposed_chunks` list: `[{"prompt": f"Consolidated from {chunk_id}", "chunk_directory": chunk_id} for chunk_id in chunk_ids]`
+3. Call `update_frontmatter_field()` for `proposed_chunks`
+4. Call `update_frontmatter_field()` for `advances_trunk_goal` with the description
+5. Return the narrative path
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Import `update_frontmatter_field` from `frontmatter` module.
+
+Location: `src/narratives.py`
+
+Backreference to add:
+```python
+# Chunk: docs/chunks/narrative_compact_extract - Domain method for compact command
+```
+
+### Step 3: Verify Step 1 tests now pass
+
+Run the tests from Step 1. They should now pass since `Narratives.compact()` is implemented.
+
+Command: `uv run pytest tests/test_narratives.py::TestNarrativeCompact -v`
+
+### Step 4: Refactor CLI `compact` command to delegate to domain method
+
+Modify `src/cli/narrative.py:compact()` to:
+1. Keep the input validation (chunk existence via `Chunks.enumerate_chunks()`)
+2. Remove the inline file manipulation code (regex, yaml imports, direct file read/write)
+3. Call `narratives.compact(normalized_ids, name, description)` instead
+4. Keep the CLI output formatting
+
+Remove these imports from the function body:
+- `import re`
+- `import yaml`
+
+The refactored function should be approximately 20 lines shorter.
+
+Location: `src/cli/narrative.py`
+
+### Step 5: Verify CLI integration tests still pass
+
+Run the existing CLI tests for `narrative compact` to verify behavior is unchanged.
+
+Command: `uv run pytest tests/test_narrative_consolidation.py -v -k "compact or consolidate"`
+
+Also run the full test suite to verify no regressions:
+
+Command: `uv run pytest tests/ -v`
+
+### Step 6: Verify success criteria
+
+Confirm all success criteria are met:
+- [ ] `Narratives.compact()` exists and returns the created narrative path
+- [ ] It uses `create_narrative()` internally
+- [ ] It uses `update_frontmatter_field()` from `frontmatter.py`
+- [ ] CLI `compact` command no longer imports `re` or `yaml` directly
+- [ ] CLI `compact` command no longer contains regex patterns or `yaml.safe_load`/`yaml.dump` calls
+- [ ] All existing tests pass
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. This chunk relies on:
+- `src/frontmatter.py` - Already exists with `update_frontmatter_field()`
+- `src/narratives.py` - Already exists with `Narratives` class and `create_narrative()`
+- `src/cli/narrative.py` - Already exists with the `compact` command to refactor
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **YAML formatting consistency**: The existing CLI code uses `yaml.dump()` with `default_flow_style=False, sort_keys=False`. The `update_frontmatter_field()` utility also uses `yaml.dump()` with the same options, so formatting should be consistent. However, calling it twice means two read/write cycles. If this becomes a concern, we could add a `update_frontmatter_fields()` batch helper -- but for this small file, it's likely fine.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Error handling for create_narrative failures**: If `create_narrative()` raises a `ValueError` (e.g., duplicate name), the `compact()` method will propagate it. The CLI already handles this case, so no additional error handling is needed in the domain method.
 
 ## Deviations
 

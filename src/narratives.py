@@ -218,4 +218,42 @@ class Narratives(ArtifactManager[NarrativeFrontmatter, NarrativeStatus]):
 
         return narrative_path
 
+    # Chunk: docs/chunks/narrative_compact_extract - Domain method for compact command
+    def compact(
+        self, chunk_ids: list[str], name: str, description: str
+    ) -> pathlib.Path:
+        """Consolidate chunks into a narrative.
+
+        Creates a new narrative and populates its frontmatter with references to
+        the consolidated chunks.
+
+        Args:
+            chunk_ids: List of chunk directory names to consolidate
+            name: Short name for the narrative (already validated)
+            description: Description to set in advances_trunk_goal
+
+        Returns:
+            Path to the created narrative directory
+
+        Raises:
+            ValueError: If narrative with same name already exists
+        """
+        from frontmatter import update_frontmatter_field
+
+        # Create the narrative directory (reuses collision detection from create_narrative)
+        narrative_path = self.create_narrative(name)
+
+        # Build proposed_chunks list
+        proposed_chunks = [
+            {"prompt": f"Consolidated from {chunk_id}", "chunk_directory": chunk_id}
+            for chunk_id in chunk_ids
+        ]
+
+        # Update frontmatter fields
+        overview_path = narrative_path / "OVERVIEW.md"
+        update_frontmatter_field(overview_path, "proposed_chunks", proposed_chunks)
+        update_frontmatter_field(overview_path, "advances_trunk_goal", description)
+
+        return narrative_path
+
     # find_duplicates inherited from ArtifactManager base class
