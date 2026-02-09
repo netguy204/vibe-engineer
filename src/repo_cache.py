@@ -70,7 +70,10 @@ def _with_fetch_retry(fn: Callable[[], T], cache_path: Path) -> T:
     try:
         return fn()
     except ValueError:
-        # Ref might be unknown, try fetching first
+        # Ref might be unknown, try fetching first.
+        # Note: This intentionally uses raw subprocess.run instead of _run_git
+        # because fetch failures are silently swallowed (the ref might already
+        # be local, or the retry might succeed for other reasons).
         try:
             subprocess.run(
                 ["git", "fetch", "--all", "--quiet"],
@@ -240,20 +243,12 @@ def get_file_at_ref(repo: str, ref: str, file_path: str) -> str:
     cache_path = ensure_cached(repo)
 
     def try_read() -> str:
-        try:
-            result = subprocess.run(
-                ["git", "show", f"{ref}:{file_path}"],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            raise ValueError(
-                f"Cannot read '{file_path}' at ref '{ref}' in '{repo}': "
-                f"{e.stderr.strip() if e.stderr else 'file or ref not found'}"
-            ) from e
+        result = _run_git(
+            "show", f"{ref}:{file_path}",
+            cwd=cache_path,
+            error_msg=f"Cannot read '{file_path}' at ref '{ref}' in '{repo}'",
+        )
+        return result.stdout
 
     return _with_fetch_retry(try_read, cache_path)
 
@@ -274,23 +269,15 @@ def resolve_ref(repo: str, ref: str) -> str:
     cache_path = ensure_cached(repo)
 
     def try_resolve() -> str:
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", ref],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            sha = result.stdout.strip()
-            if len(sha) != 40:
-                raise ValueError(f"Unexpected SHA format: {sha}")
-            return sha
-        except subprocess.CalledProcessError as e:
-            raise ValueError(
-                f"Cannot resolve ref '{ref}' in '{repo}': "
-                f"{e.stderr.strip() if e.stderr else 'ref not found'}"
-            ) from e
+        result = _run_git(
+            "rev-parse", ref,
+            cwd=cache_path,
+            error_msg=f"Cannot resolve ref '{ref}' in '{repo}'",
+        )
+        sha = result.stdout.strip()
+        if len(sha) != 40:
+            raise ValueError(f"Unexpected SHA format: {sha}")
+        return sha
 
     return _with_fetch_retry(try_resolve, cache_path)
 
@@ -315,27 +302,19 @@ def list_directory_at_ref(repo: str, ref: str, dir_path: str) -> list[str]:
     dir_path = dir_path.rstrip("/")
 
     def try_list() -> list[str]:
-        try:
-            result = subprocess.run(
-                ["git", "ls-tree", "--name-only", ref, f"{dir_path}/"],
-                cwd=cache_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            # ls-tree returns full paths like "docs/chunks/foo/GOAL.md"
-            # We want just the filename part
-            files = []
-            for line in result.stdout.strip().split("\n"):
-                if line:
-                    # Extract just the filename from the full path
-                    filename = line.split("/")[-1]
-                    files.append(filename)
-            return files
-        except subprocess.CalledProcessError as e:
-            raise ValueError(
-                f"Cannot list directory '{dir_path}' at ref '{ref}' in '{repo}': "
-                f"{e.stderr.strip() if e.stderr else 'directory not found'}"
-            ) from e
+        result = _run_git(
+            "ls-tree", "--name-only", ref, f"{dir_path}/",
+            cwd=cache_path,
+            error_msg=f"Cannot list directory '{dir_path}' at ref '{ref}' in '{repo}'",
+        )
+        # ls-tree returns full paths like "docs/chunks/foo/GOAL.md"
+        # We want just the filename part
+        files = []
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                # Extract just the filename from the full path
+                filename = line.split("/")[-1]
+                files.append(filename)
+        return files
 
     return _with_fetch_retry(try_list, cache_path)
