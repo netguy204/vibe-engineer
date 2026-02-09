@@ -25,8 +25,6 @@ code_references:
     implements: "Main CLI assembly point that registers all command groups"
   - ref: src/cli/utils.py#validate_short_name
     implements: "Shared identifier validation"
-  - ref: src/cli/utils.py#validate_combined_chunk_name
-    implements: "Chunk name length validation"
   - ref: src/cli/utils.py#warn_task_project_context
     implements: "Warning for local artifact creation in task context"
   - ref: src/cli/init_cmd.py#init

@@ -560,7 +560,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
             # With task context, resolve to the live working copy
             if task_dir is not None:
-                from task_utils import (
+                from task import (
                     load_task_config,
                     resolve_repo_directory,
                 )

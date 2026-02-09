@@ -369,7 +369,7 @@ def detect_task_context(directory: Path) -> TaskContextInfo:
     Returns:
         TaskContextInfo with detected context information
     """
-    from task_utils import is_task_directory, load_task_config, resolve_repo_directory
+    from task import is_task_directory, load_task_config, resolve_repo_directory
 
     directory = directory.resolve()
 
@@ -485,7 +485,7 @@ def resolve_affected_repos(task_info: TaskContextInfo, chunk: str) -> list[Path]
     Returns:
         List of resolved project repo paths
     """
-    from task_utils import resolve_repo_directory
+    from task import resolve_repo_directory
 
     if not task_info.is_task_context:
         # Single-repo mode - only the current repo is affected

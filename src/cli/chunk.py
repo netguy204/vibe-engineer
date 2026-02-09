@@ -16,7 +16,7 @@ from chunks import Chunks
 from external_refs import strip_artifact_path_prefix, is_external_artifact, load_external_ref
 from project import Project
 from models import ChunkStatus, ArtifactType, parse_status_filters
-from task_utils import (
+from task import (
     is_task_directory,
     create_task_chunk,
     list_task_chunks,
@@ -36,7 +36,6 @@ from artifact_ordering import ArtifactIndex
 from cli.utils import (
     validate_short_name,
     validate_ticket_id,
-    validate_combined_chunk_name,
     warn_task_project_context,
     handle_task_context,
 )
@@ -122,7 +121,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 
     for name in names_to_create:
         errors = validate_short_name(name)
-        errors.extend(validate_combined_chunk_name(name.lower(), ticket_id))
         if errors:
             validation_errors[name] = errors
         else:
@@ -214,42 +212,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 
 
 chunk.add_command(create, name="start")
-
-
-# Chunk: docs/chunks/chunk_create_task_aware - CLI handler for cross-repo mode output
-def _start_task_chunk(
-    task_dir: pathlib.Path,
-    short_name: str,
-    ticket_id: str | None,
-    status: str = "IMPLEMENTING",
-    projects_input: str | None = None,
-):
-    """Handle chunk creation in task directory (cross-repo mode)."""
-    # Parse and validate projects option
-    try:
-        config = load_task_config(task_dir)
-        projects = parse_projects_option(projects_input, config.projects)
-    except FileNotFoundError:
-        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
-        raise SystemExit(1)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
-    try:
-        result = create_task_chunk(task_dir, short_name, ticket_id, status=status, projects=projects)
-    except TaskChunkError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
-    # Report created paths
-    external_path = result["external_chunk_path"]
-    click.echo(f"Created chunk in external repo: {external_path.relative_to(task_dir)}/")
-
-    for project_ref, yaml_path in result["project_refs"].items():
-        # Show the chunk directory, not the yaml file
-        chunk_dir = yaml_path.parent
-        click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
 
 
 # Chunk: docs/chunks/chunk_batch_create - Batch chunk creation handler for task directory mode
@@ -602,7 +564,7 @@ def _list_task_chunks(
                 raise SystemExit(1)
             if json_output:
                 # Get frontmatter for the current chunk
-                from task_utils import resolve_repo_directory, load_task_config
+                from task import resolve_repo_directory, load_task_config
                 config = load_task_config(task_dir)
                 external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
                 external_chunks = Chunks(external_path)
@@ -614,7 +576,7 @@ def _list_task_chunks(
                 click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
         elif last_active:
             # For task context, get the last active chunk from the external artifacts repo
-            from task_utils import resolve_repo_directory, load_task_config
+            from task import resolve_repo_directory, load_task_config
 
             config = load_task_config(task_dir)
             external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
@@ -635,7 +597,7 @@ def _list_task_chunks(
                 click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
         elif recent:
             # For task context, get recent active chunks from the external artifacts repo
-            from task_utils import resolve_repo_directory, load_task_config
+            from task import resolve_repo_directory, load_task_config
 
             config = load_task_config(task_dir)
             external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
@@ -771,7 +733,7 @@ def activate(chunk_id, project_dir):
     When run in task context (directory with .ve-task.yaml), searches for
     the chunk across the external repo and all project repos.
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         activate_task_chunk,
@@ -872,7 +834,7 @@ def overlap(chunk_id, project_dir):
     overlapping chunks across the external repo and all project repos.
     Supports project-qualified code references (e.g., "project::src/foo.py#Bar").
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         find_task_overlapping_chunks,
@@ -1076,7 +1038,7 @@ def validate(chunk_id, project_dir, injectable):
     checking status-content consistency (e.g., IMPLEMENTING/ACTIVE status
     requires a populated PLAN.md).
     """
-    from task_utils import find_task_directory, is_task_directory
+    from task import find_task_directory, is_task_directory
 
     # Normalize chunk_id to strip path prefixes (if provided)
     if chunk_id is not None:
@@ -1094,7 +1056,7 @@ def validate(chunk_id, project_dir, injectable):
     # Determine which project directory to use for chunks
     # If we're in a task directory directly, we need to find the external repo
     if task_dir is not None and is_task_directory(project_dir):
-        from task_utils import load_task_config, resolve_repo_directory
+        from task import load_task_config, resolve_repo_directory
 
         try:
             config = load_task_config(task_dir)

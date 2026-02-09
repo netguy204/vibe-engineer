@@ -6,7 +6,7 @@ import subprocess
 import pytest
 
 from task_init import TaskInit, TaskInitResult, _resolve_to_org_repo
-from task_utils import load_task_config
+from task import load_task_config
 from conftest import make_ve_initialized_git_repo
 
 

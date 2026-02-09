@@ -1,177 +1,123 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk removes dead code identified during the architecture review. The approach is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Delete unused function** (`_start_task_chunk`): Simple removal - the function is defined but never called.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Consolidate redundant validation** (`validate_combined_chunk_name`): Replace call site with `validate_short_name`, delete the function.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/dead_code_removal/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Migrate `task_utils.py` imports**: Update all 26 import sites in `src/` and `tests/` to import directly from `task` package or `external_refs`, then delete the shim.
+
+This is pure refactoring - no behavior changes. All existing tests must pass after each step.
+
+Per docs/trunk/TESTING_PHILOSOPHY.md, this work doesn't require new tests because:
+- We're removing dead code (nothing to test)
+- Import path changes are validated by running the existing test suite
+- The removed function was never called, so no behavior is being lost
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): This chunk removes the backward-compatibility shim `src/task_utils.py` mentioned in the subsystem overview. After removal, the subsystem documentation should be updated to remove references to this file. However, since the subsystem is DOCUMENTED (not REFACTORING), this is optional cleanup.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Delete `_start_task_chunk` function
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Remove the unused function from `src/cli/chunk.py`.
 
-Example:
+**Location**: `src/cli/chunk.py`, lines 220-253
 
-### Step 1: Define the SegmentHeader struct
+**Verification**: Run `uv run pytest tests/test_chunk_start.py` to ensure chunk creation still works via the batch handler.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Replace `validate_combined_chunk_name` call site
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+In `src/cli/chunk.py:125`, the code calls:
+```python
+errors.extend(validate_combined_chunk_name(name.lower(), ticket_id))
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This is redundant because `validate_short_name` (called on line 124) already validates the 31-character limit via `validate_identifier`. The only difference is `validate_combined_chunk_name` accepts a `ticket_id` parameter that it explicitly ignores (line 47: `combined_name = short_name`).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Action**:
+1. Remove the call to `validate_combined_chunk_name` at line 125
+2. Remove `validate_combined_chunk_name` from the import statement at line 39
+3. Delete the `validate_combined_chunk_name` function from `src/cli/utils.py` (lines 30-54)
 
-## Dependencies
+**Verification**: Run `uv run pytest tests/test_chunk_start.py` to ensure validation still works.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 3: Catalog all `task_utils` import sites
 
-If there are no dependencies, delete this section.
--->
+Examine each of the 26 import sites in `src/` and `tests/` to determine the correct replacement import path.
+
+The `task_utils.py` re-exports from two sources:
+- `external_refs`: `is_external_artifact`, `load_external_ref`, `create_external_yaml`, `normalize_artifact_path`, `ARTIFACT_MAIN_FILE`, `ARTIFACT_DIR_NAME`
+- `task`: All task-related symbols (exceptions, config, artifact_ops, promote, external, friction, overlap)
+
+For each import site, determine which symbols are used and from which source they should be imported.
+
+### Step 4: Migrate imports in `src/` files (14 files)
+
+Update imports in the following files to import directly from `task` or `external_refs`:
+
+1. `src/task/__init__.py` - Imports from `task_utils` to get `external_refs` symbols; switch to direct import
+2. `src/orchestrator/models.py` - Check which symbols are used
+3. `src/external_resolve.py` - Check which symbols are used
+4. `src/cli/utils.py` - Uses `TaskProjectContext`, `is_task_directory`; switch to `from task import`
+5. `src/cluster_analysis.py` - Check which symbols are used
+6. `src/cli/narrative.py` - Check which symbols are used
+7. `src/cli/subsystem.py` - Check which symbols are used
+8. `src/cli/investigation.py` - Check which symbols are used
+9. `src/cli/external.py` - Check which symbols are used
+10. `src/cli/friction.py` - Check which symbols are used
+11. `src/cli/artifact.py` - Check which symbols are used
+12. `src/cli/chunk.py` - Uses task-related imports; switch to `from task import`
+13. `src/chunk_validation.py` - Check which symbols are used
+14. `src/chunks.py` - Check which symbols are used
+
+**Verification**: Run `uv run pytest tests/` after each file to catch import errors early.
+
+### Step 5: Migrate imports in `tests/` files (12 files)
+
+Update imports in the following test files:
+
+1. `tests/test_task_narrative_create.py`
+2. `tests/test_task_subsystem_discover.py`
+3. `tests/test_task_utils.py` - May need to import from both `task` and `external_refs`
+4. `tests/test_task_context_cmds.py`
+5. `tests/test_task_init.py`
+6. `tests/test_task_investigation_create.py`
+7. `tests/test_task_chunk_create.py`
+8. `tests/test_external_resolve.py`
+9. `tests/test_chunk_list_proposed.py`
+10. `tests/test_artifact_promote.py`
+11. `tests/test_artifact_remove_external.py`
+12. `tests/test_artifact_copy_external.py`
+
+**Verification**: Run full test suite after all migrations.
+
+### Step 6: Delete `src/task_utils.py`
+
+Remove the now-unused re-export shim.
+
+**Verification**:
+- `grep -r "from task_utils import\|import task_utils" src/ tests/` returns zero matches
+- `uv run pytest tests/` passes
+- `uv run ve chunk list` works (smoke test)
+
+### Step 7: Update cross_repo_operations subsystem documentation (optional)
+
+Remove mention of `src/task_utils.py` from `docs/subsystems/cross_repo_operations/OVERVIEW.md` line 182.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Import ordering**: Some files may have circular import concerns. If encountered, use lazy imports or restructure as needed.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Test isolation**: Tests that mock `task_utils` imports will need their mock targets updated. This should be mechanical but may require attention.
+
+3. **External tools**: If any external tools or scripts import from `task_utils`, they will break. This is acceptable - the module docstring has warned about deprecation, and direct imports from `task` are the documented replacement.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

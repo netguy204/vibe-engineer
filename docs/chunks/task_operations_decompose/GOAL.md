@@ -3,7 +3,6 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/task_utils.py
 - src/task/__init__.py
 - src/task/config.py
 - src/task/artifact_ops.py
@@ -16,8 +15,6 @@ code_references:
   # Package structure and re-exports
   - ref: src/task/__init__.py
     implements: "Package re-exports for backward compatibility with task_utils imports"
-  - ref: src/task_utils.py
-    implements: "Thin re-export shim preserving backward compatibility"
 
   # Exception hierarchy
   - ref: src/task/exceptions.py#TaskError

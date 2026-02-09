@@ -492,7 +492,7 @@ class TestListTaskProposedChunksLogic:
 
     def test_returns_grouped_dict_structure(self, tmp_path):
         """Verify return structure has external and projects keys."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -506,7 +506,7 @@ class TestListTaskProposedChunksLogic:
 
     def test_collects_from_external_repo(self, tmp_path):
         """Verify proposed chunks from external repo are collected."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -531,7 +531,7 @@ proposed_chunks:
 
     def test_collects_from_project_repos(self, tmp_path):
         """Verify proposed chunks from each project repo are collected."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1", "proj2"]
@@ -559,7 +559,7 @@ proposed_chunks:
 
     def test_raises_on_missing_external_repo(self, tmp_path):
         """Verify TaskChunkError raised when external repo not found."""
-        from task_utils import list_task_proposed_chunks, TaskChunkError
+        from task import list_task_proposed_chunks, TaskChunkError
 
         task_dir = tmp_path
 

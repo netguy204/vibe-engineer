@@ -26,7 +26,7 @@ from external_refs import (
 )
 from git_utils import get_current_sha
 from models import ArtifactType
-from task_utils import (
+from task import (
     is_task_directory,
     load_task_config,
     resolve_repo_directory,

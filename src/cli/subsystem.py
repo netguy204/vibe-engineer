@@ -15,7 +15,7 @@ from chunks import Chunks
 from external_refs import strip_artifact_path_prefix
 from subsystems import Subsystems
 from models import SubsystemStatus, ArtifactType
-from task_utils import (
+from task import (
     is_task_directory,
     create_task_subsystem,
     list_task_artifacts_grouped,
@@ -275,7 +275,7 @@ def overlap(chunk_id, project_dir):
     the chunk across the external repo and all project repos, then checks
     for overlapping subsystems in the same repo where the chunk was found.
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         load_task_config,

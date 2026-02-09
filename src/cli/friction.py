@@ -146,7 +146,7 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
       ve friction log --title "X" --description "Y" --impact low --theme cli --projects proj1,proj2
     """
     from friction import Friction
-    from task_utils import (
+    from task import (
         is_task_directory,
         create_task_friction_entry,
         TaskFrictionError,
@@ -200,7 +200,7 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
 def _log_entry_task_context(project_dir, title, description, impact, theme, theme_name, projects):
     """Handle friction logging in task context."""
     from friction import Friction
-    from task_utils import (
+    from task import (
         create_task_friction_entry,
         TaskFrictionError,
         load_task_config,
