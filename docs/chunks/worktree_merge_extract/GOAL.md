@@ -1,21 +1,37 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/worktree.py
-  - src/orchestrator/merge.py
-  - src/orchestrator/__init__.py
-code_references: []
+- src/orchestrator/worktree.py
+- src/orchestrator/merge.py
+- src/orchestrator/__init__.py
+code_references:
+  - ref: src/orchestrator/merge.py#merge_without_checkout
+    implements: "Primary checkout-free merge using git merge-tree --write-tree (Git 2.38+)"
+  - ref: src/orchestrator/merge.py#merge_via_index
+    implements: "Fallback merge using temporary index file for older Git versions"
+  - ref: src/orchestrator/merge.py#update_working_tree_if_on_branch
+    implements: "Working tree sync after ref update via update-ref"
+  - ref: src/orchestrator/merge.py#WorktreeError
+    implements: "Exception class for worktree and merge-related errors"
+  - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_without_checkout
+    implements: "Delegation wrapper that calls orchestrator.merge.merge_without_checkout"
 narrative: arch_review_gaps
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["cli_decompose", "integrity_deprecate_standalone", "low_priority_cleanup", "optimistic_locking", "spec_and_adr_update", "test_file_split", "orch_session_auto_resume"]
+created_after:
+- cli_decompose
+- integrity_deprecate_standalone
+- low_priority_cleanup
+- optimistic_locking
+- spec_and_adr_update
+- test_file_split
+- orch_session_auto_resume
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

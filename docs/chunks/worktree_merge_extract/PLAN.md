@@ -8,170 +8,145 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a pure extraction refactoring with no behavioral changes. The approach is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Create the new merge module** (`src/orchestrator/merge.py`) containing the extracted functions
+2. **Move the merge logic** from `worktree.py` to `merge.py` as module-level functions (not class methods)
+3. **Update `worktree.py`** to import and delegate to the new module
+4. **Preserve the public API** - `WorktreeManager.merge_to_base()` and `WorktreeManager.finalize_work_unit()` signatures remain unchanged
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The extraction targets three private methods that represent the merge strategy logic:
+- `_merge_without_checkout()` - Core checkout-free merge using `git merge-tree --write-tree` (Git 2.38+)
+- `_merge_via_index()` - Fallback merge using a temporary index file for older Git versions
+- `_update_working_tree_if_on_branch()` - Working tree sync after a ref update via `update-ref`
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/worktree_merge_extract/GOAL.md)
-with references to the files that you expect to touch.
--->
+These become standalone functions in `merge.py` since they don't require WorktreeManager state beyond the parameters already passed to them.
+
+The following methods stay in `worktree.py` but delegate to the new module:
+- `merge_to_base()` - Public entry point
+- `_merge_to_base_single_repo()` - Loads persisted base branch, calls merge
+- `_merge_to_base_multi_repo()` - Iterates repos with rollback on failure
+
+No new tests are needed since the existing test suite in `tests/test_orchestrator_worktree*.py` already covers merge behavior. The extraction is purely structural.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS a structural improvement to the orchestrator's worktree module. The subsystem lists `worktree.py#WorktreeManager` as the canonical implementation location. After this extraction, `merge.py` becomes a supporting module that implements the merge strategy details while `worktree.py` retains the lifecycle management responsibility.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The orchestrator subsystem is DOCUMENTED status, so any discovered deviations should be noted but not prioritized for fixing in this chunk.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create `src/orchestrator/merge.py` with module docstring and imports
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create the new module with:
+- Module docstring explaining its purpose (checkout-free merge strategies for orchestrator worktrees)
+- Chunk and subsystem backreferences
+- Required imports: `subprocess`, `Path` from pathlib, `WorktreeError` from `orchestrator.worktree`
 
-Example:
+Location: `src/orchestrator/merge.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Move `_merge_without_checkout` to merge.py
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Extract the `_merge_without_checkout` method from `WorktreeManager` and convert it to a module-level function:
+- Function signature: `def merge_without_checkout(source_branch: str, target_branch: str, repo_dir: Path) -> None`
+- Remove the `self` parameter (it wasn't used for state access)
+- Keep the existing Chunk backreference comment from `orch_merge_safety`
+- Add backreference to this chunk (`worktree_merge_extract`)
 
-Location: src/segment/format.rs
+Location: `src/orchestrator/merge.py`
 
-### Step 2: Implement header serialization
+### Step 3: Move `_merge_via_index` to merge.py
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Extract the `_merge_via_index` method and convert to module-level function:
+- Function signature: `def merge_via_index(source_branch: str, source_sha: str, target_branch: str, target_sha: str, repo_dir: Path) -> None`
+- Keep the existing Chunk backreference comment from `orch_merge_safety`
+- Add backreference to this chunk
 
-### Step 3: ...
+Location: `src/orchestrator/merge.py`
 
----
+### Step 4: Move `_update_working_tree_if_on_branch` to merge.py
 
-**BACKREFERENCE COMMENTS**
+Extract the `_update_working_tree_if_on_branch` method and convert to module-level function:
+- Function signature: `def update_working_tree_if_on_branch(target_branch: str, repo_dir: Path) -> None`
+- Keep the existing Chunk backreference comment from `orch_merge_safety`
+- Add backreference to this chunk
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/orchestrator/merge.py`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Update the merge functions to call each other correctly
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Update internal references within `merge.py`:
+- `merge_without_checkout` calls `merge_via_index` (for fallback) and `update_working_tree_if_on_branch`
+- `merge_via_index` calls `update_working_tree_if_on_branch`
 
-Format (place immediately before the symbol):
+No self-references needed since these are now module functions.
+
+### Step 6: Update `worktree.py` to import and delegate to merge.py
+
+In `src/orchestrator/worktree.py`:
+1. Add import: `from orchestrator.merge import merge_without_checkout`
+2. Replace the body of `_merge_without_checkout` with a delegation call:
+   - Keep the method signature for internal consistency
+   - Call `merge_without_checkout(source_branch, target_branch, repo_dir)`
+3. Remove the `_merge_via_index` method (now internal to merge.py)
+4. Remove the `_update_working_tree_if_on_branch` method (now internal to merge.py)
+5. Add backreference to this chunk at the import statement
+
+### Step 7: Handle WorktreeError import in merge.py
+
+The merge module needs `WorktreeError` but importing from `orchestrator.worktree` would create a circular import. Options:
+- Move `WorktreeError` to a shared location (breaks goal of unchanged public API)
+- Use a local exception class in merge.py that worktree.py maps
+- Import with TYPE_CHECKING guard and use string annotation
+
+**Solution**: Move `WorktreeError` to `merge.py` since it's logically an error related to merge operations, and re-export it from `worktree.py` for backward compatibility:
+
+In `merge.py`:
+```python
+class WorktreeError(Exception):
+    """Exception raised for worktree and merge-related errors."""
+    pass
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+In `worktree.py`:
+```python
+from orchestrator.merge import WorktreeError  # Re-export for backward compatibility
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This maintains the existing import pattern: `from orchestrator.worktree import WorktreeError`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 8: Verify all existing tests pass
 
-## Dependencies
+Run the existing test suite to ensure no regressions:
+```bash
+uv run pytest tests/test_orchestrator_worktree*.py tests/test_orchestrator_scheduler*.py -v
+```
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+All tests should pass without modification since:
+- The public API (`WorktreeManager.merge_to_base`, `WorktreeManager.finalize_work_unit`) is unchanged
+- The error type (`WorktreeError`) is still importable from `orchestrator.worktree`
+- The behavior is identical, just organized differently
 
-If there are no dependencies, delete this section.
--->
+### Step 9: Verify imports and exports in orchestrator/__init__.py
+
+Confirm that `orchestrator/__init__.py` still exports `WorktreeError` and `WorktreeManager` correctly. No changes should be needed since the re-export from `worktree.py` maintains backward compatibility.
+
+### Step 10: Add code backreferences to GOAL.md
+
+Update the chunk's GOAL.md with code_references pointing to the new module and the updated delegation in worktree.py.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Circular import risk**: The `WorktreeError` import could cause circular dependencies. Resolved by moving the exception class to `merge.py` and re-exporting from `worktree.py`.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Backward compatibility of imports**: Any code doing `from orchestrator.worktree import WorktreeError` must continue to work. The re-export pattern handles this.
+
+3. **Test coverage of merge paths**: The existing tests cover the merge behavior but may not directly import `merge.py`. This is fine - the tests verify the public API behavior.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+No significant deviations from the plan. The implementation followed the sequence as documented.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+Minor improvements made during implementation:
+- Moved `os` and `tempfile` imports to module level in `merge.py` instead of keeping them as local imports inside `merge_via_index`. This is cleaner Python style and has no behavioral impact.

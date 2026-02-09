@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -9,8 +9,8 @@ code_references: []
 narrative: arch_review_gaps
 investigation: null
 subsystems:
-  - subsystem_id: orchestrator
-    relationship: implements
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: semantic
 depends_on: []
