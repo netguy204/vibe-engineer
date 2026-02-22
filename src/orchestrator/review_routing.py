@@ -188,19 +188,9 @@ async def route_review_decision(
     """
     chunk = work_unit.chunk
 
-    # Check if we've hit the max iterations before even parsing the decision
+    # Calculate current iteration (max iterations check is now in _apply_review_decision
+    # for the FEEDBACK case only - APPROVE should always succeed regardless of iteration count)
     current_iteration = work_unit.review_iterations + 1
-    if current_iteration > config.max_iterations:
-        logger.warning(
-            f"Chunk {chunk} exceeded max review iterations ({config.max_iterations})"
-        )
-        await callbacks.mark_needs_attention(
-            work_unit,
-            f"Auto-escalated: exceeded maximum review iterations ({config.max_iterations}). "
-            f"The implementation may need significant rework or the requirements "
-            f"may be unclear.",
-        )
-        return
 
     review_result = None
 
@@ -290,6 +280,7 @@ async def route_review_decision(
         current_iteration,
         result.session_id,
         callbacks,
+        config,
     )
 
 
@@ -300,6 +291,7 @@ async def _apply_review_decision(
     current_iteration: int,
     session_id: Optional[str],
     callbacks: ReviewRoutingCallbacks,
+    config: ReviewRoutingConfig,
 ) -> None:
     """Apply the parsed review decision to route the work unit.
 
@@ -310,6 +302,7 @@ async def _apply_review_decision(
         current_iteration: Current iteration count
         session_id: Agent session ID (for preserving on ESCALATE)
         callbacks: Callbacks for scheduler interaction
+        config: Review routing configuration (for max_iterations check)
     """
     chunk = work_unit.chunk
     from datetime import datetime, timezone
@@ -327,6 +320,21 @@ async def _apply_review_decision(
             f"Review FEEDBACK for {chunk} (iteration {current_iteration}): "
             f"{review_result.summary}"
         )
+
+        # Check iteration limit BEFORE cycling back to implement
+        # We can't start another implementation cycle if we've hit the max
+        if current_iteration >= config.max_iterations:
+            logger.warning(
+                f"Chunk {chunk} exceeded max review iterations ({config.max_iterations}) "
+                f"with FEEDBACK - escalating"
+            )
+            await callbacks.mark_needs_attention(
+                work_unit,
+                f"Auto-escalated: exceeded maximum review iterations ({config.max_iterations}). "
+                f"The implementation may need significant rework or the requirements "
+                f"may be unclear. Last feedback: {review_result.summary}",
+            )
+            return
 
         # Create the feedback file for the implementer
         create_review_feedback_file(

@@ -20,6 +20,7 @@ from unittest.mock import patch
 from orchestrator.models import (
     AgentResult,
     ReviewDecision,
+    ReviewToolDecision,
     WorkUnit,
     WorkUnitPhase,
     WorkUnitStatus,
@@ -261,15 +262,15 @@ reason: AMBIGUITY - Requirements unclear
     async def test_review_loop_detection_auto_escalates(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """Auto-escalates when iterations exceed max_iterations."""
+        """Auto-escalates when iterations exceed max_iterations with FEEDBACK.
+
+        Note: The max_iterations check now only fires when the review decision
+        is FEEDBACK (not APPROVE). APPROVE should always succeed regardless of
+        iteration count. This test verifies that FEEDBACK at max_iterations
+        triggers escalation.
+        """
         chunk_dir = tmp_path / "docs" / "chunks" / "test"
         chunk_dir.mkdir(parents=True)
-
-        # Decision file with FEEDBACK, but we've already hit max iterations
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: FEEDBACK
-summary: More issues found
-""")
 
         # Create reviewers config with max_iterations = 3
         reviewers_dir = tmp_path / "docs" / "reviewers" / "baseline"
@@ -295,7 +296,15 @@ loop_detection:
         )
         state_store.create_work_unit(work_unit)
 
-        result = AgentResult(completed=True, suspended=False)
+        # Provide FEEDBACK decision via tool call - at max iterations, this should escalate
+        result = AgentResult(
+            completed=True,
+            suspended=False,
+            review_decision=ReviewToolDecision(
+                decision="FEEDBACK",
+                summary="More issues found",
+            ),
+        )
 
         with patch("orchestrator.scheduler.broadcast_work_unit_update"):
             with patch("orchestrator.scheduler.broadcast_attention_update"):

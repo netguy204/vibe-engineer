@@ -1,12 +1,16 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/review_routing.py
+- tests/test_orchestrator_review_routing.py
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: implementation
 depends_on: []

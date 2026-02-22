@@ -307,11 +307,25 @@ class TestRouteReviewDecision:
 
     @pytest.mark.asyncio
     async def test_max_iterations_triggers_escalation(self, tmp_path):
-        """Exceeding max iterations triggers auto-escalation."""
+        """Exceeding max iterations with FEEDBACK triggers auto-escalation.
+
+        Note: Max iterations check only fires on FEEDBACK decisions.
+        APPROVE should always succeed regardless of iteration count.
+        """
+        # Create chunk directory for potential feedback file
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
         work_unit = create_test_work_unit(review_iterations=3)  # Already at max
         callbacks = MockReviewRoutingCallbacks()
         config = ReviewRoutingConfig(max_iterations=3)
-        result = AgentResult(completed=True)
+        result = AgentResult(
+            completed=True,
+            review_decision=ReviewToolDecision(
+                decision="FEEDBACK",
+                summary="Still needs changes",
+            ),
+        )
 
         await route_review_decision(
             work_unit=work_unit,
@@ -543,3 +557,71 @@ class TestRouteReviewDecision:
         content = feedback_file.read_text()
         assert "Needs work" in content
         assert "Missing tests" in content
+
+    @pytest.mark.asyncio
+    async def test_approve_after_max_iterations_still_completes(self, tmp_path):
+        """APPROVE after hitting max iterations still advances to COMPLETE.
+
+        This tests the bugfix: max_iterations should only prevent additional
+        FEEDBACK loops, not block an APPROVE decision.
+        """
+        work_unit = create_test_work_unit(review_iterations=3)  # At max
+        callbacks = MockReviewRoutingCallbacks()
+        config = ReviewRoutingConfig(max_iterations=3)
+        result = AgentResult(
+            completed=True,
+            review_decision=ReviewToolDecision(
+                decision="APPROVE",
+                summary="Looks good after multiple iterations",
+            ),
+        )
+
+        await route_review_decision(
+            work_unit=work_unit,
+            worktree_path=tmp_path,
+            result=result,
+            config=config,
+            callbacks=callbacks,
+            log_dir=tmp_path,
+        )
+
+        # Should advance to COMPLETE, not escalate
+        assert len(callbacks.advance_phase_calls) == 1
+        assert len(callbacks.mark_needs_attention_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_feedback_after_max_iterations_escalates(self, tmp_path):
+        """FEEDBACK after hitting max iterations escalates to NEEDS_ATTENTION.
+
+        When max_iterations is reached and reviewer returns FEEDBACK,
+        we can't start another implementation cycle, so we escalate.
+        """
+        # Create chunk directory for potential feedback file
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        work_unit = create_test_work_unit(review_iterations=3)  # At max
+        callbacks = MockReviewRoutingCallbacks()
+        config = ReviewRoutingConfig(max_iterations=3)
+        result = AgentResult(
+            completed=True,
+            review_decision=ReviewToolDecision(
+                decision="FEEDBACK",
+                summary="Still needs work",
+            ),
+        )
+
+        await route_review_decision(
+            work_unit=work_unit,
+            worktree_path=tmp_path,
+            result=result,
+            config=config,
+            callbacks=callbacks,
+            log_dir=tmp_path,
+        )
+
+        # Should escalate, not return to IMPLEMENT
+        assert len(callbacks.mark_needs_attention_calls) == 1
+        _, reason = callbacks.mark_needs_attention_calls[0]
+        assert "exceeded maximum review iterations" in reason
+        assert len(callbacks.advance_phase_calls) == 0
