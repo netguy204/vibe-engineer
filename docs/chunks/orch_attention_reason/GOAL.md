@@ -8,8 +8,9 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/cli/orch.py
 - tests/test_orchestrator_state.py
-- tests/test_orchestrator_scheduler.py
-- tests/test_orchestrator_cli.py
+- tests/test_orchestrator_scheduler_activation.py
+- tests/test_orchestrator_cli_display.py
+- tests/test_orchestrator_cli_attention.py
 code_references:
   - ref: src/orchestrator/models.py#WorkUnit
     implements: "WorkUnit model with attention_reason field"
@@ -29,11 +30,11 @@ code_references:
     implements: "Capturing question text as attention_reason for suspended agents"
   - ref: tests/test_orchestrator_state.py#TestAttentionReasonPersistence
     implements: "State persistence tests for attention_reason field"
-  - ref: tests/test_orchestrator_scheduler.py#TestAttentionReason
+  - ref: tests/test_orchestrator_scheduler_activation.py#TestAttentionReason
     implements: "Scheduler tests for attention_reason tracking"
-  - ref: tests/test_orchestrator_cli.py#TestWorkUnitShow
+  - ref: tests/test_orchestrator_cli_display.py#TestWorkUnitShow
     implements: "CLI tests for work-unit show command"
-  - ref: tests/test_orchestrator_cli.py#TestOrchPsAttentionReason
+  - ref: tests/test_orchestrator_cli_attention.py#TestOrchPsAttentionReason
     implements: "CLI tests for ps command attention_reason display"
   - ref: src/cli/orch.py#orch_ps
     implements: "CLI orch ps command with attention_reason display after CLI modularization"

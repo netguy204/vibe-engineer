@@ -14,7 +14,7 @@ code_references:
     implements: "API retry state fields (api_retry_count, next_retry_at)"
   - ref: src/orchestrator/state.py#StateStore::_migrate_v12
     implements: "Database migration adding api_retry_count and next_retry_at columns"
-  - ref: src/orchestrator/scheduler.py#is_retryable_api_error
+  - ref: src/orchestrator/retry.py#is_retryable_api_error
     implements: "Pattern matching to detect 5xx API errors"
   - ref: src/orchestrator/scheduler.py#Scheduler::_schedule_api_retry
     implements: "Exponential backoff retry scheduling logic"
