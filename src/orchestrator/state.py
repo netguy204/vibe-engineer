@@ -78,7 +78,7 @@ class StateStore:
         for multi-statement operations that must be atomic.
     """
 
-    CURRENT_VERSION = 13
+    CURRENT_VERSION = 14
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -177,6 +177,7 @@ class StateStore:
             11: self._migrate_v11,
             12: self._migrate_v12,
             13: self._migrate_v13,
+            14: self._migrate_v14,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -406,6 +407,21 @@ class StateStore:
         # This migration exists to document the schema version change
         pass
 
+    # Chunk: docs/chunks/orch_merge_rebase_retry - Merge conflict retry tracking
+    def _migrate_v14(self) -> None:
+        """Add merge_conflict_retries field for merge conflict recovery.
+
+        When a merge conflict occurs during finalization, the work unit cycles
+        back to REBASE phase. This field tracks how many times this has happened.
+        After 2 retries (3 total conflicts), the work unit escalates to NEEDS_ATTENTION.
+        """
+        self.connection.executescript(
+            """
+            -- Add merge_conflict_retries column for tracking merge conflict retries
+            ALTER TABLE work_units ADD COLUMN merge_conflict_retries INTEGER DEFAULT 0;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -446,8 +462,8 @@ class StateStore:
                          completion_retries, attention_reason, displaced_chunk, pending_answer,
                          conflict_verdicts, conflict_override, explicit_deps, review_iterations,
                          review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
-                         created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         merge_conflict_retries, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         work_unit.chunk,
@@ -469,6 +485,7 @@ class StateStore:
                         1 if work_unit.retain_worktree else 0,
                         work_unit.api_retry_count,
                         work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                        work_unit.merge_conflict_retries,
                         work_unit.created_at.isoformat(),
                         work_unit.updated_at.isoformat(),
                     ),
@@ -559,7 +576,8 @@ class StateStore:
                     attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                     conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
                     review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
-                    api_retry_count = ?, next_retry_at = ?, updated_at = ?
+                    api_retry_count = ?, next_retry_at = ?, merge_conflict_retries = ?,
+                    updated_at = ?
                 WHERE chunk = ?
                 """,
                 (
@@ -581,6 +599,7 @@ class StateStore:
                     1 if work_unit.retain_worktree else 0,
                     work_unit.api_retry_count,
                     work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                    work_unit.merge_conflict_retries,
                     work_unit.updated_at.isoformat(),
                     work_unit.chunk,
                 ),
@@ -930,6 +949,14 @@ class StateStore:
         except (IndexError, KeyError):
             next_retry_at = None
 
+        # Chunk: docs/chunks/orch_merge_rebase_retry - Merge conflict retry tracking
+        try:
+            merge_conflict_retries = (
+                row["merge_conflict_retries"] if row["merge_conflict_retries"] is not None else 0
+            )
+        except (IndexError, KeyError):
+            merge_conflict_retries = 0
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -950,6 +977,7 @@ class StateStore:
             retain_worktree=retain_worktree,
             api_retry_count=api_retry_count,
             next_retry_at=next_retry_at,
+            merge_conflict_retries=merge_conflict_retries,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

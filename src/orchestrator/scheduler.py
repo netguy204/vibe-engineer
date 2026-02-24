@@ -39,7 +39,8 @@ from orchestrator.models import (
 )
 from orchestrator.state import StateStore, StaleWriteError
 from orchestrator.websocket import broadcast_attention_update, broadcast_work_unit_update
-from orchestrator.worktree import WorktreeManager, WorktreeError
+# Chunk: docs/chunks/orch_merge_rebase_retry - Import is_merge_conflict_error for merge conflict detection
+from orchestrator.worktree import WorktreeManager, WorktreeError, is_merge_conflict_error
 
 # Chunk: docs/chunks/scheduler_decompose - Imports from extracted modules
 from orchestrator.activation import (
@@ -1009,13 +1010,27 @@ class Scheduler:
             # Skip worktree removal and merge - leave everything in place
         else:
             # Chunk: docs/chunks/orch_prune_consolidate - Use consolidated finalize_work_unit
+            # Chunk: docs/chunks/orch_merge_rebase_retry - Detect and handle merge conflicts
             # Commit changes, remove worktree, merge to base, cleanup branch
             try:
                 logger.info(f"Finalizing worktree for {chunk}")
                 self.worktree_manager.finalize_work_unit(chunk)
             except WorktreeError as e:
                 logger.error(f"Failed to finalize {chunk}: {e}")
-                # Mark as needs attention - worktree may remain for investigation
+
+                # Check if this is a merge conflict (vs other finalization errors)
+                if is_merge_conflict_error(e):
+                    # Attempt automatic retry via REBASE phase
+                    logger.info(f"Detected merge conflict for {chunk}, attempting retry")
+                    retry_initiated = await self._handle_merge_conflict_retry(work_unit, e)
+                    if retry_initiated:
+                        # Work unit is now in REBASE phase, don't mark as DONE
+                        return
+                    # If retry wasn't initiated (limit exceeded), fall through to return
+                    # since _handle_merge_conflict_retry already marked NEEDS_ATTENTION
+                    return
+
+                # Non-merge-conflict error - mark as needs attention
                 reason = f"Finalization failed: {e}"
                 work_unit.status = WorkUnitStatus.NEEDS_ATTENTION
                 work_unit.attention_reason = reason
@@ -1036,6 +1051,8 @@ class Scheduler:
         # Chunk: docs/chunks/orch_api_retry - Reset retry state on successful completion
         work_unit.api_retry_count = 0
         work_unit.next_retry_at = None
+        # Chunk: docs/chunks/orch_merge_rebase_retry - Reset merge conflict retry counter
+        work_unit.merge_conflict_retries = 0
         work_unit.updated_at = datetime.now(timezone.utc)
         self.store.update_work_unit(work_unit)
 
@@ -1047,6 +1064,89 @@ class Scheduler:
         )
 
         self._unblock_dependents(chunk)
+
+    # Chunk: docs/chunks/orch_merge_rebase_retry - Handle merge conflict during finalization
+    async def _handle_merge_conflict_retry(
+        self,
+        work_unit: WorkUnit,
+        error: WorktreeError,
+    ) -> bool:
+        """Handle merge conflict during finalization by cycling back to REBASE.
+
+        When a merge conflict occurs during finalization, this method:
+        1. Checks if retry limit (2) has been reached
+        2. If limit reached, escalates to NEEDS_ATTENTION
+        3. Otherwise, recreates the worktree from the surviving branch
+        4. Sets phase=REBASE, status=READY for another attempt
+        5. Increments merge_conflict_retries counter
+
+        Args:
+            work_unit: The work unit that encountered the merge conflict
+            error: The WorktreeError containing the merge conflict details
+
+        Returns:
+            True if retry was initiated, False if escalated to NEEDS_ATTENTION
+        """
+        chunk = work_unit.chunk
+        max_merge_conflict_retries = 2  # Allow 2 retries (3 total attempts)
+
+        if work_unit.merge_conflict_retries >= max_merge_conflict_retries:
+            # Retry limit exceeded - escalate to NEEDS_ATTENTION
+            logger.warning(
+                f"Merge conflict retry limit exceeded for {chunk} "
+                f"({work_unit.merge_conflict_retries} retries)"
+            )
+            reason = (
+                f"Merge conflict during finalization after "
+                f"{work_unit.merge_conflict_retries} retries. "
+                f"Manual conflict resolution required. Error: {error}"
+            )
+            await self._mark_needs_attention(work_unit, reason)
+            return False
+
+        # Recreate the worktree from the surviving branch
+        logger.info(
+            f"Merge conflict during finalization for {chunk}, "
+            f"recreating worktree for REBASE retry "
+            f"(attempt {work_unit.merge_conflict_retries + 1})"
+        )
+
+        try:
+            worktree_path = self.worktree_manager.recreate_worktree_from_branch(chunk)
+        except WorktreeError as e:
+            logger.error(f"Failed to recreate worktree for {chunk}: {e}")
+            await self._mark_needs_attention(
+                work_unit,
+                f"Failed to recreate worktree for merge conflict retry: {e}",
+            )
+            return False
+
+        # Set phase=REBASE, status=READY for another attempt
+        work_unit.phase = WorkUnitPhase.REBASE
+        work_unit.status = WorkUnitStatus.READY
+        work_unit.worktree = str(worktree_path)
+        work_unit.session_id = None  # New session for REBASE
+        work_unit.merge_conflict_retries += 1
+        work_unit.attention_reason = None  # Clear any stale reason
+        # Reset API retry state for the new phase
+        work_unit.api_retry_count = 0
+        work_unit.next_retry_at = None
+        work_unit.updated_at = datetime.now(timezone.utc)
+        self.store.update_work_unit(work_unit)
+
+        logger.info(
+            f"Work unit {chunk} cycling back to REBASE phase "
+            f"(merge_conflict_retries={work_unit.merge_conflict_retries})"
+        )
+
+        # Broadcast via WebSocket so dashboard updates
+        await broadcast_work_unit_update(
+            chunk=work_unit.chunk,
+            status=work_unit.status.value,
+            phase=work_unit.phase.value,
+        )
+
+        return True
 
     async def _check_conflicts(self, work_unit: WorkUnit) -> list[str]:
         """Check for conflicts with active work units and return blocking chunks.

@@ -20,13 +20,14 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from orchestrator.git_utils import GitError, get_current_branch
 # Chunk: docs/chunks/worktree_merge_extract - Import from merge module and re-export for backward compatibility
-from orchestrator.merge import WorktreeError, merge_without_checkout
+# Chunk: docs/chunks/orch_merge_rebase_retry - Import is_merge_conflict_error for re-export
+from orchestrator.merge import WorktreeError, is_merge_conflict_error, merge_without_checkout
 
 if TYPE_CHECKING:
     from orchestrator.models import TaskContextInfo
 
-# Re-export WorktreeError for backward compatibility
-__all__ = ["WorktreeError", "WorktreeManager"]
+# Re-export WorktreeError and is_merge_conflict_error for backward compatibility
+__all__ = ["WorktreeError", "WorktreeManager", "is_merge_conflict_error"]
 
 
 class WorktreeManager:
@@ -451,6 +452,73 @@ class WorktreeManager:
                 raise WorktreeError(f"Failed to create worktree: {result.stderr}")
 
         # Chunk: docs/chunks/orch_merge_safety - Lock worktree to prevent pruning
+        self._lock_worktree(worktree_path, self.project_dir)
+
+        return worktree_path
+
+    # Chunk: docs/chunks/orch_merge_rebase_retry - Recreate worktree from existing branch
+    def recreate_worktree_from_branch(self, chunk: str) -> Path:
+        """Recreate a worktree from an existing orch/<chunk> branch.
+
+        Used for merge conflict recovery where the worktree was removed
+        during finalization but the branch with committed work survives
+        (due to remove_branch=False).
+
+        This method:
+        1. Verifies the orch/<chunk> branch exists
+        2. Creates a worktree pointing to that branch
+        3. Returns the worktree path
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            Path to the recreated worktree
+
+        Raises:
+            WorktreeError: If branch doesn't exist or creation fails
+        """
+        branch = self.get_branch_name(chunk)
+        worktree_path = self.get_worktree_path(chunk)
+
+        # Verify the branch exists
+        if not self._branch_exists(branch):
+            raise WorktreeError(
+                f"Cannot recreate worktree: branch {branch} does not exist"
+            )
+
+        # Create parent directories
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Check if worktree already exists (shouldn't happen in normal flow)
+        if worktree_path.exists() and (worktree_path / ".git").exists():
+            return worktree_path
+
+        # Create worktree from existing branch
+        result = subprocess.run(
+            ["git", "worktree", "add", str(worktree_path), branch],
+            cwd=self.project_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # Check if it's because the branch is already checked out
+            if "is already checked out" in result.stderr:
+                # Try with --force
+                result = subprocess.run(
+                    ["git", "worktree", "add", "--force", str(worktree_path), branch],
+                    cwd=self.project_dir,
+                    capture_output=True,
+                    text=True,
+                )
+
+            if result.returncode != 0:
+                raise WorktreeError(
+                    f"Failed to recreate worktree from branch {branch}: {result.stderr}"
+                )
+
+        # Lock the worktree to prevent pruning
         self._lock_worktree(worktree_path, self.project_dir)
 
         return worktree_path
