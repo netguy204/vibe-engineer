@@ -6,8 +6,9 @@ code_paths:
 - src/orchestrator/agent.py
 - src/orchestrator/scheduler.py
 - src/orchestrator/models.py
-- tests/test_orchestrator_agent.py
-- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_agent_runner.py
+- tests/test_orchestrator_agent_callbacks.py
+- tests/test_orchestrator_scheduler_unblock.py
 code_references:
   - ref: src/orchestrator/agent.py#create_question_intercept_hook
     implements: "PreToolUse hook for intercepting AskUserQuestion calls"
@@ -19,11 +20,11 @@ code_references:
     implements: "Provides question_callback to run_phase for forwarding"
   - ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
     implements: "Transitions work unit to NEEDS_ATTENTION with question as attention_reason"
-  - ref: tests/test_orchestrator_agent.py#TestQuestionInterceptHook
+  - ref: tests/test_orchestrator_agent_runner.py#TestQuestionInterceptHook
     implements: "Unit tests for hook creation and question extraction"
-  - ref: tests/test_orchestrator_agent.py#TestRunPhaseWithQuestionCallback
+  - ref: tests/test_orchestrator_agent_callbacks.py#TestRunPhaseWithQuestionCallback
     implements: "Unit tests for run_phase with question callback"
-  - ref: tests/test_orchestrator_scheduler.py#TestQuestionForwardingFlow
+  - ref: tests/test_orchestrator_scheduler_unblock.py#TestQuestionForwardingFlow
     implements: "Integration tests for complete question forwarding flow"
 narrative: null
 investigation: parallel_agent_orchestration

@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,24 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+Delete the two dead-code hook functions in `src/orchestrator/agent.py` -- `create_question_intercept_hook` (lines 289-367) and `create_review_decision_hook` (lines 371-441) -- whose own docstrings explicitly document that they are non-functional. PreToolUse hooks in the Claude Agent SDK do not fire for built-in tools (AskUserQuestion) or MCP tools (ReviewDecision); the actual capture already happens via message parsing in `run_orchestrator_agent()`. These functions add ~150 lines of dead code that misleads readers into thinking hook-based interception is active.
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+This chunk also removes:
+- The registration sites in `run_orchestrator_agent()` (agent.py ~lines 605-624) that call these functions and merge their hooks.
+- The unused import of `create_review_decision_hook` in `src/orchestrator/scheduler.py`.
+- The unused imports of both functions in test files that only import them without using them (`test_orchestrator_agent_stream.py`, `test_orchestrator_agent_skills.py`, `test_orchestrator_agent_sandbox.py`).
+- The dedicated test classes `TestQuestionInterceptHook` (in `test_orchestrator_agent_runner.py`) and `TestReviewDecisionHook` (in `test_orchestrator_agent_review.py`) that exercise the dead hooks.
+- The verification script `scripts/verify_question_hook.py`.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
-
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+This advances the trunk goal of maintaining document and code health over time by eliminating self-documented dead code that adds confusion without value.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
-
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.
+- `create_question_intercept_hook` and `create_review_decision_hook` no longer exist in `src/orchestrator/agent.py`.
+- No import of either function exists anywhere in `src/` or `tests/`.
+- The hook registration block in `run_orchestrator_agent()` that called these functions and merged their output into `all_hooks` is removed. The existing message-parsing capture path (which is the functional path) remains untouched.
+- `scripts/verify_question_hook.py` is deleted.
+- `TestQuestionInterceptHook` in `tests/test_orchestrator_agent_runner.py` is deleted.
+- `TestReviewDecisionHook` in `tests/test_orchestrator_agent_review.py` is deleted.
+- All remaining tests pass (`uv run pytest tests/`).
+- No regressions in orchestrator agent functionality: question capture and review decision capture continue to work via the message-parsing path that is already the active code path.

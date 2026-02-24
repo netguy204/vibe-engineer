@@ -23,6 +23,7 @@ from orchestrator.models import (
 )
 
 
+# Chunk: docs/chunks/orch_mechanical_commit - Unit tests for mechanical commit in scheduler
 class TestMechanicalCommit:
     """Tests for mechanical commit in scheduler."""
 

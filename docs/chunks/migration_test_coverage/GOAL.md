@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,21 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+Add test coverage for the migration state machine in `src/migrations.py`, which is currently untested beyond migration creation. The `VALID_MIGRATION_TRANSITIONS` dict, `update_status`, `update_phase`, `get_status`, and `parse_migration_frontmatter` methods have zero test coverage, meaning transition validation logic (valid transitions, invalid transitions, terminal state enforcement) has never been exercised by the test suite.
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+Additionally, fix a YAML round-trip correctness issue: `_update_migration_frontmatter` (lines 396-433) uses `yaml.safe_load`/`yaml.dump` (PyYAML), which destroys comments and can reorder keys. DEC-008 establishes that frontmatter round-tripping should use `ruamel.yaml` for comment preservation. Switching this function to `ruamel.yaml` aligns migrations with the project's architectural decision and prevents silent data loss when migration frontmatter contains inline comments.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
-
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+This chunk strengthens the project's testing foundation so that future changes to migration status logic are caught by regression tests, and it fixes a known correctness gap in YAML handling.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
-
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.
+- Tests exist for every valid transition in `VALID_MIGRATION_TRANSITIONS`: each `(from_status, to_status)` pair where `to_status` is in the valid set succeeds via `update_status`
+- Tests verify that invalid transitions (status pairs not in `VALID_MIGRATION_TRANSITIONS`) raise `ValueError` with a descriptive message
+- Tests verify that `COMPLETED` is a terminal state with no outgoing transitions (its valid set is empty), and that attempting any transition from `COMPLETED` raises `ValueError` mentioning "terminal state"
+- Tests verify that `ABANDONED` allows only the restart transition to `ANALYZING`
+- Tests for `update_phase` confirm that the `current_phase` field persists correctly after update, and that marking a phase as completed adds it to `phases_completed` without duplicating already-completed phases
+- Tests for `get_status` confirm it returns the correct `MigrationStatus` enum value and raises `ValueError` for nonexistent migrations
+- Tests for `parse_migration_frontmatter` confirm it returns a valid `MigrationFrontmatter` model for well-formed frontmatter, returns `None` for missing files, returns `None` for malformed YAML, and correctly round-trips all frontmatter fields
+- `_update_migration_frontmatter` uses `ruamel.yaml` instead of `yaml.safe_load`/`yaml.dump`, consistent with DEC-008
+- A test verifies that YAML comments in MIGRATION.md frontmatter survive a round-trip through `_update_migration_frontmatter`
+- All existing tests in `tests/test_migrations.py` continue to pass

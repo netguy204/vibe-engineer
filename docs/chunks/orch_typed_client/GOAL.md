@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,19 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+The orchestrator CLI (`src/cli/orch.py`) bypasses the typed client API in 10 places, calling `client._request()` directly with raw HTTP method strings and URL paths. This couples the CLI to the daemon's HTTP contract and makes the client class an incomplete abstraction -- callers must know internal API routes to use it.
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+This chunk promotes all 10 private `_request()` call sites to typed public methods on `OrchestratorClient` (`src/orchestrator/client.py`). Seven of these need new methods: `inject_work_unit()`, `get_queue()`, `set_priority()`, `get_config()`, `update_config()`, `list_worktrees()`, and `remove_worktree()`. The remaining three call sites (prune operations at lines 969, 1038, 1046) already have corresponding public methods (`prune_work_unit()` and `prune_all_work_units()`) but are not using them; these will be updated to use the existing methods.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
+Additionally, the prune result display logic is duplicated nearly verbatim between `worktree prune` (lines 978-996) and `orch prune` (lines 1053-1073). This chunk extracts the shared rendering into a helper function, eliminating the duplication.
 
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+This advances the trunk goal of maintaining document and code health over time by making the orchestrator client a complete, self-documenting interface that hides HTTP transport details from all callers.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
-
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.
+- `OrchestratorClient` has seven new public methods with typed signatures and docstrings: `inject_work_unit()`, `get_queue()`, `set_priority()`, `get_config()`, `update_config()`, `list_worktrees()`, `remove_worktree()`
+- Zero occurrences of `client._request(` remain in `src/cli/orch.py` -- all 10 former call sites use typed public methods
+- The three prune call sites (lines 969, 1038, 1046) use the existing `prune_work_unit()` and `prune_all_work_units()` methods instead of raw `_request()` calls
+- A shared helper function renders prune results, used by both `worktree_prune` and `orch_prune` commands, eliminating the duplicated display logic (formerly lines 978-996 and 1053-1073)
+- All existing tests pass (`uv run pytest tests/`)
+- The new public methods have unit tests verifying they delegate to `_request()` with the correct HTTP method, path, and parameters

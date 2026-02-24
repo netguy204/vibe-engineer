@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,21 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+Prevent `update_working_tree_if_on_branch` in `src/orchestrator/merge.py` from silently destroying uncommitted changes in the user's working tree.
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+Currently, after updating a branch ref via `git update-ref`, this function runs `git reset --mixed HEAD` followed by `git checkout -- .` to sync the working tree. The `git checkout -- .` unconditionally discards all unstaged modifications, meaning any work the user has in progress is silently lost. This is a data-loss bug: the user receives no warning that their changes have been overwritten.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
+This chunk changes the function to check for uncommitted changes first (via `git status --porcelain`). If the working tree is dirty, the function skips the update entirely and logs a warning informing the user that their working tree is behind the branch tip. The user can then manually reconcile with `git merge` or `git rebase`. This preserves safety while still updating clean working trees automatically.
 
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+The function is called from three merge paths within `src/orchestrator/merge.py`: `merge_worktree_branch` (line 107), `fast_forward_merge` (line 182), and `merge_worktree_to_branch` (line 298). All three callers benefit from this fix without any changes to their call sites.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
+- `update_working_tree_if_on_branch` runs `git status --porcelain` (or equivalent) before attempting any working tree modification
+- When uncommitted changes exist (staged or unstaged), the function returns early without running `git reset` or `git checkout -- .`
+- When uncommitted changes cause the function to skip, a warning is logged that clearly states: the working tree is behind the branch tip, and the user should manually reconcile
+- When the working tree is clean, the function updates the working tree to match the new branch tip (existing behavior preserved)
+- The three call sites in `src/orchestrator/merge.py` (`merge_worktree_branch`, `fast_forward_merge`, `merge_worktree_to_branch`) require no changes -- the safety check is encapsulated within `update_working_tree_if_on_branch`
+- Tests verify the dirty-working-tree path: given uncommitted changes, the function does not run `git checkout -- .` and does log a warning
+- Tests verify the clean-working-tree path: given a clean working tree, the function updates files as before
 
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.

@@ -1,5 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/scheduler_decompose - Extracted from scheduler.py for single-responsibility
+# Chunk: docs/chunks/orch_verify_active - VerificationStatus, VerificationResult, verify_chunk_active_status
 """Chunk activation lifecycle management.
 
 This module handles the activation of chunks in worktrees, including:

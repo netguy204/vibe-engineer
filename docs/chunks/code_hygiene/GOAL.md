@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,23 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+Fix five code hygiene issues identified during the architecture review. These are small, mechanical cleanups that individually are not worth a chunk but collectively reduce cognitive friction and enforce codebase conventions:
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+1. **Replace `__import__('datetime')` with a normal import** in `src/orchestrator/review_routing.py` (lines 224-225, 245-246). The dynamic import hack obscures a straightforward dependency and breaks IDE navigation.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
+2. **Hoist scattered local `import json` statements to a single top-level import** in `src/cli/orch.py`. There are 20 local `import json` / `import json as json_module` statements scattered across individual functions. A single top-level import eliminates the repetition.
 
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+3. **Rename `shortname` to `short_name`** in the `@click.argument` and function signature at `src/cli/subsystem.py:113-116`. The rest of the codebase uses `short_name`; this one call site is inconsistent.
+
+4. **Replace manual `rsplit('/')` path stripping with `strip_artifact_path_prefix()`** in `src/cli/narrative.py:197-198`. The utility function is already imported in the file (line 16) but not used here, creating an inconsistency with how every other CLI command normalizes artifact IDs.
+
+5. **Remove the emoji from the pattern-detected output** at `src/cli/friction.py:366`. CLI output should not contain emoji characters.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
-
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.
+- `src/orchestrator/review_routing.py` has `import datetime` (or `from datetime import datetime, timezone`) at the top of the file, and zero occurrences of `__import__("datetime")` or `__import__('datetime')` remain.
+- `src/cli/orch.py` has a single top-level `import json` statement, and zero function-local `import json` or `import json as json_module` statements remain.
+- `src/cli/subsystem.py` line 113 reads `@click.argument("short_name")` and the `discover` function parameter is `short_name`. All internal usages within the function are updated to match.
+- `src/cli/narrative.py` `status` command uses `strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)` instead of the manual `rsplit("/", 1)[-1]` logic.
+- `src/cli/friction.py` line 366 does not contain any emoji characters.
+- All existing tests pass (`uv run pytest tests/`).

@@ -2,24 +2,17 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths:
-- src/orchestrator/scheduler.py
+code_paths: []
 code_references: []
-narrative: arch_review_gaps
+narrative: arch_review_cleanup
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: implementation
+bug_type: null
 depends_on: []
-created_after:
-- cli_decompose
-- integrity_deprecate_standalone
-- low_priority_cleanup
-- optimistic_locking
-- spec_and_adr_update
-- test_file_split
-- orch_session_auto_resume
+created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -237,28 +230,20 @@ VALIDATION:
 
 ## Minor Goal
 
-Fix a TOCTOU (time-of-check-to-time-of-use) race condition in the orchestrator dispatch loop. In `_dispatch_tick()`, the scheduler reads the ready queue via `store.get_ready_queue()`, then iterates over the returned work units, running conflict checks and spawning agent tasks for each. Between reading the queue and the point where `_run_work_unit()` transitions the work unit to RUNNING, an API-driven status change (via `PATCH /work-units/{chunk}`) could modify the work unit's status, phase, or other fields through a separate StateStore connection.
+Move the synchronous `oracle.analyze_conflict()` call off the async event loop in the scheduler's dispatch tick.
 
-The asyncio lock (`self._lock`) in `_dispatch_tick()` protects against concurrent dispatch ticks but does not protect against API mutations, which operate on a different StateStore instance and run in a different async context.
+In `src/orchestrator/scheduler.py`, the `_dispatch_tick` method holds `self._lock` (an `asyncio.Lock`) for its entire duration. Within that locked section, `_check_conflicts` calls `oracle.analyze_conflict()` synchronously (line 1115), which performs file I/O (reading GOAL.md, PLAN.md, and frontmatter for each chunk pair via `Chunks` and `StateStore`). This blocks the entire event loop for the duration of the analysis, preventing other coroutines from making progress and adding latency to the dispatch cycle.
 
-While `_run_work_unit()` already uses optimistic locking when writing the RUNNING transition (catching `StaleWriteError`), this guard fires only after the scheduler has already performed expensive operations: creating a git worktree and activating the chunk. This means an API mutation that changes a work unit away from READY (e.g., to NEEDS_ATTENTION or BLOCKED) will still trigger unnecessary worktree creation and activation, followed by a rollback cleanup.
+The fix is to run the oracle analysis via `asyncio.to_thread()` so file I/O executes in a thread pool. Because `asyncio.Lock` is not thread-safe and must not be held across an `await` that yields to a thread, the conflict analysis must be restructured: either release the lock before the threaded call and re-acquire after, or pre-compute all needed conflict analyses outside the locked dispatch tick and use only the cached results inside it.
 
-The fix adds a status re-verification guard at the top of `_run_work_unit()`, before any expensive operations. Immediately before creating the worktree, the method should re-read the work unit from the store and verify it is still in READY status. If the status has changed, it should skip the unit, log a warning, and return early -- avoiding wasted worktree creation, activation, and cleanup.
+This advances the trunk goal of maintaining workflow health over time by ensuring the orchestrator's dispatch loop remains responsive under load, particularly when many chunks require pairwise conflict analysis.
 
 ## Success Criteria
 
-- `_run_work_unit()` re-reads the work unit from the store before creating a worktree and verifies it is still in READY status. If the status is no longer READY, the method logs a warning including the chunk name and the unexpected current status, then returns early without creating a worktree or spawning an agent.
-- The existing optimistic locking guard (the `StaleWriteError` catch after the RUNNING transition) remains in place as a second line of defense. The new guard is additive, not a replacement.
-- A test exercises the race condition scenario: a work unit is READY when `_run_work_unit()` is called, but a simulated API mutation changes it to a non-READY status (e.g., NEEDS_ATTENTION) before worktree creation. The test verifies that no worktree is created and the method returns without error.
-- A test verifies the happy path: when the work unit is still READY on re-read, `_run_work_unit()` proceeds normally through worktree creation and the RUNNING transition.
-- All existing scheduler tests continue to pass.
+- `oracle.analyze_conflict()` is invoked via `asyncio.to_thread()` (or equivalent) so that its file I/O runs in a thread pool rather than blocking the event loop
+- `self._lock` is not held while the thread pool executes the oracle analysis; the lock is either released before the threaded call and re-acquired after, or the analysis is restructured to run as a pre-computation step outside the locked `_dispatch_tick` section
+- Cached conflict verdicts (`work_unit.conflict_verdicts`) continue to be checked and populated correctly, preserving the existing short-circuit behavior where cached results skip the oracle entirely
+- The `_dispatch_tick` method retains its existing correctness guarantees: no work unit is dispatched while blocked, and conflict verdicts are still persisted on both sides of the pair
+- All existing tests in `tests/` pass without modification (or with minimal adaptation to the new async structure)
+- No new race conditions are introduced: shared state accessed by the oracle thread (e.g., `StateStore`, `Chunks`) is either thread-safe or copied before the thread call
 
-## Rejected Ideas
-
-### Move the guard into `_dispatch_tick()` instead of `_run_work_unit()`
-
-We considered adding the re-read check inside `_dispatch_tick()` right before `asyncio.create_task(self._run_work_unit(unit))`. However, this would still leave a window between the check and the task execution, since `create_task` schedules the coroutine but does not run it synchronously. Placing the guard at the top of `_run_work_unit()` -- the actual execution point -- minimizes the remaining window to the smallest practical size.
-
-### Replace optimistic locking with the TOCTOU guard
-
-The TOCTOU guard and optimistic locking serve complementary purposes. The guard prevents wasted work (worktree creation, chunk activation) when a status change is detectable early. Optimistic locking catches races that occur during the transition itself, after the worktree is already created. Removing either would leave a gap.
