@@ -78,7 +78,7 @@ class StateStore:
         for multi-statement operations that must be atomic.
     """
 
-    CURRENT_VERSION = 14
+    CURRENT_VERSION = 15
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -178,6 +178,7 @@ class StateStore:
             12: self._migrate_v12,
             13: self._migrate_v13,
             14: self._migrate_v14,
+            15: self._migrate_v15,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
