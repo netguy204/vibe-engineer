@@ -845,7 +845,15 @@ class Scheduler:
                         f"Rename propagation failed ({old_name} -> {new_name}): {e}"
                     )
                     return
-            elif work_unit.baseline_implementing and chunk not in work_unit.baseline_implementing:
+            # Chunk: docs/chunks/rename_rebase_guard - Phase-aware ambiguity handling
+            # Only check for "chunk disappeared" errors during GOAL/PLAN phases.
+            # For post-PLAN phases, the work unit's chunk being absent from IMPLEMENTING
+            # is expected (it's now ACTIVE after COMPLETE) — don't treat it as an error.
+            elif (
+                work_unit.phase in (WorkUnitPhase.GOAL, WorkUnitPhase.PLAN)
+                and work_unit.baseline_implementing
+                and chunk not in work_unit.baseline_implementing
+            ):
                 # Chunk disappeared but no clear rename detected - ambiguous situation
                 # Check if it's because there are multiple new chunks
                 from chunks import Chunks
@@ -1681,6 +1689,7 @@ class Scheduler:
         return renamed_unit
 
     # Chunk: docs/chunks/orch_rename_propagation - Detect chunk rename by comparing baseline to current
+    # Chunk: docs/chunks/rename_rebase_guard - Phase-aware rename detection guard
     def _detect_rename(
         self, work_unit: WorkUnit, worktree_path: Path
     ) -> tuple[str, str] | None:
@@ -1690,6 +1699,17 @@ class Scheduler:
         baseline snapshot captured at worktree creation time. If the work unit's
         original chunk name is missing but a new IMPLEMENTING chunk exists,
         a rename occurred.
+
+        IMPORTANT: Rename detection is only active during GOAL and PLAN phases.
+        Renames only happen via `ve chunk suggest-prefix` during PLAN phase.
+        For post-PLAN phases (IMPLEMENT, REBASE, REVIEW, COMPLETE), renames are
+        not possible because:
+        - The chunk directory has already been renamed (if at all)
+        - After COMPLETE, the chunk status is ACTIVE, not IMPLEMENTING
+
+        The work unit's identity (`work_unit.chunk`) is the source of truth for
+        which chunk this work unit manages. We don't need to verify it's still
+        IMPLEMENTING because we know exactly which chunk we're working with.
 
         Args:
             work_unit: The work unit to check
@@ -1702,6 +1722,11 @@ class Scheduler:
         The caller should handle ambiguous cases (zero or >1 new chunks)
         by marking the work unit as NEEDS_ATTENTION.
         """
+        # Phase guard: renames only possible during GOAL and PLAN phases
+        # Post-PLAN phases cannot have renames - skip detection entirely
+        if work_unit.phase not in (WorkUnitPhase.GOAL, WorkUnitPhase.PLAN):
+            return None
+
         from chunks import Chunks
 
         # If no baseline was captured, we can't detect renames

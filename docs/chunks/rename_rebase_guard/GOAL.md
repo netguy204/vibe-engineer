@@ -1,9 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: orch_rename_propagation
 code_paths:
 - src/orchestrator/scheduler.py
+- tests/test_orch_rename_propagation.py
 code_references: []
 narrative: null
 investigation: null
@@ -13,9 +14,14 @@ subsystems:
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["backref_language_agnostic", "integrity_deprecated_removal", "merge_safety", "orch_investigate_scenarios", "orch_retry_command", "orch_safe_branch_delete"]
+created_after:
+- backref_language_agnostic
+- integrity_deprecated_removal
+- merge_safety
+- orch_investigate_scenarios
+- orch_retry_command
+- orch_safe_branch_delete
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
