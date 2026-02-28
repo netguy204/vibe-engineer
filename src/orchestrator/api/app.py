@@ -13,7 +13,12 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.routing import Route, WebSocketRoute
 
-from orchestrator.api.attention import answer_endpoint, attention_endpoint
+from orchestrator.api.attention import (
+    answer_endpoint,
+    attention_endpoint,
+    retry_all_endpoint,
+    retry_endpoint,
+)
 from orchestrator.api.conflicts import (
     analyze_conflicts_endpoint,
     get_conflicts_endpoint,
@@ -101,12 +106,20 @@ def create_app(project_dir: Path) -> Starlette:
         # Scheduling endpoints - must come before generic {chunk:path}
         Route("/work-units/inject", endpoint=inject_endpoint, methods=["POST"]),
         Route("/work-units/queue", endpoint=queue_endpoint, methods=["GET"]),
+        # Chunk: docs/chunks/orch_retry_command - Batch retry endpoint
+        Route("/work-units/retry-all", endpoint=retry_all_endpoint, methods=["POST"]),
         # Chunk: docs/chunks/orch_worktree_retain - Prune all retained worktrees
         Route("/work-units/prune", endpoint=prune_all_endpoint, methods=["POST"]),
         # Answer, history, priority and resolve endpoints must come before generic {chunk:path}
         Route(
             "/work-units/{chunk}/answer",
             endpoint=answer_endpoint,
+            methods=["POST"],
+        ),
+        # Chunk: docs/chunks/orch_retry_command - Single work unit retry endpoint
+        Route(
+            "/work-units/{chunk}/retry",
+            endpoint=retry_endpoint,
             methods=["POST"],
         ),
         Route(

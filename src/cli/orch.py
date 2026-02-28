@@ -591,6 +591,74 @@ def orch_answer(chunk, answer, json_output, project_dir):
             click.echo(f"Answered {chunk}, work unit queued for resume")
 
 
+# Chunk: docs/chunks/orch_retry_command - Single work unit retry CLI command
+@work_unit.command("retry")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_retry(chunk, json_output, project_dir):
+    """Retry a NEEDS_ATTENTION work unit with proper state reset.
+
+    Unlike setting status to READY via 've orch work-unit status', this command
+    properly clears stale state that would cause the scheduler to fail:
+    - Clears session_id (prevents dead session resume)
+    - Clears attention_reason
+    - Resets api_retry_count to 0 (fresh retry budget)
+    - Clears next_retry_at (immediate scheduling)
+    - Verifies worktree path exists (clears if not)
+
+    Only works on work units in NEEDS_ATTENTION status.
+    """
+    import json
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    with orch_client(project_dir) as client:
+        result = client.retry_work_unit(chunk)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Retried {chunk}, work unit queued for fresh dispatch")
+
+
+# Chunk: docs/chunks/orch_retry_command - Batch retry CLI command
+@orch.command("retry-all")
+@click.option("--phase", type=str, help="Only retry chunks at this phase (e.g., REVIEW)")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_retry_all(phase, json_output, project_dir):
+    """Retry all NEEDS_ATTENTION work units with proper state reset.
+
+    This is the batch version of 've orch work-unit retry'. It processes
+    all NEEDS_ATTENTION work units, properly clearing stale state for each.
+
+    Use --phase to filter to a specific phase (e.g., --phase REVIEW to only
+    retry chunks stuck during review).
+    """
+    import json
+
+    with orch_client(project_dir) as client:
+        result = client.retry_all_work_units(phase=phase)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            count = result.get("count", 0)
+            chunks = result.get("chunks", [])
+
+            if count == 0:
+                if phase:
+                    click.echo(f"No NEEDS_ATTENTION work units at phase {phase}")
+                else:
+                    click.echo("No NEEDS_ATTENTION work units to retry")
+            else:
+                click.echo(f"Retried {count} work unit(s):")
+                for chunk_name in chunks:
+                    click.echo(f"  {chunk_name}")
+
+
 
 
 @orch.command("conflicts")

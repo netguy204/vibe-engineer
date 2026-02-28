@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/orchestrator/api/attention.py
+  - src/orchestrator/api/app.py
+  - src/orchestrator/client.py
+  - src/cli/orch.py
+  - tests/test_orchestrator_retry_command.py
 code_references: []
 narrative: null
 investigation: orch_stuck_recovery
@@ -12,9 +17,10 @@ subsystems:
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_merge_rebase_retry", "orch_rename_propagation"]
+created_after:
+- orch_merge_rebase_retry
+- orch_rename_propagation
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
