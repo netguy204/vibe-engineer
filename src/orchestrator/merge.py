@@ -27,6 +27,24 @@ class WorktreeError(Exception):
     pass
 
 
+# Chunk: docs/chunks/orch_merge_rebase_retry - Helper to detect merge conflict errors
+def is_merge_conflict_error(error: "WorktreeError | str") -> bool:
+    """Check if an error indicates a merge conflict vs other errors.
+
+    Used by the scheduler to distinguish merge conflicts (which can be
+    retried via REBASE) from other finalization errors (which should
+    escalate to NEEDS_ATTENTION).
+
+    Args:
+        error: A WorktreeError exception or error message string
+
+    Returns:
+        True if the error indicates a merge conflict
+    """
+    error_str = str(error) if isinstance(error, WorktreeError) else error
+    return "Merge conflict" in error_str or "CONFLICT" in error_str
+
+
 # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
 # Chunk: docs/chunks/worktree_merge_extract - Extracted from WorktreeManager._merge_without_checkout
 def merge_without_checkout(

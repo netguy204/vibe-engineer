@@ -1,12 +1,20 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/models.py
+- src/orchestrator/state.py
+- src/orchestrator/merge.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/worktree.py
+- tests/test_orchestrator_scheduler_merge_conflict.py
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []

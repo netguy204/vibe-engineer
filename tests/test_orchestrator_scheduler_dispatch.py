@@ -247,7 +247,9 @@ status: ACTIVE
 """
         )
         mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.finalize_work_unit.side_effect = WorktreeError("Merge conflict")
+        # Use a non-merge-conflict error to test immediate escalation
+        # (Merge conflicts now trigger retry via REBASE phase - see orch_merge_rebase_retry)
+        mock_worktree_manager.finalize_work_unit.side_effect = WorktreeError("Failed to remove worktree")
 
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(

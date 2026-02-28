@@ -59,6 +59,7 @@ class ConflictAnalysis(BaseModel):
             "created_at": self.created_at.isoformat(),
         }
 
+# Chunk: docs/chunks/orch_merge_rebase_retry - Retry count for merge conflict recovery
 # Chunk: docs/chunks/orch_review_phase - Added REVIEW enum value between IMPLEMENT and COMPLETE
 # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
 class WorkUnitPhase(StrEnum):
@@ -127,6 +128,8 @@ class WorkUnit(BaseModel):
     # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
     api_retry_count: int = 0  # Current retry attempt number
     next_retry_at: Optional[datetime] = None  # When next retry is allowed (None = immediate)
+    # Chunk: docs/chunks/orch_merge_rebase_retry - Retry count for merge conflict recovery
+    merge_conflict_retries: int = 0  # Count of REBASE retries due to merge conflicts
     created_at: datetime
     updated_at: datetime
 
@@ -163,6 +166,7 @@ class WorkUnit(BaseModel):
             "retain_worktree": self.retain_worktree,
             "api_retry_count": self.api_retry_count,
             "next_retry_at": self.next_retry_at.isoformat() if self.next_retry_at else None,
+            "merge_conflict_retries": self.merge_conflict_retries,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
