@@ -1,5 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/scheduler_decompose - Extracted from scheduler.py for single-responsibility
+# Chunk: docs/chunks/orch_api_retry - Retryable API error detection
 """Retryable API error detection.
 
 This module provides pattern matching for detecting 5xx API errors that are
