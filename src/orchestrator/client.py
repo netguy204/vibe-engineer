@@ -222,16 +222,25 @@ class OrchestratorClient:
 
         return self._request("PATCH", f"/work-units/{chunk}", json=body)
 
-    def delete_work_unit(self, chunk: str) -> dict:
+    # Chunk: docs/chunks/orch_safe_branch_delete - Force parameter for safe deletion
+    def delete_work_unit(self, chunk: str, force: bool = False) -> dict:
         """Delete a work unit.
 
         Args:
             chunk: Chunk name
+            force: If True, force delete even if branch has unmerged commits.
+                   If False (default), deletion is refused when unmerged
+                   commits exist.
 
         Returns:
             Deletion confirmation
+
+        Raises:
+            OrchestratorClientError: If deletion is refused due to unmerged commits
+                (when force=False) or other errors.
         """
-        return self._request("DELETE", f"/work-units/{chunk}")
+        params = {"force": "true"} if force else None
+        return self._request("DELETE", f"/work-units/{chunk}", params=params)
 
     def get_status_history(self, chunk: str) -> dict:
         """Get status transition history for a work unit.
@@ -271,6 +280,34 @@ class OrchestratorClient:
             f"/work-units/{chunk}/answer",
             json={"answer": answer},
         )
+
+    # Chunk: docs/chunks/orch_retry_command - Retry a NEEDS_ATTENTION work unit
+    def retry_work_unit(self, chunk: str) -> dict:
+        """Retry a NEEDS_ATTENTION work unit with proper state reset.
+
+        Clears session_id, attention_reason, api_retry_count, next_retry_at,
+        verifies worktree validity, and transitions to READY.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            Updated work unit details
+        """
+        return self._request("POST", f"/work-units/{chunk}/retry")
+
+    # Chunk: docs/chunks/orch_retry_command - Retry all NEEDS_ATTENTION work units
+    def retry_all_work_units(self, phase: Optional[str] = None) -> dict:
+        """Retry all NEEDS_ATTENTION work units with proper state reset.
+
+        Args:
+            phase: Optional phase filter (e.g., "REVIEW" to only retry chunks at that phase)
+
+        Returns:
+            Dict with count and list of retried chunk names
+        """
+        params = {"phase": phase} if phase else None
+        return self._request("POST", "/work-units/retry-all", params=params)
 
 
     def get_conflicts(self, chunk: str) -> dict:

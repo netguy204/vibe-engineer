@@ -15,10 +15,13 @@ Merge strategies:
 - update_working_tree_if_on_branch: Syncs working tree after ref update
 """
 
+import logging
 import os
 import subprocess
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class WorktreeError(Exception):
@@ -323,6 +326,7 @@ def merge_via_index(
 
 # Chunk: docs/chunks/orch_merge_safety - Update working tree after ref update
 # Chunk: docs/chunks/worktree_merge_extract - Extracted from WorktreeManager._update_working_tree_if_on_branch
+# Chunk: docs/chunks/merge_safety - Dirty working tree detection and early return
 def update_working_tree_if_on_branch(
     target_branch: str, repo_dir: Path
 ) -> None:
@@ -331,6 +335,10 @@ def update_working_tree_if_on_branch(
     After updating a branch ref with update-ref, the working tree is out
     of sync if the user is on that branch. This method checks if the user
     is on the target branch and updates their working tree to match.
+
+    If the working tree has uncommitted changes (staged or unstaged), this
+    function skips the update and logs a warning. The user must manually
+    reconcile their changes with the updated branch using git merge or rebase.
 
     Args:
         target_branch: Branch that was just updated
@@ -349,6 +357,30 @@ def update_working_tree_if_on_branch(
     current_branch = result.stdout.strip()
     if current_branch != target_branch:
         return  # Not on target branch, no update needed
+
+    # Check for uncommitted changes (staged or unstaged) before modifying working tree
+    # git status --porcelain outputs one line per changed file, empty if clean
+    # We only check tracked file modifications (exclude untracked files with "??")
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        # Filter out untracked files (lines starting with "??")
+        changes = [
+            line for line in result.stdout.strip().split("\n")
+            if line and not line.startswith("??")
+        ]
+        if changes:
+            logger.warning(
+                "Working tree has uncommitted changes; skipping update. "
+                "Your working tree is behind branch '%s'. "
+                "Manually run 'git merge' or 'git rebase' to reconcile.",
+                target_branch,
+            )
+            return  # Don't destroy uncommitted changes
 
     # Reset the working tree to match the new HEAD
     # Use --mixed to update index but not touch uncommitted changes

@@ -618,6 +618,7 @@ class WorktreeManager:
         chunk: str,
         remove_branch: bool = False,
         repo_paths: Optional[list[Path]] = None,
+        force: bool = False,
     ) -> None:
         """Remove a git worktree for a chunk.
 
@@ -631,21 +632,29 @@ class WorktreeManager:
             chunk: Chunk name
             remove_branch: If True, also delete the branch
             repo_paths: Optional list of repository paths for task context mode
+            force: If True, force delete branch even if it has unmerged commits.
+                   When False (default), uses safe delete which refuses to delete
+                   unmerged branches.
 
         Raises:
             WorktreeError: If worktree removal fails
         """
         if repo_paths is not None:
-            self._remove_task_context_worktrees(chunk, remove_branch, repo_paths)
+            self._remove_task_context_worktrees(chunk, remove_branch, repo_paths, force=force)
         else:
-            self._remove_single_repo_worktree(chunk, remove_branch)
+            self._remove_single_repo_worktree(chunk, remove_branch, force=force)
 
-    def _remove_single_repo_worktree(self, chunk: str, remove_branch: bool) -> None:
+    # Chunk: docs/chunks/orch_safe_branch_delete - Safe branch delete by default
+    def _remove_single_repo_worktree(
+        self, chunk: str, remove_branch: bool, force: bool = False
+    ) -> None:
         """Remove a single-repo worktree.
 
         Args:
             chunk: Chunk name
             remove_branch: If True, also delete the branch
+            force: If True, use -D (force delete). If False, use -d (safe delete)
+                   which refuses to delete branches with unmerged commits.
         """
         worktree_path = self.get_worktree_path(chunk)
         branch = self.get_branch_name(chunk)
@@ -661,17 +670,20 @@ class WorktreeManager:
         )
 
         # Optionally remove the branch
+        # Use -D (force) when force=True, -d (safe) when force=False
         if remove_branch and self._branch_exists(branch):
+            delete_flag = "-D" if force else "-d"
             subprocess.run(
-                ["git", "branch", "-D", branch],
+                ["git", "branch", delete_flag, branch],
                 cwd=self.project_dir,
                 capture_output=True,
                 text=True,
             )
             # Don't raise on branch deletion failure - it's not critical
 
+    # Chunk: docs/chunks/orch_safe_branch_delete - Safe branch delete by default
     def _remove_task_context_worktrees(
-        self, chunk: str, remove_branch: bool, repo_paths: list[Path]
+        self, chunk: str, remove_branch: bool, repo_paths: list[Path], force: bool = False
     ) -> None:
         """Remove worktrees for multiple repos in task context mode.
 
@@ -679,6 +691,8 @@ class WorktreeManager:
             chunk: Chunk name
             remove_branch: If True, also delete the branches
             repo_paths: List of repository paths
+            force: If True, use -D (force delete). If False, use -d (safe delete)
+                   which refuses to delete branches with unmerged commits.
         """
         work_dir = self.get_work_directory(chunk)
         branch = self.get_branch_name(chunk)
@@ -698,9 +712,11 @@ class WorktreeManager:
             )
 
             # Optionally remove the branch in this repo
+            # Use -D (force) when force=True, -d (safe) when force=False
             if remove_branch and self._branch_exists_in_repo(branch, repo_path):
+                delete_flag = "-D" if force else "-d"
                 subprocess.run(
-                    ["git", "branch", "-D", branch],
+                    ["git", "branch", delete_flag, branch],
                     cwd=repo_path,
                     capture_output=True,
                     text=True,
@@ -783,6 +799,49 @@ class WorktreeManager:
         )
 
         return bool(result.stdout.strip())
+
+    # Chunk: docs/chunks/orch_safe_branch_delete - Check for unmerged commits before deletion
+    def has_unmerged_commits(self, chunk: str) -> tuple[bool, int]:
+        """Check if a chunk's branch has commits not reachable from the base branch.
+
+        This is used by the delete safety check to prevent accidental loss of
+        implementation work that hasn't been merged yet.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            Tuple of (has_unmerged, commit_count). has_unmerged is True if
+            there are commits on the orch/<chunk> branch not reachable from
+            the base branch. commit_count is the number of such commits.
+        """
+        branch = self.get_branch_name(chunk)
+
+        # Branch must exist to have unmerged commits
+        if not self._branch_exists(branch):
+            return (False, 0)
+
+        # Load the persisted base branch (from worktree creation time)
+        # Fall back to the manager's base branch for legacy worktrees
+        try:
+            base_branch = self._load_base_branch(chunk)
+        except WorktreeError:
+            base_branch = self._base_branch
+
+        # Count commits on branch not reachable from base
+        result = subprocess.run(
+            ["git", "rev-list", f"{base_branch}..{branch}", "--count"],
+            cwd=self.project_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # If command fails (e.g., base doesn't exist), assume safe
+            return (False, 0)
+
+        count = int(result.stdout.strip())
+        return (count > 0, count)
 
     def list_worktrees(self) -> list[str]:
         """List all orchestrator-managed worktrees.

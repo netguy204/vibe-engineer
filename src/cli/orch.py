@@ -306,16 +306,25 @@ def work_unit_list(status_filter, json_output, project_dir):
     ctx.invoke(orch_ps, status_filter=status_filter, json_output=json_output, project_dir=project_dir)
 
 
+# Chunk: docs/chunks/orch_safe_branch_delete - Safe delete with --force flag
 @work_unit.command("delete")
 @click.argument("chunk")
+@click.option("--force", is_flag=True, help="Force delete even if branch has unmerged commits")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def work_unit_delete(chunk, json_output, project_dir):
-    """Delete a work unit."""
+def work_unit_delete(chunk, force, json_output, project_dir):
+    """Delete a work unit.
+
+    By default, refuses to delete if the branch has unmerged commits.
+    Use --force to delete anyway (WARNING: may cause data loss).
+    """
     import json
 
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
     with orch_client(project_dir) as client:
-        result = client.delete_work_unit(chunk)
+        result = client.delete_work_unit(chunk, force=force)
 
         if json_output:
             click.echo(json.dumps(result, indent=2))
@@ -589,6 +598,74 @@ def orch_answer(chunk, answer, json_output, project_dir):
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo(f"Answered {chunk}, work unit queued for resume")
+
+
+# Chunk: docs/chunks/orch_retry_command - Single work unit retry CLI command
+@work_unit.command("retry")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_retry(chunk, json_output, project_dir):
+    """Retry a NEEDS_ATTENTION work unit with proper state reset.
+
+    Unlike setting status to READY via 've orch work-unit status', this command
+    properly clears stale state that would cause the scheduler to fail:
+    - Clears session_id (prevents dead session resume)
+    - Clears attention_reason
+    - Resets api_retry_count to 0 (fresh retry budget)
+    - Clears next_retry_at (immediate scheduling)
+    - Verifies worktree path exists (clears if not)
+
+    Only works on work units in NEEDS_ATTENTION status.
+    """
+    import json
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    with orch_client(project_dir) as client:
+        result = client.retry_work_unit(chunk)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Retried {chunk}, work unit queued for fresh dispatch")
+
+
+# Chunk: docs/chunks/orch_retry_command - Batch retry CLI command
+@orch.command("retry-all")
+@click.option("--phase", type=str, help="Only retry chunks at this phase (e.g., REVIEW)")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_retry_all(phase, json_output, project_dir):
+    """Retry all NEEDS_ATTENTION work units with proper state reset.
+
+    This is the batch version of 've orch work-unit retry'. It processes
+    all NEEDS_ATTENTION work units, properly clearing stale state for each.
+
+    Use --phase to filter to a specific phase (e.g., --phase REVIEW to only
+    retry chunks stuck during review).
+    """
+    import json
+
+    with orch_client(project_dir) as client:
+        result = client.retry_all_work_units(phase=phase)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            count = result.get("count", 0)
+            chunks = result.get("chunks", [])
+
+            if count == 0:
+                if phase:
+                    click.echo(f"No NEEDS_ATTENTION work units at phase {phase}")
+                else:
+                    click.echo("No NEEDS_ATTENTION work units to retry")
+            else:
+                click.echo(f"Retried {count} work unit(s):")
+                for chunk_name in chunks:
+                    click.echo(f"  {chunk_name}")
 
 
 

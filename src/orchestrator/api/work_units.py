@@ -243,11 +243,41 @@ async def update_work_unit_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(updated.model_dump_json_serializable())
 
 
+# Chunk: docs/chunks/orch_safe_branch_delete - Safety check for unmerged commits
 async def delete_work_unit_endpoint(request: Request) -> JSONResponse:
-    """DELETE /work-units/{chunk} - Delete a work unit."""
+    """DELETE /work-units/{chunk} - Delete a work unit.
+
+    Query parameters:
+        force: If "true", force delete even if branch has unmerged commits.
+               If not provided or "false", deletion is refused when unmerged
+               commits exist.
+    """
     chunk = request.path_params["chunk"]
     store = get_store(request)
     project_dir = get_project_dir(request)
+
+    # Parse force query parameter
+    force_param = request.query_params.get("force", "false").lower()
+    force = force_param == "true"
+
+    # Check for unmerged commits before deleting
+    # This may fail if project_dir is not a git repo (e.g., in tests)
+    worktree_manager = None
+    try:
+        worktree_manager = WorktreeManager(project_dir)
+        has_unmerged, commit_count = worktree_manager.has_unmerged_commits(chunk)
+
+        if has_unmerged and not force:
+            return error_response(
+                f"Branch has {commit_count} unmerged commit(s). "
+                f"Use force=true to delete anyway, or merge changes first.",
+                status_code=409,
+            )
+    except Exception as e:
+        # If we can't check for unmerged commits (e.g., not a git repo),
+        # proceed with deletion. This maintains compatibility with tests
+        # and non-git environments.
+        logger.debug(f"Could not check for unmerged commits: {e}")
 
     deleted = store.delete_work_unit(chunk)
     if not deleted:
@@ -262,12 +292,12 @@ async def delete_work_unit_endpoint(request: Request) -> JSONResponse:
     )
 
     # Remove worktree and branch to prevent stale branch reuse on re-inject
-    try:
-        worktree_manager = WorktreeManager(project_dir)
-        worktree_manager.remove_worktree(chunk, remove_branch=True)
-    except Exception as e:
-        # Worktree cleanup is best-effort; don't fail the delete
-        logger.warning(f"Failed to cleanup worktree for '{chunk}': {e}")
+    if worktree_manager is not None:
+        try:
+            worktree_manager.remove_worktree(chunk, remove_branch=True, force=force)
+        except Exception as e:
+            # Worktree cleanup is best-effort; don't fail the delete
+            logger.warning(f"Failed to cleanup worktree for '{chunk}': {e}")
 
     return JSONResponse({"deleted": True, "chunk": chunk})
 

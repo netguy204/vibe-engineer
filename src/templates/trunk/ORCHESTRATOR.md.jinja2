@@ -12,7 +12,7 @@ The orchestrator (`ve orch`) manages parallel chunk execution across multiple gi
 | `ve orch attention` | Show chunks needing operator input |
 | `ve orch answer <chunk>` | Answer a question from a work unit |
 | `ve orch resolve <chunk>` | Resolve a conflict verdict |
-| `ve orch work-unit delete <chunk>` | Remove a work unit |
+| `ve orch work-unit delete <chunk>` | Remove a work unit (safe by default) |
 
 ## Creating and Submitting FUTURE Chunks
 
@@ -81,6 +81,30 @@ git add docs/chunks/my_chunk/ && git commit -m "docs: update my_chunk goal"
 ve orch work-unit delete my_chunk
 ve orch inject my_chunk
 ```
+
+## Deleting Work Units
+
+By default, `ve orch work-unit delete` refuses to delete a work unit if its branch has unmerged commits. This prevents accidental loss of implementation work.
+
+```bash
+# Safe delete (default) - refuses if branch has unmerged commits
+ve orch work-unit delete my_chunk
+
+# If the branch has unmerged commits, you'll see an error like:
+# Error: Branch has 3 unmerged commit(s). Use force=true to delete anyway, or merge changes first.
+
+# Force delete - use when you intentionally want to discard unmerged work
+ve orch work-unit delete my_chunk --force
+```
+
+**When to use `--force`:**
+- The work is intentionally being abandoned
+- The changes have been cherry-picked or rebased elsewhere
+- The branch represents failed/incorrect implementation
+
+**Alternatives to force delete:**
+- Use `ve orch prune` to merge retained worktrees back to base
+- Manually merge or cherry-pick valuable commits before deleting
 
 ## Handling Attention Items
 
