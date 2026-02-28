@@ -281,6 +281,34 @@ class OrchestratorClient:
             json={"answer": answer},
         )
 
+    # Chunk: docs/chunks/orch_retry_command - Retry a NEEDS_ATTENTION work unit
+    def retry_work_unit(self, chunk: str) -> dict:
+        """Retry a NEEDS_ATTENTION work unit with proper state reset.
+
+        Clears session_id, attention_reason, api_retry_count, next_retry_at,
+        verifies worktree validity, and transitions to READY.
+
+        Args:
+            chunk: Chunk name
+
+        Returns:
+            Updated work unit details
+        """
+        return self._request("POST", f"/work-units/{chunk}/retry")
+
+    # Chunk: docs/chunks/orch_retry_command - Retry all NEEDS_ATTENTION work units
+    def retry_all_work_units(self, phase: Optional[str] = None) -> dict:
+        """Retry all NEEDS_ATTENTION work units with proper state reset.
+
+        Args:
+            phase: Optional phase filter (e.g., "REVIEW" to only retry chunks at that phase)
+
+        Returns:
+            Dict with count and list of retried chunk names
+        """
+        params = {"phase": phase} if phase else None
+        return self._request("POST", "/work-units/retry-all", params=params)
+
 
     def get_conflicts(self, chunk: str) -> dict:
         """Get all conflict analyses for a chunk.

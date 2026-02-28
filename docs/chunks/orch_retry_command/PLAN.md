@@ -8,153 +8,154 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add dedicated retry commands that properly reset work unit state, unlike the generic PATCH endpoint which only updates explicitly provided fields. The "answer" endpoint (`attention.py:106-186`) provides the model for proper state reset: it clears `attention_reason`, sets `pending_answer`, and transitions to READY with timestamp update.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The retry command extends this pattern to:
+1. Clear `session_id` (prevents dead session resume)
+2. Clear `attention_reason` (the issue is being retried, not answered)
+3. Reset `api_retry_count` to 0 (fresh retry budget)
+4. Clear `next_retry_at` (immediate scheduling)
+5. Verify worktree validity (clear if path doesn't exist)
+6. Transition NEEDS_ATTENTION → READY
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_retry_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+Implementation follows existing patterns from DEC-007 (daemon HTTP API), DEC-008 (Pydantic models), and the orchestrator subsystem conventions.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the retry command as a new endpoint and CLI command. The orchestrator subsystem documents the API structure (work_units.py for CRUD, attention.py for attention queue) which this chunk extends.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add retry endpoint to attention.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `retry_endpoint` function in `src/orchestrator/api/attention.py` that:
 
-Example:
+1. Accepts `POST /work-units/{chunk}/retry`
+2. Validates work unit exists and is in NEEDS_ATTENTION status
+3. Clears stale state: `session_id = None`, `attention_reason = None`, `api_retry_count = 0`, `next_retry_at = None`
+4. Checks if `worktree` path exists on disk; if not, sets `worktree = None`
+5. Transitions `status` to READY
+6. Uses optimistic locking (per `optimistic_locking` chunk pattern)
+7. Broadcasts updates via WebSocket
+8. Returns the updated work unit
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/orchestrator/api/attention.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add retry-all endpoint to attention.py
 
-Location: src/segment/format.rs
+Create `retry_all_endpoint` function in `src/orchestrator/api/attention.py` that:
 
-### Step 2: Implement header serialization
+1. Accepts `POST /work-units/retry-all`
+2. Accepts optional `phase` query parameter (e.g., `?phase=REVIEW`)
+3. Lists all NEEDS_ATTENTION work units (filtered by phase if provided)
+4. Calls the same state-reset logic from Step 1 for each
+5. Returns count of retried work units and list of chunk names
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/orchestrator/api/attention.py`
 
-### Step 3: ...
+### Step 3: Register routes in app.py
 
----
+Add routes for the new endpoints to `src/orchestrator/api/app.py`:
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+Route("/work-units/{chunk}/retry", endpoint=retry_endpoint, methods=["POST"]),
+Route("/work-units/retry-all", endpoint=retry_all_endpoint, methods=["POST"]),
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The retry-all route must come before the generic `{chunk:path}` routes.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/api/app.py`
+
+### Step 4: Add client methods
+
+Add `retry_work_unit` and `retry_all_work_units` methods to `OrchestratorClient` class:
+
+```python
+def retry_work_unit(self, chunk: str) -> dict:
+    """Retry a NEEDS_ATTENTION work unit with proper state reset."""
+    return self._request("POST", f"/work-units/{chunk}/retry")
+
+def retry_all_work_units(self, phase: Optional[str] = None) -> dict:
+    """Retry all NEEDS_ATTENTION work units."""
+    params = {"phase": phase} if phase else None
+    return self._request("POST", "/work-units/retry-all", params=params)
+```
+
+Location: `src/orchestrator/client.py`
+
+### Step 5: Add CLI commands
+
+Add `ve orch work-unit retry <chunk>` command to the `work_unit` group:
+
+```python
+@work_unit.command("retry")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def work_unit_retry(chunk, json_output, project_dir):
+    """Retry a NEEDS_ATTENTION work unit with proper state reset."""
+```
+
+Add `ve orch retry-all` command to the `orch` group:
+
+```python
+@orch.command("retry-all")
+@click.option("--phase", type=str, help="Only retry chunks at this phase (e.g., REVIEW)")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def orch_retry_all(phase, json_output, project_dir):
+    """Retry all NEEDS_ATTENTION work units with proper state reset."""
+```
+
+Location: `src/cli/orch.py`
+
+### Step 6: Write tests for retry endpoint
+
+Create tests in a new test file `tests/test_orchestrator_retry_command.py`:
+
+1. **test_retry_transitions_to_ready**: Create NEEDS_ATTENTION work unit, call retry, verify status is READY
+2. **test_retry_clears_session_id**: Create work unit with session_id set, verify cleared after retry
+3. **test_retry_clears_attention_reason**: Create work unit with attention_reason, verify cleared
+4. **test_retry_resets_api_retry_count**: Create work unit with api_retry_count > 0, verify reset to 0
+5. **test_retry_clears_next_retry_at**: Create work unit with next_retry_at set, verify cleared
+6. **test_retry_clears_invalid_worktree**: Create work unit with worktree path that doesn't exist, verify cleared
+7. **test_retry_preserves_valid_worktree**: Create work unit with valid worktree path, verify preserved
+8. **test_retry_rejects_non_needs_attention**: Attempt to retry READY/RUNNING/DONE work unit, verify 400 error
+9. **test_retry_not_found**: Attempt to retry non-existent chunk, verify 404
+
+Location: `tests/test_orchestrator_retry_command.py`
+
+### Step 7: Write tests for retry-all endpoint
+
+Add tests to `tests/test_orchestrator_retry_command.py`:
+
+1. **test_retry_all_retries_all_needs_attention**: Create multiple NEEDS_ATTENTION work units, verify all retried
+2. **test_retry_all_with_phase_filter**: Create NEEDS_ATTENTION at different phases, verify only matching phase retried
+3. **test_retry_all_skips_other_statuses**: Create mix of statuses, verify only NEEDS_ATTENTION affected
+4. **test_retry_all_returns_count_and_chunks**: Verify response includes count and chunk names
+5. **test_retry_all_empty_returns_zero**: No NEEDS_ATTENTION work units, verify count is 0
+
+Location: `tests/test_orchestrator_retry_command.py`
+
+### Step 8: Add backreference comments
+
+Add appropriate chunk backreference comments to all new code:
+
+```python
+# Chunk: docs/chunks/orch_retry_command - Retry endpoint for NEEDS_ATTENTION work units
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- None. This chunk builds on existing orchestrator infrastructure without requiring other chunks to complete first.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Worktree validity check**: Checking if a worktree path exists is simple (`Path(worktree).exists()`), but should we also verify it's a valid git worktree? Decision: Keep it simple - just check existence. A non-existent path is definitely invalid; a corrupt worktree is a separate problem.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Concurrent retry attempts**: What if two operators retry the same chunk simultaneously? The optimistic locking pattern (already used in answer_endpoint) handles this by detecting stale writes.
+
+3. **Batch retry atomicity**: If retry-all fails midway, should we roll back successful retries? Decision: No - it's better to have partial progress than all-or-nothing. Each retry is independent.
 
 ## Deviations
 
@@ -169,9 +170,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

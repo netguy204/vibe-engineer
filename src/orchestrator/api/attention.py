@@ -23,7 +23,7 @@ from orchestrator.api.common import (
     get_store,
     not_found_response,
 )
-from orchestrator.models import WorkUnitStatus
+from orchestrator.models import WorkUnitPhase, WorkUnitStatus
 from orchestrator.state import StaleWriteError
 from orchestrator.websocket import (
     broadcast_attention_update,
@@ -183,3 +183,152 @@ async def answer_endpoint(request: Request):
         return RedirectResponse(url="/", status_code=303)
 
     return JSONResponse(updated.model_dump_json_serializable())
+
+
+# Chunk: docs/chunks/orch_retry_command - Retry endpoint for NEEDS_ATTENTION work units
+async def retry_endpoint(request: Request) -> JSONResponse:
+    """POST /work-units/{chunk}/retry - Retry a NEEDS_ATTENTION work unit.
+
+    Properly resets the work unit state for a fresh retry:
+    - Clears session_id (prevents dead session resume)
+    - Clears attention_reason (the issue is being retried, not answered)
+    - Resets api_retry_count to 0 (fresh retry budget)
+    - Clears next_retry_at (immediate scheduling)
+    - Verifies worktree validity (clears if path doesn't exist)
+    - Transitions NEEDS_ATTENTION → READY
+
+    This is the correct way to retry a stuck work unit, unlike the generic
+    PATCH endpoint which only updates explicitly provided fields.
+    """
+    chunk = request.path_params["chunk"]
+    store = get_store(request)
+
+    # Get existing work unit
+    unit = store.get_work_unit(chunk)
+    if unit is None:
+        return not_found_response("Work unit", chunk)
+
+    # Capture for optimistic locking
+    expected_updated_at = unit.updated_at
+
+    # Validate work unit is in NEEDS_ATTENTION state
+    if unit.status != WorkUnitStatus.NEEDS_ATTENTION:
+        return error_response(
+            f"Work unit '{chunk}' is not in NEEDS_ATTENTION state "
+            f"(current: {unit.status.value}). Only NEEDS_ATTENTION work units can be retried.",
+            status_code=400,
+        )
+
+    # Reset state for fresh retry
+    unit.session_id = None  # Clear dead session reference
+    unit.attention_reason = None  # Clear the attention reason
+    unit.api_retry_count = 0  # Reset retry budget
+    unit.next_retry_at = None  # Allow immediate scheduling
+
+    # Check if worktree path exists - clear if it doesn't
+    if unit.worktree is not None and not Path(unit.worktree).exists():
+        unit.worktree = None
+
+    # Transition to READY
+    unit.status = WorkUnitStatus.READY
+    unit.updated_at = datetime.now(timezone.utc)
+
+    try:
+        updated = store.update_work_unit(
+            unit, expected_updated_at=expected_updated_at
+        )
+    except StaleWriteError as e:
+        return JSONResponse(
+            {"error": "Concurrent modification detected", "detail": str(e)},
+            status_code=409,
+        )
+    except ValueError as e:
+        return error_response(str(e))
+
+    # Broadcast the update via WebSocket
+    await broadcast_attention_update("resolved", chunk)
+    await broadcast_work_unit_update(
+        chunk=chunk,
+        status=updated.status.value,
+        phase=updated.phase.value,
+    )
+
+    return JSONResponse(updated.model_dump_json_serializable())
+
+
+# Chunk: docs/chunks/orch_retry_command - Retry-all endpoint for batch retry
+async def retry_all_endpoint(request: Request) -> JSONResponse:
+    """POST /work-units/retry-all - Retry all NEEDS_ATTENTION work units.
+
+    Accepts optional query parameter:
+    - phase: Only retry chunks at this phase (e.g., ?phase=REVIEW)
+
+    Returns count of retried work units and list of chunk names.
+    """
+    store = get_store(request)
+
+    # Parse optional phase filter from query params
+    phase_filter: Optional[str] = request.query_params.get("phase")
+
+    # Validate phase filter if provided
+    if phase_filter:
+        try:
+            WorkUnitPhase(phase_filter)
+        except ValueError:
+            valid_phases = [p.value for p in WorkUnitPhase]
+            return error_response(
+                f"Invalid phase '{phase_filter}'. "
+                f"Valid phases: {', '.join(valid_phases)}",
+                status_code=400,
+            )
+
+    # Get all NEEDS_ATTENTION work units
+    all_units = store.list_work_units(status=WorkUnitStatus.NEEDS_ATTENTION)
+
+    # Filter by phase if specified
+    if phase_filter:
+        units_to_retry = [u for u in all_units if u.phase.value == phase_filter]
+    else:
+        units_to_retry = all_units
+
+    retried_chunks: list[str] = []
+
+    for unit in units_to_retry:
+        # Capture for optimistic locking
+        expected_updated_at = unit.updated_at
+
+        # Reset state for fresh retry
+        unit.session_id = None
+        unit.attention_reason = None
+        unit.api_retry_count = 0
+        unit.next_retry_at = None
+
+        # Check if worktree path exists
+        if unit.worktree is not None and not Path(unit.worktree).exists():
+            unit.worktree = None
+
+        # Transition to READY
+        unit.status = WorkUnitStatus.READY
+        unit.updated_at = datetime.now(timezone.utc)
+
+        try:
+            updated = store.update_work_unit(
+                unit, expected_updated_at=expected_updated_at
+            )
+            retried_chunks.append(unit.chunk)
+
+            # Broadcast the update via WebSocket
+            await broadcast_attention_update("resolved", unit.chunk)
+            await broadcast_work_unit_update(
+                chunk=unit.chunk,
+                status=updated.status.value,
+                phase=updated.phase.value,
+            )
+        except StaleWriteError:
+            # Skip this unit if it was modified concurrently - don't fail the whole batch
+            continue
+
+    return JSONResponse({
+        "count": len(retried_chunks),
+        "chunks": retried_chunks,
+    })
