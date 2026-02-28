@@ -1,26 +1,21 @@
 ---
-status: ACTIVE
+status: FUTURE
 ticket: null
-parent_chunk: null
+parent_chunk: orch_rename_propagation
 code_paths:
-- src/orchestrator/merge.py
-- tests/test_orchestrator_merge.py
+- src/orchestrator/scheduler.py
 code_references: []
-narrative: arch_review_cleanup
+narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
-bug_type: null
+bug_type: semantic
 depends_on: []
-created_after:
-- dead_code_removal
-- narrative_compact_extract
-- persist_retry_state
-- repo_cache_dry
-- reviewer_decisions_dedup
-- worktree_merge_extract
-- phase_aware_recovery
+created_after: ["backref_language_agnostic", "integrity_deprecated_removal", "merge_safety", "orch_investigate_scenarios", "orch_retry_command", "orch_safe_branch_delete"]
 ---
+
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -238,21 +233,52 @@ VALIDATION:
 
 ## Minor Goal
 
-Prevent `update_working_tree_if_on_branch` in `src/orchestrator/merge.py` from silently destroying uncommitted changes in the user's working tree.
+The orchestrator's `_detect_rename()` method produces false positive rename
+detections. It should only consider IMPLEMENTING chunks, but something in the
+detection path allows non-IMPLEMENTING chunks to influence the result.
 
-Currently, after updating a branch ref via `git update-ref`, this function runs `git reset --mixed HEAD` followed by `git checkout -- .` to sync the working tree. The `git checkout -- .` unconditionally discards all unstaged modifications, meaning any work the user has in progress is silently lost. This is a data-loss bug: the user receives no warning that their changes have been overwritten.
+**Observed failure:** `backref_language_agnostic` completed IMPLEMENT, then
+during REBASE merged main (which contained the completed `merge_safety` chunk).
+Rebase only retrieves chunks in ACTIVE or FUTURE states from main. Despite this,
+the rename detection concluded `backref_language_agnostic` had been renamed to
+`merge_safety`. If detection truly only considered IMPLEMENTING chunks, a rebase
+could never produce a false positive — no new IMPLEMENTING chunks appear via
+rebase.
 
-This chunk changes the function to check for uncommitted changes first (via `git status --porcelain`). If the working tree is dirty, the function skips the update entirely and logs a warning informing the user that their working tree is behind the branch tip. The user can then manually reconcile with `git merge` or `git rebase`. This preserves safety while still updating clean working trees automatically.
+**Additional scenario:** When a merge conflict occurs after COMPLETE, the chunk
+returns to the REBASE step. At that point the COMPLETE phase has already changed
+the chunk's status to ACTIVE. The work unit's own chunk is now ACTIVE, not
+IMPLEMENTING, so `_detect_rename` sees it as "disappeared" even though it's
+still present — just in a different status.
 
-The function is called from three merge paths within `src/orchestrator/merge.py`: `merge_worktree_branch` (line 107), `fast_forward_merge` (line 182), and `merge_worktree_to_branch` (line 298). All three callers benefit from this fix without any changes to their call sites.
+**Fix:** Ensure `_detect_rename()` strictly only considers IMPLEMENTING chunks
+when computing the baseline-to-current set difference. The work unit's own chunk
+identity (`work_unit.chunk`) must be used directly — not inferred from the
+IMPLEMENTING set — so that the detection still works after COMPLETE has changed
+the chunk to ACTIVE. The check should be: "is there an IMPLEMENTING chunk with
+a different name than `work_unit.chunk`?" rather than "did my chunk disappear
+from the IMPLEMENTING set?"
 
 ## Success Criteria
 
-- `update_working_tree_if_on_branch` runs `git status --porcelain` (or equivalent) before attempting any working tree modification
-- When uncommitted changes exist (staged or unstaged), the function returns early without running `git reset` or `git checkout -- .`
-- When uncommitted changes cause the function to skip, a warning is logged that clearly states: the working tree is behind the branch tip, and the user should manually reconcile
-- When the working tree is clean, the function updates the working tree to match the new branch tip (existing behavior preserved)
-- The three call sites in `src/orchestrator/merge.py` (`merge_worktree_branch`, `fast_forward_merge`, `merge_worktree_to_branch`) require no changes -- the safety check is encapsulated within `update_working_tree_if_on_branch`
-- Tests verify the dirty-working-tree path: given uncommitted changes, the function does not run `git checkout -- .` and does log a warning
-- Tests verify the clean-working-tree path: given a clean working tree, the function updates files as before
+- `_detect_rename()` strictly considers only IMPLEMENTING chunks — chunks in
+  ACTIVE, FUTURE, or any other state are excluded from both the baseline
+  comparison and the current set
+- The work unit's chunk identity is tracked via `work_unit.chunk`, not by
+  scanning for IMPLEMENTING chunks — so detection still works correctly after
+  COMPLETE has changed the chunk's status to ACTIVE
+- A rename is detected only when a new IMPLEMENTING chunk appears that wasn't
+  in the baseline, not when the work unit's own chunk changes status
+- After a rebase that merges main into the worktree, no false rename is detected
+  (since main only contains ACTIVE/FUTURE chunks)
+- After a post-COMPLETE rebase (merge conflict retry), no false rename is
+  detected (the chunk is now ACTIVE but `work_unit.chunk` still knows its name)
+- A test verifies both scenarios
+- The existing rename detection tests continue to pass
 
+## Relationship to Parent
+
+The parent chunk (`orch_rename_propagation`) introduced `_detect_rename()` with
+the intent of only considering IMPLEMENTING chunks. This chunk fixes a defect
+where non-IMPLEMENTING chunks leak into the detection, causing false positives
+after rebase.
