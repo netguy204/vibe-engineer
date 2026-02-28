@@ -974,7 +974,6 @@ class StateStore:
         except (IndexError, KeyError):
             next_retry_at = None
 
-<<<<<<< HEAD
         # Chunk: docs/chunks/orch_merge_rebase_retry - Merge conflict retry tracking
         try:
             merge_conflict_retries = (

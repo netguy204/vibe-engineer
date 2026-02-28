@@ -170,7 +170,6 @@ class WorkUnit(BaseModel):
             "retain_worktree": self.retain_worktree,
             "api_retry_count": self.api_retry_count,
             "next_retry_at": self.next_retry_at.isoformat() if self.next_retry_at else None,
-<<<<<<< HEAD
             "merge_conflict_retries": self.merge_conflict_retries,
             "baseline_implementing": self.baseline_implementing,
             "created_at": self.created_at.isoformat(),
