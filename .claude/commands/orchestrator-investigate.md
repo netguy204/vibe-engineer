@@ -141,9 +141,69 @@ or branch issue).
 
 **Diagnosis:** Git worktree is in inconsistent state.
 
+### Scenario F: Implementation on branch, docs on main (partial merge)
+
+**Symptoms:**
+- `git log` shows commits mentioning the chunk on main (creating a "merge illusion")
+- `git diff main..orch/$ARGUMENTS` shows implementation changes that aren't on main
+- Main has GOAL.md/PLAN.md for the chunk but not implementation code
+- Work unit may show as merged/DONE when implementation code is only on branch
+
+**Diagnosis:** The FUTURE chunk's documentation (GOAL.md, PLAN.md) was committed to main
+via the initial chunk-create commit. The orchestrator ran PLAN/IMPLEMENT in a worktree,
+but a later phase (REVIEW or COMPLETE) failed. This leaves implementation code on the
+`orch/` branch while main only has the docs.
+
+**Diagnostic steps:**
+
+```bash
+# Check for unmerged implementation commits on the branch
+git log --oneline orch/$ARGUMENTS ^main
+
+# See which files exist on branch but not main
+git diff --name-status main..orch/$ARGUMENTS
+
+# Verify GOAL.md exists on main but implementation doesn't
+git show main:docs/chunks/$ARGUMENTS/GOAL.md >/dev/null 2>&1 && echo "GOAL.md on main"
+```
+
+### Scenario G: Systematic code bug affecting all chunks in same phase
+
+**Symptoms:**
+- Multiple chunks in NEEDS_ATTENTION with the same or similar `attention_reason`
+- Errors reference VE code (`src/orchestrator/*`, `src/ve.py`) rather than chunk content
+- Pattern: all chunks reaching phase X fail identically
+
+**Diagnosis:** A bug in VE/orchestrator code (missing import, schema error, API change)
+is causing every chunk that reaches a particular phase to fail. The fix is in the VE
+codebase, not in any individual chunk.
+
+**Diagnostic steps:**
+
+```bash
+# Check how many chunks are in NEEDS_ATTENTION
+ve orch status
+
+# List all work units needing attention and compare reasons
+ve orch attention list
+
+# Check orchestrator log for repeated errors
+grep -i "error\|exception\|traceback" .ve/orchestrator.log | tail -50
+
+# Look for errors referencing VE code
+grep -E "src/(orchestrator|ve)" .ve/orchestrator.log | tail -20
+```
+
 ---
 
 ## Phase 3: Resolution
+
+> ⚠️ **CRITICAL: `status DONE` vs `delete`**
+>
+> - `ve orch work-unit status <chunk> DONE` — Marks the work unit complete but **preserves the branch**. Use this when you've manually merged the branch to main.
+> - `ve orch work-unit delete <chunk>` — Removes the work unit AND **force-deletes the branch** (uses `git branch -D`). Use this ONLY when you're certain the branch has no unmerged work.
+>
+> **When in doubt, use `status DONE`** — you can always delete the branch later with `git branch -d` which will warn if unmerged commits exist.
 
 Execute the resolution for the diagnosed scenario:
 
@@ -235,6 +295,72 @@ git branch -a | grep $ARGUMENTS
 # If branch has useful commits, merge manually (see Resolution A)
 # Otherwise, reset work unit to retry
 ```
+
+### Resolution F: Merge implementation branch with partial docs on main
+
+> ⚠️ **WARNING:** Do NOT use `work-unit delete` here — it will force-delete the branch
+> with `git branch -D`, losing your implementation commits. Use `status DONE` after
+> merging instead.
+
+```bash
+# 1. Verify the branch exists and has unmerged commits
+git branch -a | grep $ARGUMENTS
+git log --oneline orch/$ARGUMENTS ^main
+
+# 2. Merge the implementation branch to main
+git merge orch/$ARGUMENTS --no-edit
+
+# 3. If conflicts occur, resolve them:
+#    - Edit conflicted files
+#    - git add <resolved-files>
+#    - git commit --no-edit
+
+# 4. If the chunk status was wrongly set to ACTIVE, reset it
+ve chunk activate $ARGUMENTS --status IMPLEMENTING
+
+# 5. Run chunk-complete to update code_references and finalize
+# (invoke /chunk-complete skill manually)
+
+# 6. Commit the completion changes
+git add docs/chunks/$ARGUMENTS && git commit -m "Complete chunk: $ARGUMENTS"
+
+# 7. Clean up: delete the merged branch and mark work unit done
+git branch -d orch/$ARGUMENTS
+ve orch work-unit status $ARGUMENTS DONE
+```
+
+### Resolution G: Fix code bug and batch retry affected chunks
+
+This resolution is for bugs in VE/orchestrator code, NOT individual chunk failures.
+
+```bash
+# 1. Identify the bug from error messages
+grep -E "error|exception" .ve/orchestrator.log | tail -30
+
+# 2. Fix the bug in the VE codebase
+# (e.g., src/orchestrator/scheduler.py, src/orchestrator/phases.py)
+
+# 3. Commit the fix
+git add src/ && git commit -m "Fix: <describe the bug>"
+
+# 4. Stop and restart the orchestrator to pick up the fix
+ve orch stop
+ve orch start
+
+# 5. Batch retry all affected work units
+# For each NEEDS_ATTENTION chunk, reset to READY:
+ve orch attention list
+# Then for each chunk listed:
+ve orch work-unit status <chunk-name> READY
+
+# 6. Verify chunks resume execution
+ve orch status
+```
+
+> **Note:** This is NOT a case for `work-unit delete` — the implementation work exists
+> on branches and should be retried, not discarded.
+>
+> If a future `ve orch retry-all` command is added, use that instead of manual iteration.
 
 ---
 
