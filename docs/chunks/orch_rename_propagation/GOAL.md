@@ -7,14 +7,20 @@ code_references: []
 narrative: null
 investigation: null
 subsystems:
-  - subsystem_id: "orchestrator"
-    relationship: implements
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["dead_code_removal", "narrative_compact_extract", "persist_retry_state", "repo_cache_dry", "reviewer_decisions_dedup", "worktree_merge_extract", "phase_aware_recovery"]
+created_after:
+- dead_code_removal
+- narrative_compact_extract
+- persist_retry_state
+- repo_cache_dry
+- reviewer_decisions_dedup
+- worktree_merge_extract
+- phase_aware_recovery
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
