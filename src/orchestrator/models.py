@@ -92,6 +92,7 @@ class WorkUnitStatus(StrEnum):
 # Chunk: docs/chunks/orch_activate_on_inject - Added displaced_chunk field to track displaced IMPLEMENTING chunks
 # Chunk: docs/chunks/orch_attention_reason - Added attention_reason field to store NEEDS_ATTENTION diagnosis
 # Chunk: docs/chunks/orch_attention_queue - pending_answer field for storing operator answers until resume
+# Chunk: docs/chunks/orch_rename_propagation - baseline_implementing field for rename detection
 class WorkUnit(BaseModel):
     """A work unit representing a chunk in a specific phase.
 
@@ -130,6 +131,9 @@ class WorkUnit(BaseModel):
     next_retry_at: Optional[datetime] = None  # When next retry is allowed (None = immediate)
     # Chunk: docs/chunks/orch_merge_rebase_retry - Retry count for merge conflict recovery
     merge_conflict_retries: int = 0  # Count of REBASE retries due to merge conflicts
+    # Chunk: docs/chunks/orch_rename_propagation - Baseline IMPLEMENTING chunks for rename detection
+    # Snapshot of IMPLEMENTING chunk names in worktree at creation time, used to detect renames.
+    baseline_implementing: list[str] = []
     created_at: datetime
     updated_at: datetime
 
@@ -166,7 +170,9 @@ class WorkUnit(BaseModel):
             "retain_worktree": self.retain_worktree,
             "api_retry_count": self.api_retry_count,
             "next_retry_at": self.next_retry_at.isoformat() if self.next_retry_at else None,
+<<<<<<< HEAD
             "merge_conflict_retries": self.merge_conflict_retries,
+            "baseline_implementing": self.baseline_implementing,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

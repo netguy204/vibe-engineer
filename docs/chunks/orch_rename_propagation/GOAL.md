@@ -1,8 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/orchestrator/models.py
+  - src/orchestrator/state.py
+  - src/orchestrator/scheduler.py
+  - src/orchestrator/worktree.py
+  - src/chunks.py
+  - tests/test_orch_rename_propagation.py
 code_references: []
 narrative: null
 investigation: null

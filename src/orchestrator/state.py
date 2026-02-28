@@ -422,6 +422,23 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_rename_propagation - baseline_implementing for rename detection
+    def _migrate_v15(self) -> None:
+        """Add baseline_implementing field for rename detection.
+
+        The baseline_implementing column stores a JSON array of chunk names
+        that were IMPLEMENTING in the worktree at creation time. This snapshot
+        enables detecting when a chunk is renamed during a phase (e.g., via
+        `ve chunk suggest-prefix` during PLAN) so the orchestrator can
+        propagate the new name through its data structures.
+        """
+        self.connection.executescript(
+            """
+            -- Add baseline_implementing column (JSON array stored as TEXT)
+            ALTER TABLE work_units ADD COLUMN baseline_implementing TEXT;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -434,6 +451,7 @@ class StateStore:
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit creation
     # Chunk: docs/chunks/orch_state_transactions - Atomic work unit creation with status log
+    # Chunk: docs/chunks/orch_rename_propagation - baseline_implementing persistence
     def create_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Create a new work unit.
 
@@ -452,6 +470,7 @@ class StateStore:
         """
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
+        baseline_implementing_json = json.dumps(work_unit.baseline_implementing)
 
         with self.transaction():
             try:
@@ -462,8 +481,9 @@ class StateStore:
                          completion_retries, attention_reason, displaced_chunk, pending_answer,
                          conflict_verdicts, conflict_override, explicit_deps, review_iterations,
                          review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
-                         merge_conflict_retries, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         merge_conflict_retries, baseline_implementing,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         work_unit.chunk,
@@ -486,6 +506,7 @@ class StateStore:
                         work_unit.api_retry_count,
                         work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                         work_unit.merge_conflict_retries,
+                        baseline_implementing_json,
                         work_unit.created_at.isoformat(),
                         work_unit.updated_at.isoformat(),
                     ),
@@ -520,6 +541,7 @@ class StateStore:
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit update
     # Chunk: docs/chunks/orch_state_transactions - Atomic work unit update with status log
     # Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+    # Chunk: docs/chunks/orch_rename_propagation - baseline_implementing persistence
     def update_work_unit(
         self,
         work_unit: WorkUnit,
@@ -552,6 +574,7 @@ class StateStore:
         """
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
+        baseline_implementing_json = json.dumps(work_unit.baseline_implementing)
 
         with self.transaction():
             # Get the old status for logging (within transaction)
@@ -576,7 +599,8 @@ class StateStore:
                     attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
                     conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
                     review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
-                    api_retry_count = ?, next_retry_at = ?, merge_conflict_retries = ?,
+                    api_retry_count = ?, next_retry_at = ?,
+                    merge_conflict_retries = ?, baseline_implementing = ?,
                     updated_at = ?
                 WHERE chunk = ?
                 """,
@@ -600,6 +624,7 @@ class StateStore:
                     work_unit.api_retry_count,
                     work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                     work_unit.merge_conflict_retries,
+                    baseline_implementing_json,
                     work_unit.updated_at.isoformat(),
                     work_unit.chunk,
                 ),
@@ -949,6 +974,7 @@ class StateStore:
         except (IndexError, KeyError):
             next_retry_at = None
 
+<<<<<<< HEAD
         # Chunk: docs/chunks/orch_merge_rebase_retry - Merge conflict retry tracking
         try:
             merge_conflict_retries = (
@@ -956,6 +982,13 @@ class StateStore:
             )
         except (IndexError, KeyError):
             merge_conflict_retries = 0
+
+        # Chunk: docs/chunks/orch_rename_propagation - baseline_implementing for rename detection
+        try:
+            baseline_implementing_str = row["baseline_implementing"]
+            baseline_implementing = json.loads(baseline_implementing_str) if baseline_implementing_str else []
+        except (IndexError, KeyError):
+            baseline_implementing = []
 
         return WorkUnit(
             chunk=row["chunk"],
@@ -978,6 +1011,7 @@ class StateStore:
             api_retry_count=api_retry_count,
             next_retry_at=next_retry_at,
             merge_conflict_retries=merge_conflict_retries,
+            baseline_implementing=baseline_implementing,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
@@ -1142,6 +1176,200 @@ class StateStore:
             overlapping_symbols=overlapping_symbols,
             created_at=datetime.fromisoformat(row["created_at"]),
         )
+
+
+    # Chunk: docs/chunks/orch_rename_propagation - Rename propagation methods
+    def rename_work_unit(self, old_chunk: str, new_chunk: str) -> WorkUnit:
+        """Atomically rename a work unit by creating a new row and deleting the old.
+
+        Since 'chunk' is the primary key, we cannot UPDATE it directly.
+        Instead, we INSERT a new row with the new chunk name (copying all fields),
+        then DELETE the old row, all within a transaction.
+
+        Status log entries retain the old chunk name for audit trail purposes.
+
+        Args:
+            old_chunk: Current chunk name (primary key)
+            new_chunk: New chunk name
+
+        Returns:
+            The renamed WorkUnit with the new chunk name
+
+        Raises:
+            ValueError: If old_chunk doesn't exist or new_chunk already exists
+        """
+        with self.transaction():
+            # Get the existing work unit
+            old_unit = self.get_work_unit(old_chunk)
+            if old_unit is None:
+                raise ValueError(f"Work unit '{old_chunk}' not found")
+
+            # Check that new_chunk doesn't already exist
+            if self.get_work_unit(new_chunk) is not None:
+                raise ValueError(f"Work unit '{new_chunk}' already exists")
+
+            # Prepare JSON fields
+            blocked_by_json = json.dumps(old_unit.blocked_by)
+            conflict_verdicts_json = json.dumps(old_unit.conflict_verdicts)
+            baseline_implementing_json = json.dumps(old_unit.baseline_implementing)
+
+            # Insert new row with new chunk name
+            self.connection.execute(
+                """
+                INSERT INTO work_units
+                    (chunk, phase, status, blocked_by, worktree, priority, session_id,
+                     completion_retries, attention_reason, displaced_chunk, pending_answer,
+                     conflict_verdicts, conflict_override, explicit_deps, review_iterations,
+                     review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
+                     baseline_implementing, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_chunk,  # Use new chunk name
+                    old_unit.phase.value,
+                    old_unit.status.value,
+                    blocked_by_json,
+                    old_unit.worktree,
+                    old_unit.priority,
+                    old_unit.session_id,
+                    old_unit.completion_retries,
+                    old_unit.attention_reason,
+                    old_unit.displaced_chunk,
+                    old_unit.pending_answer,
+                    conflict_verdicts_json,
+                    old_unit.conflict_override,
+                    1 if old_unit.explicit_deps else 0,
+                    old_unit.review_iterations,
+                    old_unit.review_nudge_count,
+                    1 if old_unit.retain_worktree else 0,
+                    old_unit.api_retry_count,
+                    old_unit.next_retry_at.isoformat() if old_unit.next_retry_at else None,
+                    baseline_implementing_json,
+                    old_unit.created_at.isoformat(),
+                    old_unit.updated_at.isoformat(),
+                ),
+            )
+
+            # Delete old row
+            self.connection.execute(
+                "DELETE FROM work_units WHERE chunk = ?",
+                (old_chunk,),
+            )
+
+        # Return the renamed work unit
+        return WorkUnit(
+            chunk=new_chunk,
+            phase=old_unit.phase,
+            status=old_unit.status,
+            blocked_by=old_unit.blocked_by,
+            worktree=old_unit.worktree,
+            priority=old_unit.priority,
+            session_id=old_unit.session_id,
+            completion_retries=old_unit.completion_retries,
+            attention_reason=old_unit.attention_reason,
+            displaced_chunk=old_unit.displaced_chunk,
+            pending_answer=old_unit.pending_answer,
+            conflict_verdicts=old_unit.conflict_verdicts,
+            conflict_override=old_unit.conflict_override,
+            explicit_deps=old_unit.explicit_deps,
+            review_iterations=old_unit.review_iterations,
+            review_nudge_count=old_unit.review_nudge_count,
+            retain_worktree=old_unit.retain_worktree,
+            api_retry_count=old_unit.api_retry_count,
+            next_retry_at=old_unit.next_retry_at,
+            baseline_implementing=old_unit.baseline_implementing,
+            created_at=old_unit.created_at,
+            updated_at=old_unit.updated_at,
+        )
+
+    def update_blocked_by_references(self, old_chunk: str, new_chunk: str) -> int:
+        """Update blocked_by lists in all work units that reference the old chunk.
+
+        Finds work units where blocked_by contains old_chunk and replaces it
+        with new_chunk.
+
+        Args:
+            old_chunk: Old chunk name to find
+            new_chunk: New chunk name to replace with
+
+        Returns:
+            Number of work units updated
+        """
+        updated_count = 0
+        blocked_units = self.list_blocked_by_chunk(old_chunk)
+
+        for unit in blocked_units:
+            if old_chunk in unit.blocked_by:
+                # Replace old_chunk with new_chunk in blocked_by
+                unit.blocked_by = [
+                    new_chunk if c == old_chunk else c
+                    for c in unit.blocked_by
+                ]
+                unit.updated_at = datetime.now(timezone.utc)
+                self.update_work_unit(unit)
+                updated_count += 1
+
+        return updated_count
+
+    def update_conflict_verdicts_references(self, old_chunk: str, new_chunk: str) -> int:
+        """Update conflict_verdicts dicts in work units that reference the old chunk.
+
+        Re-keys entries in conflict_verdicts from old_chunk to new_chunk.
+
+        Args:
+            old_chunk: Old chunk name to find
+            new_chunk: New chunk name to replace with
+
+        Returns:
+            Number of work units updated
+        """
+        updated_count = 0
+        all_units = self.list_work_units()
+
+        for unit in all_units:
+            if old_chunk in unit.conflict_verdicts:
+                # Re-key the verdict
+                verdict = unit.conflict_verdicts.pop(old_chunk)
+                unit.conflict_verdicts[new_chunk] = verdict
+                unit.updated_at = datetime.now(timezone.utc)
+                self.update_work_unit(unit)
+                updated_count += 1
+
+        return updated_count
+
+    def update_conflict_analyses_references(self, old_chunk: str, new_chunk: str) -> int:
+        """Update conflict_analyses table rows referencing the old chunk.
+
+        Updates chunk_a or chunk_b columns where they match old_chunk.
+
+        Args:
+            old_chunk: Old chunk name to find
+            new_chunk: New chunk name to replace with
+
+        Returns:
+            Number of rows updated
+        """
+        # Update chunk_a references
+        cursor_a = self.connection.execute(
+            """
+            UPDATE conflict_analyses
+            SET chunk_a = ?
+            WHERE chunk_a = ?
+            """,
+            (new_chunk, old_chunk),
+        )
+
+        # Update chunk_b references
+        cursor_b = self.connection.execute(
+            """
+            UPDATE conflict_analyses
+            SET chunk_b = ?
+            WHERE chunk_b = ?
+            """,
+            (new_chunk, old_chunk),
+        )
+
+        return cursor_a.rowcount + cursor_b.rowcount
 
 
 def get_default_db_path(project_dir: Path) -> Path:

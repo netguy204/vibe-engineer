@@ -8,170 +8,199 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The orchestrator scheduler currently assumes a work unit's chunk name remains
+constant throughout its lifecycle. When an operator accepts a rename suggestion
+during the PLAN phase (via `ve chunk suggest-prefix`), the filesystem directory
+changes but the work unit's `chunk` field retains the old name. This causes
+failures in finalization when `verify_chunk_active_status` can't find the old
+chunk directory.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Solution Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Baseline snapshot at worktree creation**: Record the set of IMPLEMENTING
+   chunk names in the worktree immediately after `activate_chunk_in_worktree`
+   succeeds. This captures the baseline against which renames are detected.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_rename_propagation/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Post-phase rename detection**: After each phase completes successfully,
+   compare current IMPLEMENTING chunks against the baseline. If the work unit's
+   original chunk is missing but a new IMPLEMENTING chunk exists, a rename
+   occurred.
+
+3. **Atomic propagation**: When a rename is detected, atomically update:
+   - Database `work_units.chunk` (INSERT + DELETE transaction since it's PK)
+   - Filesystem `.ve/chunks/{old}/` → `.ve/chunks/{new}/`
+   - Git branch `orch/{old}` → `orch/{new}`
+   - Cross-references in other work units (`blocked_by`, `conflict_verdicts`)
+   - `conflict_analyses` table entries
+   - In-memory `_running_agents` dict key
+   - The baseline snapshot itself (so subsequent phases don't re-trigger)
+
+**Existing Patterns Leveraged:**
+
+- `StateStore.transaction()` for atomic database operations
+- `WorktreeManager` git operations for branch renaming
+- `Chunks.list_chunks_by_status()` (new helper) for enumerating IMPLEMENTING chunks
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS rename
+  propagation as part of the orchestrator's work unit lifecycle management.
+  The pattern of detecting state changes after phase completion fits naturally
+  alongside existing phase advancement logic in `_handle_agent_result`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `baseline_implementing` field to WorkUnit model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new field `baseline_implementing: list[str] = []` to the `WorkUnit` model
+in `src/orchestrator/models.py`. This field stores the set of IMPLEMENTING chunk
+names that existed in the worktree at creation time.
 
-Example:
+Location: `src/orchestrator/models.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add database migration for baseline_implementing column
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add migration `_migrate_v14` to `StateStore` that adds the `baseline_implementing`
+column (stored as JSON TEXT). Update `CURRENT_VERSION` to 14. Update
+`_row_to_work_unit` and `create_work_unit`/`update_work_unit` to handle the new field.
 
-Location: src/segment/format.rs
+Location: `src/orchestrator/state.py`
 
-### Step 2: Implement header serialization
+### Step 3: Add `list_implementing_chunks` helper to Chunks class
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add a new method `list_implementing_chunks() -> list[str]` to the `Chunks` class
+that returns all chunk names with IMPLEMENTING status. This is similar to
+`get_current_chunk()` but returns all IMPLEMENTING chunks, not just the first one.
 
-### Step 3: ...
+Location: `src/chunks.py`
 
----
+### Step 4: Capture baseline in `_run_work_unit` after activation
 
-**BACKREFERENCE COMMENTS**
+After `activate_chunk_in_worktree` succeeds during the PLAN phase, use the new
+`list_implementing_chunks()` helper to snapshot the current IMPLEMENTING chunks
+and persist to `work_unit.baseline_implementing`.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/orchestrator/scheduler.py` in `_run_work_unit`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Implement `_detect_rename` helper method
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Add a private method `_detect_rename(work_unit, worktree_path) -> tuple[str, str] | None`
+that:
+1. Loads current IMPLEMENTING chunks from the worktree
+2. Computes `current_set - baseline_set`
+3. If the result is exactly one chunk different from `work_unit.chunk`, returns
+   `(old_name, new_name)`
+4. If ambiguous (zero or >1 new chunks), returns `None` (caller will escalate)
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Location: `src/orchestrator/scheduler.py`
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Implement `_propagate_rename` method
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add a method `_propagate_rename(old_name: str, new_name: str) -> None` that
+performs the atomic propagation:
 
-## Dependencies
+1. **Database transaction**:
+   - Create new work unit row with new chunk name (copy all fields)
+   - Delete old work unit row
+   - Update `blocked_by` lists in other work units
+   - Update `conflict_verdicts` keys in other work units
+   - Update `conflict_analyses` table rows
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+2. **Filesystem**:
+   - Rename `.ve/chunks/{old}/` → `.ve/chunks/{new}/`
 
-If there are no dependencies, delete this section.
--->
+3. **Git branch**:
+   - `git branch -m orch/{old} orch/{new}`
+
+4. **In-memory state**:
+   - Update `_running_agents` dict key if present
+
+5. **Baseline update**:
+   - Update `baseline_implementing` to use new name
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 7: Integrate rename detection into `_handle_agent_result`
+
+After a successful phase completion (before calling `_advance_phase`), call
+`_detect_rename`. If a rename is detected, call `_propagate_rename`. If detection
+is ambiguous, mark the work unit NEEDS_ATTENTION with a diagnostic message.
+
+Location: `src/orchestrator/scheduler.py` in `_handle_agent_result`
+
+### Step 8: Add WorktreeManager branch rename method
+
+Add a `rename_branch(old_chunk: str, new_chunk: str) -> None` method to
+`WorktreeManager` that renames the git branch `orch/{old}` to `orch/{new}`.
+
+Location: `src/orchestrator/worktree.py`
+
+### Step 9: Add StateStore methods for rename propagation
+
+Add methods to `StateStore`:
+- `rename_work_unit(old_chunk: str, new_chunk: str) -> WorkUnit`: Atomic rename
+  with INSERT + DELETE in transaction
+- `update_blocked_by_references(old_chunk: str, new_chunk: str) -> int`: Update
+  blocked_by lists referencing old chunk
+- `update_conflict_verdicts_references(old_chunk: str, new_chunk: str) -> int`:
+  Re-key conflict_verdicts dicts
+- `update_conflict_analyses_references(old_chunk: str, new_chunk: str) -> int`:
+  Update chunk_a/chunk_b columns
+
+Location: `src/orchestrator/state.py`
+
+### Step 10: Write integration test for end-to-end rename propagation
+
+Write a test that:
+1. Creates a work unit for chunk "old_name"
+2. Injects it into the orchestrator
+3. Simulates PLAN phase completion with renamed chunk directory "new_name"
+4. Advances the phase
+5. Verifies all references are updated:
+   - Work unit chunk field
+   - `.ve/chunks/` directory name
+   - Git branch name
+   - Any blocked_by references in other work units
+
+Location: `tests/test_orch_rename_propagation.py`
+
+### Step 11: Write unit tests for rename detection edge cases
+
+Test cases:
+- Normal rename: old → new
+- No rename: same chunk name before and after
+- Ambiguous: multiple new IMPLEMENTING chunks (should escalate)
+- Missing: chunk disappeared entirely (should escalate)
+
+Location: `tests/test_orch_rename_propagation.py`
+
+### Step 12: Update status_log table semantics documentation
+
+Document that old entries retain the old chunk name for audit trail purposes,
+while new entries use the new name. This preserves archaeology while maintaining
+correct forward references.
+
+Location: `src/orchestrator/state.py` (docstring updates)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Race condition during rename**: If the scheduler is processing multiple work
+   units concurrently, and one renames while another has the old name in its
+   `blocked_by`, the update could happen mid-flight. Mitigation: all rename
+   propagation happens within a database transaction and the work unit is
+   RUNNING (not dispatchable) during rename detection.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Filesystem rename atomicity**: `shutil.move` may not be atomic across
+   filesystems. Risk is low since source and destination are in the same `.ve/`
+   directory. If needed, we can use `os.rename` which is atomic on POSIX.
+
+3. **Branch rename failure recovery**: If `git branch -m` fails (e.g., new branch
+   name already exists), the database and filesystem have already been updated.
+   Mitigation: perform git operation first, then database/filesystem, so we can
+   roll back more easily. Or: check branch existence before starting propagation.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

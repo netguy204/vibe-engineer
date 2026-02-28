@@ -1165,6 +1165,66 @@ class WorktreeManager:
 
         return result.returncode == 0
 
+    # Chunk: docs/chunks/orch_rename_propagation - Rename orchestrator branch
+    def rename_branch(self, old_chunk: str, new_chunk: str) -> None:
+        """Rename the git branch for a chunk.
+
+        Renames the branch from orch/{old_chunk} to orch/{new_chunk}.
+        This should be called as part of rename propagation after a chunk
+        is renamed during a phase.
+
+        Args:
+            old_chunk: Old chunk name
+            new_chunk: New chunk name
+
+        Raises:
+            WorktreeError: If branch rename fails
+        """
+        old_branch = self.get_branch_name(old_chunk)
+        new_branch = self.get_branch_name(new_chunk)
+
+        if not self._branch_exists(old_branch):
+            raise WorktreeError(f"Branch {old_branch} does not exist")
+
+        if self._branch_exists(new_branch):
+            raise WorktreeError(f"Branch {new_branch} already exists")
+
+        result = subprocess.run(
+            ["git", "branch", "-m", old_branch, new_branch],
+            cwd=self.project_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            raise WorktreeError(f"Failed to rename branch: {result.stderr}")
+
+    # Chunk: docs/chunks/orch_rename_propagation - Rename chunk directory in .ve/chunks/
+    def rename_chunk_directory(self, old_chunk: str, new_chunk: str) -> None:
+        """Rename the chunk directory in .ve/chunks/.
+
+        Renames .ve/chunks/{old_chunk}/ to .ve/chunks/{new_chunk}/.
+        This includes the worktree, logs, and base_branch file.
+
+        Args:
+            old_chunk: Old chunk name
+            new_chunk: New chunk name
+
+        Raises:
+            WorktreeError: If directory rename fails
+        """
+        old_path = self._get_worktree_base_path(old_chunk)
+        new_path = self._get_worktree_base_path(new_chunk)
+
+        if not old_path.exists():
+            raise WorktreeError(f"Chunk directory {old_path} does not exist")
+
+        if new_path.exists():
+            raise WorktreeError(f"Chunk directory {new_path} already exists")
+
+        # Use shutil.move for cross-filesystem compatibility
+        shutil.move(str(old_path), str(new_path))
+
     # Chunk: docs/chunks/orch_prune_consolidate - Consolidated worktree finalization logic
     def finalize_work_unit(self, chunk: str) -> None:
         """Finalize a completed work unit by committing, removing worktree, and merging.
