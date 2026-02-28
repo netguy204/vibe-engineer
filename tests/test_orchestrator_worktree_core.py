@@ -347,3 +347,128 @@ class TestMergeToBase:
 
         # Branch should still exist
         assert manager._branch_exists("orch/test_chunk")
+
+
+# Chunk: docs/chunks/orch_safe_branch_delete - Tests for safe branch deletion
+class TestUnmergedCommitsDetection:
+    """Tests for has_unmerged_commits method."""
+
+    def test_has_unmerged_commits_detects_unmerged(self, git_repo):
+        """Detects commits on branch not reachable from base."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a commit in the worktree
+        (worktree_path / "new_file.txt").write_text("new content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add new file"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        has_unmerged, count = manager.has_unmerged_commits("test_chunk")
+
+        assert has_unmerged is True
+        assert count == 1
+
+    def test_has_unmerged_commits_returns_zero_when_merged(self, git_repo):
+        """Returns (False, 0) when branch has no additional commits."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        # No additional commits made in worktree
+
+        has_unmerged, count = manager.has_unmerged_commits("test_chunk")
+
+        assert has_unmerged is False
+        assert count == 0
+
+    def test_has_unmerged_commits_nonexistent_branch(self, git_repo):
+        """Returns (False, 0) for non-existent branch."""
+        manager = WorktreeManager(git_repo)
+
+        has_unmerged, count = manager.has_unmerged_commits("nonexistent")
+
+        assert has_unmerged is False
+        assert count == 0
+
+    def test_has_unmerged_commits_multiple_commits(self, git_repo):
+        """Correctly counts multiple unmerged commits."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make multiple commits
+        for i in range(3):
+            (worktree_path / f"file_{i}.txt").write_text(f"content {i}")
+            subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"Add file {i}"],
+                cwd=worktree_path,
+                check=True,
+                capture_output=True,
+            )
+
+        has_unmerged, count = manager.has_unmerged_commits("test_chunk")
+
+        assert has_unmerged is True
+        assert count == 3
+
+
+class TestSafeBranchDeletion:
+    """Tests for safe branch deletion behavior."""
+
+    def test_remove_worktree_uses_safe_delete_by_default(self, git_repo):
+        """Verifies -d (safe delete) is used by default, not -D."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a commit that will NOT be merged
+        (worktree_path / "unmerged.txt").write_text("unmerged content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Unmerged commit"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree with remove_branch=True but force=False (default)
+        manager.remove_worktree("test_chunk", remove_branch=True, force=False)
+
+        # Branch should still exist because -d refuses to delete unmerged branches
+        assert manager._branch_exists("orch/test_chunk")
+
+    def test_remove_worktree_force_deletes_unmerged_branch(self, git_repo):
+        """Force delete removes branch even with unmerged commits."""
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make a commit that will NOT be merged
+        (worktree_path / "unmerged.txt").write_text("unmerged content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Unmerged commit"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Remove worktree with force=True
+        manager.remove_worktree("test_chunk", remove_branch=True, force=True)
+
+        # Branch should be deleted despite unmerged commits
+        assert not manager._branch_exists("orch/test_chunk")
+
+    def test_remove_worktree_safe_delete_on_merged_branch_succeeds(self, git_repo):
+        """Safe delete successfully removes branch when fully merged."""
+        manager = WorktreeManager(git_repo)
+        manager.create_worktree("test_chunk")
+
+        # No commits made - branch is identical to base, so -d will succeed
+
+        manager.remove_worktree("test_chunk", remove_branch=True, force=False)
+
+        # Branch should be deleted since it has no unmerged commits
+        assert not manager._branch_exists("orch/test_chunk")

@@ -30,13 +30,13 @@ code_references:
     implements: "Check if branch exists in specific repository"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_get_repo_current_branch
     implements: "Get current branch of a specific repository"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoWorktreeCreation
+  - ref: tests/test_orchestrator_worktree_operations.py#TestMultiRepoWorktreeCreation
     implements: "Tests for multi-repo worktree creation"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoWorktreeRemoval
+  - ref: tests/test_orchestrator_worktree_operations.py#TestMultiRepoWorktreeRemoval
     implements: "Tests for multi-repo worktree removal"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoMerge
+  - ref: tests/test_orchestrator_worktree_operations.py#TestMultiRepoMerge
     implements: "Tests for multi-repo merge operations"
-  - ref: tests/test_orchestrator_worktree.py#TestTaskContextDetection
+  - ref: tests/test_orchestrator_worktree_persistence.py#TestTaskContextDetection
     implements: "Tests for task context detection"
 narrative: null
 investigation: orch_task_context
