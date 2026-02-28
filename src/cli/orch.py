@@ -306,16 +306,25 @@ def work_unit_list(status_filter, json_output, project_dir):
     ctx.invoke(orch_ps, status_filter=status_filter, json_output=json_output, project_dir=project_dir)
 
 
+# Chunk: docs/chunks/orch_safe_branch_delete - Safe delete with --force flag
 @work_unit.command("delete")
 @click.argument("chunk")
+@click.option("--force", is_flag=True, help="Force delete even if branch has unmerged commits")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def work_unit_delete(chunk, json_output, project_dir):
-    """Delete a work unit."""
+def work_unit_delete(chunk, force, json_output, project_dir):
+    """Delete a work unit.
+
+    By default, refuses to delete if the branch has unmerged commits.
+    Use --force to delete anyway (WARNING: may cause data loss).
+    """
     import json
 
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
     with orch_client(project_dir) as client:
-        result = client.delete_work_unit(chunk)
+        result = client.delete_work_unit(chunk, force=force)
 
         if json_output:
             click.echo(json.dumps(result, indent=2))

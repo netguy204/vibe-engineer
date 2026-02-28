@@ -1,177 +1,135 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk implements a safety check for branch deletion when deleting work units via the orchestrator API. The motivating incident (documented in `docs/investigations/orch_stuck_recovery/OVERVIEW.md`) showed that force-deleting branches with unmerged commits caused data loss that required `git reflog` archaeology to recover.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Pre-delete merge verification**: Before deleting a branch, count commits on the `orch/<chunk>` branch that aren't reachable from the base branch. If commits exist, refuse deletion unless `force=True`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_safe_branch_delete/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Safe delete by default**: Change `_remove_single_repo_worktree` to use `git branch -d` (which refuses to delete unmerged branches) instead of `git branch -D` (force delete). Only use `-D` when force is explicitly requested.
+
+3. **API surface**: Add `force` query parameter to `DELETE /work-units/{chunk}` endpoint and `--force` CLI flag to `ve orch work-unit delete`.
+
+4. **Clear error messaging**: When blocking deletion, report the number of unmerged commits to help operators understand why the delete was refused.
+
+**Existing patterns leveraged:**
+- The normal finalization path (`finalize_work_unit`) already uses `git branch -d` (safe delete)
+- The `_load_base_branch` method can retrieve the persisted base branch for comparison
+- Error responses follow the existing `error_response()` pattern in `api/work_units.py`
+
+**Testing approach (per TESTING_PHILOSOPHY.md):**
+- Test the core behavior at boundaries: merged branch, unmerged branch, unmerged + force
+- Use real git repositories in tests (existing pattern in `test_orchestrator_api.py`)
+- Verify error messages contain actionable information
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS a safety mechanism for the orchestrator's branch deletion logic. The existing subsystem patterns are followed.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `has_unmerged_commits` method to WorktreeManager
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new public method to `WorktreeManager` that checks whether a branch has commits not reachable from the base branch.
 
-Example:
+Location: `src/orchestrator/worktree.py`
 
-### Step 1: Define the SegmentHeader struct
+```python
+def has_unmerged_commits(self, chunk: str) -> tuple[bool, int]:
+    """Check if a chunk's branch has unmerged commits.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Returns:
+        Tuple of (has_unmerged, commit_count)
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implementation:
+- Load the persisted base branch via `_load_base_branch(chunk)` (falling back to `self._base_branch`)
+- Run `git rev-list {base_branch}..orch/{chunk} --count`
+- Return `(count > 0, count)`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Add `force` parameter to `remove_worktree` and `_remove_single_repo_worktree`
 
-## Dependencies
+Modify these methods to accept a `force` parameter that controls branch deletion behavior.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/orchestrator/worktree.py`
 
-If there are no dependencies, delete this section.
--->
+Changes:
+- Add `force: bool = False` parameter to `remove_worktree()`
+- Add `force: bool = False` parameter to `_remove_single_repo_worktree()`
+- Change line 665-670 from `git branch -D` to `git branch -d` by default
+- Only use `git branch -D` when `force=True`
+- Also update `_remove_task_context_worktrees()` for consistency (lines 700-707)
+
+### Step 3: Update `delete_work_unit_endpoint` to check for unmerged commits
+
+Modify the delete endpoint to check for unmerged commits before deleting.
+
+Location: `src/orchestrator/api/work_units.py`
+
+Changes:
+- Parse `force` query parameter from request
+- Before calling `remove_worktree()`, check `has_unmerged_commits()`
+- If unmerged commits exist and `force=False`, return error response with commit count
+- Pass `force` parameter to `remove_worktree()`
+
+### Step 4: Update client `delete_work_unit` to support force parameter
+
+Add `force` parameter to the client method.
+
+Location: `src/orchestrator/client.py`
+
+Changes:
+- Add `force: bool = False` parameter to `delete_work_unit()`
+- Pass `force` as query parameter: `params={"force": "true"}` if force else `None`
+
+### Step 5: Update CLI `work-unit delete` to support --force flag
+
+Add `--force` flag to the CLI command.
+
+Location: `src/cli/orch.py`
+
+Changes:
+- Add `@click.option("--force", is_flag=True, help="Force delete even if branch has unmerged commits")`
+- Pass `force` to `client.delete_work_unit()`
+
+### Step 6: Write tests for safe branch deletion
+
+Add tests to verify the safety behavior.
+
+Location: `tests/test_orchestrator_api.py` (new test class)
+
+Tests to add:
+1. `test_delete_with_merged_branch_succeeds` - Delete works when branch is fully merged
+2. `test_delete_with_unmerged_branch_fails` - Delete refused when branch has unmerged commits
+3. `test_delete_with_unmerged_branch_force_succeeds` - Delete works with `force=True`
+4. `test_delete_error_includes_commit_count` - Error message includes number of unmerged commits
+
+Tests for worktree methods (in `tests/test_orchestrator_worktree.py` or similar):
+5. `test_has_unmerged_commits_detects_unmerged` - Method correctly detects unmerged commits
+6. `test_has_unmerged_commits_returns_zero_when_merged` - Method returns (False, 0) for merged branch
+7. `test_remove_worktree_uses_safe_delete_by_default` - Verifies `-d` is used, not `-D`
+
+### Step 7: Update documentation
+
+Update the orchestrator documentation template to reflect the new behavior.
+
+Location: `src/templates/trunk/ORCHESTRATOR.md.jinja2`
+
+Changes:
+- Update the `ve orch work-unit delete` command description
+- Add note about the safety check and `--force` flag
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Squash merge false positives**: When using squash merges, `git branch -d` may refuse to delete even when the code is on main (because commit SHAs differ). The investigation noted this but accepted it as an acceptable trade-off for safety. The `--force` flag provides an escape hatch.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Base branch detection**: If the base_branch file doesn't exist (legacy worktrees created before `orch_merge_safety` chunk), we fall back to `self._base_branch`. This may be stale if the manager was created before branch changes, but it's the best available fallback.
+
+3. **Multi-repo mode**: The current scope focuses on single-repo mode. Multi-repo mode (`_remove_task_context_worktrees`) also uses `-D` and should be updated for consistency, but the investigation incident was single-repo.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->

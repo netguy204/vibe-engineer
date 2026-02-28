@@ -222,16 +222,25 @@ class OrchestratorClient:
 
         return self._request("PATCH", f"/work-units/{chunk}", json=body)
 
-    def delete_work_unit(self, chunk: str) -> dict:
+    # Chunk: docs/chunks/orch_safe_branch_delete - Force parameter for safe deletion
+    def delete_work_unit(self, chunk: str, force: bool = False) -> dict:
         """Delete a work unit.
 
         Args:
             chunk: Chunk name
+            force: If True, force delete even if branch has unmerged commits.
+                   If False (default), deletion is refused when unmerged
+                   commits exist.
 
         Returns:
             Deletion confirmation
+
+        Raises:
+            OrchestratorClientError: If deletion is refused due to unmerged commits
+                (when force=False) or other errors.
         """
-        return self._request("DELETE", f"/work-units/{chunk}")
+        params = {"force": "true"} if force else None
+        return self._request("DELETE", f"/work-units/{chunk}", params=params)
 
     def get_status_history(self, chunk: str) -> dict:
         """Get status transition history for a work unit.

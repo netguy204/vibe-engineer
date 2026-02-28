@@ -324,6 +324,155 @@ class TestDeleteWorkUnitEndpoint:
         assert response.status_code == 404
 
 
+# Chunk: docs/chunks/orch_safe_branch_delete - Tests for safe deletion with unmerged commits
+class TestDeleteWorkUnitSafeBranch:
+    """Tests for DELETE /work-units/{chunk} with unmerged commit safety checks."""
+
+    @pytest.fixture
+    def git_app(self, tmp_path):
+        """Create a test application with a real git repository."""
+        import subprocess
+
+        # Initialize git repo
+        subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        (tmp_path / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+        return create_app(tmp_path)
+
+    @pytest.fixture
+    def git_client(self, git_app):
+        """Create a test client with git support."""
+        return TestClient(git_app)
+
+    def test_delete_with_unmerged_branch_fails(self, git_client, tmp_path):
+        """Delete is refused when branch has unmerged commits."""
+        import subprocess
+        from orchestrator.worktree import WorktreeManager
+
+        # Create work unit
+        git_client.post("/work-units", json={"chunk": "unmerged_chunk"})
+
+        # Create worktree and make commits
+        manager = WorktreeManager(tmp_path)
+        worktree_path = manager.create_worktree("unmerged_chunk")
+
+        (worktree_path / "new_file.txt").write_text("content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Unmerged commit"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Try to delete without force
+        response = git_client.delete("/work-units/unmerged_chunk")
+
+        # Should be refused
+        assert response.status_code == 409
+        assert "unmerged commit" in response.json()["error"]
+        assert "1" in response.json()["error"]  # commit count
+
+        # Work unit should still exist
+        get_response = git_client.get("/work-units/unmerged_chunk")
+        assert get_response.status_code == 200
+
+    def test_delete_with_unmerged_branch_force_succeeds(self, git_client, tmp_path):
+        """Delete with force=true succeeds even with unmerged commits."""
+        import subprocess
+        from orchestrator.worktree import WorktreeManager
+
+        # Create work unit
+        git_client.post("/work-units", json={"chunk": "force_delete_chunk"})
+
+        # Create worktree and make commits
+        manager = WorktreeManager(tmp_path)
+        worktree_path = manager.create_worktree("force_delete_chunk")
+
+        (worktree_path / "new_file.txt").write_text("content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Unmerged commit"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Delete with force
+        response = git_client.delete("/work-units/force_delete_chunk?force=true")
+
+        assert response.status_code == 200
+        assert response.json()["deleted"] is True
+
+        # Work unit should be gone
+        get_response = git_client.get("/work-units/force_delete_chunk")
+        assert get_response.status_code == 404
+
+    def test_delete_with_merged_branch_succeeds(self, git_client, tmp_path):
+        """Delete succeeds when branch has no unmerged commits."""
+        from orchestrator.worktree import WorktreeManager
+
+        # Create work unit
+        git_client.post("/work-units", json={"chunk": "merged_chunk"})
+
+        # Create worktree but make no commits (branch identical to base)
+        manager = WorktreeManager(tmp_path)
+        manager.create_worktree("merged_chunk")
+
+        # Delete should succeed without force
+        response = git_client.delete("/work-units/merged_chunk")
+
+        assert response.status_code == 200
+        assert response.json()["deleted"] is True
+
+    def test_delete_error_includes_commit_count(self, git_client, tmp_path):
+        """Error message includes the number of unmerged commits."""
+        import subprocess
+        from orchestrator.worktree import WorktreeManager
+
+        # Create work unit
+        git_client.post("/work-units", json={"chunk": "multi_commit_chunk"})
+
+        # Create worktree and make multiple commits
+        manager = WorktreeManager(tmp_path)
+        worktree_path = manager.create_worktree("multi_commit_chunk")
+
+        for i in range(3):
+            (worktree_path / f"file_{i}.txt").write_text(f"content {i}")
+            subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"Commit {i}"],
+                cwd=worktree_path,
+                check=True,
+                capture_output=True,
+            )
+
+        # Try to delete without force
+        response = git_client.delete("/work-units/multi_commit_chunk")
+
+        assert response.status_code == 409
+        assert "3 unmerged commit(s)" in response.json()["error"]
+
+
 class TestStatusHistoryEndpoint:
     """Tests for GET /work-units/{chunk}/history endpoint."""
 

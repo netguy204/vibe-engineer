@@ -1,8 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/worktree.py
+- src/orchestrator/api/work_units.py
+- src/orchestrator/client.py
+- src/cli/orch.py
+- src/templates/trunk/ORCHESTRATOR.md.jinja2
+- tests/test_orchestrator_api.py
 code_references: []
 narrative: null
 investigation: orch_stuck_recovery
@@ -12,9 +18,10 @@ subsystems:
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_merge_rebase_retry", "orch_review_approve_bypass"]
+created_after:
+- orch_merge_rebase_retry
+- orch_review_approve_bypass
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
