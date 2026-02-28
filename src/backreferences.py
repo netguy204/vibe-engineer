@@ -1,6 +1,7 @@
 """Backreference scanning and management for VE artifacts.
 
 # Chunk: docs/chunks/chunks_decompose - Extracted from chunks.py for module decomposition
+# Chunk: docs/chunks/backref_language_agnostic - Language-agnostic source file enumeration
 
 This module provides utilities for scanning source files for backreference
 comments (# Chunk:, # Narrative:, # Subsystem:) and updating them during
@@ -12,6 +13,8 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass
+
+from source_files import enumerate_source_files
 
 
 @dataclass
@@ -50,39 +53,46 @@ def count_backreferences(
 
     Args:
         project_dir: Path to the project directory.
-        source_patterns: List of glob patterns to search (default: ["src/**/*.py"]).
+        source_patterns: List of glob patterns to search. If None, uses
+            language-agnostic enumeration to find all source files.
+            Providing explicit patterns is for backward compatibility.
 
     Returns:
         List of BackreferenceInfo for files containing backreferences.
     """
-    if source_patterns is None:
-        source_patterns = ["src/**/*.py"]
-
     results: list[BackreferenceInfo] = []
 
-    for pattern in source_patterns:
-        for file_path in project_dir.glob(pattern):
-            if not file_path.is_file():
-                continue
+    # Determine file list based on source_patterns
+    if source_patterns is None:
+        # Use language-agnostic enumeration
+        file_paths = enumerate_source_files(project_dir)
+    else:
+        # Use explicit glob patterns (backward compatibility)
+        file_paths = []
+        for pattern in source_patterns:
+            for file_path in project_dir.glob(pattern):
+                if file_path.is_file():
+                    file_paths.append(file_path)
 
-            try:
-                content = file_path.read_text()
-            except Exception:
-                continue
+    for file_path in file_paths:
+        try:
+            content = file_path.read_text()
+        except Exception:
+            continue
 
-            # Extract all backreferences
-            chunk_refs = CHUNK_BACKREF_PATTERN.findall(content)
-            narrative_refs = NARRATIVE_BACKREF_PATTERN.findall(content)
-            subsystem_refs = SUBSYSTEM_BACKREF_PATTERN.findall(content)
+        # Extract all backreferences
+        chunk_refs = CHUNK_BACKREF_PATTERN.findall(content)
+        narrative_refs = NARRATIVE_BACKREF_PATTERN.findall(content)
+        subsystem_refs = SUBSYSTEM_BACKREF_PATTERN.findall(content)
 
-            # Only include files with at least one chunk reference
-            if chunk_refs:
-                results.append(BackreferenceInfo(
-                    file_path=file_path,
-                    chunk_refs=chunk_refs,
-                    narrative_refs=narrative_refs,
-                    subsystem_refs=subsystem_refs,
-                ))
+        # Include files with any backreference type (chunk, narrative, or subsystem)
+        if chunk_refs or narrative_refs or subsystem_refs:
+            results.append(BackreferenceInfo(
+                file_path=file_path,
+                chunk_refs=chunk_refs,
+                narrative_refs=narrative_refs,
+                subsystem_refs=subsystem_refs,
+            ))
 
     # Sort by unique chunk count descending
     results.sort(key=lambda r: r.unique_chunk_count, reverse=True)
