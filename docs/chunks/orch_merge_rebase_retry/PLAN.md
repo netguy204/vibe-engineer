@@ -1,227 +1,211 @@
+<!--
+This document captures HOW you'll achieve the chunk's GOAL.
+It should be specific enough that each step is a reasonable unit of work
+to hand to an agent.
+-->
+
 # Implementation Plan
 
 ## Approach
 
-This chunk implements automatic recovery from merge conflicts during finalization by cycling work units back to the REBASE phase. The implementation builds on existing infrastructure:
+This chunk adds automatic retry-via-rebase when merge conflicts occur during
+work unit finalization. The approach builds on the existing finalization flow
+in `scheduler._finalize_completed_work_unit` and the worktree infrastructure in
+`WorktreeManager`.
 
-1. **Error classification in `finalize_work_unit`**: The current code catches `WorktreeError` generically. We need to distinguish merge conflicts from other finalization errors. The `WorktreeError` exceptions raised by `merge_without_checkout` (in `src/orchestrator/merge.py`) already include "Merge conflict" in the message, so we can detect them via string matching.
+**High-level strategy:**
 
-2. **Worktree recreation**: The `WorktreeManager.create_worktree` method already handles the case where the `orch/<chunk>` branch exists but no worktree is present — it creates a worktree from the existing branch. This is exactly what we need for recreation after a merge conflict.
+1. **Distinguish merge conflicts from other errors** — The `WorktreeError`
+   raised by `merge_to_base` on conflict needs to be distinguishable from other
+   errors. We'll create a `MergeConflictError` subclass of `WorktreeError`.
 
-3. **Retry counter on WorkUnit**: We'll add a `merge_conflict_retries` field to track how many times we've cycled back to REBASE due to merge conflicts. When this reaches 2, the third conflict escalates to NEEDS_ATTENTION.
+2. **Add a retry counter to WorkUnit** — Track `merge_conflict_retries` to
+   bound the retry loop (max 2 retries, escalate on third conflict).
 
-4. **Idempotent COMPLETE phase**: The `/chunk-complete` skill and `verify_chunk_active_status` already handle re-entry when the chunk is ACTIVE (line 83-84 of `activation.py` checks for post-IMPLEMENTING status). We may need to ensure no errors are raised when re-completing an already-ACTIVE chunk.
+3. **Recreate worktree from existing branch** — When a merge conflict is
+   detected post-worktree-removal, recreate the worktree from the surviving
+   `orch/<chunk>` branch using an existing branch variant of `create_worktree`.
 
-The high-level flow:
-```
-finalize_work_unit() → merge_to_base() fails with merge conflict
-    ↓
-detect merge conflict (vs other errors)
-    ↓
-check merge_conflict_retries < 2
-    ↓
-recreate worktree from orch/<chunk> branch
-    ↓
-set phase=REBASE, status=READY, increment merge_conflict_retries
-    ↓
-agent rebases, resolves conflicts, runs tests
-    ↓
-REVIEW phase re-reviews the merged result
-    ↓
-COMPLETE phase (already ACTIVE, idempotent)
-    ↓
-finalize_work_unit() succeeds (or retry again if conflict)
-```
+4. **Make verify_chunk_active_status idempotent** — Update `_is_post_implementing`
+   to treat ACTIVE status as valid (already complete), not as an error.
+
+5. **Cycle back to REBASE phase** — On merge conflict detection, set the work
+   unit phase to REBASE and status to READY for the scheduler to pick up.
+
+**Following existing patterns:**
+
+- The `finalization_recovery` chunk (already in `created_after`) handles crash
+  recovery for incomplete finalizations — this chunk handles runtime conflicts.
+- The `phase_aware_recovery` chunk shows how to handle worktree recreation for
+  existing branches.
+- The retry pattern mirrors `api_retry_count` and `completion_retries` fields.
 
 ## Subsystem Considerations
 
-- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS additional recovery logic following the subsystem's patterns for work unit state transitions and finalization.
-
-The orchestrator subsystem invariants that apply:
-- Work unit transitions are logged for debugging
-- Worktrees are isolated execution environments
-- Daemon must broadcast state changes to dashboard
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of
+  the orchestrator subsystem's finalization and recovery logic. It extends the
+  existing patterns in `scheduler.py`, `worktree.py`, and `activation.py`.
 
 ## Sequence
 
-### Step 1: Add `merge_conflict_retries` field to WorkUnit model
+### Step 1: Add MergeConflictError to distinguish merge conflicts
 
-Location: `src/orchestrator/models.py`
-
-Add a new field to the `WorkUnit` model:
-```python
-merge_conflict_retries: int = 0  # Retry count for merge conflict recovery
-```
-
-Also update `model_dump_json_serializable()` to include this field.
-
-### Step 2: Add database migration for `merge_conflict_retries`
-
-Location: `src/orchestrator/state.py`
-
-Add a migration to add the `merge_conflict_retries` column to the `work_units` table. Follow the existing migration pattern used for `api_retry_count`.
-
-Update `_row_to_work_unit()` to read this new column.
-
-### Step 3: Create helper to detect merge conflict errors
+Create a `MergeConflictError` subclass of `WorktreeError` in `src/orchestrator/merge.py`.
+Raise this specific exception when a merge conflict is detected in
+`merge_without_checkout` (when "CONFLICT" is in output) and `merge_via_index`
+(when read-tree fails).
 
 Location: `src/orchestrator/merge.py`
 
-Add a helper function to classify `WorktreeError` exceptions:
-```python
-def is_merge_conflict_error(error: Union[WorktreeError, str]) -> bool:
-    """Check if an error indicates a merge conflict vs other errors."""
-    error_str = str(error) if isinstance(error, WorktreeError) else error
-    return "Merge conflict" in error_str or "CONFLICT" in error_str
-```
+This allows callers to catch merge conflicts specifically, while other
+`WorktreeError` cases continue to escalate normally.
 
-This centralizes the detection logic for reuse.
+### Step 2: Add merge_conflict_retries field to WorkUnit model
 
-### Step 4: Extract merge-conflict recovery logic to a method
+Add `merge_conflict_retries: int = 0` field to the `WorkUnit` model in
+`src/orchestrator/models.py`. Also add it to `model_dump_json_serializable()`.
 
-Location: `src/orchestrator/scheduler.py`
+Location: `src/orchestrator/models.py`
 
-Add a new async method to the `Scheduler` class:
-```python
-async def _handle_merge_conflict_retry(
-    self,
-    work_unit: WorkUnit,
-    error: WorktreeError,
-) -> bool:
-    """Handle merge conflict during finalization by cycling back to REBASE.
+### Step 3: Add migration for merge_conflict_retries column
 
-    Returns True if retry was initiated, False if escalated to NEEDS_ATTENTION.
-    """
-```
+Add a SQLite migration in `src/orchestrator/state.py` to add the
+`merge_conflict_retries` column to the `work_units` table with default 0.
+Update `_row_to_work_unit` to read this field.
 
-This method:
-1. Checks if `work_unit.merge_conflict_retries >= 2` — if so, escalates to NEEDS_ATTENTION with a clear message about exceeding retry limit
-2. Recreates the worktree from the surviving `orch/<chunk>` branch
-3. Sets `phase=REBASE, status=READY`
-4. Increments `merge_conflict_retries`
-5. Persists the work unit
-6. Broadcasts via WebSocket
-7. Returns `True`
+Location: `src/orchestrator/state.py`
 
-### Step 5: Modify `_finalize_completed_work_unit` to handle merge conflicts
+### Step 4: Add create_worktree_from_branch method to WorktreeManager
 
-Location: `src/orchestrator/scheduler.py`
+Add a new method `create_worktree_from_branch(chunk: str)` that creates a
+worktree from an existing `orch/<chunk>` branch (rather than creating the
+branch from base). This is needed because after finalization removes the
+worktree, the branch survives and we need to recreate the worktree from it.
 
-In `_finalize_completed_work_unit()`, around line 1013-1032 where `finalize_work_unit()` is called and `WorktreeError` is caught:
-
-1. Import `is_merge_conflict_error` from `orchestrator.merge`
-2. In the `except WorktreeError` block:
-   - Check `is_merge_conflict_error(e)`
-   - If True, call `await self._handle_merge_conflict_retry(work_unit, e)`
-   - If `_handle_merge_conflict_retry` returns `True`, return early (retry initiated)
-   - If `False` (retry limit exceeded), the method already escalated to NEEDS_ATTENTION
-   - If not a merge conflict, fall through to existing NEEDS_ATTENTION logic
-
-### Step 6: Add worktree recreation method to WorktreeManager
+The method should:
+1. Verify the branch exists
+2. Create the worktree directory
+3. Run `git worktree add <path> <branch>` (branch already exists)
+4. Lock the worktree
 
 Location: `src/orchestrator/worktree.py`
 
-The current `create_worktree` method already handles this case, but we should add a more explicit helper for clarity:
-```python
-def recreate_worktree_from_branch(self, chunk: str) -> Path:
-    """Recreate a worktree from an existing orch/<chunk> branch.
+### Step 5: Update _finalize_completed_work_unit to handle merge conflicts
 
-    Used for merge conflict recovery where the worktree was removed
-    but the branch with committed work survives.
+Modify `_finalize_completed_work_unit` in `src/orchestrator/scheduler.py` to:
 
-    Args:
-        chunk: Chunk name
-
-    Returns:
-        Path to the recreated worktree
-
-    Raises:
-        WorktreeError: If branch doesn't exist or creation fails
-    """
-```
-
-This method:
-1. Verifies the `orch/<chunk>` branch exists
-2. Creates a worktree pointing to that branch
-3. Returns the worktree path
-
-### Step 7: Verify COMPLETE phase idempotency
-
-Location: `src/orchestrator/activation.py`
-
-The `verify_chunk_active_status` function already returns `COMPLETED` for post-IMPLEMENTING statuses (ACTIVE, SUPERSEDED, HISTORICAL). This is the correct behavior.
-
-Verify that `/chunk-complete` skill is idempotent — when called on an already-ACTIVE chunk, it should succeed without error. If it raises an error, we need to update the skill to handle this case.
-
-Review the skill implementation (likely in `.claude/commands/chunk-complete.md.jinja2` or the rendered version).
-
-### Step 8: Reset `merge_conflict_retries` on successful completion
+1. Import `MergeConflictError` from `orchestrator.merge`
+2. Catch `MergeConflictError` specifically during the `finalize_work_unit` call
+3. Check if `merge_conflict_retries < 2` (allow 2 retries)
+4. If retries available:
+   - Increment `merge_conflict_retries`
+   - Recreate worktree from existing branch via `create_worktree_from_branch`
+   - Set phase to `REBASE`, status to `READY`
+   - Update and persist work unit
+   - Broadcast update via WebSocket
+   - Log the retry
+5. If retries exhausted (≥2):
+   - Escalate to `NEEDS_ATTENTION` with clear message about 3 failed merges
+6. Other `WorktreeError` cases continue to escalate immediately
 
 Location: `src/orchestrator/scheduler.py`
 
-In `_finalize_completed_work_unit`, after successful `finalize_work_unit()` call (line 1033-1040 area), reset the retry counter:
-```python
-work_unit.merge_conflict_retries = 0
-```
+### Step 6: Make verify_chunk_active_status idempotent for ACTIVE chunks
 
-This ensures the counter is clean for future work.
+Update `verify_chunk_active_status` in `src/orchestrator/activation.py` to
+return `VerificationStatus.COMPLETED` when the chunk is already ACTIVE. This
+is already partially handled by `_is_post_implementing`, but we should verify
+it works correctly when re-entering COMPLETE phase after a merge conflict retry.
 
-### Step 9: Write tests for merge conflict retry flow
+The function already checks `_is_post_implementing(frontmatter.status)`, and
+ACTIVE is reachable from IMPLEMENTING in the state machine, so this should
+already work. Add a test to confirm this behavior.
 
-Location: `tests/test_orchestrator_scheduler_merge_conflict.py` (new file)
+Location: `src/orchestrator/activation.py` (verification/testing only)
 
-Tests to write:
+### Step 7: Reset merge_conflict_retries on successful completion
 
-1. **test_merge_conflict_triggers_rebase_retry**:
-   - Mock `finalize_work_unit` to raise `WorktreeError("Merge conflict...")`
-   - Verify work unit transitions to REBASE phase, READY status
-   - Verify `merge_conflict_retries` is incremented
-   - Verify worktree recreation is called
+In `_finalize_completed_work_unit`, after successful finalization (when
+transitioning to DONE), reset `merge_conflict_retries` to 0 for cleanliness.
 
-2. **test_successful_retry_completes_normally**:
-   - Set up work unit in COMPLETE phase with `merge_conflict_retries=1`
-   - Verify normal finalization succeeds
-   - Verify work unit transitions to DONE
-   - Verify `merge_conflict_retries` is reset to 0
+Location: `src/orchestrator/scheduler.py`
 
-3. **test_third_conflict_escalates_to_needs_attention**:
-   - Set up work unit with `merge_conflict_retries=2`
-   - Mock merge conflict on finalization
-   - Verify work unit transitions to NEEDS_ATTENTION
-   - Verify `attention_reason` mentions retry limit exceeded
-   - Verify no worktree recreation is attempted
+### Step 8: Write tests for merge conflict retry behavior
 
-4. **test_non_conflict_error_escalates_immediately**:
-   - Mock `finalize_work_unit` to raise `WorktreeError("Failed to remove worktree...")`
-   - Verify work unit transitions to NEEDS_ATTENTION immediately
-   - Verify `merge_conflict_retries` is NOT incremented
+Create tests in a new file `tests/test_orchestrator_merge_retry.py`:
 
-5. **test_merge_conflict_detection**:
-   - Unit test for `is_merge_conflict_error()` helper
-   - Test various error message formats
+1. **Test merge conflict triggers rebase retry** — Mock `finalize_work_unit` to
+   raise `MergeConflictError`, verify work unit cycles to REBASE with status
+   READY and incremented `merge_conflict_retries`.
 
-### Step 10: Update conftest.py with scheduler fixtures if needed
+2. **Test successful retry completes normally** — Verify that after a conflict
+   retry, the work unit can complete normally when merge succeeds.
 
-Location: `tests/conftest.py`
+3. **Test third conflict escalates** — Set `merge_conflict_retries=2`, trigger
+   another conflict, verify escalation to `NEEDS_ATTENTION` with appropriate
+   message.
 
-Review if the existing scheduler fixtures are sufficient for the new tests. May need to add helpers for setting up work units in specific states.
+4. **Test non-conflict errors still escalate immediately** — Verify that
+   `WorktreeError` (non-merge-conflict) escalates to `NEEDS_ATTENTION` without
+   retry.
+
+5. **Test ACTIVE chunk idempotency** — Verify `verify_chunk_active_status`
+   returns COMPLETED for already-ACTIVE chunks.
+
+Location: `tests/test_orchestrator_merge_retry.py`
+
+### Step 9: Update WorktreeManager.finalize_work_unit to propagate MergeConflictError
+
+Ensure `finalize_work_unit` in `src/orchestrator/worktree.py` propagates
+`MergeConflictError` from `merge_to_base` without catching and rewrapping it.
+Currently it catches `WorktreeError` — since `MergeConflictError` is a subclass,
+it should propagate correctly, but verify this behavior.
+
+Location: `src/orchestrator/worktree.py`
+
+### Step 10: Update GOAL.md code_paths and subsystems
+
+Update the chunk's GOAL.md frontmatter with:
+- `code_paths`: List all files touched
+- `subsystems`: Add orchestrator with relationship "implements"
+
+Location: `docs/chunks/orch_merge_rebase_retry/GOAL.md`
 
 ## Risks and Open Questions
 
-1. **Skill idempotency**: Need to verify `/chunk-complete` skill handles re-entry gracefully. If it errors on already-ACTIVE chunks, the retry flow will fail at the COMPLETE phase.
+1. **Race condition during worktree recreation** — If another process creates
+   a worktree for the same chunk between conflict detection and recreation,
+   we may fail. This is unlikely in practice since only one work unit per chunk
+   exists. Mitigation: The worktree creation already handles "already exists"
+   gracefully.
 
-2. **Worktree state after conflict**: When `finalize_work_unit` fails on merge, the worktree has already been removed (step 2 of finalization is remove_worktree). We need to ensure the branch still exists and has the committed work. This should be the case since `finalize_work_unit` uses `remove_branch=False`.
+2. **Branch state after partial merge** — When `merge_to_base` fails with a
+   conflict, the branch should be unchanged (we use plumbing commands that
+   don't modify the branch until success). Verify this assumption in testing.
 
-3. **Agent context on retry**: When the agent runs REBASE after a merge conflict retry, it will have a fresh context. The GOAL.md should provide sufficient context for conflict resolution. May want to add the conflict error message to `attention_reason` temporarily to give the agent context.
+3. **Displaced chunk handling** — If a chunk had a displaced chunk before the
+   conflict, we need to handle this correctly on retry. The `displaced_chunk`
+   field persists on the work unit, so restore logic should work correctly.
 
-4. **Race conditions**: If two chunks complete simultaneously and both hit merge conflicts with each other, the retry loop could theoretically continue indefinitely (each rebase succeeds, but merge conflicts again). The 2-retry limit prevents infinite loops.
-
-5. **WebSocket broadcasting**: Need to ensure proper broadcasting of the phase/status change when cycling back to REBASE.
+4. **Existing test coverage** — Need to verify that the existing finalization
+   tests don't break with the new error handling.
 
 ## Deviations
 
-1. **Step 7 (COMPLETE phase idempotency)**: No changes were needed. The existing `verify_chunk_active_status` function already handles post-IMPLEMENTING statuses (ACTIVE, SUPERSEDED, HISTORICAL) as `COMPLETED`, which means the COMPLETE phase is already idempotent. When a chunk is already ACTIVE, verification returns `VerificationStatus.COMPLETED` and finalization proceeds normally.
+<!--
+POPULATE DURING IMPLEMENTATION, not at planning time.
 
-2. **Step 10 (conftest.py fixtures)**: No changes needed. The existing scheduler fixtures in conftest.py were sufficient for all tests.
+When reality diverges from the plan, document it here:
+- What changed?
+- Why?
+- What was the impact?
 
-3. **Updated existing test**: Modified `test_advance_finalization_failure_marks_needs_attention` in `test_orchestrator_scheduler_dispatch.py` to use a non-merge-conflict error message ("Failed to remove worktree" instead of "Merge conflict") since the original message now triggers the new retry path rather than immediate escalation to NEEDS_ATTENTION.
+Minor deviations (renamed a function, used a different helper) don't need
+documentation. Significant deviations (changed the approach, skipped a step,
+added steps) do.
+
+Example:
+- Step 4: Originally planned to use std::fs::rename for atomic swap.
+  Testing revealed this isn't atomic across filesystems. Changed to
+  write-fsync-rename-fsync sequence per platform best practices.
+-->
