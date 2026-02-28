@@ -8,153 +8,147 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The bug is in `route_review_decision()` in `src/orchestrator/review_routing.py` (lines 191-203). The max iterations check fires **unconditionally** at the top of the function, before the review decision is even parsed. This means:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. When `review_iterations + 1 > max_iterations`, the function immediately escalates to NEEDS_ATTENTION
+2. The function returns early without checking what decision the reviewer actually made
+3. Even if the reviewer returns APPROVE, the chunk escalates instead of completing
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Fix strategy**: Move the iteration limit check so it only applies when the review decision is FEEDBACK. The key insight is:
+- **APPROVE** should always advance to COMPLETE, regardless of iteration count. If the reviewer approved after 5 iterations, the work is done.
+- **FEEDBACK** is the only decision that should respect max_iterations, because FEEDBACK would trigger another review round.
+- **ESCALATE** already routes to NEEDS_ATTENTION, so the iteration check is redundant there.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_review_approve_bypass/GOAL.md)
-with references to the files that you expect to touch.
--->
+The fix will relocate the max_iterations guard into `_apply_review_decision()`, specifically within the FEEDBACK branch, right before setting up the next implement cycle.
+
+Following the test-driven approach from TESTING_PHILOSOPHY.md, we write failing tests first that demonstrate the bug, then fix the implementation.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS a bugfix within the orchestrator subsystem's review routing module. The subsystem is DOCUMENTED status, so no opportunistic improvements beyond the bug fix.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests that demonstrate the bug
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_orchestrator_review_routing.py` that exercise the bug:
 
-Example:
+1. **`test_approve_after_max_iterations_still_completes`**: Create a work unit at `review_iterations=3` (at max), return APPROVE via tool decision, and assert that `advance_phase` is called (not `mark_needs_attention`).
 
-### Step 1: Define the SegmentHeader struct
+2. **`test_feedback_after_max_iterations_escalates`**: Create a work unit at `review_iterations=3`, return FEEDBACK, and assert that `mark_needs_attention` is called with the iteration limit message. This tests the *correct* behavior we want to preserve.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+These tests should fail with the current implementation (Step 1 will incorrectly escalate).
 
-Location: src/segment/format.rs
+Location: `tests/test_orchestrator_review_routing.py`
 
-### Step 2: Implement header serialization
+### Step 2: Remove the unconditional max iterations check from route_review_decision
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+In `src/orchestrator/review_routing.py`, remove the early return that fires before decision parsing (lines 191-203):
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# REMOVE THIS BLOCK:
+current_iteration = work_unit.review_iterations + 1
+if current_iteration > config.max_iterations:
+    logger.warning(...)
+    await callbacks.mark_needs_attention(...)
+    return
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Keep the `current_iteration` calculation for use later in the function.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/review_routing.py#route_review_decision`
+
+### Step 3: Add iteration limit check to the FEEDBACK branch in _apply_review_decision
+
+In `_apply_review_decision()`, add the max iterations check **inside** the FEEDBACK branch, after logging but before creating the feedback file. The function needs access to the config, so update its signature to accept `ReviewRoutingConfig`.
+
+```python
+async def _apply_review_decision(
+    work_unit: WorkUnit,
+    worktree_path: Path,
+    review_result: ReviewResult,
+    current_iteration: int,
+    session_id: Optional[str],
+    callbacks: ReviewRoutingCallbacks,
+    config: ReviewRoutingConfig,  # NEW PARAMETER
+) -> None:
+```
+
+Inside the FEEDBACK branch:
+```python
+elif review_result.decision == ReviewDecision.FEEDBACK:
+    # Check iteration limit BEFORE cycling back to implement
+    if current_iteration >= config.max_iterations:
+        logger.warning(
+            f"Chunk {chunk} exceeded max review iterations ({config.max_iterations}) "
+            f"with FEEDBACK - escalating"
+        )
+        await callbacks.mark_needs_attention(
+            work_unit,
+            f"Auto-escalated: exceeded maximum review iterations ({config.max_iterations}). "
+            f"The implementation may need significant rework or the requirements "
+            f"may be unclear. Last feedback: {review_result.summary}",
+        )
+        return
+
+    # ... existing FEEDBACK logic continues ...
+```
+
+Note: The check uses `>=` because `current_iteration` is already incremented (it represents "this is iteration N"), so at iteration 3 of 3, we've hit the max.
+
+Location: `src/orchestrator/review_routing.py#_apply_review_decision`
+
+### Step 4: Update the call site to pass config
+
+Update the call to `_apply_review_decision` in `route_review_decision` to include the config parameter:
+
+```python
+await _apply_review_decision(
+    work_unit,
+    worktree_path,
+    review_result,
+    current_iteration,
+    result.session_id,
+    callbacks,
+    config,  # ADD THIS
+)
+```
+
+Location: `src/orchestrator/review_routing.py#route_review_decision`
+
+### Step 5: Update existing test to reflect new behavior
+
+The existing test `test_max_iterations_triggers_escalation` needs adjustment. It currently:
+- Creates a work unit with `review_iterations=3`
+- Passes an AgentResult with no decision
+- Expects escalation due to max iterations
+
+But with our fix, the max iterations check only fires on FEEDBACK. Update the test to:
+- Return a FEEDBACK decision via the tool
+- Verify escalation happens with the FEEDBACK-specific message
+
+Location: `tests/test_orchestrator_review_routing.py#test_max_iterations_triggers_escalation`
+
+### Step 6: Run tests and verify
+
+Run the test suite to verify:
+1. New tests pass (approve-after-max-iterations works)
+2. Updated test passes (feedback-at-max-iterations escalates)
+3. All existing tests still pass (no regression)
+
+```bash
+uv run pytest tests/test_orchestrator_review_routing.py -v
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This is a self-contained bug fix within the existing review routing module.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Nudge flow interaction**: When nudging (tool not called), the function currently returns early before checking max iterations. With the fix, if an agent repeatedly doesn't call the tool, nudges will continue until `max_nudges`, then fall back to file/log parsing, then either succeed or escalate due to "no decision found" — not due to max iterations. This is arguably correct behavior (iteration limit is about review feedback loops, not nudge attempts), but worth verifying the test coverage.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Iteration semantics on edge case**: The check `current_iteration >= config.max_iterations` assumes `current_iteration` is the iteration we're *completing*. If `max_iterations=3` and we're on iteration 3 returning FEEDBACK, we escalate because we can't start iteration 4. Need to verify this matches the documented behavior and existing test expectations.
 
 ## Deviations
 
