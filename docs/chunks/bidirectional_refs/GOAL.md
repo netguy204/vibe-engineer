@@ -33,8 +33,8 @@ code_references:
   implements: "CLI subsystem validate command after CLI modularization"
 - ref: src/chunk_validation.py#validate_chunk_complete
   implements: "Extended to include subsystem reference validation"
-- ref: src/integrity.py#validate_chunk_subsystem_refs
-  implements: "Validates subsystem references in chunk frontmatter exist"
+- ref: src/integrity.py#IntegrityValidator::validate_chunk
+  implements: "Public entry point for chunk validation including subsystem references"
 narrative: subsystem_documentation
 created_after:
 - subsystem_template

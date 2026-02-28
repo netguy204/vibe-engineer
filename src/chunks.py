@@ -913,7 +913,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return (current_status, new_status)
 
     # Chunk: docs/chunks/bidirectional_refs - Validates subsystem references in chunk frontmatter exist
-    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_subsystem_refs
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_subsystem_refs(self, chunk_id: str) -> list[str]:
@@ -936,7 +935,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return _errors_to_messages(subsystem_errors)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced investigations exist
-    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_investigation_ref
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_investigation_ref(self, chunk_id: str) -> list[str]:
@@ -959,7 +957,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         return _errors_to_messages(investigation_errors)
 
     # Chunk: docs/chunks/chunk_validate - Validation that referenced narratives exist
-    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_narrative_ref
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator
     def validate_narrative_ref(self, chunk_id: str) -> list[str]:
@@ -981,7 +978,6 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         narrative_errors = [e for e in errors if e.link_type == "chunk→narrative"]
         return _errors_to_messages(narrative_errors)
 
-    # Chunk: docs/chunks/chunks_decompose - Thin wrapper delegating to integrity.validate_chunk_friction_entries_ref
     # Chunk: docs/chunks/friction_chunk_linking - Validation method checking friction entry references exist in FRICTION.md
     # Chunk: docs/chunks/chunks_class_decouple - Uses top-level import, passes self to break circular dependency
     # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator

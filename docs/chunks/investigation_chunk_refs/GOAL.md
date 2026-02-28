@@ -26,7 +26,7 @@ code_references:
     implements: "Tests for investigation reference validation"
   - ref: src/chunk_validation.py#validate_chunk_complete
     implements: "Integration of investigation validation into chunk completion"
-  - ref: src/integrity.py#validate_chunk_investigation_ref
+  - ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
     implements: "Validation that referenced investigations exist"
 narrative: null
 subsystems: []

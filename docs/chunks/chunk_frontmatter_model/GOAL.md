@@ -6,7 +6,6 @@ code_paths:
 - src/models/chunk.py
 - src/chunks.py
 - src/chunk_validation.py
-- src/integrity.py
 - src/ve.py
 - src/task_utils.py
 - src/subsystems.py
@@ -35,8 +34,6 @@ code_references:
 - ref: src/chunk_validation.py#validate_chunk_complete
   implements: Uses typed ChunkStatus and frontmatter.code_references; calls validate_investigation_ref
     and validate_friction_entries_ref
-- ref: src/integrity.py#validate_chunk_subsystem_refs
-  implements: Uses typed frontmatter.subsystems access
 - ref: src/chunks.py#Chunks::validate_investigation_ref
   implements: Validates investigation field reference exists in docs/investigations/ (added by investigation_chunk_refs)
 - ref: src/subsystems.py#Subsystems::find_overlapping_subsystems

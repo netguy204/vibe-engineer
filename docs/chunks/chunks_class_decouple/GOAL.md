@@ -10,14 +10,6 @@ code_paths:
 code_references:
   - ref: src/integrity.py#ChunksProtocol
     implements: "Protocol interface breaking circular dependency between chunks.py and integrity.py"
-  - ref: src/integrity.py#validate_chunk_subsystem_refs
-    implements: "Accepts ChunksProtocol to break circular import"
-  - ref: src/integrity.py#validate_chunk_investigation_ref
-    implements: "Accepts ChunksProtocol to break circular import"
-  - ref: src/integrity.py#validate_chunk_narrative_ref
-    implements: "Accepts ChunksProtocol to break circular import"
-  - ref: src/integrity.py#validate_chunk_friction_entries_ref
-    implements: "Accepts ChunksProtocol to break circular import"
   - ref: src/chunks.py#Chunks::validate_subsystem_refs
     implements: "Passes self via protocol to break circular import"
   - ref: src/chunks.py#Chunks::validate_investigation_ref
