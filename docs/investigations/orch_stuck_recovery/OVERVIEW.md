@@ -3,13 +3,13 @@ status: SOLVED
 trigger: "Recovering 3 chunks stuck at REVIEW phase required ~30 manual steps across multiple systems"
 proposed_chunks:
 - prompt: "Change work-unit delete to check for unmerged commits before deleting branch. Use git rev-list to detect unmerged work and refuse delete if found. Change git branch -D to -d as default. Add --force flag to override."
-  chunk_directory: null
+  chunk_directory: orch_safe_branch_delete
   depends_on: []
 - prompt: "Add ve orch work-unit retry command that transitions NEEDS_ATTENTION to READY with proper state reset (clear session_id, attention_reason, retry counters, verify worktree). Support batch retry-all with optional phase/error filter."
-  chunk_directory: null
+  chunk_directory: orch_retry_command
   depends_on: []
 - prompt: "Add Scenarios F (partial merge - implementation on branch, docs on main) and G (systematic code bug affecting all chunks in same phase) to the orchestrator-investigate skill template. Add warning about work-unit delete vs status DONE."
-  chunk_directory: null
+  chunk_directory: orch_investigate_scenarios
   depends_on: []
 created_after: ["reviewer_log_concurrency"]
 ---
