@@ -951,8 +951,10 @@ def backrefs(project_dir, threshold, pattern):
 
     click.echo(f"Files with {threshold}+ chunk backreferences:")
     click.echo("")
+    # Resolve project_dir to handle symlinks (e.g., /var -> /private/var on macOS)
+    resolved_project_dir = project_dir.resolve()
     for info in above_threshold:
-        rel_path = info.file_path.relative_to(project_dir)
+        rel_path = info.file_path.relative_to(resolved_project_dir)
         unique = info.unique_chunk_count
         total = info.total_chunk_count
         click.echo(f"  {rel_path}: {unique} unique chunks ({total} total refs)")

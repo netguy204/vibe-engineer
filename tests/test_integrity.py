@@ -1513,3 +1513,192 @@ class TestIntegrityValidatorSingleChunk:
         # Should return an error about parsing failure
         assert len(errors) == 1
         assert "frontmatter" in errors[0].message.lower() or "parse" in errors[0].message.lower()
+
+
+# Chunk: docs/chunks/backref_language_agnostic - Tests for multi-language code backreference scanning
+class TestIntegrityValidatorMultiLanguage:
+    """Tests for language-agnostic code backreference validation."""
+
+    def test_valid_js_backref_passes(self, temp_project):
+        """Code backreference in JavaScript file to existing chunk passes."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk
+        chunk_path = temp_project / "docs" / "chunks" / "js_feature"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        # Create JavaScript source file with backreference
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "app.js").write_text(
+            "// Main application\n"
+            "# Chunk: docs/chunks/js_feature - JavaScript feature\n"
+            "\n"
+            "function main() {\n"
+            "    console.log('Hello');\n"
+            "}\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.files_scanned >= 1
+        assert result.chunk_backrefs_found == 1
+
+    def test_valid_ts_backref_passes(self, temp_project):
+        """Code backreference in TypeScript file to existing chunk passes."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk
+        chunk_path = temp_project / "docs" / "chunks" / "ts_module"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        # Create TypeScript source file with backreference
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "utils.ts").write_text(
+            "// TypeScript utilities\n"
+            "# Chunk: docs/chunks/ts_module - TypeScript module\n"
+            "\n"
+            "export function helper(): string {\n"
+            "    return 'test';\n"
+            "}\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.chunk_backrefs_found == 1
+
+    def test_valid_go_backref_passes(self, temp_project):
+        """Code backreference in Go file to existing chunk passes."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk
+        chunk_path = temp_project / "docs" / "chunks" / "go_service"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        # Create Go source file with backreference
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "main.go").write_text(
+            "package main\n"
+            "\n"
+            "# Chunk: docs/chunks/go_service - Go service implementation\n"
+            "\n"
+            "func main() {\n"
+            '    fmt.Println("Hello")\n'
+            "}\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.chunk_backrefs_found == 1
+
+    def test_invalid_js_backref_fails(self, temp_project):
+        """Code backreference in JavaScript file to non-existent chunk fails."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create JavaScript source file with invalid backreference (no chunk exists)
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "broken.js").write_text(
+            "// Broken module\n"
+            "# Chunk: docs/chunks/nonexistent_js - Invalid reference\n"
+            "\n"
+            "function broken() {}\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert not result.success
+        assert len(result.errors) == 1
+        assert "nonexistent_js" in result.errors[0].message
+        assert result.errors[0].link_type == "code→chunk"
+
+    def test_valid_subsystem_backref_in_ts_passes(self, temp_project):
+        """Code backreference to existing subsystem in TypeScript file passes."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem
+        subsystem_path = temp_project / "docs" / "subsystems" / "auth_system"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(subsystem_path)
+
+        # Create TypeScript source file with subsystem backreference
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "auth.ts").write_text(
+            "// Authentication module\n"
+            "# Subsystem: docs/subsystems/auth_system - Authentication\n"
+            "\n"
+            "export class Auth {}\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.subsystem_backrefs_found == 1
+
+    def test_gitignored_files_not_scanned(self, temp_project):
+        """Files in gitignored directories are not scanned for backreferences."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create .gitignore
+        (temp_project / ".gitignore").write_text("node_modules/\n")
+
+        # Create a file in node_modules with an invalid backreference
+        # This should NOT cause a validation error because it's ignored
+        node_modules = temp_project / "node_modules" / "some-lib"
+        node_modules.mkdir(parents=True)
+        (node_modules / "index.js").write_text(
+            "// Library code\n"
+            "# Chunk: docs/chunks/nonexistent_lib - Should be ignored\n"
+        )
+
+        # Create a valid file in src
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "app.py").write_text(
+            "# No backreferences here\n"
+            "def app(): pass\n"
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass because the broken reference is in an ignored directory
+        assert result.success
+        # The node_modules file should not be scanned
+        assert result.chunk_backrefs_found == 0
+
+    def test_multiple_languages_in_one_project(self, temp_project):
+        """Multiple languages with backreferences are all scanned."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunks
+        for name in ["py_chunk", "js_chunk", "ts_chunk"]:
+            chunk_path = temp_project / "docs" / "chunks" / name
+            chunk_path.mkdir(parents=True)
+            write_chunk_goal(chunk_path)
+
+        # Create source files in different languages
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+
+        (src_dir / "module.py").write_text(
+            "# Chunk: docs/chunks/py_chunk - Python module\n"
+            "def foo(): pass\n"
+        )
+        (src_dir / "module.js").write_text(
+            "// JavaScript\n"
+            "# Chunk: docs/chunks/js_chunk - JavaScript module\n"
+            "function bar() {}\n"
+        )
+        (src_dir / "module.ts").write_text(
+            "// TypeScript\n"
+            "# Chunk: docs/chunks/ts_chunk - TypeScript module\n"
+            "export const baz = 1;\n"
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert result.files_scanned >= 3
+        assert result.chunk_backrefs_found == 3

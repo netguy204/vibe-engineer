@@ -16,6 +16,8 @@ class TestBackreferenceCensus:
         from chunks import count_backreferences
 
         make_ve_initialized_git_repo(temp_project)
+        # Resolve to handle symlinks (e.g., /var -> /private/var on macOS)
+        temp_project = temp_project.resolve()
 
         # Create src directory with test file
         src_dir = temp_project / "src"
@@ -69,6 +71,8 @@ class MyClass:
         from chunks import count_backreferences
 
         make_ve_initialized_git_repo(temp_project)
+        # Resolve to handle symlinks (e.g., /var -> /private/var on macOS)
+        temp_project = temp_project.resolve()
 
         src_dir = temp_project / "src"
         src_dir.mkdir()

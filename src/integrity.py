@@ -26,6 +26,7 @@ from friction import Friction
 from investigations import Investigations
 from models import ArtifactType, ChunkFrontmatter
 from narratives import Narratives
+from source_files import enumerate_source_files
 from subsystems import Subsystems
 
 if TYPE_CHECKING:
@@ -637,6 +638,7 @@ class IntegrityValidator:
 
     # Chunk: docs/chunks/integrity_code_backrefs - Line-by-line scanning with line number tracking
     # Chunk: docs/chunks/integrity_bidirectional - Extended with code↔chunk bidirectional warnings
+    # Chunk: docs/chunks/backref_language_agnostic - Language-agnostic source file enumeration
     def _validate_code_backreferences(
         self,
     ) -> tuple[list[IntegrityError], list[IntegrityWarning], int, int, int]:
@@ -654,20 +656,21 @@ class IntegrityValidator:
         chunk_refs_found = 0
         subsystem_refs_found = 0
 
-        # Default source patterns to scan
-        src_dir = self.project_dir / "src"
-        if not src_dir.exists():
+        # Enumerate all source files across supported languages
+        # Resolve to handle symlinks (e.g., /var -> /private/var on macOS)
+        resolved_project_dir = self.project_dir.resolve()
+        source_files = enumerate_source_files(resolved_project_dir)
+        if not source_files:
             return errors, warnings, 0, 0, 0
 
-        # Find Python files
-        for file_path in src_dir.rglob("*.py"):
+        for file_path in source_files:
             files_scanned += 1
             try:
                 content = file_path.read_text()
             except (IOError, UnicodeDecodeError):
                 continue
 
-            rel_path = file_path.relative_to(self.project_dir)
+            rel_path = file_path.relative_to(resolved_project_dir)
 
             # Iterate line-by-line to track line numbers (1-indexed)
             for line_num, line in enumerate(content.splitlines(), start=1):
