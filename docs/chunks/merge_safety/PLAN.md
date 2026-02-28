@@ -1,177 +1,103 @@
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Modify `update_working_tree_if_on_branch` in `src/orchestrator/merge.py` to check for uncommitted changes before running any working tree modification commands. This follows a simple guard pattern:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Check if working tree is dirty (via `git status --porcelain`)
+2. If dirty, log a warning and return early without modifying working tree
+3. If clean, proceed with existing behavior (`git reset --mixed HEAD` + `git checkout -- .`)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The fix is encapsulated entirely within `update_working_tree_if_on_branch`, requiring no changes to its three call sites (`merge_without_checkout`, `fast_forward_merge`/fast-forward path within `merge_without_checkout`, and `merge_via_index`). The function already returns `None` and is called for side effects only, so returning early is safe.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/merge_safety/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per TESTING_PHILOSOPHY.md, tests are written first (TDD) and verify semantically meaningful behavior:
+- Dirty working tree: function returns early, no `git checkout -- .` executed, warning logged
+- Clean working tree: function updates files as before
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS part of the orchestrator subsystem, specifically the merge module's working tree safety. The subsystem is DOCUMENTED status, so no opportunistic deviation fixes are required.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for dirty working tree path
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests in `tests/test_orchestrator_merge.py` (new file) that verify:
+- Given uncommitted changes exist, `update_working_tree_if_on_branch` does not run `git checkout -- .`
+- Given uncommitted changes exist, a warning is logged indicating the working tree is behind
 
-Example:
+Test setup pattern follows existing `test_orchestrator_worktree_persistence.py`:
+- Create a git repo fixture
+- Make uncommitted changes (staged or unstaged)
+- Call `update_working_tree_if_on_branch`
+- Assert: uncommitted changes still exist (proves `git checkout -- .` was not run)
 
-### Step 1: Define the SegmentHeader struct
+Location: `tests/test_orchestrator_merge.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write failing tests for clean working tree path
 
-Location: src/segment/format.rs
+Add tests verifying existing behavior is preserved:
+- Given a clean working tree and a branch with new commits, `update_working_tree_if_on_branch` updates files in working tree
 
-### Step 2: Implement header serialization
+Test setup:
+- Create a git repo
+- Update ref via `git update-ref` (simulating what merge functions do)
+- Call `update_working_tree_if_on_branch`
+- Assert: working tree files match the new commit
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_orchestrator_merge.py`
 
-### Step 3: ...
+### Step 3: Implement dirty working tree detection
 
----
+Modify `update_working_tree_if_on_branch` in `src/orchestrator/merge.py`:
 
-**BACKREFERENCE COMMENTS**
+1. After determining we're on the target branch, run `git status --porcelain` to detect uncommitted changes
+2. `git status --porcelain` outputs nothing if clean, outputs one line per changed file if dirty
+3. If output is non-empty, the working tree is dirty
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Add a check before the `git reset --mixed HEAD` line.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Location: `src/orchestrator/merge.py`, function `update_working_tree_if_on_branch`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 4: Implement early return with warning
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+When dirty working tree is detected:
+1. Import `logging` module (if not already imported)
+2. Log a warning: "Working tree has uncommitted changes; skipping update. Your working tree is behind branch '{target_branch}'. Manually run 'git merge' or 'git rebase' to reconcile."
+3. Return early (before `git reset --mixed HEAD`)
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The warning clearly explains:
+- What happened (skipped update)
+- Why (uncommitted changes)
+- What to do (manual reconciliation)
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/merge.py`, function `update_working_tree_if_on_branch`
 
-## Dependencies
+### Step 5: Update code_paths in GOAL.md
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Update the chunk's GOAL.md frontmatter `code_paths` field to include:
+- `src/orchestrator/merge.py`
+- `tests/test_orchestrator_merge.py`
 
-If there are no dependencies, delete this section.
--->
+Location: `docs/chunks/merge_safety/GOAL.md`
+
+### Step 6: Run tests and verify
+
+Run the test suite to verify:
+- New tests pass
+- Existing merge-related tests still pass (no regressions)
+- The three call sites work correctly (merge_without_checkout ff path, merge_without_checkout merge path, merge_via_index)
+
+Command: `uv run pytest tests/test_orchestrator_merge.py tests/test_orchestrator_worktree_persistence.py -v`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+1. **Staged vs unstaged changes**: `git status --porcelain` detects both staged and unstaged changes. This is the desired behavior per the goal ("uncommitted changes" = anything not committed), but worth confirming.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+2. **Logging module**: The module doesn't currently import logging. Need to add `import logging` and get a module logger. This is a minimal addition consistent with Python best practices.
+
+3. **Test isolation**: The `clean_git_environment` autouse fixture in conftest.py removes `GIT_*` environment variables, which is important for test isolation. The new tests should work correctly with this fixture.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+*To be populated during implementation.*
