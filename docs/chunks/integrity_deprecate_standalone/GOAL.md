@@ -1,5 +1,6 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
+superseded_by: integrity_deprecated_removal
 ticket: null
 parent_chunk: null
 code_paths:
@@ -11,14 +12,6 @@ code_references:
     implements: "Public single-chunk validation entry point for unified validation routing"
   - ref: src/integrity.py#_errors_to_messages
     implements: "Helper to convert IntegrityError objects to string messages for backward compatibility"
-  - ref: src/integrity.py#validate_chunk_subsystem_refs
-    implements: "Deprecated standalone function with deprecation warning, delegates to Chunks"
-  - ref: src/integrity.py#validate_chunk_investigation_ref
-    implements: "Deprecated standalone function with deprecation warning, delegates to Chunks"
-  - ref: src/integrity.py#validate_chunk_narrative_ref
-    implements: "Deprecated standalone function with deprecation warning, delegates to Chunks"
-  - ref: src/integrity.py#validate_chunk_friction_entries_ref
-    implements: "Deprecated standalone function with deprecation warning, delegates to Chunks"
   - ref: src/chunks.py#Chunks::validate_subsystem_refs
     implements: "Wrapper method routing through IntegrityValidator"
   - ref: src/chunks.py#Chunks::validate_investigation_ref
@@ -27,8 +20,6 @@ code_references:
     implements: "Wrapper method routing through IntegrityValidator"
   - ref: src/chunks.py#Chunks::validate_friction_entries_ref
     implements: "Wrapper method routing through IntegrityValidator"
-  - ref: tests/test_integrity.py#TestDeprecatedStandaloneFunctions
-    implements: "Tests for deprecation warnings on standalone functions"
   - ref: tests/test_integrity.py#TestIntegrityValidatorSingleChunk
     implements: "Tests for IntegrityValidator.validate_chunk() single-chunk validation"
 narrative: arch_review_remediation

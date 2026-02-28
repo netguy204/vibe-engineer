@@ -25,14 +25,6 @@ code_references:
     implements: "New unified single-chunk validation entry point used by Chunks wrapper methods"
   - ref: src/integrity.py#_errors_to_messages
     implements: "Helper function to convert IntegrityError objects to formatted string messages"
-  - ref: src/integrity.py#validate_chunk_subsystem_refs
-    implements: "Deprecated standalone validation for subsystem references (now delegates to IntegrityValidator)"
-  - ref: src/integrity.py#validate_chunk_investigation_ref
-    implements: "Deprecated standalone validation for investigation reference (now delegates to IntegrityValidator)"
-  - ref: src/integrity.py#validate_chunk_narrative_ref
-    implements: "Deprecated standalone validation for narrative reference (now delegates to IntegrityValidator)"
-  - ref: src/integrity.py#validate_chunk_friction_entries_ref
-    implements: "Deprecated standalone validation for friction entries (now delegates to IntegrityValidator)"
   - ref: src/chunks.py#Chunks::validate_subsystem_refs
     implements: "Wrapper method routing through IntegrityValidator.validate_chunk() with filtering"
   - ref: src/chunks.py#Chunks::validate_investigation_ref

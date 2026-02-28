@@ -11,7 +11,7 @@ code_paths:
 code_references:
   - ref: src/models/friction.py#FrictionEntryReference
     implements: "Pydantic model for friction entry reference with entry_id and scope fields"
-  - ref: src/models/friction.py#FRICTION_ENTRY_ID_PATTERN
+  - ref: src/models/friction.py
     implements: "Regex pattern for validating friction entry ID format (F followed by digits)"
   - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Added friction_entries field to chunk frontmatter schema"
@@ -23,7 +23,7 @@ code_references:
     implements: "Template with friction_entries field and documentation comment explaining format"
   - ref: tests/test_chunk_validate.py#TestFrictionEntryRefValidation
     implements: "Test class validating friction entry reference validation behavior"
-  - ref: src/integrity.py#validate_chunk_friction_entries_ref
+  - ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
     implements: "Validation method checking friction entry references exist in FRICTION.md"
 narrative: null
 investigation: friction_log_artifact
