@@ -641,6 +641,17 @@ class Scheduler:
                     await self._mark_needs_attention(work_unit, f"Chunk activation failed: {e}")
                     return
 
+                # Chunk: docs/chunks/orch_rename_propagation - Capture baseline IMPLEMENTING chunks
+                # After activation succeeds, snapshot the current IMPLEMENTING chunks
+                # in the worktree. This enables detecting renames during the phase.
+                from chunks import Chunks
+                chunks_manager = Chunks(worktree_path)
+                work_unit.baseline_implementing = chunks_manager.list_implementing_chunks()
+                logger.info(
+                    f"Captured baseline IMPLEMENTING chunks for {chunk}: "
+                    f"{work_unit.baseline_implementing}"
+                )
+
             # Update work unit to RUNNING with optimistic locking
             # If someone else (e.g., API) updated the work unit since we read it,
             # we should detect that and skip dispatch rather than overwrite their change.
@@ -812,11 +823,53 @@ class Scheduler:
             # Phase completed - advance to next phase or mark done
             logger.info(f"Agent for {chunk} completed phase {phase.value}")
 
+            # Chunk: docs/chunks/orch_rename_propagation - Check for rename before advancing phase
+            # This must happen before _advance_phase so the work unit has the correct name
+            worktree_path = self.worktree_manager.get_worktree_path(chunk)
+            rename_result = self._detect_rename(work_unit, worktree_path)
+
+            if rename_result is not None:
+                old_name, new_name = rename_result
+                try:
+                    work_unit = await self._propagate_rename(work_unit, old_name, new_name)
+                    # Update local variables to reflect the rename
+                    chunk = work_unit.chunk
+                    worktree_path = self.worktree_manager.get_worktree_path(chunk)
+                    logger.info(f"Successfully propagated rename to {chunk}")
+                except (WorktreeError, ValueError) as e:
+                    logger.error(f"Failed to propagate rename {old_name} -> {new_name}: {e}")
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Rename propagation failed ({old_name} -> {new_name}): {e}"
+                    )
+                    return
+            elif work_unit.baseline_implementing and chunk not in work_unit.baseline_implementing:
+                # Chunk disappeared but no clear rename detected - ambiguous situation
+                # Check if it's because there are multiple new chunks
+                from chunks import Chunks
+                chunks_manager = Chunks(worktree_path)
+                current_implementing = set(chunks_manager.list_implementing_chunks())
+                baseline_set = set(work_unit.baseline_implementing)
+                new_chunks = current_implementing - baseline_set
+
+                if len(new_chunks) > 1:
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Ambiguous rename detected: chunk {chunk} disappeared but "
+                        f"multiple new chunks found: {new_chunks}"
+                    )
+                    return
+                elif len(new_chunks) == 0:
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Chunk {chunk} disappeared from worktree with no replacement"
+                    )
+                    return
+
             # Chunk: docs/chunks/orch_review_phase - Special handling for REVIEW phase to route to _handle_review_result
             # Chunk: docs/chunks/orch_pre_review_rebase - Special handling for REBASE phase outcomes
             if phase == WorkUnitPhase.REVIEW:
                 # REVIEW phase needs special handling to parse the decision
-                worktree_path = self.worktree_manager.get_worktree_path(chunk)
                 await self._handle_review_result(work_unit, worktree_path, result)
             elif phase == WorkUnitPhase.REBASE:
                 # REBASE phase completed successfully - merge clean, tests pass
@@ -1416,6 +1469,179 @@ class Scheduler:
     def get_running_chunks(self) -> list[str]:
         """Get list of currently running chunk names."""
         return list(self._running_agents.keys())
+
+    # Chunk: docs/chunks/orch_rename_propagation - Propagate chunk rename through all data structures
+    async def _propagate_rename(
+        self, work_unit: WorkUnit, old_name: str, new_name: str
+    ) -> WorkUnit:
+        """Propagate a chunk rename through all orchestrator data structures.
+
+        When a chunk is renamed during a phase (e.g., via `ve chunk suggest-prefix`),
+        this method atomically updates:
+        1. Database work_units table (INSERT + DELETE since chunk is PK)
+        2. Filesystem .ve/chunks/{old}/ -> .ve/chunks/{new}/
+        3. Git branch orch/{old} -> orch/{new}
+        4. Cross-references in other work units (blocked_by, conflict_verdicts)
+        5. conflict_analyses table entries
+        6. In-memory _running_agents dict key
+        7. The baseline_implementing snapshot (for subsequent phases)
+
+        Args:
+            work_unit: The work unit being renamed
+            old_name: Original chunk name
+            new_name: New chunk name
+
+        Returns:
+            Updated WorkUnit with new chunk name
+        """
+        logger.info(f"Propagating rename: {old_name} -> {new_name}")
+
+        # Step 1: Git branch rename (do this first - easier to roll back if it fails)
+        try:
+            self.worktree_manager.rename_branch(old_name, new_name)
+            logger.info(f"Renamed git branch orch/{old_name} -> orch/{new_name}")
+        except WorktreeError as e:
+            logger.error(f"Failed to rename git branch: {e}")
+            raise
+
+        # Step 2: Filesystem rename
+        try:
+            self.worktree_manager.rename_chunk_directory(old_name, new_name)
+            logger.info(f"Renamed chunk directory .ve/chunks/{old_name} -> .ve/chunks/{new_name}")
+        except WorktreeError as e:
+            # Try to roll back git branch rename
+            try:
+                self.worktree_manager.rename_branch(new_name, old_name)
+            except WorktreeError:
+                pass
+            logger.error(f"Failed to rename chunk directory: {e}")
+            raise
+
+        # Step 3: Database work unit rename
+        try:
+            renamed_unit = self.store.rename_work_unit(old_name, new_name)
+
+            # Update the worktree path to point to the new location
+            if renamed_unit.worktree:
+                new_worktree_path = str(self.worktree_manager.get_worktree_path(new_name))
+                renamed_unit.worktree = new_worktree_path
+                renamed_unit.updated_at = datetime.now(timezone.utc)
+
+            # Update baseline_implementing to use new name
+            if old_name in renamed_unit.baseline_implementing:
+                renamed_unit.baseline_implementing = [
+                    new_name if c == old_name else c
+                    for c in renamed_unit.baseline_implementing
+                ]
+
+            self.store.update_work_unit(renamed_unit)
+            logger.info(f"Renamed work unit in database")
+        except ValueError as e:
+            # Database rename failed - try to roll back filesystem and git
+            try:
+                self.worktree_manager.rename_chunk_directory(new_name, old_name)
+            except WorktreeError:
+                pass
+            try:
+                self.worktree_manager.rename_branch(new_name, old_name)
+            except WorktreeError:
+                pass
+            logger.error(f"Failed to rename work unit in database: {e}")
+            raise
+
+        # Step 4: Update cross-references in other work units
+        blocked_by_updated = self.store.update_blocked_by_references(old_name, new_name)
+        if blocked_by_updated > 0:
+            logger.info(f"Updated blocked_by references in {blocked_by_updated} work units")
+
+        verdicts_updated = self.store.update_conflict_verdicts_references(old_name, new_name)
+        if verdicts_updated > 0:
+            logger.info(f"Updated conflict_verdicts references in {verdicts_updated} work units")
+
+        # Step 5: Update conflict_analyses table
+        analyses_updated = self.store.update_conflict_analyses_references(old_name, new_name)
+        if analyses_updated > 0:
+            logger.info(f"Updated conflict_analyses references in {analyses_updated} rows")
+
+        # Step 6: Update in-memory _running_agents dict
+        async with self._lock:
+            if old_name in self._running_agents:
+                self._running_agents[new_name] = self._running_agents.pop(old_name)
+                logger.info(f"Updated _running_agents dict key")
+
+        # Broadcast via WebSocket
+        await broadcast_work_unit_update(
+            chunk=new_name,
+            status=renamed_unit.status.value,
+            phase=renamed_unit.phase.value,
+        )
+
+        logger.info(f"Rename propagation complete: {old_name} -> {new_name}")
+        return renamed_unit
+
+    # Chunk: docs/chunks/orch_rename_propagation - Detect chunk rename by comparing baseline to current
+    def _detect_rename(
+        self, work_unit: WorkUnit, worktree_path: Path
+    ) -> tuple[str, str] | None:
+        """Detect if the work unit's chunk was renamed during the phase.
+
+        Compares the current IMPLEMENTING chunks in the worktree against the
+        baseline snapshot captured at worktree creation time. If the work unit's
+        original chunk name is missing but a new IMPLEMENTING chunk exists,
+        a rename occurred.
+
+        Args:
+            work_unit: The work unit to check
+            worktree_path: Path to the worktree
+
+        Returns:
+            Tuple of (old_name, new_name) if a rename was detected,
+            None if no rename or detection is ambiguous.
+
+        The caller should handle ambiguous cases (zero or >1 new chunks)
+        by marking the work unit as NEEDS_ATTENTION.
+        """
+        from chunks import Chunks
+
+        # If no baseline was captured, we can't detect renames
+        if not work_unit.baseline_implementing:
+            return None
+
+        # Get current IMPLEMENTING chunks in the worktree
+        chunks_manager = Chunks(worktree_path)
+        current_implementing = set(chunks_manager.list_implementing_chunks())
+        baseline_set = set(work_unit.baseline_implementing)
+
+        # Check if the work unit's chunk is still present
+        if work_unit.chunk in current_implementing:
+            # No rename - chunk is still there
+            return None
+
+        # The work unit's chunk is missing. Check for new chunks.
+        new_chunks = current_implementing - baseline_set
+
+        if len(new_chunks) == 1:
+            # Exactly one new chunk - this is our rename
+            new_name = new_chunks.pop()
+            logger.info(
+                f"Detected rename: {work_unit.chunk} -> {new_name}"
+            )
+            return (work_unit.chunk, new_name)
+
+        elif len(new_chunks) == 0:
+            # Chunk disappeared entirely with no replacement
+            logger.warning(
+                f"Chunk {work_unit.chunk} disappeared from worktree with no replacement"
+            )
+            return None
+
+        else:
+            # Multiple new chunks - ambiguous, cannot determine which is the rename
+            logger.warning(
+                f"Ambiguous rename detection for {work_unit.chunk}: "
+                f"multiple new chunks {new_chunks}"
+            )
+            return None
 
 
 def create_scheduler(

@@ -223,6 +223,26 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
                 return chunk_name
         return None
 
+    # Chunk: docs/chunks/orch_rename_propagation - Lists all IMPLEMENTING chunks for baseline snapshot
+    def list_implementing_chunks(self) -> list[str]:
+        """Return all chunks with IMPLEMENTING status.
+
+        This is similar to get_current_chunk() but returns ALL IMPLEMENTING chunks,
+        not just the first one. Used by the orchestrator to snapshot the baseline
+        IMPLEMENTING chunks in a worktree for rename detection.
+
+        Returns:
+            List of chunk directory names with IMPLEMENTING status, in causal order.
+            Returns empty list if no IMPLEMENTING chunks exist.
+        """
+        implementing_chunks = []
+        chunks = self.list_chunks()
+        for chunk_name in chunks:
+            frontmatter = self.parse_chunk_frontmatter(chunk_name)
+            if frontmatter and frontmatter.status == ChunkStatus.IMPLEMENTING:
+                implementing_chunks.append(chunk_name)
+        return implementing_chunks
+
     # Chunk: docs/chunks/chunk_list_flags - New method returning up to 10 most recently created ACTIVE chunks
     def get_recent_active_chunks(self, limit: int = 10) -> list[str]:
         """Return the most recently created ACTIVE chunks.
