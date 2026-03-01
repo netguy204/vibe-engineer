@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/source_files.py
+- src/integrity.py
+- src/backreferences.py
+- tests/test_source_files.py
+- tests/test_backreferences.py
 code_references: []
 narrative: arch_review_cleanup
 investigation: null

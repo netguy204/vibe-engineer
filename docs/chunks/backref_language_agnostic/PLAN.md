@@ -8,170 +8,101 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The implementation extracts source file enumeration into a shared utility module (`src/source_files.py`) that both `integrity.py` and `backreferences.py` use. The utility leverages git when available to automatically respect `.gitignore`, eliminating the need to maintain a hardcoded exclusion list for dependency directories.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Key design decisions:
+- Use `git ls-files --cached --others --exclude-standard` in git repositories to enumerate files while respecting `.gitignore`
+- Filter files by a configurable set of source extensions (py, js, ts, go, rs, etc.)
+- Fall back to recursive glob with a minimal exclusion set for non-git projects (per DEC-002: git not assumed)
+- Fix the filter bug in `count_backreferences` that silently excluded files with only subsystem or narrative backreferences
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/backref_language_agnostic/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per TESTING_PHILOSOPHY.md, tests are written for the semantic behaviors:
+- Git-based enumeration respects `.gitignore`
+- Non-git fallback excludes common dependency directories
+- Multiple programming languages are supported
+- The filter bug fix includes subsystem/narrative-only files
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the source_files.py utility module
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a new module `src/source_files.py` with:
+- `SOURCE_EXTENSIONS` constant: Set of known source file extensions (py, js, ts, jsx, tsx, rb, go, rs, java, kt, swift, c, cpp, h, cs, etc.)
+- `FALLBACK_EXCLUDE_DIRS` constant: Minimal set of directories to exclude in non-git mode (.git, __pycache__, node_modules, .venv, venv, vendor, dist, build, .tox, .pytest_cache)
+- `_is_git_repository()`: Check if directory is inside a git repo
+- `_enumerate_git_files()`: Use `git ls-files --cached --others --exclude-standard`
+- `_enumerate_fallback_files()`: Recursive glob with exclusion set
+- `_filter_by_extension()`: Filter paths by extension set
+- `enumerate_source_files()`: Main entry point that selects strategy and filters
 
-Example:
+Location: src/source_files.py
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Update integrity.py to use the shared utility
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Replace the hardcoded `src/**/*.py` glob in `_validate_code_backreferences` with a call to `enumerate_source_files()`. Remove any hardcoded directory exclusions - let git handle that via `.gitignore`.
 
-Location: src/segment/format.rs
+Location: src/integrity.py
 
-### Step 2: Implement header serialization
+### Step 3: Update backreferences.py to use the shared utility
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Update `count_backreferences` to use `enumerate_source_files()` when no explicit `source_patterns` argument is provided. The explicit patterns argument is retained for backward compatibility.
 
-### Step 3: ...
+Location: src/backreferences.py
 
----
+### Step 4: Fix the filter bug in count_backreferences
 
-**BACKREFERENCE COMMENTS**
+Change the filter condition from `if chunk_refs:` to `if chunk_refs or narrative_refs or subsystem_refs:` so that files containing only `# Subsystem:` or `# Narrative:` backreferences are included in results.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: src/backreferences.py
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Add tests for source_files.py
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Create `tests/test_source_files.py` with tests covering:
+- Git-based enumeration returns files with supported extensions
+- Respects `.gitignore` (node_modules, etc. excluded)
+- Returns files from multiple programming languages
+- Excludes non-source files (.txt, .md, .json)
+- Includes untracked but not-ignored files
+- Custom extensions parameter works
+- Non-git fallback discovers source files
+- Non-git fallback excludes __pycache__, node_modules, .venv
+- Empty directory returns empty list
+- Nested directories are traversed
+- Returns absolute paths
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Location: tests/test_source_files.py
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Add tests for the filter bug fix
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Create tests in `tests/test_backreferences.py` covering:
+- Files with only `# Subsystem:` refs are included
+- Files with only `# Narrative:` refs are included
+- Files with subsystem + narrative (but no chunk) refs are included
+- Files with only chunk refs still work (regression test)
+- Files with no refs are excluded
+
+Location: tests/test_backreferences.py
+
+### Step 7: Add tests for language-agnostic scanning in backreferences
+
+Add tests verifying that `count_backreferences` finds refs in:
+- JavaScript files (.js)
+- TypeScript files (.ts)
+- Go files (.go)
+- And that explicit `source_patterns` argument still works for backward compatibility
+
+Location: tests/test_backreferences.py
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk modifies existing modules and adds a new utility module.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Symlink resolution**: Need to ensure paths are resolved consistently when comparing file paths (e.g., /var vs /private/var on macOS). Addressed by calling `.resolve()` on the project directory.
+- **Git not installed**: The `_is_git_repository()` function handles the `FileNotFoundError` case when git is not installed, falling back to non-git enumeration.
+- **Large repositories**: For very large repos, `git ls-files` output could be substantial. This is acceptable since git handles this efficiently and the alternative (recursive glob) would be worse.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+None - implementation followed the plan as designed.
