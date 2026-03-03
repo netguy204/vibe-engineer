@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from orchestrator.models import WorkUnit, WorkUnitPhase, WorkUnitStatus
-from orchestrator.state import StateStore, get_default_db_path
+from orchestrator.state import StateStore, StaleWriteError, get_default_db_path
 
 
 @pytest.fixture
@@ -340,6 +340,7 @@ class TestDefaultDbPath:
         assert result == tmp_path / ".ve" / "orchestrator.db"
 
 
+# Chunk: docs/chunks/orch_attention_reason - State persistence tests for attention_reason field
 class TestAttentionReasonPersistence:
     """Tests for attention_reason field persistence."""
 
@@ -753,3 +754,571 @@ class TestRetainWorktreePersistence:
         # Retrieve again and verify
         final = store.get_work_unit(sample_work_unit.chunk)
         assert final.retain_worktree is False
+
+
+# Chunk: docs/chunks/orch_state_transactions - Transaction atomicity tests
+class TestTransactionContextManager:
+    """Tests for the transaction context manager."""
+
+    def test_transaction_commits_on_success(self, store):
+        """Transaction commits when no exception is raised."""
+        with store.transaction():
+            store.connection.execute(
+                "INSERT INTO config (key, value) VALUES (?, ?)",
+                ("test_key", "test_value"),
+            )
+
+        # Value should be persisted
+        result = store.get_config("test_key")
+        assert result == "test_value"
+
+    def test_transaction_rollback_on_exception(self, store):
+        """Transaction rolls back when an exception is raised."""
+        try:
+            with store.transaction():
+                store.connection.execute(
+                    "INSERT INTO config (key, value) VALUES (?, ?)",
+                    ("rollback_key", "rollback_value"),
+                )
+                # Force an exception
+                raise ValueError("Simulated failure")
+        except ValueError:
+            pass
+
+        # Value should NOT be persisted
+        result = store.get_config("rollback_key")
+        assert result is None
+
+    def test_transaction_reraises_exception(self, store):
+        """Transaction re-raises the original exception after rollback."""
+        with pytest.raises(ValueError, match="Original error"):
+            with store.transaction():
+                raise ValueError("Original error")
+
+
+class TestCreateWorkUnitAtomicity:
+    """Tests for create_work_unit transaction atomicity."""
+
+    def test_create_work_unit_atomic_success(self, store, sample_work_unit):
+        """Work unit and status log are created atomically on success."""
+        store.create_work_unit(sample_work_unit)
+
+        # Both work unit and status log should exist
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        history = store.get_status_history(sample_work_unit.chunk)
+
+        assert retrieved is not None
+        assert len(history) == 1
+        assert history[0]["new_status"] == "READY"
+
+    def test_create_work_unit_rollback_on_duplicate(self, store, sample_work_unit):
+        """Duplicate work unit creation rolls back cleanly."""
+        store.create_work_unit(sample_work_unit)
+
+        # Try to create duplicate (should fail)
+        with pytest.raises(ValueError, match="already exists"):
+            store.create_work_unit(sample_work_unit)
+
+        # Original should still exist, with only one status log entry
+        history = store.get_status_history(sample_work_unit.chunk)
+        assert len(history) == 1
+
+
+class TestUpdateWorkUnitAtomicity:
+    """Tests for update_work_unit transaction atomicity."""
+
+    def test_update_work_unit_atomic_success(self, store, sample_work_unit):
+        """Work unit update and status log are created atomically on success."""
+        store.create_work_unit(sample_work_unit)
+
+        # Update status
+        sample_work_unit.status = WorkUnitStatus.RUNNING
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        # Both update and status log should be persisted
+        retrieved = store.get_work_unit(sample_work_unit.chunk)
+        history = store.get_status_history(sample_work_unit.chunk)
+
+        assert retrieved.status == WorkUnitStatus.RUNNING
+        assert len(history) == 2
+        assert history[1]["old_status"] == "READY"
+        assert history[1]["new_status"] == "RUNNING"
+
+    def test_update_nonexistent_rollback(self, store, sample_work_unit):
+        """Update of nonexistent work unit rolls back cleanly."""
+        # Try to update nonexistent work unit
+        with pytest.raises(ValueError, match="not found"):
+            store.update_work_unit(sample_work_unit)
+
+        # No work unit or status log should exist
+        assert store.get_work_unit(sample_work_unit.chunk) is None
+        assert store.get_status_history(sample_work_unit.chunk) == []
+
+    def test_update_status_log_tied_to_update(self, store, sample_work_unit):
+        """Status log entry is only created when update succeeds."""
+        store.create_work_unit(sample_work_unit)
+
+        # Initial state: 1 status log entry
+        history_before = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_before) == 1
+
+        # Update without changing status (should not add log entry)
+        sample_work_unit.phase = WorkUnitPhase.PLAN
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        history_after = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_after) == 1
+
+        # Update with status change (should add log entry)
+        sample_work_unit.status = WorkUnitStatus.DONE
+        sample_work_unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(sample_work_unit)
+
+        history_final = store.get_status_history(sample_work_unit.chunk)
+        assert len(history_final) == 2
+
+
+# Chunk: docs/chunks/orch_ready_critical_path - Critical-path scheduling for ready queue
+class TestReadyQueueCriticalPath:
+    """Tests for critical-path ordering in get_ready_queue.
+
+    The ready queue should prioritize chunks that block more other work,
+    enabling better throughput by unblocking dependency chains first.
+    """
+
+    def test_chunks_blocking_more_dispatched_first(self, store):
+        """A chunk blocking 2 others is returned before a chunk blocking 0."""
+        now = datetime.now(timezone.utc)
+
+        # chunk_a blocks 2 others
+        chunk_a = WorkUnit(
+            chunk="chunk_a",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(chunk_a)
+
+        # chunk_b blocks 0 others
+        chunk_b = WorkUnit(
+            chunk="chunk_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(chunk_b)
+
+        # chunk_c blocks 1 other
+        chunk_c = WorkUnit(
+            chunk="chunk_c",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(chunk_c)
+
+        # Create BLOCKED/READY chunks that depend on these READY chunks
+        # Two chunks blocked by chunk_a
+        blocked_by_a_1 = WorkUnit(
+            chunk="blocked_by_a_1",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_a"],
+            created_at=now + timedelta(seconds=3),
+            updated_at=now + timedelta(seconds=3),
+        )
+        store.create_work_unit(blocked_by_a_1)
+
+        blocked_by_a_2 = WorkUnit(
+            chunk="blocked_by_a_2",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,  # READY status, also counts
+            blocked_by=["chunk_a"],
+            created_at=now + timedelta(seconds=4),
+            updated_at=now + timedelta(seconds=4),
+        )
+        store.create_work_unit(blocked_by_a_2)
+
+        # One chunk blocked by chunk_c
+        blocked_by_c = WorkUnit(
+            chunk="blocked_by_c",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_c"],
+            created_at=now + timedelta(seconds=5),
+            updated_at=now + timedelta(seconds=5),
+        )
+        store.create_work_unit(blocked_by_c)
+
+        # Get ready queue
+        ready_queue = store.get_ready_queue()
+
+        # Filter to only the original READY chunks (not the blocked_by_a_2 which is also READY)
+        ready_chunks = [u.chunk for u in ready_queue if u.chunk in ["chunk_a", "chunk_b", "chunk_c"]]
+
+        # Expected order: chunk_a (blocks 2), chunk_c (blocks 1), chunk_b (blocks 0)
+        assert ready_chunks[0] == "chunk_a", f"Expected chunk_a first, got {ready_chunks}"
+        assert ready_chunks[1] == "chunk_c", f"Expected chunk_c second, got {ready_chunks}"
+        assert ready_chunks[2] == "chunk_b", f"Expected chunk_b third, got {ready_chunks}"
+
+    def test_priority_tiebreaker_when_blocks_count_equal(self, store):
+        """Higher priority wins when blocks_count is equal."""
+        now = datetime.now(timezone.utc)
+
+        # Two READY chunks with same blocks_count (0) but different priority
+        low_priority = WorkUnit(
+            chunk="low_priority",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=1,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(low_priority)
+
+        high_priority = WorkUnit(
+            chunk="high_priority",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=10,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(high_priority)
+
+        ready_queue = store.get_ready_queue()
+
+        # Higher priority should come first when blocks_count is equal
+        assert ready_queue[0].chunk == "high_priority"
+        assert ready_queue[1].chunk == "low_priority"
+
+    def test_created_at_tiebreaker_when_blocks_count_and_priority_equal(self, store):
+        """Earlier created_at wins when both blocks_count and priority are equal."""
+        now = datetime.now(timezone.utc)
+
+        # Two READY chunks with same blocks_count (0) and same priority
+        older = WorkUnit(
+            chunk="older",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=5,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(older)
+
+        newer = WorkUnit(
+            chunk="newer",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=5,
+            created_at=now + timedelta(seconds=10),
+            updated_at=now + timedelta(seconds=10),
+        )
+        store.create_work_unit(newer)
+
+        ready_queue = store.get_ready_queue()
+
+        # Earlier created_at should come first
+        assert ready_queue[0].chunk == "older"
+        assert ready_queue[1].chunk == "newer"
+
+    def test_only_counts_blocked_and_ready_status(self, store):
+        """blocks_count only counts work units with BLOCKED or READY status."""
+        now = datetime.now(timezone.utc)
+
+        # blocker_a is READY
+        blocker_a = WorkUnit(
+            chunk="blocker_a",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(blocker_a)
+
+        # blocker_b is also READY
+        blocker_b = WorkUnit(
+            chunk="blocker_b",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(blocker_b)
+
+        # Create a DONE chunk that references blocker_a - should NOT count
+        done_unit = WorkUnit(
+            chunk="done_unit",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.DONE,
+            blocked_by=["blocker_a"],
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(done_unit)
+
+        # Create a BLOCKED chunk that references blocker_b - should count
+        blocked_unit = WorkUnit(
+            chunk="blocked_unit",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_b"],
+            created_at=now + timedelta(seconds=3),
+            updated_at=now + timedelta(seconds=3),
+        )
+        store.create_work_unit(blocked_unit)
+
+        ready_queue = store.get_ready_queue()
+        ready_chunks = [u.chunk for u in ready_queue]
+
+        # blocker_b should come first (blocks 1 BLOCKED unit)
+        # blocker_a should come second (only blocks a DONE unit, which doesn't count)
+        assert ready_chunks[0] == "blocker_b", f"Expected blocker_b first, got {ready_chunks}"
+        assert ready_chunks[1] == "blocker_a", f"Expected blocker_a second, got {ready_chunks}"
+
+    def test_limit_applied_after_sorting(self, store):
+        """Limit is applied after sorting, ensuring critical-path chunks are included."""
+        now = datetime.now(timezone.utc)
+
+        # Create 3 READY chunks with different blocks_count
+        # Create them in reverse order of criticality to ensure sorting works
+        chunk_low = WorkUnit(
+            chunk="chunk_low",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(chunk_low)
+
+        chunk_med = WorkUnit(
+            chunk="chunk_med",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=1),
+            updated_at=now + timedelta(seconds=1),
+        )
+        store.create_work_unit(chunk_med)
+
+        chunk_high = WorkUnit(
+            chunk="chunk_high",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now + timedelta(seconds=2),
+            updated_at=now + timedelta(seconds=2),
+        )
+        store.create_work_unit(chunk_high)
+
+        # chunk_high blocks 2, chunk_med blocks 1, chunk_low blocks 0
+        for i in range(2):
+            blocked = WorkUnit(
+                chunk=f"blocked_by_high_{i}",
+                phase=WorkUnitPhase.IMPLEMENT,
+                status=WorkUnitStatus.BLOCKED,
+                blocked_by=["chunk_high"],
+                created_at=now + timedelta(seconds=3 + i),
+                updated_at=now + timedelta(seconds=3 + i),
+            )
+            store.create_work_unit(blocked)
+
+        blocked_by_med = WorkUnit(
+            chunk="blocked_by_med",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["chunk_med"],
+            created_at=now + timedelta(seconds=5),
+            updated_at=now + timedelta(seconds=5),
+        )
+        store.create_work_unit(blocked_by_med)
+
+        # Get ready queue with limit=2
+        ready_queue = store.get_ready_queue(limit=2)
+
+        # Should return the 2 most critical chunks
+        ready_chunks = [u.chunk for u in ready_queue]
+        assert len(ready_chunks) == 2
+        assert ready_chunks[0] == "chunk_high", f"Expected chunk_high first, got {ready_chunks}"
+        assert ready_chunks[1] == "chunk_med", f"Expected chunk_med second, got {ready_chunks}"
+
+
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+class TestOptimisticLocking:
+    """Tests for optimistic locking in work unit updates."""
+
+    def test_stale_write_raises_error(self, store, sample_work_unit):
+        """Updating with stale expected_updated_at raises StaleWriteError."""
+        store.create_work_unit(sample_work_unit)
+
+        # Read the work unit to get its current updated_at
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        stale_timestamp = unit.updated_at
+
+        # Simulate another process updating the work unit
+        unit.status = WorkUnitStatus.RUNNING
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)  # This advances updated_at
+
+        # Now try to update with the stale timestamp
+        unit2 = store.get_work_unit(sample_work_unit.chunk)
+        unit2.priority = 999
+        unit2.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError) as exc_info:
+            store.update_work_unit(unit2, expected_updated_at=stale_timestamp)
+
+        assert exc_info.value.chunk == sample_work_unit.chunk
+        assert exc_info.value.expected_updated_at == stale_timestamp
+
+    def test_update_without_expected_timestamp_succeeds(self, store, sample_work_unit):
+        """Updates without expected_updated_at bypass optimistic locking."""
+        store.create_work_unit(sample_work_unit)
+
+        # Simulate reading, then another update happens, then we update
+        unit = store.get_work_unit(sample_work_unit.chunk)
+
+        # Another process updates the work unit
+        other = store.get_work_unit(sample_work_unit.chunk)
+        other.status = WorkUnitStatus.RUNNING
+        other.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(other)
+
+        # Now we update without expected_updated_at - should succeed despite stale data
+        unit.priority = 100
+        unit.updated_at = datetime.now(timezone.utc)
+
+        updated = store.update_work_unit(unit)
+        assert updated.priority == 100
+
+    def test_update_with_matching_timestamp_succeeds(self, store, sample_work_unit):
+        """Updates with matching expected_updated_at succeed."""
+        store.create_work_unit(sample_work_unit)
+
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        expected = unit.updated_at
+        unit.priority = 200
+        unit.updated_at = datetime.now(timezone.utc)
+
+        updated = store.update_work_unit(unit, expected_updated_at=expected)
+        assert updated.priority == 200
+
+    def test_stale_write_error_message(self, store, sample_work_unit):
+        """StaleWriteError contains helpful debugging information."""
+        store.create_work_unit(sample_work_unit)
+
+        unit = store.get_work_unit(sample_work_unit.chunk)
+        stale_timestamp = unit.updated_at
+
+        # Update to advance the timestamp
+        unit.status = WorkUnitStatus.RUNNING
+        unit.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(unit)
+
+        unit2 = store.get_work_unit(sample_work_unit.chunk)
+        unit2.priority = 50
+        unit2.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError) as exc_info:
+            store.update_work_unit(unit2, expected_updated_at=stale_timestamp)
+
+        # Check error message contains useful info
+        error_msg = str(exc_info.value)
+        assert sample_work_unit.chunk in error_msg
+        assert "Stale write detected" in error_msg
+        assert "expected updated_at=" in error_msg
+        assert "actual=" in error_msg
+
+
+class TestSchedulerApiRace:
+    """Tests for scheduler/API concurrent modification protection.
+
+    These tests demonstrate the race condition protection that optimistic
+    locking provides when the scheduler and API both try to update the
+    same work unit.
+    """
+
+    def test_api_update_not_lost_during_scheduler_update(self, store):
+        """API-driven priority change is not silently overwritten by scheduler."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="race_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            priority=0,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # Simulate scheduler reading the work unit
+        scheduler_view = store.get_work_unit("race_test")
+        scheduler_expected = scheduler_view.updated_at
+
+        # Simulate API updating priority while scheduler has stale view
+        api_view = store.get_work_unit("race_test")
+        api_expected = api_view.updated_at
+        api_view.priority = 100
+        api_view.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(api_view, expected_updated_at=api_expected)
+
+        # Now scheduler tries to update with stale data
+        scheduler_view.status = WorkUnitStatus.RUNNING
+        scheduler_view.updated_at = datetime.now(timezone.utc)
+
+        with pytest.raises(StaleWriteError):
+            store.update_work_unit(scheduler_view, expected_updated_at=scheduler_expected)
+
+        # Verify API's priority change was preserved
+        final = store.get_work_unit("race_test")
+        assert final.priority == 100
+
+    def test_sequential_updates_with_optimistic_locking(self, store):
+        """Sequential updates work correctly when each uses current timestamp."""
+        now = datetime.now(timezone.utc)
+        unit = WorkUnit(
+            chunk="sequential_test",
+            phase=WorkUnitPhase.GOAL,
+            status=WorkUnitStatus.READY,
+            created_at=now,
+            updated_at=now,
+        )
+        store.create_work_unit(unit)
+
+        # First update
+        u1 = store.get_work_unit("sequential_test")
+        expected1 = u1.updated_at
+        u1.phase = WorkUnitPhase.PLAN
+        u1.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u1, expected_updated_at=expected1)
+
+        # Second update (re-read to get new timestamp)
+        u2 = store.get_work_unit("sequential_test")
+        expected2 = u2.updated_at
+        u2.phase = WorkUnitPhase.IMPLEMENT
+        u2.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u2, expected_updated_at=expected2)
+
+        # Third update
+        u3 = store.get_work_unit("sequential_test")
+        expected3 = u3.updated_at
+        u3.status = WorkUnitStatus.RUNNING
+        u3.updated_at = datetime.now(timezone.utc)
+        store.update_work_unit(u3, expected_updated_at=expected3)
+
+        # Verify final state
+        final = store.get_work_unit("sequential_test")
+        assert final.phase == WorkUnitPhase.IMPLEMENT
+        assert final.status == WorkUnitStatus.RUNNING

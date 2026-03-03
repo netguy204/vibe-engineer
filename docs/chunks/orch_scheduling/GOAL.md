@@ -11,7 +11,7 @@ code_paths:
 - src/orchestrator/agent.py
 - src/orchestrator/scheduler.py
 - src/orchestrator/daemon.py
-- src/orchestrator/api.py
+- src/orchestrator/api/scheduling.py
 - src/ve.py
 - tests/test_orchestrator_worktree.py
 - tests/test_orchestrator_agent.py
@@ -49,22 +49,22 @@ code_references:
   - ref: src/orchestrator/state.py#StateStore::_migrate_v2
     implements: "Schema migration adding priority, session_id, and config table"
   - ref: src/orchestrator/state.py#StateStore::get_ready_queue
-    implements: "Ready queue ordered by priority DESC, created_at ASC"
+    implements: "Ready queue ordered by blocks_count DESC, priority DESC, created_at ASC"
   - ref: src/orchestrator/state.py#StateStore::get_config
     implements: "Config key-value retrieval"
   - ref: src/orchestrator/state.py#StateStore::set_config
     implements: "Config key-value storage"
-  - ref: src/orchestrator/api.py#inject_endpoint
+  - ref: src/orchestrator/api/scheduling.py#inject_endpoint
     implements: "POST /work-units/inject - adds chunk to work pool"
-  - ref: src/orchestrator/api.py#queue_endpoint
+  - ref: src/orchestrator/api/scheduling.py#queue_endpoint
     implements: "GET /work-units/queue - shows ready queue by priority"
-  - ref: src/orchestrator/api.py#prioritize_endpoint
+  - ref: src/orchestrator/api/scheduling.py#prioritize_endpoint
     implements: "PATCH /work-units/{chunk}/priority - updates priority"
-  - ref: src/orchestrator/api.py#get_config_endpoint
+  - ref: src/orchestrator/api/scheduling.py#get_config_endpoint
     implements: "GET /config - retrieves daemon configuration"
-  - ref: src/orchestrator/api.py#update_config_endpoint
+  - ref: src/orchestrator/api/scheduling.py#update_config_endpoint
     implements: "PATCH /config - updates daemon configuration"
-  - ref: src/orchestrator/api.py#_detect_initial_phase
+  - ref: src/orchestrator/api/scheduling.py#_detect_initial_phase
     implements: "Phase detection logic for inject command"
   - ref: src/orchestrator/daemon.py#_run_daemon_async
     implements: "Async daemon runner with scheduler integration"

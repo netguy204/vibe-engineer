@@ -3,14 +3,14 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/chunk.py
 - src/chunks.py
 - src/templates/chunk/GOAL.md.jinja2
 - CLAUDE.md
 - .claude/commands/chunk-create.md
 - tests/test_chunk_validate.py
 code_references:
-  - ref: src/models.py#ChunkFrontmatter
+  - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Optional investigation field in chunk frontmatter schema"
   - ref: src/chunks.py#Chunks::validate_investigation_ref
     implements: "Validation that referenced investigations exist"
@@ -24,6 +24,10 @@ code_references:
     implements: "Workflow guidance for populating investigation field from proposed_chunks"
   - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
     implements: "Tests for investigation reference validation"
+  - ref: src/chunk_validation.py#validate_chunk_complete
+    implements: "Integration of investigation validation into chunk completion"
+  - ref: src/integrity.py#validate_chunk_investigation_ref
+    implements: "Validation that referenced investigations exist"
 narrative: null
 subsystems: []
 created_after:

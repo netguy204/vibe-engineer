@@ -102,14 +102,14 @@ INVESTIGATION:
 {# Chunk: docs/chunks/bidirectional_refs - subsystems field for bidirectional chunk-subsystem navigation #}
 SUBSYSTEMS:
 - Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is {NNNN}-{short_name}, relationship is "implements" or "uses"
+- Format: subsystem_id is the subsystem directory name, relationship is "implements" or "uses"
 - "implements": This chunk directly implements part of the subsystem's functionality
 - "uses": This chunk depends on or uses the subsystem's functionality
 - Example:
   subsystems:
-    - subsystem_id: "0001-validation"
+    - subsystem_id: "validation"
       relationship: implements
-    - subsystem_id: "0002-frontmatter"
+    - subsystem_id: "frontmatter"
       relationship: uses
 - Validated by `ve chunk validate` to ensure referenced subsystems exist
 - When a chunk that implements a subsystem is completed, a reference should be added to
@@ -146,7 +146,7 @@ BUG_TYPE:
 
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/0042-foo/migrate.py)
+  should be stored in the chunk directory (e.g., docs/chunks/foo/migrate.py)
 - These artifacts help future archaeologists understand what the chunk did
 - Unlike code in src/, chunk artifacts are not expected to be maintained long-term
 - Examples: data migration scripts, one-time fixups, analysis tools used during implementation

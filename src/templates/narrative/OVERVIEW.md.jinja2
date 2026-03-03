@@ -19,7 +19,7 @@ PROPOSED_CHUNKS:
 - Starts empty; entries are added as prompts are turned into chunks via /chunk-create
 - Each entry records which prompt was refined and where the resulting chunk lives
 - prompt: The prompt text from this document that was used to create the chunk
-- chunk_directory: The created chunk directory (e.g., "0007-feature_name"), null until created
+- chunk_directory: The created chunk directory (e.g., "feature_name"), null until created
 - depends_on: Optional array of integer indices expressing implementation dependencies.
 
   SEMANTICS (null vs empty distinction):

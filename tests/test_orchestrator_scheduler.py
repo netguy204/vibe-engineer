@@ -1,3272 +1,38 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/orch_unblock_transition - Fix NEEDS_ATTENTION to READY transition on unblock
-"""Tests for the orchestrator scheduler."""
+# Chunk: docs/chunks/orch_broadcast_invariant - Test coverage for WebSocket broadcast invariant
+# Chunk: docs/chunks/orch_api_retry - Tests for API retry functionality
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase tests
+"""Tests for orchestrator scheduler - WebSocket broadcasts, API retry, and REBASE phase.
 
-import asyncio
+These tests cover:
+- WebSocket broadcast invariant (every state change broadcasts)
+- API retry logic (is_retryable_api_error, retry scheduling)
+- REBASE phase between IMPLEMENT and REVIEW
+
+Other scheduler tests are split into focused modules:
+- test_orchestrator_scheduler_dispatch.py - Core dispatch mechanics
+- test_orchestrator_scheduler_results.py - Agent result handling
+- test_orchestrator_scheduler_activation.py - Chunk activation
+- test_orchestrator_scheduler_worktree.py - Deferred worktree creation
+- test_orchestrator_scheduler_injection.py - Answer injection and conflicts
+- test_orchestrator_scheduler_unblock.py - Unblock flows
+- test_orchestrator_scheduler_review.py - Review phase
+
+Fixtures are defined in conftest.py:
+- state_store, mock_worktree_manager, mock_agent_runner, orchestrator_config, scheduler
+"""
+
 import pytest
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
-from orchestrator.scheduler import (
-    Scheduler,
-    SchedulerError,
-    create_scheduler,
-    verify_chunk_active_status,
-    VerificationStatus,
-    VerificationResult,
-    activate_chunk_in_worktree,
-    restore_displaced_chunk,
-)
+from orchestrator.retry import is_retryable_api_error
 from orchestrator.models import (
     AgentResult,
-    OrchestratorConfig,
-    ReviewDecision,
     WorkUnit,
     WorkUnitPhase,
     WorkUnitStatus,
 )
-from orchestrator.state import StateStore
-
-
-@pytest.fixture
-def state_store(tmp_path):
-    """Create a state store for testing."""
-    db_path = tmp_path / "test.db"
-    store = StateStore(db_path)
-    store.initialize()
-    return store
-
-
-@pytest.fixture
-def mock_worktree_manager():
-    """Create a mock worktree manager."""
-    manager = MagicMock()
-    manager.create_worktree.return_value = Path("/tmp/worktree")
-    manager.get_worktree_path.return_value = Path("/tmp/worktree")
-    manager.get_log_path.return_value = Path("/tmp/logs")
-    manager.worktree_exists.return_value = False
-    manager.has_uncommitted_changes.return_value = False
-    manager.has_changes.return_value = False
-    manager.commit_changes.return_value = True
-    return manager
-
-
-@pytest.fixture
-def mock_agent_runner():
-    """Create a mock agent runner."""
-    runner = MagicMock()
-    runner.run_phase = AsyncMock(
-        return_value=AgentResult(completed=True, suspended=False)
-    )
-    return runner
-
-
-@pytest.fixture
-def config():
-    """Create test config."""
-    return OrchestratorConfig(max_agents=2, dispatch_interval_seconds=0.1)
-
-
-@pytest.fixture
-def scheduler(state_store, mock_worktree_manager, mock_agent_runner, config, tmp_path):
-    """Create a scheduler for testing."""
-    return Scheduler(
-        store=state_store,
-        worktree_manager=mock_worktree_manager,
-        agent_runner=mock_agent_runner,
-        config=config,
-        project_dir=tmp_path,
-    )
-
-
-class TestSchedulerProperties:
-    """Tests for scheduler properties."""
-
-    def test_running_count_initial(self, scheduler):
-        """Initial running count is zero."""
-        assert scheduler.running_count == 0
-
-    def test_available_slots_initial(self, scheduler):
-        """Initial available slots equals max_agents."""
-        assert scheduler.available_slots == 2
-
-
-class TestSchedulerDispatch:
-    """Tests for dispatch logic."""
-
-    @pytest.mark.asyncio
-    async def test_dispatch_tick_empty_queue(self, scheduler, state_store):
-        """No work units dispatched when queue is empty."""
-        await scheduler._dispatch_tick()
-
-        assert scheduler.running_count == 0
-
-    @pytest.mark.asyncio
-    async def test_dispatch_tick_starts_agent(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
-    ):
-        """Dispatches agent for READY work unit."""
-        # Create a READY work unit
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Run dispatch
-        await scheduler._dispatch_tick()
-
-        # Should have started an agent
-        assert "test_chunk" in scheduler._running_agents
-
-    @pytest.mark.asyncio
-    async def test_dispatch_respects_max_agents(
-        self, scheduler, state_store
-    ):
-        """Does not exceed max_agents limit."""
-        # Create 4 READY work units
-        now = datetime.now(timezone.utc)
-        for i in range(4):
-            work_unit = WorkUnit(
-                chunk=f"chunk_{i}",
-                phase=WorkUnitPhase.PLAN,
-                status=WorkUnitStatus.READY,
-                created_at=now,
-                updated_at=now,
-            )
-            state_store.create_work_unit(work_unit)
-
-        # Run dispatch
-        await scheduler._dispatch_tick()
-
-        # Should only start max_agents (2) agents
-        assert len(scheduler._running_agents) <= 2
-
-    @pytest.mark.asyncio
-    async def test_dispatch_priority_order(self, scheduler, state_store):
-        """Higher priority work units dispatched first."""
-        now = datetime.now(timezone.utc)
-
-        # Create low priority first
-        low_priority = WorkUnit(
-            chunk="low_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            priority=0,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(low_priority)
-
-        # Create high priority second
-        high_priority = WorkUnit(
-            chunk="high_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            priority=10,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(high_priority)
-
-        # Run dispatch with max_agents=1
-        scheduler.config.max_agents = 1
-        await scheduler._dispatch_tick()
-
-        # Should have dispatched high priority first
-        assert "high_chunk" in scheduler._running_agents
-        assert "low_chunk" not in scheduler._running_agents
-
-
-class TestPhaseAdvancement:
-    """Tests for phase advancement logic."""
-
-    @pytest.mark.asyncio
-    async def test_advance_goal_to_plan(self, scheduler, state_store):
-        """Advances from GOAL to PLAN phase."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.GOAL,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.phase == WorkUnitPhase.PLAN
-        assert updated.status == WorkUnitStatus.READY
-
-    @pytest.mark.asyncio
-    async def test_advance_plan_to_implement(self, scheduler, state_store):
-        """Advances from PLAN to IMPLEMENT phase."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.phase == WorkUnitPhase.IMPLEMENT
-        assert updated.status == WorkUnitStatus.READY
-
-    @pytest.mark.asyncio
-    async def test_advance_complete_marks_done(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Advancing from COMPLETE marks work unit DONE."""
-        # Set up chunk with ACTIVE status (required for completion)
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.DONE
-
-        # Should have cleaned up worktree
-        mock_worktree_manager.remove_worktree.assert_called_once_with(
-            "test", remove_branch=False
-        )
-
-
-class TestMechanicalCommit:
-    """Tests for mechanical commit in scheduler."""
-
-    @pytest.mark.asyncio
-    async def test_mechanical_commit_called_when_uncommitted_changes(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Mechanical commit is called when uncommitted changes are detected."""
-        # Set up chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = True
-        mock_worktree_manager.commit_changes.return_value = True
-        mock_worktree_manager.has_changes.return_value = True
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Should have called commit_changes
-        mock_worktree_manager.commit_changes.assert_called_once_with("test_chunk")
-
-    @pytest.mark.asyncio
-    async def test_mechanical_commit_not_called_when_no_changes(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Mechanical commit is not called when no uncommitted changes."""
-        # Set up chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Should NOT have called commit_changes
-        mock_worktree_manager.commit_changes.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_mechanical_commit_error_marks_needs_attention(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Commit error marks work unit as NEEDS_ATTENTION."""
-        from orchestrator.worktree import WorktreeError
-
-        # Set up chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = True
-        mock_worktree_manager.commit_changes.side_effect = WorktreeError("git commit failed")
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Should be marked NEEDS_ATTENTION
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "Commit error" in updated.attention_reason
-
-    @pytest.mark.asyncio
-    async def test_mechanical_commit_proceeds_after_nothing_to_commit(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Proceeds to merge even when commit returns False (nothing to commit)."""
-        # Set up chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = True
-        mock_worktree_manager.commit_changes.return_value = False  # Nothing to commit
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Should have proceeded to DONE (merge phase completes)
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.DONE
-
-
-class TestAgentResultHandling:
-    """Tests for agent result handling."""
-
-    @pytest.mark.asyncio
-    async def test_handle_suspended_result(self, scheduler, state_store):
-        """Suspended result marks unit NEEDS_ATTENTION."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(
-            completed=False,
-            suspended=True,
-            session_id="session123",
-            question={"question": "What color?", "options": []},
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.session_id == "session123"
-
-    @pytest.mark.asyncio
-    async def test_handle_error_result(self, scheduler, state_store):
-        """Error result marks unit NEEDS_ATTENTION."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(completed=False, error="Something went wrong")
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-
-    @pytest.mark.asyncio
-    async def test_handle_completed_result(self, scheduler, state_store):
-        """Completed result advances phase."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(completed=True, suspended=False)
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.phase == WorkUnitPhase.IMPLEMENT
-        assert updated.status == WorkUnitStatus.READY
-
-
-class TestVerboseSuccessNotMisinterpreted:
-    """Tests that verbose success summaries don't trigger NEEDS_ATTENTION.
-
-    These integration tests verify the end-to-end flow: when an agent completes
-    successfully (is_error=False) but with verbose output containing phrases like
-    "Failed to" or "Error:", the work unit should advance phases, NOT enter
-    NEEDS_ATTENTION status.
-    """
-
-    @pytest.mark.asyncio
-    async def test_verbose_success_advances_phase(self, scheduler, state_store):
-        """Agent completing with verbose text advances phase, not NEEDS_ATTENTION.
-
-        This simulates the coderef_format_prompting scenario where an agent
-        outputs a detailed success summary that happens to contain phrases that
-        look like errors (e.g., "Failed to find optional X", "Error: 0 found").
-        """
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_verbose",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult indicating successful completion
-        # The actual result text is not stored in AgentResult, but completed=True
-        # is what matters when is_error=False from the SDK
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            session_id="session123",
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test_verbose")
-        # Should advance to next phase, NOT enter NEEDS_ATTENTION
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.phase == WorkUnitPhase.IMPLEMENT
-
-    @pytest.mark.asyncio
-    async def test_sdk_error_flag_triggers_attention(self, scheduler, state_store):
-        """SDK is_error=True correctly triggers NEEDS_ATTENTION.
-
-        When the SDK indicates an error via the is_error flag, the work unit
-        should enter NEEDS_ATTENTION. This is the authoritative error signal.
-        """
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_sdk_error",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult with error (completed=False, error set)
-        result = AgentResult(
-            completed=False,
-            suspended=False,
-            error="SDK reported an error condition",
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test_sdk_error")
-        # Should enter NEEDS_ATTENTION for genuine errors
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-
-    @pytest.mark.asyncio
-    async def test_question_detection_still_triggers_attention(
-        self, scheduler, state_store
-    ):
-        """Question detection via hook still correctly triggers NEEDS_ATTENTION.
-
-        The question interception mechanism (via AskUserQuestion hook) should
-        still correctly suspend agents and enter NEEDS_ATTENTION. This verifies
-        that removing text-based error detection doesn't break question handling.
-        """
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_question",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult from question interception (suspended=True)
-        result = AgentResult(
-            completed=False,
-            suspended=True,
-            session_id="session123",
-            question={"question": "Which approach?", "options": [{"label": "A"}]},
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test_question")
-        # Should enter NEEDS_ATTENTION for questions
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        # Session should be preserved for resumption
-        assert updated.session_id == "session123"
-
-
-class TestCrashRecovery:
-    """Tests for crash recovery."""
-
-    @pytest.mark.asyncio
-    async def test_recover_running_units(self, scheduler, state_store):
-        """Recovers RUNNING units to READY on startup."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="orphan",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            worktree="/tmp/worktree",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._recover_from_crash()
-
-        updated = state_store.get_work_unit("orphan")
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.worktree is None
-
-
-# Chunk: docs/chunks/orch_worktree_retain - Retain worktrees after completion
-class TestRetainWorktree:
-    """Tests for retain_worktree flag."""
-
-    @pytest.mark.asyncio
-    async def test_retain_worktree_skips_cleanup_in_recovery(self, scheduler, state_store):
-        """Crash recovery respects retain_worktree and doesn't remove worktree."""
-        now = datetime.now(timezone.utc)
-        # A DONE work unit with retain_worktree should keep its worktree
-        work_unit = WorkUnit(
-            chunk="retained_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
-            worktree="/some/worktree/path",
-            retain_worktree=True,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Recovery should not try to remove worktrees for units with retain_worktree
-        await scheduler._recover_from_crash()
-
-        # Work unit should still have retain_worktree set
-        updated = state_store.get_work_unit("retained_chunk")
-        assert updated.retain_worktree is True
-        # Status should be unchanged (still DONE)
-        assert updated.status == WorkUnitStatus.DONE
-
-    def test_work_unit_has_retain_worktree_field(self):
-        """WorkUnit model has retain_worktree field."""
-        now = datetime.now(timezone.utc)
-        unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        # Default should be False
-        assert unit.retain_worktree is False
-
-        # Can be set to True
-        unit.retain_worktree = True
-        assert unit.retain_worktree is True
-
-    def test_retain_worktree_in_json_serializable(self):
-        """retain_worktree is included in JSON serialization."""
-        now = datetime.now(timezone.utc)
-        unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            retain_worktree=True,
-            created_at=now,
-            updated_at=now,
-        )
-        serialized = unit.model_dump_json_serializable()
-        assert "retain_worktree" in serialized
-        assert serialized["retain_worktree"] is True
-
-
-class TestCreateScheduler:
-    """Tests for scheduler factory function."""
-
-    def test_create_scheduler_defaults(self, state_store, tmp_path):
-        """Creates scheduler with default config."""
-        # Provide explicit base_branch since tmp_path is not a git repo
-        scheduler = create_scheduler(state_store, tmp_path, base_branch="main")
-
-        assert scheduler.config.max_agents == 4
-        assert scheduler.config.dispatch_interval_seconds == 1.0
-
-    def test_create_scheduler_custom_config(self, state_store, tmp_path):
-        """Creates scheduler with custom config."""
-        config = OrchestratorConfig(max_agents=4, dispatch_interval_seconds=0.5)
-
-        # Provide explicit base_branch since tmp_path is not a git repo
-        scheduler = create_scheduler(state_store, tmp_path, config, base_branch="main")
-
-        assert scheduler.config.max_agents == 4
-        assert scheduler.config.dispatch_interval_seconds == 0.5
-
-
-class TestSchedulerLifecycle:
-    """Tests for scheduler start/stop."""
-
-    @pytest.mark.asyncio
-    async def test_stop_sets_event(self, scheduler):
-        """Stop sets the stop event."""
-        stop_task = asyncio.create_task(scheduler.stop(timeout=0.1))
-
-        # Give it a moment
-        await asyncio.sleep(0.01)
-
-        assert scheduler._stop_event.is_set()
-        await stop_task
-
-
-class TestVerifyChunkActiveStatus:
-    """Tests for the verify_chunk_active_status helper."""
-
-    def test_returns_active_when_status_active(self, tmp_path):
-        """Returns ACTIVE when GOAL.md has status: ACTIVE."""
-        # Create chunk directory with GOAL.md
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.ACTIVE
-        assert result.error is None
-
-    def test_returns_implementing_when_status_implementing(self, tmp_path):
-        """Returns IMPLEMENTING when GOAL.md has status: IMPLEMENTING."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.IMPLEMENTING
-        assert result.error is None
-
-    def test_returns_error_when_goal_md_missing(self, tmp_path):
-        """Returns ERROR when GOAL.md doesn't exist."""
-        # Create chunk directory but no GOAL.md
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.ERROR
-        assert "not found" in result.error
-
-    def test_returns_error_when_no_frontmatter(self, tmp_path):
-        """Returns ERROR when GOAL.md has no frontmatter."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text("# Chunk Goal\n\nNo frontmatter here.")
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.ERROR
-        # The Chunks class treats unparseable GOAL.md as "not found"
-        assert "not found" in result.error.lower() or "missing" in result.error.lower()
-
-    def test_returns_error_when_status_missing(self, tmp_path):
-        """Returns ERROR when frontmatter has no status field."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.ERROR
-        # The Chunks class treats frontmatter without required status as invalid/not found
-        assert "not found" in result.error.lower() or "missing" in result.error.lower()
-
-    def test_returns_error_for_unexpected_status(self, tmp_path):
-        """Returns ERROR for unexpected status values like FUTURE."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = verify_chunk_active_status(tmp_path, "test_chunk")
-
-        assert result.status == VerificationStatus.ERROR
-        assert "FUTURE" in result.error
-
-
-class TestActiveStatusVerification:
-    """Tests for ACTIVE status verification in the scheduler."""
-
-    @pytest.mark.asyncio
-    async def test_advance_complete_proceeds_when_active(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Completion proceeds when status is ACTIVE."""
-        # Set up chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mock worktree manager to return our tmp_path
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.DONE
-
-    @pytest.mark.asyncio
-    async def test_advance_complete_retries_when_implementing(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Retries when status is IMPLEMENTING."""
-        # Set up chunk with IMPLEMENTING status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        # Mock resume_for_active_status to return an error (simulating failure)
-        mock_agent_runner.resume_for_active_status = AsyncMock(
-            return_value=AgentResult(
-                completed=False,
-                suspended=False,
-                error="Failed to update status",
-            )
-        )
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            session_id="session123",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Should have called resume_for_active_status
-        mock_agent_runner.resume_for_active_status.assert_called_once()
-
-        # Should have incremented retry counter
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.completion_retries == 1
-
-    @pytest.mark.asyncio
-    async def test_advance_complete_marks_needs_attention_after_max_retries(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Marks NEEDS_ATTENTION after max retries exceeded."""
-        # Set up chunk with IMPLEMENTING status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            completion_retries=2,  # Already at max
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-
-    @pytest.mark.asyncio
-    async def test_advance_complete_marks_needs_attention_on_error(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Marks NEEDS_ATTENTION when verification returns ERROR."""
-        # Set up chunk directory but with unparseable GOAL.md
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text("No frontmatter here")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-
-
-class TestAttentionReason:
-    """Tests for attention_reason tracking."""
-
-    @pytest.mark.asyncio
-    async def test_suspended_result_captures_question_as_reason(self, scheduler, state_store):
-        """Suspended result stores question text as attention_reason."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(
-            completed=False,
-            suspended=True,
-            session_id="session123",
-            question={"question": "Which database should I use?", "options": ["PostgreSQL", "MySQL"]},
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.attention_reason == "Question: Which database should I use?"
-
-    @pytest.mark.asyncio
-    async def test_suspended_result_without_question_uses_default(self, scheduler, state_store):
-        """Suspended result without question data uses default reason."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(
-            completed=False,
-            suspended=True,
-            session_id="session123",
-            question=None,
-        )
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.attention_reason == "Question: Agent asked a question"
-
-    @pytest.mark.asyncio
-    async def test_error_result_stores_error_as_reason(self, scheduler, state_store):
-        """Error result stores error message as attention_reason."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(completed=False, error="Connection timeout while accessing API")
-
-        await scheduler._handle_agent_result(work_unit, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.attention_reason == "Connection timeout while accessing API"
-
-    @pytest.mark.asyncio
-    async def test_max_retries_stores_reason(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Max retries exceeded stores appropriate attention_reason."""
-        # Set up chunk with IMPLEMENTING status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            completion_retries=2,  # Already at max
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "IMPLEMENTING" in updated.attention_reason
-        assert "retries" in updated.attention_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_verification_error_stores_reason(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Verification error stores error message as attention_reason."""
-        # Set up chunk directory but with unparseable GOAL.md
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text("No frontmatter here")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.attention_reason is not None
-        # The Chunks class treats unparseable GOAL.md as "not found"
-        assert (
-            "frontmatter" in updated.attention_reason.lower()
-            or "not found" in updated.attention_reason.lower()
-            or "missing" in updated.attention_reason.lower()
-        )
-
-
-class TestActivateChunkInWorktree:
-    """Tests for the activate_chunk_in_worktree helper function."""
-
-    def test_activates_future_chunk(self, tmp_path):
-        """Activates a FUTURE chunk to IMPLEMENTING."""
-        # Create chunk directory with FUTURE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = activate_chunk_in_worktree(tmp_path, "test_chunk")
-
-        # Should return None (no displaced chunk)
-        assert result is None
-
-        # Chunk should now be IMPLEMENTING
-        content = goal_md.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    def test_returns_none_for_already_implementing_chunk(self, tmp_path):
-        """Returns None if chunk is already IMPLEMENTING."""
-        # Create chunk directory with IMPLEMENTING status
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        result = activate_chunk_in_worktree(tmp_path, "test_chunk")
-
-        # Should return None (no displacement, already implementing)
-        assert result is None
-
-        # Status should remain unchanged
-        content = goal_md.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    def test_displaces_existing_implementing_chunk(self, tmp_path):
-        """Displaces an existing IMPLEMENTING chunk when activating a FUTURE chunk."""
-        # Create existing IMPLEMENTING chunk
-        existing_dir = tmp_path / "docs" / "chunks" / "existing_chunk"
-        existing_dir.mkdir(parents=True)
-        existing_goal = existing_dir / "GOAL.md"
-        existing_goal.write_text(
-            """---
-status: IMPLEMENTING
-ticket: null
----
-
-# Existing Chunk
-"""
-        )
-
-        # Create target FUTURE chunk
-        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
-        target_dir.mkdir(parents=True)
-        target_goal = target_dir / "GOAL.md"
-        target_goal.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Target Chunk
-"""
-        )
-
-        result = activate_chunk_in_worktree(tmp_path, "target_chunk")
-
-        # Should return the displaced chunk name
-        assert result == "existing_chunk"
-
-        # Existing chunk should now be FUTURE
-        content = existing_goal.read_text()
-        assert "status: FUTURE" in content
-
-        # Target chunk should now be IMPLEMENTING
-        content = target_goal.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    def test_raises_for_nonexistent_chunk(self, tmp_path):
-        """Raises ValueError for non-existent chunk."""
-        # Create docs/chunks but no chunk directory
-        (tmp_path / "docs" / "chunks").mkdir(parents=True)
-
-        with pytest.raises(ValueError) as exc_info:
-            activate_chunk_in_worktree(tmp_path, "nonexistent_chunk")
-
-        assert "not found" in str(exc_info.value)
-
-    def test_raises_for_non_future_chunk(self, tmp_path):
-        """Raises ValueError for chunk that is not FUTURE or IMPLEMENTING."""
-        # Create chunk with ACTIVE status
-        chunk_dir = tmp_path / "docs" / "chunks" / "active_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: ACTIVE
-ticket: null
----
-
-# Active Chunk
-"""
-        )
-
-        with pytest.raises(ValueError) as exc_info:
-            activate_chunk_in_worktree(tmp_path, "active_chunk")
-
-        assert "ACTIVE" in str(exc_info.value)
-        assert "FUTURE" in str(exc_info.value)
-
-
-class TestRestoreDisplacedChunk:
-    """Tests for the restore_displaced_chunk helper function."""
-
-    def test_restores_displaced_chunk_to_implementing(self, tmp_path):
-        """Restores a FUTURE chunk back to IMPLEMENTING."""
-        # Create chunk with FUTURE status (simulating displaced chunk)
-        chunk_dir = tmp_path / "docs" / "chunks" / "displaced_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Displaced Chunk
-"""
-        )
-
-        restore_displaced_chunk(tmp_path, "displaced_chunk")
-
-        # Chunk should now be IMPLEMENTING
-        content = goal_md.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    def test_does_not_restore_non_future_chunk(self, tmp_path):
-        """Does not modify chunk if not in FUTURE status."""
-        # Create chunk with IMPLEMENTING status (shouldn't be changed)
-        chunk_dir = tmp_path / "docs" / "chunks" / "implementing_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: IMPLEMENTING
-ticket: null
----
-
-# Implementing Chunk
-"""
-        )
-
-        restore_displaced_chunk(tmp_path, "implementing_chunk")
-
-        # Status should remain IMPLEMENTING
-        content = goal_md.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    def test_handles_nonexistent_chunk_gracefully(self, tmp_path):
-        """Does not raise for non-existent chunk."""
-        # Create docs/chunks but no chunk directory
-        (tmp_path / "docs" / "chunks").mkdir(parents=True)
-
-        # Should not raise
-        restore_displaced_chunk(tmp_path, "nonexistent_chunk")
-
-
-class TestChunkActivationInWorkUnit:
-    """Tests for chunk activation during work unit execution."""
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_activates_future_chunk(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit activates a FUTURE chunk in the worktree."""
-        # Set up FUTURE chunk
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Chunk should now be IMPLEMENTING
-        content = goal_md.read_text()
-        assert "status: IMPLEMENTING" in content
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_stores_displaced_chunk(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit stores displaced chunk in work unit."""
-        # Create existing IMPLEMENTING chunk
-        existing_dir = tmp_path / "docs" / "chunks" / "existing_chunk"
-        existing_dir.mkdir(parents=True)
-        existing_goal = existing_dir / "GOAL.md"
-        existing_goal.write_text(
-            """---
-status: IMPLEMENTING
-ticket: null
----
-
-# Existing Chunk
-"""
-        )
-
-        # Create target FUTURE chunk
-        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
-        target_dir.mkdir(parents=True)
-        target_goal = target_dir / "GOAL.md"
-        target_goal.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Target Chunk
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="target_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Work unit should have displaced_chunk recorded
-        updated = state_store.get_work_unit("target_chunk")
-        assert updated.displaced_chunk == "existing_chunk"
-
-    @pytest.mark.asyncio
-    async def test_advance_phase_restores_displaced_chunk(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """_advance_phase restores displaced chunk before merge."""
-        # Set up target chunk with ACTIVE status (completed)
-        target_dir = tmp_path / "docs" / "chunks" / "target_chunk"
-        target_dir.mkdir(parents=True)
-        target_goal = target_dir / "GOAL.md"
-        target_goal.write_text(
-            """---
-status: ACTIVE
-ticket: null
----
-
-# Target Chunk
-"""
-        )
-
-        # Set up displaced chunk with FUTURE status
-        displaced_dir = tmp_path / "docs" / "chunks" / "displaced_chunk"
-        displaced_dir.mkdir(parents=True)
-        displaced_goal = displaced_dir / "GOAL.md"
-        displaced_goal.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Displaced Chunk
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="target_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            displaced_chunk="displaced_chunk",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._advance_phase(work_unit)
-
-        # Displaced chunk should be restored to IMPLEMENTING
-        content = displaced_goal.read_text()
-        assert "status: IMPLEMENTING" in content
-
-
-class TestDeferredWorktreeCreation:
-    """Tests for deferred worktree creation.
-
-    These tests verify that worktrees are created at dispatch time (when
-    _run_work_unit is called), not at inject time. This ensures:
-    1. Injected work units don't consume resources until they run
-    2. Blocked work sees the current repository state when it starts
-    3. Worktrees reflect HEAD at dispatch time, not inject time
-    """
-
-    def test_inject_does_not_create_worktree(
-        self, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Inject creates a work unit but does NOT create a worktree.
-
-        This verifies the deferred worktree creation behavior: when work is
-        injected via the API, only a WorkUnit record is created. The worktree
-        is NOT created until the scheduler dispatches the work.
-        """
-        # Create work unit directly (simulating inject behavior)
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Verify work unit exists
-        stored = state_store.get_work_unit("test_chunk")
-        assert stored is not None
-        assert stored.status == WorkUnitStatus.READY
-
-        # Verify worktree does NOT exist (worktree field is None on the work unit)
-        assert stored.worktree is None
-
-        # Also verify worktree_manager.create_worktree was NOT called
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_worktree_created_at_dispatch_time(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Worktree is created when _run_work_unit is called (dispatch time).
-
-        This verifies that the scheduler creates the worktree at the beginning
-        of _run_work_unit, transitioning the work unit from READY to RUNNING.
-        """
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mock
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        # Create READY work unit
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Verify worktree_manager.create_worktree NOT called yet
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-        # Run the work unit (this is what the scheduler does when dispatching)
-        await scheduler._run_work_unit(work_unit)
-
-        # NOW worktree should have been created
-        mock_worktree_manager.create_worktree.assert_called_once_with("test_chunk")
-
-        # Work unit should be RUNNING with worktree path set
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.worktree == str(tmp_path)
-
-    @pytest.mark.asyncio
-    async def test_ready_work_unit_has_no_worktree_until_dispatched(
-        self, scheduler, state_store, mock_worktree_manager
-    ):
-        """Work units in READY status waiting for slots do not have worktrees.
-
-        This test verifies that work units can sit in the READY queue without
-        consuming worktree resources.
-        """
-        # Create multiple READY work units
-        now = datetime.now(timezone.utc)
-        for i in range(5):
-            work_unit = WorkUnit(
-                chunk=f"chunk_{i}",
-                phase=WorkUnitPhase.PLAN,
-                status=WorkUnitStatus.READY,
-                created_at=now,
-                updated_at=now,
-            )
-            state_store.create_work_unit(work_unit)
-
-        # Verify all work units exist and are READY
-        for i in range(5):
-            unit = state_store.get_work_unit(f"chunk_{i}")
-            assert unit is not None
-            assert unit.status == WorkUnitStatus.READY
-            # No worktree assigned yet
-            assert unit.worktree is None
-
-        # No worktrees should have been created
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-
-class TestBlockedWorkDeferredWorktree:
-    """Tests for blocked work units and deferred worktree creation.
-
-    When work has dependencies (blocked_by list), it should not get a worktree
-    until:
-    1. Dependencies complete
-    2. The work unit transitions to READY
-    3. The scheduler dispatches it (READY → RUNNING)
-
-    This ensures blocked work sees the repository state AFTER its dependencies
-    have been merged.
-    """
-
-    def test_blocked_work_unit_has_no_worktree(
-        self, state_store, mock_worktree_manager
-    ):
-        """BLOCKED work units do not have worktrees.
-
-        Work blocked on dependencies should not consume worktree resources
-        until those dependencies complete.
-        """
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a as READY (the dependency)
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_b as BLOCKED (depends on chunk_a)
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["chunk_a"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Verify chunk_b is BLOCKED
-        stored = state_store.get_work_unit("chunk_b")
-        assert stored.status == WorkUnitStatus.BLOCKED
-        assert stored.blocked_by == ["chunk_a"]
-
-        # BLOCKED work unit should have no worktree
-        assert stored.worktree is None
-
-        # No worktrees created for blocked work
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_blocked_work_gets_worktree_only_when_running(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Blocked work gets worktree only when it starts running.
-
-        This tests the full flow:
-        1. Work is BLOCKED (no worktree)
-        2. Dependencies complete (still no worktree - work is now READY)
-        3. Scheduler dispatches the work (NOW worktree is created)
-        """
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "chunk_b"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-
-        # Create work unit that was previously BLOCKED, now READY
-        # (simulating after dependency completion)
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            blocked_by=["chunk_a"],  # Still has blocked_by info for traceability
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Verify no worktree yet (work is READY, not RUNNING)
-        stored = state_store.get_work_unit("chunk_b")
-        assert stored.worktree is None
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-        # Now dispatch the work (scheduler runs it)
-        await scheduler._run_work_unit(chunk_b)
-
-        # Worktree should now be created
-        mock_worktree_manager.create_worktree.assert_called_once_with("chunk_b")
-
-        # Work unit should have worktree assigned
-        updated = state_store.get_work_unit("chunk_b")
-        assert updated.worktree == str(tmp_path)
-
-    def test_blocked_to_ready_transition_no_worktree(
-        self, state_store, mock_worktree_manager
-    ):
-        """Transitioning BLOCKED → READY does not create worktree.
-
-        When dependencies complete and work moves to READY, it should still
-        NOT have a worktree. The worktree is only created at dispatch time.
-        """
-        now = datetime.now(timezone.utc)
-
-        # Create BLOCKED work unit
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["dependency_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Verify BLOCKED state
-        stored = state_store.get_work_unit("test_chunk")
-        assert stored.status == WorkUnitStatus.BLOCKED
-        assert stored.worktree is None
-
-        # Simulate dependency completion - transition to READY
-        stored.status = WorkUnitStatus.READY
-        stored.blocked_by = []  # Clear blocking dependencies
-        stored.updated_at = datetime.now(timezone.utc)
-        state_store.update_work_unit(stored)
-
-        # Work unit is now READY but still NO worktree
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.worktree is None
-
-        # worktree_manager.create_worktree should NOT have been called
-        mock_worktree_manager.create_worktree.assert_not_called()
-
-
-class TestDeferredWorktreeCreationIntegration:
-    """Integration tests for deferred worktree creation with real git repos.
-
-    These tests verify the full behavior using actual git worktrees, ensuring
-    that the worktree reflects the repository state at dispatch time.
-    """
-
-    @pytest.fixture
-    def git_repo(self, tmp_path):
-        """Create a git repository for testing."""
-        import subprocess
-
-        # Initialize git repo
-        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-        )
-
-        # Create initial commit so HEAD exists
-        (tmp_path / "README.md").write_text("# Test\n")
-        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Initial commit"],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-        )
-
-        return tmp_path
-
-    def test_worktree_reflects_current_head_at_dispatch_time(self, git_repo):
-        """Worktree is created from current HEAD at dispatch time.
-
-        This verifies that if commits are made after work is injected but before
-        it runs, the worktree sees those commits.
-        """
-        import subprocess
-        from orchestrator.worktree import WorktreeManager
-
-        manager = WorktreeManager(git_repo)
-
-        # Simulate: work is "injected" - at this point HEAD is at initial commit
-        # We just note that no worktree exists yet
-        assert not manager.worktree_exists("test_chunk")
-
-        # Simulate: other work happens and commits are made
-        (git_repo / "new_file.txt").write_text("new content after inject")
-        subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Add new file after inject"],
-            cwd=git_repo,
-            check=True,
-            capture_output=True,
-        )
-
-        # Now simulate: work is dispatched - worktree is created NOW
-        worktree_path = manager.create_worktree("test_chunk")
-
-        # The worktree should have the new file (HEAD at dispatch time)
-        assert (worktree_path / "new_file.txt").exists()
-        assert (worktree_path / "new_file.txt").read_text() == "new content after inject"
-
-        # Clean up
-        manager.remove_worktree("test_chunk", remove_branch=True)
-
-    def test_blocked_work_sees_dependency_changes_when_dispatched(self, git_repo):
-        """Blocked work sees changes from completed dependencies.
-
-        This is the key scenario: chunk_b depends on chunk_a. When chunk_a
-        completes and merges, and chunk_b is later dispatched, chunk_b's
-        worktree should contain chunk_a's changes.
-        """
-        import subprocess
-        from orchestrator.worktree import WorktreeManager
-
-        manager = WorktreeManager(git_repo)
-
-        # Simulate chunk_a completing: create its worktree, make changes, merge
-        chunk_a_worktree = manager.create_worktree("chunk_a")
-
-        # chunk_a makes changes
-        (chunk_a_worktree / "chunk_a_file.txt").write_text("content from chunk_a")
-        subprocess.run(
-            ["git", "add", "."], cwd=chunk_a_worktree, check=True, capture_output=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "chunk_a implementation"],
-            cwd=chunk_a_worktree,
-            check=True,
-            capture_output=True,
-        )
-
-        # chunk_a completes - worktree is removed and branch is merged
-        manager.remove_worktree("chunk_a", remove_branch=False)
-        manager.merge_to_base("chunk_a", delete_branch=True)
-
-        # Verify chunk_a's changes are now on the base branch
-        assert (git_repo / "chunk_a_file.txt").exists()
-
-        # Now chunk_b (which was blocked on chunk_a) is dispatched
-        # Its worktree is created NOW, from current HEAD
-        chunk_b_worktree = manager.create_worktree("chunk_b")
-
-        # chunk_b's worktree should see chunk_a's file
-        assert (chunk_b_worktree / "chunk_a_file.txt").exists()
-        assert (
-            (chunk_b_worktree / "chunk_a_file.txt").read_text()
-            == "content from chunk_a"
-        )
-
-        # Clean up
-        manager.remove_worktree("chunk_b", remove_branch=True)
-
-
-class TestPendingAnswerInjection:
-    """Tests for pending_answer injection during work unit execution."""
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_passes_pending_answer(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit passes pending_answer to agent runner."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            session_id="session123",
-            pending_answer="Use Redis for caching",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Should have called run_phase with the answer
-        mock_agent_runner.run_phase.assert_called_once()
-        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
-        assert call_kwargs["answer"] == "Use Redis for caching"
-        assert call_kwargs["resume_session_id"] == "session123"
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_clears_pending_answer_after_dispatch(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit clears pending_answer after successful dispatch."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            pending_answer="Some answer",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # pending_answer should be cleared after dispatch
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.pending_answer is None
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_no_answer_when_none_pending(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit passes None for answer when no pending_answer."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            pending_answer=None,  # No pending answer
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Should have called run_phase with no answer
-        mock_agent_runner.run_phase.assert_called_once()
-        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
-        assert call_kwargs["answer"] is None
-
-    @pytest.mark.asyncio
-    async def test_full_flow_needs_attention_answer_resume(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Full flow: NEEDS_ATTENTION → answer → READY → dispatch with answer."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-
-        # 1. Work unit is in NEEDS_ATTENTION state (simulating agent asked question)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.NEEDS_ATTENTION,
-            session_id="session_abc",
-            attention_reason="Question: What database should I use?",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # 2. Operator provides answer (simulating POST /work-units/{chunk}/answer)
-        stored = state_store.get_work_unit("test_chunk")
-        stored.pending_answer = "Use PostgreSQL"
-        stored.attention_reason = None
-        stored.status = WorkUnitStatus.READY
-        stored.updated_at = datetime.now(timezone.utc)
-        state_store.update_work_unit(stored)
-
-        # 3. Scheduler dispatches the work unit
-        ready_unit = state_store.get_work_unit("test_chunk")
-        assert ready_unit.status == WorkUnitStatus.READY
-        assert ready_unit.pending_answer == "Use PostgreSQL"
-
-        await scheduler._run_work_unit(ready_unit)
-
-        # 4. Verify agent was resumed with the answer
-        mock_agent_runner.run_phase.assert_called_once()
-        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
-        assert call_kwargs["answer"] == "Use PostgreSQL"
-        assert call_kwargs["resume_session_id"] == "session_abc"
-
-        # 5. Verify pending_answer was cleared
-        final = state_store.get_work_unit("test_chunk")
-        assert final.pending_answer is None
-
-
-class TestConflictChecking:
-    """Tests for conflict oracle integration in scheduler."""
-
-    @pytest.mark.asyncio
-    async def test_check_conflicts_empty_when_no_running(
-        self, scheduler, state_store
-    ):
-        """No conflicts when no other work units are running."""
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_check_conflicts_not_blocked_when_independent(
-        self, scheduler, state_store, tmp_path
-    ):
-        """Work units with INDEPENDENT verdict are not blocked."""
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with pre-cached INDEPENDENT verdict
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "INDEPENDENT"},
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a RUNNING work unit
-        running_unit = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(running_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_check_conflicts_blocked_when_serialize(
-        self, scheduler, state_store
-    ):
-        """Work units with SERIALIZE verdict are blocked by running units."""
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with pre-cached SERIALIZE verdict
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "SERIALIZE"},
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a RUNNING work unit
-        running_unit = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(running_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        assert "chunk_b" in blocking
-
-    @pytest.mark.asyncio
-    async def test_check_conflicts_serialize_not_blocked_when_ready(
-        self, scheduler, state_store
-    ):
-        """SERIALIZE verdict doesn't block when other chunk is just READY."""
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with pre-cached SERIALIZE verdict
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "SERIALIZE"},
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create another READY work unit (not running)
-        other_unit = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(other_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        # Not blocked because chunk_b is not RUNNING
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_ask_operator_blocks_running_not_ready(
-        self, scheduler, state_store
-    ):
-        """ASK_OPERATOR only blocks when other is RUNNING, not READY."""
-        now = datetime.now(timezone.utc)
-
-        # Test with READY: should NOT block
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "ASK_OPERATOR"},
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        other_ready = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(other_ready)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        assert blocking == []
-
-        # Now test with RUNNING: should block and mark needs attention
-        state_store.delete_work_unit("chunk_b")
-        work_unit2 = state_store.get_work_unit("chunk_a")
-        work_unit2.status = WorkUnitStatus.READY  # Reset status
-
-        other_running = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(other_running)
-
-        blocking = await scheduler._check_conflicts(work_unit2)
-        assert "chunk_b" in blocking
-
-        # Should be marked needs attention
-        updated = state_store.get_work_unit("chunk_a")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-
-    @pytest.mark.asyncio
-    async def test_conflict_override_independent_allows_dispatch(
-        self, scheduler, state_store
-    ):
-        """Operator override to INDEPENDENT allows dispatch even with ASK_OPERATOR."""
-        now = datetime.now(timezone.utc)
-
-        # Work unit with ASK_OPERATOR but INDEPENDENT override
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "ASK_OPERATOR"},
-            conflict_override="INDEPENDENT",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        running_unit = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(running_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_reanalyze_conflicts_clears_cached_verdicts(
-        self, scheduler, state_store
-    ):
-        """_reanalyze_conflicts clears cached verdicts for re-analysis."""
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with cached verdicts
-        work_unit = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            conflict_verdicts={"chunk_b": "SERIALIZE", "chunk_c": "INDEPENDENT"},
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._reanalyze_conflicts("chunk_a")
-
-        # Cached verdicts should be cleared
-        updated = state_store.get_work_unit("chunk_a")
-        assert updated.conflict_verdicts == {}
-
-
-# Chunk: docs/chunks/explicit_deps_skip_oracle - Oracle bypass for explicit dependencies
-class TestExplicitDepsOracleBypass:
-    """Tests for explicit_deps oracle bypass in scheduler.
-
-    When a work unit has explicit_deps=True, the scheduler should skip oracle
-    analysis entirely and only check if blocked_by chunks are RUNNING.
-    """
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_skips_oracle(self, scheduler, state_store):
-        """Explicit-dep work units do not call oracle.analyze_conflict."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit with a blocked_by entry
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["blocker_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a READY blocker (not RUNNING)
-        blocker_unit = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(blocker_unit)
-
-        # Mock the oracle to verify it's not called
-        with patch("orchestrator.oracle.create_oracle") as mock_create_oracle:
-            blocking = await scheduler._check_conflicts(work_unit)
-
-            # Oracle should NOT be created or called
-            mock_create_oracle.assert_not_called()
-
-        # Not blocked because blocker is READY, not RUNNING
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_blocked_when_blocker_running(self, scheduler, state_store):
-        """Explicit-dep work units block only when blocked_by chunk is RUNNING."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit blocked by another chunk
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["blocker_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a RUNNING blocker
-        blocker_unit = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(blocker_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-
-        # Should be blocked because blocker is RUNNING
-        assert "blocker_chunk" in blocking
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_unblocked_when_blocker_done(self, scheduler, state_store):
-        """Explicit-dep work units unblock when blocked_by chunk is DONE."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit blocked by a DONE chunk
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["done_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a DONE work unit
-        done_unit = WorkUnit(
-            chunk="done_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(done_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-
-        # Should NOT be blocked - blocker is DONE
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_unblocked_when_blocker_not_exists(self, scheduler, state_store):
-        """Explicit-dep work units unblock when blocked_by chunk doesn't exist."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit blocked by a non-existent chunk
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["nonexistent_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-
-        # Should NOT be blocked - blocker doesn't exist (not RUNNING)
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_multiple_blockers_partial_running(self, scheduler, state_store):
-        """Explicit-dep work units block on any RUNNING blocker from blocked_by list."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit blocked by multiple chunks
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["blocker_a", "blocker_b", "blocker_c"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # blocker_a is DONE
-        done_unit = WorkUnit(
-            chunk="blocker_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(done_unit)
-
-        # blocker_b is RUNNING
-        running_unit = WorkUnit(
-            chunk="blocker_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(running_unit)
-
-        # blocker_c is READY (not running)
-        ready_unit = WorkUnit(
-            chunk="blocker_c",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(ready_unit)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-
-        # Should be blocked only by the RUNNING chunk
-        assert blocking == ["blocker_b"]
-
-    @pytest.mark.asyncio
-    async def test_non_explicit_deps_still_uses_oracle(self, scheduler, state_store, tmp_path):
-        """Non-explicit work units continue to use oracle analysis."""
-        now = datetime.now(timezone.utc)
-
-        # Create a non-explicit work unit (explicit_deps=False is default)
-        work_unit = WorkUnit(
-            chunk="normal_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=False,  # Default, but explicit for clarity
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create another RUNNING work unit
-        running_unit = WorkUnit(
-            chunk="other_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(running_unit)
-
-        # Mock the oracle
-        mock_analysis = MagicMock()
-        mock_analysis.verdict.value = "INDEPENDENT"
-
-        with patch("orchestrator.oracle.create_oracle") as mock_create_oracle:
-            mock_oracle = MagicMock()
-            mock_oracle.analyze_conflict.return_value = mock_analysis
-            mock_create_oracle.return_value = mock_oracle
-
-            blocking = await scheduler._check_conflicts(work_unit)
-
-            # Oracle SHOULD be created and called for non-explicit work units
-            mock_create_oracle.assert_called_once()
-            mock_oracle.analyze_conflict.assert_called_once_with("normal_chunk", "other_chunk")
-
-        # Independent verdict means no blocking
-        assert blocking == []
-
-    @pytest.mark.asyncio
-    async def test_explicit_deps_ignores_other_active_chunks(self, scheduler, state_store):
-        """Explicit-dep work units ignore chunks not in blocked_by even if RUNNING."""
-        now = datetime.now(timezone.utc)
-
-        # Create an explicit-dep work unit with specific blocked_by
-        work_unit = WorkUnit(
-            chunk="explicit_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            explicit_deps=True,
-            blocked_by=["specific_blocker"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Create a RUNNING chunk that's NOT in blocked_by
-        other_running = WorkUnit(
-            chunk="unrelated_running_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(other_running)
-
-        # The specific_blocker is READY (not running)
-        specific_blocker = WorkUnit(
-            chunk="specific_blocker",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(specific_blocker)
-
-        blocking = await scheduler._check_conflicts(work_unit)
-
-        # Should NOT be blocked - unrelated_running_chunk isn't in blocked_by,
-        # and specific_blocker is READY not RUNNING
-        assert blocking == []
-
-
-# Chunk: docs/chunks/orch_question_forward - Integration tests for complete question forwarding flow
-class TestQuestionForwardingFlow:
-    """Tests for the complete question forwarding flow.
-
-    When an agent calls AskUserQuestion, the orchestrator:
-    1. Intercepts the call via PreToolUse hook
-    2. Captures the question data
-    3. Suspends the agent session
-    4. Transitions work unit to NEEDS_ATTENTION
-    5. Stores question in attention_reason
-    """
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_passes_question_callback(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """_run_work_unit passes question_callback to run_phase."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Verify run_phase was called with question_callback
-        mock_agent_runner.run_phase.assert_called_once()
-        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
-        assert "question_callback" in call_kwargs
-        assert call_kwargs["question_callback"] is not None
-
-    @pytest.mark.asyncio
-    async def test_question_forwarding_transitions_to_needs_attention(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Agent asking question transitions work unit to NEEDS_ATTENTION with question data."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        # Configure agent runner to return suspended result with question
-        mock_agent_runner.run_phase = AsyncMock(
-            return_value=AgentResult(
-                completed=False,
-                suspended=True,
-                session_id="suspended-session-123",
-                question={
-                    "question": "Which framework should I use?",
-                    "options": [
-                        {"label": "React", "description": "Frontend library"},
-                        {"label": "Vue", "description": "Progressive framework"},
-                    ],
-                    "header": "Framework",
-                    "multiSelect": False,
-                },
-            )
-        )
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Verify work unit transitioned to NEEDS_ATTENTION
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert updated.session_id == "suspended-session-123"
-        assert "Which framework should I use?" in updated.attention_reason
-
-    @pytest.mark.asyncio
-    async def test_question_answer_resume_flow(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Complete flow: question → NEEDS_ATTENTION → answer → resume → complete."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        goal_md = chunk_dir / "GOAL.md"
-        goal_md.write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        # Configure mocks
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        # Phase 1: Agent asks a question
-        mock_agent_runner.run_phase = AsyncMock(
-            return_value=AgentResult(
-                completed=False,
-                suspended=True,
-                session_id="question-session",
-                question={"question": "Which database?", "options": []},
-            )
-        )
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.READY,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Verify NEEDS_ATTENTION state
-        needing_attention = state_store.get_work_unit("test_chunk")
-        assert needing_attention.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert needing_attention.session_id == "question-session"
-        assert "Which database?" in needing_attention.attention_reason
-
-        # Phase 2: Operator provides answer (simulating POST /work-units/{chunk}/answer)
-        needing_attention.pending_answer = "Use PostgreSQL"
-        needing_attention.attention_reason = None
-        needing_attention.status = WorkUnitStatus.READY
-        needing_attention.updated_at = datetime.now(timezone.utc)
-        state_store.update_work_unit(needing_attention)
-
-        # Phase 3: Agent resumes and completes
-        mock_agent_runner.run_phase = AsyncMock(
-            return_value=AgentResult(
-                completed=True,
-                suspended=False,
-                session_id="question-session",
-            )
-        )
-
-        ready_unit = state_store.get_work_unit("test_chunk")
-        await scheduler._run_work_unit(ready_unit)
-
-        # Verify run_phase was called with the answer
-        call_kwargs = mock_agent_runner.run_phase.call_args.kwargs
-        assert call_kwargs["answer"] == "Use PostgreSQL"
-        assert call_kwargs["resume_session_id"] == "question-session"
-
-        # Verify pending_answer was cleared
-        completed = state_store.get_work_unit("test_chunk")
-        assert completed.pending_answer is None
-
-
-# Chunk: docs/chunks/orch_blocked_lifecycle - Unit tests for automatic unblocking when blockers complete
-class TestAutomaticUnblock:
-    """Tests for automatic unblocking when blockers complete."""
-
-    @pytest.mark.asyncio
-    async def test_advance_phase_done_unblocks_dependents(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Completing a work unit unblocks work units that were blocked by it."""
-        # Set up chunk_a with ACTIVE status (will complete)
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        # Set up chunk_b with FUTURE status (just for existence in worktree)
-        chunk_b_dir = tmp_path / "docs" / "chunks" / "chunk_b"
-        chunk_b_dir.mkdir(parents=True)
-        (chunk_b_dir / "GOAL.md").write_text(
-            """---
-status: FUTURE
----
-
-# Chunk B
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase (about to transition to DONE)
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_b in BLOCKED status, blocked by chunk_a
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["chunk_a"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Verify chunk_b is BLOCKED
-        assert state_store.get_work_unit("chunk_b").status == WorkUnitStatus.BLOCKED
-        assert "chunk_a" in state_store.get_work_unit("chunk_b").blocked_by
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify chunk_a is DONE
-        updated_a = state_store.get_work_unit("chunk_a")
-        assert updated_a.status == WorkUnitStatus.DONE
-
-        # Verify chunk_b is now READY and chunk_a removed from blocked_by
-        updated_b = state_store.get_work_unit("chunk_b")
-        assert updated_b.status == WorkUnitStatus.READY
-        assert "chunk_a" not in updated_b.blocked_by
-
-    @pytest.mark.asyncio
-    async def test_advance_phase_done_unblocks_multiple_dependents(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Completing a work unit unblocks multiple work units blocked by it."""
-        # Set up chunk_a with ACTIVE status
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_b and chunk_c both blocked by chunk_a
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["chunk_a"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        chunk_c = WorkUnit(
-            chunk="chunk_c",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["chunk_a"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_c)
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify both chunk_b and chunk_c are now READY
-        updated_b = state_store.get_work_unit("chunk_b")
-        updated_c = state_store.get_work_unit("chunk_c")
-        assert updated_b.status == WorkUnitStatus.READY
-        assert updated_c.status == WorkUnitStatus.READY
-        assert "chunk_a" not in updated_b.blocked_by
-        assert "chunk_a" not in updated_c.blocked_by
-
-    @pytest.mark.asyncio
-    async def test_advance_phase_done_partial_unblock_with_multiple_blockers(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Work unit with multiple blockers stays BLOCKED until all complete."""
-        # Set up chunk_a with ACTIVE status
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_d which is also blocking chunk_b
-        chunk_d = WorkUnit(
-            chunk="chunk_d",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_d)
-
-        # Create chunk_b blocked by BOTH chunk_a and chunk_d
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["chunk_a", "chunk_d"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify chunk_b is STILL BLOCKED (still blocked by chunk_d)
-        updated_b = state_store.get_work_unit("chunk_b")
-        assert updated_b.status == WorkUnitStatus.BLOCKED
-        assert "chunk_a" not in updated_b.blocked_by
-        assert "chunk_d" in updated_b.blocked_by
-
-
-class TestNeedsAttentionUnblock:
-    """Tests for NEEDS_ATTENTION to READY transition when blockers complete.
-
-    When a work unit is in NEEDS_ATTENTION status (e.g., due to a conflict with
-    a running chunk that needed serialization), and its blocker completes, the
-    work unit should transition to READY status automatically.
-
-    This addresses the bug where work units remained stuck in NEEDS_ATTENTION
-    after their blockers completed because _unblock_dependents only checked for
-    BLOCKED status, not NEEDS_ATTENTION status.
-    """
-
-    @pytest.mark.asyncio
-    async def test_unblock_needs_attention_to_ready(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Work unit in NEEDS_ATTENTION transitions to READY when blocker completes."""
-        # Set up chunk_a with ACTIVE status (will complete)
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase (about to transition to DONE)
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_b in NEEDS_ATTENTION status, blocked by chunk_a
-        # This simulates a scenario where chunk_b encountered a conflict and
-        # was marked NEEDS_ATTENTION with chunk_a in its blocked_by list
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.NEEDS_ATTENTION,
-            blocked_by=["chunk_a"],
-            attention_reason="Conflict with running chunk_a. Use 've orch resolve' to proceed.",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Verify chunk_b is NEEDS_ATTENTION
-        assert state_store.get_work_unit("chunk_b").status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "chunk_a" in state_store.get_work_unit("chunk_b").blocked_by
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify chunk_a is DONE
-        updated_a = state_store.get_work_unit("chunk_a")
-        assert updated_a.status == WorkUnitStatus.DONE
-
-        # Verify chunk_b is now READY (not still stuck in NEEDS_ATTENTION)
-        updated_b = state_store.get_work_unit("chunk_b")
-        assert updated_b.status == WorkUnitStatus.READY
-        assert "chunk_a" not in updated_b.blocked_by
-
-    @pytest.mark.asyncio
-    async def test_unblock_clears_attention_reason(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Transitioning from NEEDS_ATTENTION to READY clears attention_reason."""
-        # Set up chunk_a with ACTIVE status
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create chunk_b in NEEDS_ATTENTION with stale attention_reason
-        chunk_b = WorkUnit(
-            chunk="chunk_b",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.NEEDS_ATTENTION,
-            blocked_by=["chunk_a"],
-            attention_reason="Stale reason that should be cleared",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_b)
-
-        # Verify chunk_b has attention_reason
-        assert state_store.get_work_unit("chunk_b").attention_reason is not None
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify chunk_b's attention_reason is cleared
-        updated_b = state_store.get_work_unit("chunk_b")
-        assert updated_b.status == WorkUnitStatus.READY
-        assert updated_b.attention_reason is None
-
-    @pytest.mark.asyncio
-    async def test_unblock_multiple_needs_attention_work_units(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Multiple NEEDS_ATTENTION work units transition when blocker completes."""
-        # Set up chunk_a with ACTIVE status
-        chunk_a_dir = tmp_path / "docs" / "chunks" / "chunk_a"
-        chunk_a_dir.mkdir(parents=True)
-        (chunk_a_dir / "GOAL.md").write_text(
-            """---
-status: ACTIVE
----
-
-# Chunk A
-"""
-        )
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = False
-        mock_worktree_manager.has_changes.return_value = False
-
-        now = datetime.now(timezone.utc)
-
-        # Create chunk_a in COMPLETE phase
-        chunk_a = WorkUnit(
-            chunk="chunk_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(chunk_a)
-
-        # Create multiple work units in NEEDS_ATTENTION status blocked by chunk_a
-        for name, reason in [
-            ("chunk_b", "Conflict with chunk_a"),
-            ("chunk_c", "Another conflict with chunk_a"),
-            ("chunk_d", "Third conflict with chunk_a"),
-        ]:
-            work_unit = WorkUnit(
-                chunk=name,
-                phase=WorkUnitPhase.PLAN,
-                status=WorkUnitStatus.NEEDS_ATTENTION,
-                blocked_by=["chunk_a"],
-                attention_reason=reason,
-                created_at=now,
-                updated_at=now,
-            )
-            state_store.create_work_unit(work_unit)
-
-        # Advance chunk_a to DONE
-        await scheduler._advance_phase(chunk_a)
-
-        # Verify all work units are now READY with cleared attention_reason
-        for name in ["chunk_b", "chunk_c", "chunk_d"]:
-            updated = state_store.get_work_unit(name)
-            assert updated.status == WorkUnitStatus.READY, f"{name} should be READY"
-            assert updated.attention_reason is None, f"{name} should have cleared reason"
-            assert "chunk_a" not in updated.blocked_by, f"{name} should not be blocked"
-
-
-class TestAttentionReasonCleanup:
-    """Tests for attention_reason and blocked_by cleanup on status transitions.
-
-    The attention_reason field should be cleared when work units transition to
-    READY or RUNNING states, regardless of how that transition occurs (phase
-    advancement, manual status change, unblock, etc.).
-
-    The blocked_by field should be cleared when work units transition to RUNNING.
-    """
-
-    @pytest.mark.asyncio
-    async def test_advance_phase_clears_attention_reason(self, scheduler, state_store):
-        """Phase advancement to READY clears any stale attention_reason."""
-        now = datetime.now(timezone.utc)
-
-        # Create a work unit that was previously in NEEDS_ATTENTION but is
-        # now advancing phases (simulating manual resolution followed by retry)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.RUNNING,
-            attention_reason="This should be cleared",  # Stale from previous state
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # Advance phase (PLAN -> IMPLEMENT)
-        await scheduler._advance_phase(work_unit)
-
-        # Verify attention_reason is cleared
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.phase == WorkUnitPhase.IMPLEMENT
-        assert updated.attention_reason is None
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_clears_attention_reason(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Transitioning to RUNNING clears any stale attention_reason."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        (chunk_dir / "GOAL.md").write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with stale attention_reason (from previous NEEDS_ATTENTION)
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            attention_reason="Stale reason from previous state",  # Should be cleared
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Verify attention_reason is cleared when RUNNING
-        # Note: the work unit may have already completed, check intermediate state
-        # by checking the mock wasn't called with attention_reason
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.attention_reason is None
-
-    @pytest.mark.asyncio
-    async def test_run_work_unit_clears_blocked_by(
-        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
-    ):
-        """Transitioning to RUNNING clears any stale blocked_by entries."""
-        # Set up chunk for activation
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-        (chunk_dir / "GOAL.md").write_text(
-            """---
-status: FUTURE
-ticket: null
----
-
-# Chunk Goal
-"""
-        )
-
-        mock_worktree_manager.create_worktree.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-
-        # Create work unit with stale blocked_by (from previous blocking state)
-        # This can happen when blockers complete but blocked_by wasn't cleared
-        work_unit = WorkUnit(
-            chunk="test_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.READY,
-            blocked_by=["stale_blocker_1", "stale_blocker_2"],  # Should be cleared
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        await scheduler._run_work_unit(work_unit)
-
-        # Verify blocked_by is cleared when RUNNING
-        updated = state_store.get_work_unit("test_chunk")
-        assert updated.blocked_by == []
 
 
 # Chunk: docs/chunks/orch_broadcast_invariant - Test coverage for WebSocket broadcast invariant
@@ -3418,16 +184,564 @@ status: ACTIVE
                 assert call_kwargs["chunk"] == "test_chunk"
 
 
-# Chunk: docs/chunks/orch_review_phase - Review phase tests
-class TestReviewPhase:
-    """Tests for REVIEW phase transitions and handling."""
+# Chunk: docs/chunks/orch_api_retry - Tests for API retry functionality
+class TestIsRetryableApiError:
+    """Tests for the is_retryable_api_error helper function."""
+
+    def test_detects_500_error(self):
+        """Detects HTTP 500 Internal Server Error."""
+        assert is_retryable_api_error("Error: 500 Internal Server Error")
+        assert is_retryable_api_error("status code 500")
+        assert is_retryable_api_error("HTTP/1.1 500")
+
+    def test_detects_502_bad_gateway(self):
+        """Detects HTTP 502 Bad Gateway."""
+        assert is_retryable_api_error("502 Bad Gateway")
+        assert is_retryable_api_error("error: 502")
+
+    def test_detects_503_service_unavailable(self):
+        """Detects HTTP 503 Service Unavailable."""
+        assert is_retryable_api_error("503 Service Unavailable")
+        assert is_retryable_api_error("service unavailable")
+
+    def test_detects_504_gateway_timeout(self):
+        """Detects HTTP 504 Gateway Timeout."""
+        assert is_retryable_api_error("504 Gateway Timeout")
+        assert is_retryable_api_error("gateway timeout")
+
+    def test_detects_529_overloaded(self):
+        """Detects HTTP 529 Overloaded (Anthropic-specific)."""
+        assert is_retryable_api_error("529 Overloaded")
+        assert is_retryable_api_error("error code 529")
+
+    def test_detects_overloaded_text(self):
+        """Detects 'overloaded' text patterns."""
+        assert is_retryable_api_error("API is overloaded, please retry")
+        assert is_retryable_api_error("Server overloaded")
+
+    def test_detects_api_error_type(self):
+        """Detects Anthropic api_error type."""
+        assert is_retryable_api_error("api_error: server error")
+        assert is_retryable_api_error("type: api_error")
+
+    def test_detects_rate_limit(self):
+        """Detects rate limit errors (often temporary)."""
+        assert is_retryable_api_error("rate_limit exceeded")
+        assert is_retryable_api_error("rate_limit_error")
+
+    def test_rejects_4xx_errors(self):
+        """Does not retry 4xx client errors."""
+        assert not is_retryable_api_error("400 Bad Request")
+        assert not is_retryable_api_error("401 Unauthorized")
+        assert not is_retryable_api_error("403 Forbidden")
+        assert not is_retryable_api_error("404 Not Found")
+        assert not is_retryable_api_error("429 Too Many Requests")  # 429 is not a 5xx
+
+    def test_rejects_non_api_errors(self):
+        """Does not retry non-API errors."""
+        assert not is_retryable_api_error("FileNotFoundError: /path/to/file")
+        assert not is_retryable_api_error("SyntaxError in code")
+        assert not is_retryable_api_error("Permission denied")
+        assert not is_retryable_api_error("Invalid argument")
+
+    def test_handles_empty_error(self):
+        """Handles empty or None error strings."""
+        assert not is_retryable_api_error("")
+        assert not is_retryable_api_error(None)
+
+    def test_case_insensitive(self):
+        """Pattern matching is case-insensitive."""
+        assert is_retryable_api_error("INTERNAL SERVER ERROR")
+        assert is_retryable_api_error("Bad Gateway")
+        assert is_retryable_api_error("SERVICE UNAVAILABLE")
+        assert is_retryable_api_error("Overloaded")
+
+
+class TestApiRetryScheduling:
+    """Tests for API retry scheduling in the scheduler."""
 
     @pytest.mark.asyncio
-    async def test_advance_implement_to_review(self, scheduler, state_store):
-        """Advances from IMPLEMENT to REVIEW phase."""
+    async def test_schedule_api_retry_increments_count(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify retry count increments on each retry."""
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
-            chunk="test",
+            chunk="retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="500 Internal Server Error",
+            session_id="session-123",
+        )
+
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("retry_chunk")
+        assert updated.api_retry_count == 1
+        assert updated.session_id == "session-123"
+        assert updated.pending_answer == "continue"
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_schedule_api_retry_calculates_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify exponential backoff calculation."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="backoff_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=2,  # 3rd attempt will use 2^2 = 4x initial delay
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="503 Service Unavailable",
+            session_id="session-456",
+        )
+
+        # Default config: initial=100ms, so 3rd attempt = 100 * 2^2 = 400ms
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("backoff_chunk")
+        assert updated.api_retry_count == 3
+        assert updated.next_retry_at is not None
+        # Should be approximately 400ms in the future
+        expected_delay = timedelta(milliseconds=400)
+        actual_delay = updated.next_retry_at - now
+        # Allow some tolerance for execution time
+        assert actual_delay >= expected_delay - timedelta(milliseconds=50)
+        assert actual_delay <= expected_delay + timedelta(milliseconds=100)
+
+    @pytest.mark.asyncio
+    async def test_schedule_api_retry_caps_at_max_delay(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify backoff caps at max delay."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="max_delay_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=20,  # Very high count, should cap at 5s
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="502 Bad Gateway",
+            session_id="session-789",
+        )
+
+        await scheduler._schedule_api_retry(work_unit, result)
+
+        updated = state_store.get_work_unit("max_delay_chunk")
+        # Max delay is 5000ms = 5s by default
+        max_delay = timedelta(milliseconds=scheduler.config.api_retry_max_delay_ms)
+        actual_delay = updated.next_retry_at - now
+        # Should be capped at max delay (with some tolerance)
+        assert actual_delay <= max_delay + timedelta(milliseconds=100)
+
+    @pytest.mark.asyncio
+    async def test_dispatch_respects_retry_timing(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify dispatch loop skips work units in backoff period."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="waiting_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            next_retry_at=now + timedelta(seconds=10),  # 10 seconds in future
+            pending_answer="continue",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Run dispatch tick
+        await scheduler._dispatch_tick()
+
+        # Should NOT have dispatched (still in backoff)
+        assert "waiting_chunk" not in scheduler._running_agents
+
+    @pytest.mark.asyncio
+    async def test_dispatch_clears_retry_timing_when_elapsed(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """Verify dispatch clears next_retry_at when backoff period elapsed."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="ready_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.READY,
+            next_retry_at=now - timedelta(seconds=1),  # 1 second in past
+            pending_answer="continue",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Run dispatch tick
+        await scheduler._dispatch_tick()
+
+        # Should have dispatched (backoff elapsed)
+        assert "ready_retry_chunk" in scheduler._running_agents
+
+        # next_retry_at should be cleared
+        updated = state_store.get_work_unit("ready_retry_chunk")
+        assert updated.next_retry_at is None
+
+    @pytest.mark.asyncio
+    async def test_retry_exhaustion_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify NEEDS_ATTENTION after exhausting retries."""
+        now = datetime.now(timezone.utc)
+        # Set retry count to max - 1
+        work_unit = WorkUnit(
+            chunk="exhausted_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=scheduler.config.api_retry_max_attempts,  # Already at max
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="500 Internal Server Error",
+        )
+
+        # Handle the result - should mark needs attention since retries exhausted
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("exhausted_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "API error after" in updated.attention_reason
+        assert str(scheduler.config.api_retry_max_attempts) in updated.attention_reason
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_error_immediately_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify non-retryable errors skip retry logic."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="non_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            error="400 Bad Request - invalid parameter",  # 4xx error, not retryable
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("non_retry_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert updated.api_retry_count == 0  # Should not have incremented
+
+    @pytest.mark.asyncio
+    async def test_successful_completion_resets_retry_state(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify retry state clears on successful phase completion."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="success_chunk",
+            phase=WorkUnitPhase.GOAL,  # Will advance to PLAN
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=5,
+            next_retry_at=now + timedelta(seconds=1),
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Advance phase
+        await scheduler._advance_phase(work_unit)
+
+        updated = state_store.get_work_unit("success_chunk")
+        assert updated.phase == WorkUnitPhase.PLAN
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.api_retry_count == 0
+        assert updated.next_retry_at is None
+
+
+# Chunk: docs/chunks/orch_session_auto_resume - Session limit retry scheduling tests
+class TestSessionLimitRetryScheduling:
+    """Tests for session limit retry scheduling in the scheduler.
+
+    When an agent hits a session limit with a known reset time, the scheduler
+    should automatically schedule a retry at that time instead of marking
+    the work unit as NEEDS_ATTENTION.
+    """
+
+    @pytest.mark.asyncio
+    async def test_session_limit_with_parseable_time_schedules_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit with parseable reset time schedules retry at that time."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="session_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="session-abc",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("session_limit_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is not None
+        # Verify it's scheduled for 10pm UTC (or tomorrow if 10pm has passed)
+        assert updated.next_retry_at.hour == 22
+        assert updated.next_retry_at.minute == 0
+        assert updated.session_id == "session-abc"
+        assert updated.pending_answer == "continue"
+
+    @pytest.mark.asyncio
+    async def test_session_limit_without_parseable_time_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit without parseable reset time marks NEEDS_ATTENTION."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="unparseable_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # No reset time in the error - can't be parsed
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - please try again later",
+            session_id="session-xyz",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("unparseable_limit_chunk")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "limit" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_session_limit_with_timezone_schedules_utc_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit with timezone correctly converts to UTC for retry."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="tz_limit_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm (America/New_York)",
+            session_id="session-tz",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("tz_limit_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.next_retry_at is not None
+        assert updated.next_retry_at.tzinfo == timezone.utc
+        # Result should be in UTC (10pm Eastern is 3am or 2am UTC depending on DST)
+
+    @pytest.mark.asyncio
+    async def test_session_limit_logs_scheduled_retry_time(
+        self, scheduler, state_store, mock_worktree_manager, caplog
+    ):
+        """Verify scheduler logs 'Session limit hit, scheduled retry at' message."""
+        import logging
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="log_test_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="session-log",
+        )
+
+        with caplog.at_level(logging.INFO):
+            await scheduler._handle_agent_result(work_unit, result)
+
+        assert any("session limit" in record.message.lower() for record in caplog.records)
+        assert any("scheduled retry" in record.message.lower() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_session_limit_checked_before_5xx_retry(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session limit detection takes priority over 5xx retry logic."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="priority_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Error contains both session limit AND 500-like text
+        # Session limit should take priority
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit (internal error) - resets 10pm",
+            session_id="session-priority",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("priority_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        # Should be scheduled for the reset time, not exponential backoff
+        assert updated.next_retry_at.hour == 22
+
+    @pytest.mark.asyncio
+    async def test_session_limit_preserves_session_id_for_resumption(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Session ID is preserved for session resumption after reset."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="resume_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="You've hit your limit - resets 10pm",
+            session_id="important-session-123",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("resume_chunk")
+        assert updated.session_id == "important-session-123"
+        assert updated.pending_answer == "continue"
+
+    @pytest.mark.asyncio
+    async def test_5xx_error_still_uses_exponential_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """5xx errors without session limit still use exponential backoff."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="backoff_5xx_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        result = AgentResult(
+            completed=False,
+            suspended=False,
+            error="500 Internal Server Error",
+            session_id="session-5xx",
+        )
+
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("backoff_5xx_chunk")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.api_retry_count == 1
+        # Should be scheduled with exponential backoff, not at a specific time
+        # Initial delay is 100ms
+        expected_delay = timedelta(milliseconds=100)
+        actual_delay = updated.next_retry_at - now
+        assert actual_delay < timedelta(seconds=1)
+
+
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase tests
+class TestRebasePhase:
+    """Tests for REBASE phase between IMPLEMENT and REVIEW."""
+
+    @pytest.mark.asyncio
+    async def test_implement_advances_to_rebase_not_review(self, scheduler, state_store):
+        """Verify IMPLEMENT phase advances to REBASE, not directly to REVIEW."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_test",
             phase=WorkUnitPhase.IMPLEMENT,
             status=WorkUnitStatus.RUNNING,
             created_at=now,
@@ -3437,940 +751,643 @@ class TestReviewPhase:
 
         await scheduler._advance_phase(work_unit)
 
-        updated = state_store.get_work_unit("test")
+        updated = state_store.get_work_unit("rebase_test")
+        assert updated.phase == WorkUnitPhase.REBASE
+        assert updated.status == WorkUnitStatus.READY
+
+    @pytest.mark.asyncio
+    async def test_rebase_success_advances_to_review(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
+    ):
+        """REBASE phase on success advances to REVIEW phase."""
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="rebase_success",
+            phase=WorkUnitPhase.REBASE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Simulate agent completing successfully (clean merge, tests pass)
+        result = AgentResult(completed=True, suspended=False)
+        await scheduler._handle_agent_result(work_unit, result)
+
+        updated = state_store.get_work_unit("rebase_success")
         assert updated.phase == WorkUnitPhase.REVIEW
         assert updated.status == WorkUnitStatus.READY
 
     @pytest.mark.asyncio
-    async def test_advance_review_to_complete(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    async def test_rebase_conflict_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
     ):
-        """Advancing from REVIEW with APPROVE decision goes to COMPLETE.
-
-        Note: Uses review_nudge_count=2 so file fallback is triggered after one
-        more nudge attempt (3 is max). This tests backward compatibility with
-        file-based decisions.
-        """
-        # Set up chunk directory with an APPROVE decision file
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        # Write an APPROVE decision YAML
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: APPROVE
-summary: Implementation looks good
-iteration: 1
-""")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
+        """REBASE phase with merge conflict marks work unit NEEDS_ATTENTION."""
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
+            chunk="rebase_conflict",
+            phase=WorkUnitPhase.REBASE,
             status=WorkUnitStatus.RUNNING,
-            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
+            worktree="/tmp/worktree",
             created_at=now,
             updated_at=now,
         )
         state_store.create_work_unit(work_unit)
 
-        result = AgentResult(completed=True, suspended=False)
+        # Simulate agent failing due to unresolvable conflict
+        result = AgentResult(
+            completed=False,
+            error="Merge conflict in src/scheduler.py - cannot resolve automatically",
+        )
+        await scheduler._handle_agent_result(work_unit, result)
 
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        # Should advance to COMPLETE phase (handled by _advance_phase)
-        assert updated.phase == WorkUnitPhase.COMPLETE
-        assert updated.status == WorkUnitStatus.READY
+        updated = state_store.get_work_unit("rebase_conflict")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "conflict" in updated.attention_reason.lower()
 
     @pytest.mark.asyncio
-    async def test_review_feedback_returns_to_implement(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    async def test_rebase_test_failure_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
     ):
-        """REVIEW with FEEDBACK decision returns to IMPLEMENT.
-
-        Note: Uses review_nudge_count=2 so file fallback is triggered after one
-        more nudge attempt (3 is max). This tests backward compatibility with
-        file-based decisions.
-        """
-        # Set up chunk directory with a FEEDBACK decision file
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: FEEDBACK
-summary: Issues found in implementation
-issues:
-  - location: src/main.py
-    concern: Missing error handling
-    suggestion: Add try/except block
-iteration: 1
-""")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
+        """REBASE phase with test failure marks work unit NEEDS_ATTENTION."""
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
+            chunk="rebase_test_fail",
+            phase=WorkUnitPhase.REBASE,
             status=WorkUnitStatus.RUNNING,
-            review_iterations=0,
-            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
+            worktree="/tmp/worktree",
             created_at=now,
             updated_at=now,
         )
         state_store.create_work_unit(work_unit)
 
-        result = AgentResult(completed=True, suspended=False)
+        # Simulate agent failing due to test failures after merge
+        result = AgentResult(
+            completed=False,
+            error="Test failures after merge: test_scheduler.py::test_phase_advance FAILED",
+        )
+        await scheduler._handle_agent_result(work_unit, result)
 
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
+        updated = state_store.get_work_unit("rebase_test_fail")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "test" in updated.attention_reason.lower()
 
-        updated = state_store.get_work_unit("test")
+    @pytest.mark.asyncio
+    async def test_rebase_phase_in_full_lifecycle(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner, tmp_path
+    ):
+        """Verify REBASE phase is in the correct position in the full lifecycle."""
+        # Set up chunk with ACTIVE status for final completion
+        chunk_dir = tmp_path / "docs" / "chunks" / "lifecycle_test"
+        chunk_dir.mkdir(parents=True)
+        goal_md = chunk_dir / "GOAL.md"
+        goal_md.write_text(
+            """---
+status: ACTIVE
+---
+
+# Chunk Goal
+"""
+        )
+        mock_worktree_manager.get_worktree_path.return_value = tmp_path
+
+        now = datetime.now(timezone.utc)
+        work_unit = WorkUnit(
+            chunk="lifecycle_test",
+            phase=WorkUnitPhase.GOAL,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Advance through all phases and verify order
+        phases_seen = [work_unit.phase]
+
+        # GOAL -> PLAN
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.PLAN
+
+        # PLAN -> IMPLEMENT
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
         assert updated.phase == WorkUnitPhase.IMPLEMENT
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.review_iterations == 1
 
-        # Feedback file should be created
-        feedback_file = chunk_dir / "REVIEW_FEEDBACK.md"
-        assert feedback_file.exists()
-        content = feedback_file.read_text()
-        assert "Issues to Address" in content
-        assert "Missing error handling" in content
+        # IMPLEMENT -> REBASE (this is the key test)
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.REBASE
+
+        # REBASE -> REVIEW
+        work_unit = updated
+        await scheduler._advance_phase(work_unit)
+        updated = state_store.get_work_unit("lifecycle_test")
+        phases_seen.append(updated.phase)
+        assert updated.phase == WorkUnitPhase.REVIEW
+
+        # Verify the complete order
+        expected_order = [
+            WorkUnitPhase.GOAL,
+            WorkUnitPhase.PLAN,
+            WorkUnitPhase.IMPLEMENT,
+            WorkUnitPhase.REBASE,
+            WorkUnitPhase.REVIEW,
+        ]
+        assert phases_seen == expected_order
 
     @pytest.mark.asyncio
-    async def test_review_feedback_increments_iterations(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
+    async def test_rebase_suspended_for_question_marks_needs_attention(
+        self, scheduler, state_store, mock_worktree_manager, mock_agent_runner
     ):
-        """Multiple FEEDBACK decisions increment the iteration counter.
-
-        Note: Uses review_nudge_count=2 so file fallback is triggered after one
-        more nudge attempt (3 is max). This tests backward compatibility with
-        file-based decisions.
-        """
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: FEEDBACK
-summary: Still has issues
-iteration: 2
-""")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
+        """REBASE phase suspended for question marks work unit NEEDS_ATTENTION."""
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
+            chunk="rebase_question",
+            phase=WorkUnitPhase.REBASE,
             status=WorkUnitStatus.RUNNING,
-            review_iterations=1,  # Already had one iteration
-            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
+            worktree="/tmp/worktree",
             created_at=now,
             updated_at=now,
         )
         state_store.create_work_unit(work_unit)
 
-        result = AgentResult(completed=True, suspended=False)
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.review_iterations == 2
-
-    @pytest.mark.asyncio
-    async def test_review_escalate_marks_needs_attention(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """REVIEW with ESCALATE decision marks NEEDS_ATTENTION.
-
-        Note: Uses review_nudge_count=2 so file fallback is triggered after one
-        more nudge attempt (3 is max). This tests backward compatibility with
-        file-based decisions.
-        """
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: ESCALATE
-summary: Fundamental design issue
-reason: AMBIGUITY - Requirements unclear
-""")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_nudge_count=2,  # Already nudged twice, so 3rd attempt triggers fallback
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(completed=True, suspended=False)
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            with patch("orchestrator.scheduler.broadcast_attention_update"):
-                await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "escalated" in updated.attention_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_review_loop_detection_auto_escalates(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Auto-escalates when iterations exceed max_iterations."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        # Decision file with FEEDBACK, but we've already hit max iterations
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: FEEDBACK
-summary: More issues found
-""")
-
-        # Create reviewers config with max_iterations = 3
-        reviewers_dir = tmp_path / "docs" / "reviewers" / "baseline"
-        reviewers_dir.mkdir(parents=True)
-        (reviewers_dir / "METADATA.yaml").write_text("""name: baseline
-loop_detection:
-  max_iterations: 3
-""")
-
-        # Point project_dir to tmp_path so load_reviewer_config finds the config
-        scheduler.project_dir = tmp_path
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_iterations=3,  # Already at max
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(completed=True, suspended=False)
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            with patch("orchestrator.scheduler.broadcast_attention_update"):
-                await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "exceeded" in updated.attention_reason.lower()
-        assert "iterations" in updated.attention_reason.lower()
-
-
-class TestReviewDecisionParsing:
-    """Tests for parsing review decision from agent output."""
-
-    def test_parse_approve_decision(self):
-        """Parse valid APPROVE YAML."""
-        from orchestrator.scheduler import parse_review_decision
-
-        output = """The review is complete.
-
-```yaml
-decision: APPROVE
-summary: Implementation looks good and meets all requirements
-iteration: 1
-```
-
-Done.
-"""
-        result = parse_review_decision(output)
-        assert result is not None
-        assert result.decision == ReviewDecision.APPROVE
-        assert "looks good" in result.summary
-
-    def test_parse_feedback_decision(self):
-        """Parse FEEDBACK with issues list."""
-        from orchestrator.scheduler import parse_review_decision
-
-        output = """Review findings:
-
-```yaml
-decision: FEEDBACK
-summary: Some issues need to be addressed
-issues:
-  - location: src/main.py#function
-    concern: Missing error handling
-    suggestion: Add try/except
-  - location: src/utils.py
-    concern: Unused import
-iteration: 1
-```
-"""
-        result = parse_review_decision(output)
-        assert result is not None
-        assert result.decision == ReviewDecision.FEEDBACK
-        assert len(result.issues) == 2
-        assert result.issues[0].location == "src/main.py#function"
-        assert "error handling" in result.issues[0].concern
-
-    def test_parse_escalate_decision(self):
-        """Parse ESCALATE with reason."""
-        from orchestrator.scheduler import parse_review_decision
-
-        output = """```yaml
-decision: ESCALATE
-summary: Cannot complete review
-reason: AMBIGUITY - Requirements are unclear
-```
-"""
-        result = parse_review_decision(output)
-        assert result is not None
-        assert result.decision == ReviewDecision.ESCALATE
-        assert result.reason == "AMBIGUITY - Requirements are unclear"
-
-    def test_parse_malformed_yaml(self):
-        """Graceful handling of parse errors."""
-        from orchestrator.scheduler import parse_review_decision
-
-        output = """```yaml
-this is not: valid yaml: with: too many: colons
-decision: [malformed]
-```
-"""
-        result = parse_review_decision(output)
-        # Should return None when parsing fails
-        assert result is None
-
-    def test_parse_fallback_decision_line(self):
-        """Parse simple decision line as fallback."""
-        from orchestrator.scheduler import parse_review_decision
-
-        output = """
-Review complete.
-decision: APPROVE
-Everything looks good.
-"""
-        result = parse_review_decision(output)
-        assert result is not None
-        assert result.decision == ReviewDecision.APPROVE
-
-
-class TestReviewFeedbackFile:
-    """Tests for REVIEW_FEEDBACK.md file creation."""
-
-    def test_create_review_feedback_file(self, tmp_path):
-        """Verify file is created with correct content."""
-        from orchestrator.scheduler import create_review_feedback_file
-        from orchestrator.models import ReviewResult, ReviewDecision, ReviewIssue
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        feedback = ReviewResult(
-            decision=ReviewDecision.FEEDBACK,
-            summary="Issues found during review",
-            issues=[
-                ReviewIssue(
-                    location="src/main.py",
-                    concern="Missing docstring",
-                    suggestion="Add function docstring",
-                ),
-            ],
-            iteration=1,
-        )
-
-        result_path = create_review_feedback_file(
-            tmp_path, "test_chunk", feedback, 1
-        )
-
-        assert result_path.exists()
-        content = result_path.read_text()
-
-        assert "# Review Feedback" in content
-        assert "**Iteration:** 1" in content
-        assert "FEEDBACK" in content
-        assert "Issues found during review" in content
-        assert "Missing docstring" in content
-        assert "Add function docstring" in content
-
-    def test_feedback_file_includes_iteration_count(self, tmp_path):
-        """Check iteration tracking in feedback file."""
-        from orchestrator.scheduler import create_review_feedback_file
-        from orchestrator.models import ReviewResult, ReviewDecision
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
-        chunk_dir.mkdir(parents=True)
-
-        feedback = ReviewResult(
-            decision=ReviewDecision.FEEDBACK,
-            summary="Second round of feedback",
-            iteration=2,
-        )
-
-        result_path = create_review_feedback_file(
-            tmp_path, "test_chunk", feedback, 2
-        )
-
-        content = result_path.read_text()
-        assert "**Iteration:** 2" in content
-
-
-# Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-class TestReviewDecisionTool:
-    """Tests for the ReviewDecision tool-based review decision handling."""
-
-    @pytest.mark.asyncio
-    async def test_review_decision_from_tool_call(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Review decision from tool call is captured and routed correctly."""
-        from orchestrator.models import ReviewToolDecision
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult with a captured review decision from tool call
-        tool_decision = ReviewToolDecision(
-            decision="APPROVE",
-            summary="Implementation meets all requirements",
-            criteria_assessment=[{"criterion": "test", "status": "satisfied"}],
-        )
+        # Simulate agent asking a question during rebase
         result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=tool_decision,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        # Should advance to COMPLETE phase
-        assert updated.phase == WorkUnitPhase.COMPLETE
-        assert updated.status == WorkUnitStatus.READY
-
-    @pytest.mark.asyncio
-    async def test_review_feedback_from_tool_call(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """FEEDBACK decision from tool call routes back to IMPLEMENT."""
-        from orchestrator.models import ReviewToolDecision
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_iterations=0,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult with FEEDBACK from tool call
-        tool_decision = ReviewToolDecision(
-            decision="FEEDBACK",
-            summary="Missing error handling",
-            issues=[
-                {"location": "src/main.py", "concern": "No try/except", "suggestion": "Add error handling"}
-            ],
-        )
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=tool_decision,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.phase == WorkUnitPhase.IMPLEMENT
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.review_iterations == 1
-
-        # Feedback file should be created
-        feedback_file = chunk_dir / "REVIEW_FEEDBACK.md"
-        assert feedback_file.exists()
-
-    @pytest.mark.asyncio
-    async def test_review_escalate_from_tool_call(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """ESCALATE decision from tool call marks NEEDS_ATTENTION."""
-        from orchestrator.models import ReviewToolDecision
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        tool_decision = ReviewToolDecision(
-            decision="ESCALATE",
-            summary="Requirements are ambiguous",
-            reason="AMBIGUITY - Cannot determine correct behavior",
-        )
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=tool_decision,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            with patch("orchestrator.scheduler.broadcast_attention_update"):
-                await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "escalated" in updated.attention_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_nudge_when_tool_not_called(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """When reviewer completes without calling tool, session is resumed with nudge."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_nudge_count=0,
+            completed=False,
+            suspended=True,
             session_id="session-123",
-            created_at=now,
-            updated_at=now,
+            question={
+                "question": "Both versions modified the same function. Which approach should I use?",
+                "options": [{"label": "Keep chunk version"}, {"label": "Keep trunk version"}],
+            },
         )
-        state_store.create_work_unit(work_unit)
+        await scheduler._handle_agent_result(work_unit, result)
 
-        # AgentResult with NO review decision (tool not called)
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            session_id="session-123",
-            review_decision=None,  # Tool was not called
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        # Should be READY to resume with nudge
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.pending_answer is not None
-        assert "ReviewDecision" in updated.pending_answer
-        assert updated.review_nudge_count == 1
+        updated = state_store.get_work_unit("rebase_question")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "question" in updated.attention_reason.lower()
         assert updated.session_id == "session-123"
 
-    @pytest.mark.asyncio
-    async def test_escalate_after_max_nudges(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """After 3 nudges without tool call, escalates to NEEDS_ATTENTION."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
 
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
+# Chunk: docs/chunks/persist_retry_state - Tests for crash recovery retry preservation
+class TestCrashRecoveryRetryPreservation:
+    """Tests for preserving retry backoff state across daemon restarts.
 
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_nudge_count=2,  # Already nudged twice
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        # AgentResult with NO review decision (tool not called after nudges)
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=None,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            with patch("orchestrator.scheduler.broadcast_attention_update"):
-                await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        # After 3rd nudge (2 previous + 1 this time), should escalate
-        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "nudge" in updated.attention_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_fallback_to_file_parsing_after_max_nudges(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """After max nudges, falls back to file parsing if decision file exists."""
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        # Create a decision file (fallback)
-        decision_file = chunk_dir / "REVIEW_DECISION.yaml"
-        decision_file.write_text("""decision: APPROVE
-summary: Implementation looks good
-""")
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_nudge_count=2,  # Already nudged twice (will be 3rd)
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=None,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        # Should advance to COMPLETE phase using file fallback
-        assert updated.phase == WorkUnitPhase.COMPLETE
-        assert updated.status == WorkUnitStatus.READY
-
-    @pytest.mark.asyncio
-    async def test_nudge_count_resets_on_successful_decision(
-        self, scheduler, state_store, mock_worktree_manager, tmp_path
-    ):
-        """Nudge count is reset when tool is called successfully."""
-        from orchestrator.models import ReviewToolDecision
-
-        chunk_dir = tmp_path / "docs" / "chunks" / "test"
-        chunk_dir.mkdir(parents=True)
-
-        mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.get_log_path.return_value = tmp_path / "logs"
-
-        now = datetime.now(timezone.utc)
-        work_unit = WorkUnit(
-            chunk="test",
-            phase=WorkUnitPhase.REVIEW,
-            status=WorkUnitStatus.RUNNING,
-            review_nudge_count=2,  # Had some nudges before
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(work_unit)
-
-        tool_decision = ReviewToolDecision(
-            decision="APPROVE",
-            summary="All good now",
-        )
-        result = AgentResult(
-            completed=True,
-            suspended=False,
-            review_decision=tool_decision,
-        )
-
-        with patch("orchestrator.scheduler.broadcast_work_unit_update"):
-            await scheduler._handle_review_result(work_unit, tmp_path, result)
-
-        updated = state_store.get_work_unit("test")
-        assert updated.review_nudge_count == 0  # Reset to 0
-
-
-# Chunk: docs/chunks/orch_manual_done_unblock - Manual DONE transition triggers unblock
-class TestManualDoneUnblock:
-    """Tests for unblocking dependents when work unit is manually set to DONE.
-
-    When an operator manually sets a work unit status to DONE (via API or CLI),
-    the unblock_dependents function should be called to transition any dependent
-    work units from BLOCKED/NEEDS_ATTENTION to READY. This addresses the issue
-    where auto-unblock only triggered when the scheduler completed a work unit
-    through normal flow, leaving dependents stuck after manual intervention.
+    When the orchestrator daemon restarts and finds RUNNING work units,
+    it should preserve the retry backoff state for units that were mid-retry.
     """
 
-    def test_unblock_dependents_function_exists(self, state_store):
-        """The unblock_dependents module-level function exists and is importable."""
-        from orchestrator.scheduler import unblock_dependents
-
-        # Create blocker work unit (DONE)
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_preserves_retry_backoff(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Crash recovery with api_retry_count > 0 sets next_retry_at appropriately."""
         now = datetime.now(timezone.utc)
-        blocker = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
+        work_unit = WorkUnit(
+            chunk="retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=3,  # Mid-retry
+            next_retry_at=None,  # Cleared when dispatch happened
             created_at=now,
             updated_at=now,
         )
-        state_store.create_work_unit(blocker)
+        state_store.create_work_unit(work_unit)
 
-        # Create dependent work unit (BLOCKED)
-        dependent = WorkUnit(
-            chunk="dependent_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["blocker_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(dependent)
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
 
-        # Call the module-level function
-        unblock_dependents(state_store, "blocker_chunk")
+        await scheduler._recover_from_crash()
 
-        # Verify dependent is now READY
-        updated = state_store.get_work_unit("dependent_chunk")
+        updated = state_store.get_work_unit("retry_chunk")
         assert updated.status == WorkUnitStatus.READY
-        assert "blocker_chunk" not in updated.blocked_by
+        assert updated.next_retry_at is not None
+        # The backoff should be in the future
+        assert updated.next_retry_at > now
+        # For retry count 3, backoff = min(100ms * 2^(3-1), 5000ms) = 400ms
+        expected_delay = timedelta(milliseconds=400)
+        actual_delay = updated.next_retry_at - now
+        assert actual_delay >= expected_delay - timedelta(milliseconds=50)
+        assert actual_delay <= expected_delay + timedelta(milliseconds=100)
 
-    def test_manual_done_via_api_unblocks_dependent(self, state_store):
-        """Manual DONE via API endpoint should unblock dependent work units.
-
-        This tests the integration where update_work_unit_endpoint calls
-        unblock_dependents when status changes to DONE.
-        """
-        from orchestrator.scheduler import unblock_dependents
-
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_no_retry_for_zero_count(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Crash recovery with api_retry_count == 0 does NOT set next_retry_at."""
         now = datetime.now(timezone.utc)
-
-        # Create blocker work unit (will be set to DONE manually)
-        blocker = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.NEEDS_ATTENTION,  # Simulates stuck state
-            attention_reason="Merge to base failed: conflict",
+        work_unit = WorkUnit(
+            chunk="no_retry_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=0,  # No retries in progress
+            next_retry_at=None,
             created_at=now,
             updated_at=now,
         )
-        state_store.create_work_unit(blocker)
+        state_store.create_work_unit(work_unit)
 
-        # Create dependent work unit (BLOCKED)
-        dependent = WorkUnit(
-            chunk="dependent_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["blocker_chunk"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(dependent)
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
 
-        # Simulate what the API endpoint does: update status to DONE
-        blocker.status = WorkUnitStatus.DONE
-        blocker.attention_reason = None
-        blocker.updated_at = datetime.now(timezone.utc)
-        state_store.update_work_unit(blocker)
+        await scheduler._recover_from_crash()
 
-        # Then call unblock_dependents (what the API endpoint should do)
-        unblock_dependents(state_store, "blocker_chunk")
-
-        # Verify dependent is now READY
-        updated = state_store.get_work_unit("dependent_chunk")
+        updated = state_store.get_work_unit("no_retry_chunk")
         assert updated.status == WorkUnitStatus.READY
-        assert "blocker_chunk" not in updated.blocked_by
+        assert updated.next_retry_at is None
 
-    def test_unblock_multiple_dependents(self, state_store):
-        """Manual DONE should unblock multiple dependent work units."""
-        from orchestrator.scheduler import unblock_dependents
-
+    @pytest.mark.asyncio
+    async def test_recovered_unit_respects_backoff_timing(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """After recovery, a work unit with next_retry_at in the future is NOT dispatched."""
         now = datetime.now(timezone.utc)
-
-        # Create blocker work unit (DONE)
-        blocker = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
+        work_unit = WorkUnit(
+            chunk="backoff_chunk",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            api_retry_count=3,
+            next_retry_at=None,
             created_at=now,
             updated_at=now,
         )
-        state_store.create_work_unit(blocker)
+        state_store.create_work_unit(work_unit)
 
-        # Create multiple dependent work units
-        for name in ["dep_a", "dep_b", "dep_c"]:
-            dep = WorkUnit(
-                chunk=name,
-                phase=WorkUnitPhase.PLAN,
-                status=WorkUnitStatus.BLOCKED,
-                blocked_by=["blocker_chunk"],
+        # Mock worktree manager to return no worktrees
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        # Perform crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify the unit has next_retry_at set
+        recovered = state_store.get_work_unit("backoff_chunk")
+        assert recovered.status == WorkUnitStatus.READY
+        assert recovered.next_retry_at is not None
+        assert recovered.next_retry_at > datetime.now(timezone.utc)
+
+        # Now run dispatch tick - should NOT dispatch because of backoff
+        await scheduler._dispatch_tick()
+
+        # Should NOT have dispatched (still in backoff)
+        assert "backoff_chunk" not in scheduler._running_agents
+
+    @pytest.mark.asyncio
+    async def test_recover_from_crash_uses_exponential_backoff_formula(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify recovery uses the same exponential backoff formula as _schedule_api_retry."""
+        now = datetime.now(timezone.utc)
+
+        # Test multiple retry counts to verify exponential progression
+        test_cases = [
+            (1, 100),    # 100ms * 2^0 = 100ms
+            (2, 200),    # 100ms * 2^1 = 200ms
+            (3, 400),    # 100ms * 2^2 = 400ms
+            (4, 800),    # 100ms * 2^3 = 800ms
+            (5, 1600),   # 100ms * 2^4 = 1600ms
+            (10, 5000),  # Would be 100ms * 2^9 = 51200ms, but capped at 5000ms
+        ]
+
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        for retry_count, expected_ms in test_cases:
+            work_unit = WorkUnit(
+                chunk=f"exp_chunk_{retry_count}",
+                phase=WorkUnitPhase.IMPLEMENT,
+                status=WorkUnitStatus.RUNNING,
+                worktree="/tmp/worktree",
+                api_retry_count=retry_count,
+                next_retry_at=None,
                 created_at=now,
                 updated_at=now,
             )
-            state_store.create_work_unit(dep)
+            state_store.create_work_unit(work_unit)
 
-        # Call unblock_dependents
-        unblock_dependents(state_store, "blocker_chunk")
+        await scheduler._recover_from_crash()
 
-        # Verify all dependents are now READY
-        for name in ["dep_a", "dep_b", "dep_c"]:
-            updated = state_store.get_work_unit(name)
-            assert updated.status == WorkUnitStatus.READY, f"{name} should be READY"
-            assert "blocker_chunk" not in updated.blocked_by
+        for retry_count, expected_ms in test_cases:
+            updated = state_store.get_work_unit(f"exp_chunk_{retry_count}")
+            assert updated.status == WorkUnitStatus.READY
+            assert updated.next_retry_at is not None
+            expected_delay = timedelta(milliseconds=expected_ms)
+            actual_delay = updated.next_retry_at - now
+            # Allow tolerance for execution time
+            assert actual_delay >= expected_delay - timedelta(milliseconds=50), \
+                f"retry_count={retry_count}: delay too short"
+            assert actual_delay <= expected_delay + timedelta(milliseconds=200), \
+                f"retry_count={retry_count}: delay too long"
 
-    def test_partial_unblock_with_multiple_blockers(self, state_store):
-        """Dependent with multiple blockers stays BLOCKED until all complete."""
-        from orchestrator.scheduler import unblock_dependents
 
-        now = datetime.now(timezone.utc)
+# Chunk: docs/chunks/finalization_recovery - Crash recovery for incomplete finalization
+class TestFinalizationRecovery:
+    """Tests for recovery from crashes during work unit finalization.
 
-        # Create two blocker work units
-        blocker_a = WorkUnit(
-            chunk="blocker_a",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(blocker_a)
+    When a daemon crashes after remove_worktree() but before merge_to_base(),
+    the work unit's changes survive only as an unmerged branch. These tests
+    verify that the scheduler can detect and recover from this scenario.
+    """
 
-        blocker_b = WorkUnit(
-            chunk="blocker_b",
-            phase=WorkUnitPhase.IMPLEMENT,
-            status=WorkUnitStatus.RUNNING,  # Still running
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(blocker_b)
+    @pytest.mark.asyncio
+    async def test_auto_recovery_success_case(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Auto-recover incomplete finalization when merge is clean.
 
-        # Create dependent blocked by BOTH
-        dependent = WorkUnit(
-            chunk="dependent_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["blocker_a", "blocker_b"],
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(dependent)
-
-        # Unblock after blocker_a completes
-        unblock_dependents(state_store, "blocker_a")
-
-        # Verify dependent is STILL BLOCKED (blocker_b still running)
-        updated = state_store.get_work_unit("dependent_chunk")
-        assert updated.status == WorkUnitStatus.BLOCKED
-        assert "blocker_a" not in updated.blocked_by
-        assert "blocker_b" in updated.blocked_by
-
-    def test_unblock_needs_attention_to_ready(self, state_store):
-        """Work unit in NEEDS_ATTENTION transitions to READY when manually unblocked."""
-        from orchestrator.scheduler import unblock_dependents
-
-        now = datetime.now(timezone.utc)
-
-        # Create blocker work unit (DONE)
-        blocker = WorkUnit(
-            chunk="blocker_chunk",
-            phase=WorkUnitPhase.COMPLETE,
-            status=WorkUnitStatus.DONE,
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(blocker)
-
-        # Create dependent in NEEDS_ATTENTION (e.g., from conflict resolution)
-        dependent = WorkUnit(
-            chunk="dependent_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.NEEDS_ATTENTION,
-            blocked_by=["blocker_chunk"],
-            attention_reason="Conflict with running blocker_chunk",
-            created_at=now,
-            updated_at=now,
-        )
-        state_store.create_work_unit(dependent)
-
-        # Call unblock_dependents
-        unblock_dependents(state_store, "blocker_chunk")
-
-        # Verify dependent is now READY with cleared attention_reason
-        updated = state_store.get_work_unit("dependent_chunk")
-        assert updated.status == WorkUnitStatus.READY
-        assert updated.attention_reason is None
-        assert "blocker_chunk" not in updated.blocked_by
-
-    def test_scheduler_unblock_still_works(self, state_store):
-        """Existing scheduler-driven unblock (via _unblock_dependents method) still works.
-
-        This is a regression test to ensure we didn't break the existing behavior.
+        Simulates a crash after worktree removal but before merge, where
+        the merge can be completed automatically (no conflicts).
         """
-        from orchestrator.scheduler import unblock_dependents
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase (crashed during finalization)
+        work_unit = WorkUnit(
+            chunk="recovery_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,  # Was running when it crashed
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure mocks to simulate crash-during-finalization scenario:
+        # - Branch exists (orch/recovery_test)
+        # - Worktree does NOT exist (was removed before crash)
+        # - Branch has changes ahead of base (merge wasn't completed)
+        # - Merge succeeds (no conflicts)
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.return_value = None  # Success
+        mock_worktree_manager.get_branch_name.return_value = "orch/recovery_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify merge_to_base was called to complete the merge
+        mock_worktree_manager.merge_to_base.assert_called_once_with(
+            "recovery_test", delete_branch=True
+        )
+
+        # Verify work unit is now DONE
+        updated = state_store.get_work_unit("recovery_test")
+        assert updated.status == WorkUnitStatus.DONE
+
+    @pytest.mark.asyncio
+    async def test_conflict_escalation_case(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Escalate to NEEDS_ATTENTION when merge has conflicts.
+
+        Simulates a crash where the subsequent merge cannot complete
+        due to conflicts. The work unit should be marked NEEDS_ATTENTION
+        with a descriptive reason including the branch name.
+        """
+        from orchestrator.worktree import WorktreeError
 
         now = datetime.now(timezone.utc)
 
-        # Create blocker work unit
-        blocker = WorkUnit(
-            chunk="blocker_chunk",
+        # Create a work unit in COMPLETE phase
+        work_unit = WorkUnit(
+            chunk="conflict_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure mocks for crash scenario with merge conflict
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.side_effect = WorktreeError(
+            "Merge conflict between orch/conflict_test and main"
+        )
+        mock_worktree_manager.get_branch_name.return_value = "orch/conflict_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify work unit is now NEEDS_ATTENTION with descriptive reason
+        updated = state_store.get_work_unit("conflict_test")
+        assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
+        assert "orch/conflict_test" in updated.attention_reason
+        assert "conflict" in updated.attention_reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_existing_crash_recovery_preserved(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify existing crash recovery behavior is preserved.
+
+        RUNNING work units should still be reset to READY, which is the
+        pre-existing behavior that must not be broken.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in RUNNING status (orphaned agent)
+        work_unit = WorkUnit(
+            chunk="orphan_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # No incomplete finalizations (no matching branches)
+        mock_worktree_manager._branch_exists.return_value = False
+        mock_worktree_manager.list_worktrees.return_value = []
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify work unit was reset to READY (existing behavior)
+        updated = state_store.get_work_unit("orphan_test")
+        assert updated.status == WorkUnitStatus.READY
+        assert updated.worktree is None
+
+    @pytest.mark.asyncio
+    async def test_branch_exists_no_changes_cleanup(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Clean up dangling branch when it has no changes ahead of base.
+
+        If a branch exists but has no commits ahead of base, just delete
+        the branch without trying to merge.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase
+        work_unit = WorkUnit(
+            chunk="no_changes_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Configure: branch exists, no worktree, NO changes
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = False
+        mock_worktree_manager.get_branch_name.return_value = "orch/no_changes_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify branch was deleted (not merged)
+        mock_worktree_manager.delete_branch.assert_called_once_with("no_changes_test")
+        mock_worktree_manager.merge_to_base.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_done_status_with_dangling_branch(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Handle DONE work unit with dangling branch.
+
+        Rare case: work unit is DONE but branch still exists with changes.
+        This could happen if merge_to_base succeeded but delete_branch failed.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a DONE work unit with dangling branch
+        work_unit = WorkUnit(
+            chunk="done_dangling_test",
             phase=WorkUnitPhase.COMPLETE,
             status=WorkUnitStatus.DONE,
             created_at=now,
             updated_at=now,
         )
-        state_store.create_work_unit(blocker)
+        state_store.create_work_unit(work_unit)
 
-        # Create dependent work unit
-        dependent = WorkUnit(
-            chunk="dependent_chunk",
-            phase=WorkUnitPhase.PLAN,
-            status=WorkUnitStatus.BLOCKED,
-            blocked_by=["blocker_chunk"],
+        # Configure: branch exists, no worktree, has changes
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.get_branch_name.return_value = "orch/done_dangling_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Should still attempt to merge
+        mock_worktree_manager.merge_to_base.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_worktree_exists_not_incomplete_finalization(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Skip recovery when worktree still exists.
+
+        If the worktree exists, the crash happened before worktree removal,
+        which is a different scenario handled by the existing RUNNING→READY logic.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create a work unit in COMPLETE phase with worktree
+        work_unit = WorkUnit(
+            chunk="worktree_exists_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            worktree="/tmp/worktree",
             created_at=now,
             updated_at=now,
         )
-        state_store.create_work_unit(dependent)
+        state_store.create_work_unit(work_unit)
 
-        # Call the function (same function used by scheduler)
-        unblock_dependents(state_store, "blocker_chunk")
+        # Configure: branch exists AND worktree exists
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = True
+        mock_worktree_manager.list_worktrees.return_value = ["worktree_exists_test"]
 
-        # Verify dependent is now READY
-        updated = state_store.get_work_unit("dependent_chunk")
-        assert updated.status == WorkUnitStatus.READY
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Should NOT attempt merge (worktree exists = not incomplete finalization)
+        mock_worktree_manager.merge_to_base.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_recovery_unblocks_dependents(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Verify that auto-recovery unblocks dependent work units.
+
+        When a work unit is auto-recovered, its dependents should be unblocked.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Create the work unit that will be recovered
+        work_unit = WorkUnit(
+            chunk="blocker_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Create a work unit blocked by the first one
+        blocked_unit = WorkUnit(
+            chunk="blocked_test",
+            phase=WorkUnitPhase.IMPLEMENT,
+            status=WorkUnitStatus.BLOCKED,
+            blocked_by=["blocker_test"],
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(blocked_unit)
+
+        # Configure for successful recovery
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.merge_to_base.return_value = None
+        mock_worktree_manager.get_branch_name.return_value = "orch/blocker_test"
+
+        # Run crash recovery
+        await scheduler._recover_from_crash()
+
+        # Verify blocked work unit was unblocked
+        updated_blocked = state_store.get_work_unit("blocked_test")
+        assert updated_blocked.status == WorkUnitStatus.READY
+        assert "blocker_test" not in updated_blocked.blocked_by
+
+    @pytest.mark.asyncio
+    async def test_recovery_logs_warning_for_detected_incomplete(
+        self, scheduler, state_store, mock_worktree_manager, caplog
+    ):
+        """Verify warnings are logged for detected incomplete finalizations."""
+        import logging
+
+        now = datetime.now(timezone.utc)
+
+        work_unit = WorkUnit(
+            chunk="log_test",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+        )
+        state_store.create_work_unit(work_unit)
+
+        mock_worktree_manager._branch_exists.return_value = True
+        mock_worktree_manager.worktree_exists.return_value = False
+        mock_worktree_manager.has_changes.return_value = True
+        mock_worktree_manager.get_branch_name.return_value = "orch/log_test"
+
+        with caplog.at_level(logging.WARNING):
+            await scheduler._recover_from_crash()
+
+        # Check that appropriate warnings were logged
+        assert any("incomplete finalization" in record.message.lower() for record in caplog.records)

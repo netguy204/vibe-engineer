@@ -50,6 +50,7 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 - **Chunk**: A discrete unit of implementation work stored in `docs/chunks/`. Each chunk has a goal, plan, and lifecycle status.
 - **Narrative**: A high-level, multi-step goal that decomposes into multiple chunks. Stored in `docs/narratives/`.
 - **Subsystem**: A cross-cutting pattern that emerged organically in the codebase and has been documented for agent guidance. Stored in `docs/subsystems/`.
+  <!-- Chunk: docs/chunks/spec_docs_update - Subsystem terminology, directory structure, frontmatter schema, status values, and CLI commands -->
 - **Investigation**: An exploratory document for understanding something before committing to action—diagnosing an issue or exploring a concept. Stored in `docs/investigations/`.
 
 ### Workflow Contexts
@@ -100,9 +101,8 @@ The task directory acts as a unified resolution context where all projects and t
 
 ### Identifiers and Metadata
 
-- **Chunk ID**: A zero-padded 4-digit number (e.g., `0001`) that uniquely identifies a chunk and determines its order
-- **Short Name**: A human-readable identifier for a chunk, limited to alphanumeric characters, underscores, and hyphens
-- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk
+- **Short Name**: A human-readable identifier for a chunk, starting with a lowercase letter and containing only lowercase letters, digits, underscores, and hyphens
+- **Ticket ID**: An optional external reference (e.g., issue tracker ID) associated with a chunk (stored in frontmatter, not directory name)
 - **Code Reference**: A symbolic path (file#symbol) that links documentation to specific implementation locations
 - **Superseded**: A document status indicating it has been replaced by a newer version but retained for historical context
 
@@ -122,14 +122,14 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
       DECISIONS.md                    # Architectural decision records
       TESTING_PHILOSOPHY.md           # Testing approach
     chunks/
-      {NNNN}-{short_name}[-{ticket}]/ # Chunk directories
+      {short_name}/                   # Chunk directories
         GOAL.md                       # Chunk goal with frontmatter
         PLAN.md                       # Implementation plan
     subsystems/
-      {NNNN}-{short_name}/            # Subsystem directories
+      {short_name}/                   # Subsystem directories
         OVERVIEW.md                   # Subsystem documentation with frontmatter
     investigations/
-      {NNNN}-{short_name}/            # Investigation directories
+      {short_name}/                   # Investigation directories
         OVERVIEW.md                   # Investigation documentation with frontmatter
   .claude/
     commands/                         # Agent command definitions
@@ -187,13 +187,11 @@ projects:
 
 ### Chunk Directory Naming
 
-Format: `{chunk_id}-{short_name}[-{ticket_id}]`
+Format: `{short_name}`
 
-- `chunk_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
-- `ticket_id`: optional, lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-initial_setup`, `0002-auth-feature-PROJ-123`
+Examples: `initial_setup`, `auth_feature`, `api_refactor`
 
 ### Chunk GOAL.md Frontmatter
 
@@ -208,7 +206,7 @@ code_references:
   - ref: path/to/file.ext#ClassName::method_name
     implements: "Description of what this code implements"
 subsystems:
-  - subsystem_id: "{NNNN}-{short_name}"
+  - subsystem_id: "{short_name}"
     relationship: implements | uses
 ---
 ```
@@ -219,6 +217,8 @@ subsystems:
 - `ACTIVE`: Chunk accurately describes current or recently-merged work
 - `SUPERSEDED`: Another chunk has modified the code this chunk governed
 - `HISTORICAL`: Significant drift from current code; kept for archaeology only
+
+**Orchestrator and Parallel Worktrees**: The single-IMPLEMENTING constraint applies *per worktree*. When the orchestrator manages parallel execution, it creates isolated git worktrees for each chunk. Each worktree has at most one IMPLEMENTING chunk, preserving the constraint's intent (focused work, predictable state). This enables parallel chunk execution without violating the invariant that guides an agent's attention. See `docs/trunk/ORCHESTRATOR.md` for details on the worktree-based execution model.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -254,12 +254,11 @@ Code references use symbolic paths rather than line numbers for stability as cod
 
 ### Subsystem Directory Naming
 
-Format: `{subsystem_id}-{short_name}`
+Format: `{short_name}`
 
-- `subsystem_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-validation`, `0002-template_system`
+Examples: `validation`, `template_system`, `workflow_artifacts`
 
 ### Subsystem OVERVIEW.md Frontmatter
 
@@ -267,7 +266,7 @@ Examples: `0001-validation`, `0002-template_system`
 ---
 status: DISCOVERING | DOCUMENTED | REFACTORING | STABLE | DEPRECATED
 chunks:
-  - chunk_id: "{NNNN}-{short_name}"
+  - chunk_id: "{short_name}"
     relationship: implements | uses
 code_references:
   - ref: path/to/file.ext#ClassName::method_name
@@ -317,14 +316,14 @@ Chunks and subsystems have a bidirectional relationship. Both sides use the same
 In chunk GOAL.md frontmatter:
 ```yaml
 subsystems:
-  - subsystem_id: "0001-validation"
+  - subsystem_id: "validation"
     relationship: implements
 ```
 
 In subsystem OVERVIEW.md frontmatter:
 ```yaml
 chunks:
-  - chunk_id: "0014-subsystem_frontmatter"
+  - chunk_id: "subsystem_frontmatter"
     relationship: implements
 ```
 
@@ -332,12 +331,11 @@ These references are validated by `ve chunk validate` (for chunks) and `ve subsy
 
 ### Investigation Directory Naming
 
-Format: `{investigation_id}-{short_name}`
+Format: `{short_name}`
 
-- `investigation_id`: 4-digit zero-padded integer (0001, 0002, ...)
-- `short_name`: lowercase alphanumeric with underscores/hyphens
+- `short_name`: lowercase, must start with a letter, may contain letters, digits, underscores, and hyphens
 
-Examples: `0001-memory_leak`, `0002-graphql_migration`
+Examples: `memory_leak`, `graphql_migration`, `performance_regression`
 
 ### Investigation OVERVIEW.md Frontmatter
 
@@ -347,7 +345,7 @@ status: ONGOING | SOLVED | NOTED | DEFERRED
 trigger: {description} | null
 proposed_chunks:
   - prompt: "Description of proposed work"
-    chunk_directory: "{NNNN}-{short_name}" | null
+    chunk_directory: "{short_name}" | null
 ---
 ```
 
@@ -377,6 +375,19 @@ proposed_chunks:
 The only stable API provided by this package is the CLI. There is no guarantee of stability for internal methods that implement that CLI. We do attempt to maintain backwards compatibility between the tools and the file formats so that users of this tooling can upgrade freely without fear.
 
 ### CLI
+
+#### Exit Code Convention
+
+All CLI commands follow a consistent exit code convention:
+
+- **Exit code 0**: Command succeeded. This includes "no results found" scenarios for list commands—the command executed successfully, it just returned an empty result set.
+- **Exit code 1**: Command failed due to an error. This includes:
+  - Validation errors (invalid arguments, missing required inputs)
+  - File system errors (missing files, permission denied)
+  - Parse errors (malformed frontmatter, invalid references)
+  - State errors (e.g., `--current` when no `IMPLEMENTING` chunk exists)
+
+This follows standard UNIX conventions where exit code 0 indicates success and non-zero indicates failure. List commands that find no matching items are considered successful—they completed their work, the result was simply empty.
 
 #### ve init [--project-dir PATH]
 
@@ -431,9 +442,11 @@ Initialize a task directory for cross-repository work.
   - Error if any repository is not VE-initialized (missing `docs/chunks/`)
 - **Exit codes**: 0 on success, 1 on validation error
 
-#### ve chunk start SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
+#### ve chunk create SHORT_NAME [TICKET_ID] [--project-dir PATH] [--yes] [--future]
 
 Create a new chunk directory with goal and plan templates.
+
+Alias: `ve chunk start` (deprecated, same behavior)
 
 - **Arguments**:
   - `SHORT_NAME` (required): Identifier for the chunk
@@ -447,11 +460,10 @@ Create a new chunk directory with goal and plan templates.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
 - **Postconditions**:
-  - New directory `docs/chunks/{NNNN}-{short_name}[-{ticket_id}]/` created
+  - New directory `docs/chunks/{short_name}/` created
   - Directory contains GOAL.md and PLAN.md from templates
   - GOAL.md frontmatter has `status: IMPLEMENTING` (or `FUTURE` if `--future` flag used)
 - **Behavior**:
-  - Chunk ID is auto-incremented from existing chunks
   - Inputs are normalized to lowercase
   - Warns if duplicate short_name + ticket_id exists; prompts for confirmation
 - **Errors**:
@@ -476,15 +488,15 @@ List existing chunks.
   - Status shown in brackets after each path (e.g., `[IMPLEMENTING]`, `[FUTURE]`)
   - Sorted in descending order by chunk ID
   - With `--latest`: shows only the path (no status bracket) for the current `IMPLEMENTING` chunk
-- **Errors**: None
-- **Exit codes**: 0 if chunks found, 1 if no chunks exist (or no `IMPLEMENTING` chunk when using `--latest`)
+- **Errors**: None for basic list operation
+- **Exit codes**: 0 on success (including "no chunks found"); 1 when using `--current`, `--last-active`, or `--recent` and no matching chunk exists
 
 #### ve chunk activate CHUNK_ID [--project-dir PATH]
 
 Activate a `FUTURE` chunk by changing its status to `IMPLEMENTING`.
 
 - **Arguments**:
-  - `CHUNK_ID` (required): The 4-digit chunk ID or full directory name
+  - `CHUNK_ID` (required): The chunk directory name
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
@@ -514,10 +526,9 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing subsystem with the same short name
 - **Postconditions**:
-  - New directory `docs/subsystems/{NNNN}-{short_name}/` created
+  - New directory `docs/subsystems/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `DISCOVERING` status
 - **Behavior**:
-  - Subsystem ID is auto-incremented from existing subsystems
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
@@ -539,7 +550,7 @@ List existing subsystems with their status.
   - Status shown in brackets after each path (e.g., `[DISCOVERING]`, `[STABLE]`)
   - Sorted in ascending order by subsystem ID
 - **Errors**: None
-- **Exit codes**: 0 if subsystems found, 1 if no subsystems exist
+- **Exit codes**: 0 on success (including "no subsystems found")
 
 #### ve subsystem validate SUBSYSTEM_ID [--project-dir PATH]
 
@@ -578,7 +589,7 @@ Show or update a subsystem's lifecycle status.
 - **Behavior**:
   - Without NEW_STATUS: displays current status as `{short_name}: {STATUS}`
   - With NEW_STATUS: validates transition and updates status, displays `{short_name}: {OLD} -> {NEW}`
-  - Accepts full subsystem ID (e.g., `0001-validation`) or short name (e.g., `validation`)
+  - Accepts the subsystem directory name (e.g., `validation`)
 - **Errors**:
   - Error if subsystem not found
   - Error if invalid status value
@@ -597,10 +608,9 @@ Create a new investigation directory with OVERVIEW.md template.
   - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
   - No existing investigation with the same short name
 - **Postconditions**:
-  - New directory `docs/investigations/{NNNN}-{short_name}/` created
+  - New directory `docs/investigations/{short_name}/` created
   - Directory contains OVERVIEW.md from template with `ONGOING` status
 - **Behavior**:
-  - Investigation ID is auto-incremented from existing investigations
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
@@ -622,7 +632,7 @@ List existing investigations with their status.
   - Status shown in brackets after each path (e.g., `[ONGOING]`, `[SOLVED]`)
   - Sorted in ascending order by investigation ID
 - **Errors**: None
-- **Exit codes**: 0 if investigations found, 1 if no investigations exist
+- **Exit codes**: 0 on success (including "no investigations found")
 
 ## Guarantees
 
@@ -646,7 +656,7 @@ This tool is for documentation management, not high-throughput data processing. 
 | Limit | Value | Behavior when exceeded |
 |-------|-------|------------------------|
 | SHORT_NAME length | 31 characters | ValidationError, operation aborted |
-| Chunk ID digits | 4 (0001-9999) | Undefined behavior beyond 9999 chunks |
+| Chunk name length | 31 characters | ValidationError, operation aborted |
 | Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility

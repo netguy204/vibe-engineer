@@ -19,8 +19,6 @@ code_references:
   implements: Renders CLAUDE.md Jinja2 template to project root
 - ref: src/project.py#Project::init
   implements: Orchestrates all initialization, aggregates results
-- ref: src/ve.py#init
-  implements: CLI init command - invokes Project.init() and displays results
 - ref: src/templates/claude/CLAUDE.md.jinja2
   implements: Jinja2 template for CLAUDE.md explaining vibe engineering workflow to
     agents

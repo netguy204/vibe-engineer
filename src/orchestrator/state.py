@@ -1,7 +1,10 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - SQLite state persistence with migrations and CRUD operations
 # Chunk: docs/chunks/orch_scheduling - Ready queue and config storage
 # Chunk: docs/chunks/explicit_deps_workunit_flag - Schema migration and persistence for explicit_deps
 # Chunk: docs/chunks/orch_verify_active - Database migration adding completion_retries column
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict analysis persistence and retrieval
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
 """SQLite state store for the orchestrator daemon.
 
 Provides persistent storage for work units and their state transitions.
@@ -10,9 +13,10 @@ Uses a simple migrations infrastructure for schema evolution.
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterator
 
 from orchestrator.models import (
     ConflictAnalysis,
@@ -23,14 +27,58 @@ from orchestrator.models import (
 )
 
 
+# Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+class StaleWriteError(Exception):
+    """Raised when a work unit has been modified since it was read.
+
+    This indicates a concurrent modification - another process updated
+    the work unit between when the caller read it and attempted to write.
+    The caller should re-read the work unit and retry or skip the operation.
+
+    Attributes:
+        chunk: The chunk name that was being updated
+        expected_updated_at: The timestamp the caller expected
+        actual_updated_at: The current timestamp in the database
+    """
+
+    def __init__(
+        self, chunk: str, expected_updated_at: datetime, actual_updated_at: datetime
+    ):
+        self.chunk = chunk
+        self.expected_updated_at = expected_updated_at
+        self.actual_updated_at = actual_updated_at
+        super().__init__(
+            f"Stale write detected for work unit '{chunk}': "
+            f"expected updated_at={expected_updated_at.isoformat()}, "
+            f"actual={actual_updated_at.isoformat()}"
+        )
+
+
+# Chunk: docs/chunks/orch_state_transactions - Concurrency model documentation
 class StateStore:
     """SQLite-based state store for work units.
 
     Manages the orchestrator's persistent state including work units
     and status transition logging.
+
+    Concurrency Model:
+        Multiple StateStore instances may connect to the same database file.
+        In the orchestrator daemon, one instance is created in start_daemon()
+        (for the scheduler) and another in create_app() (for API endpoints).
+
+        This is safe because:
+        1. WAL mode is enabled, allowing concurrent readers and a single writer
+        2. Each write operation is either a single autocommitted statement or
+           wrapped in an explicit transaction (BEGIN/COMMIT)
+        3. Transactions are kept short-lived to minimize lock contention
+        4. SQLite handles write serialization - concurrent writes from different
+           connections will block briefly rather than corrupt
+
+        The transaction() context manager provides explicit transaction boundaries
+        for multi-statement operations that must be atomic.
     """
 
-    CURRENT_VERSION = 11
+    CURRENT_VERSION = 13
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -66,6 +114,30 @@ class StateStore:
         if self._connection is not None:
             self._connection.close()
             self._connection = None
+
+    # Chunk: docs/chunks/orch_state_transactions - Explicit transaction boundaries for atomicity
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Context manager for explicit transaction boundaries.
+
+        With isolation_level=None (autocommit), we must use explicit
+        BEGIN/COMMIT statements to group operations atomically.
+
+        Usage:
+            with store.transaction():
+                store.connection.execute(...)
+                store.connection.execute(...)
+
+        On exception, the transaction is rolled back and the exception
+        is re-raised.
+        """
+        self.connection.execute("BEGIN")
+        try:
+            yield
+            self.connection.execute("COMMIT")
+        except Exception:
+            self.connection.execute("ROLLBACK")
+            raise
 
     def initialize(self) -> None:
         """Initialize the database schema, running migrations if needed."""
@@ -103,6 +175,8 @@ class StateStore:
             9: self._migrate_v9,
             10: self._migrate_v10,
             11: self._migrate_v11,
+            12: self._migrate_v12,
+            13: self._migrate_v13,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -194,6 +268,7 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_attention_queue - Database migration adding pending_answer column
     def _migrate_v6(self) -> None:
         """Add pending_answer field for storing operator answers until resume."""
         self.connection.executescript(
@@ -295,6 +370,42 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
+    def _migrate_v12(self) -> None:
+        """Add API retry state fields for automatic 5xx error recovery.
+
+        When an agent encounters a 5xx API error, the scheduler automatically
+        schedules a retry with exponential backoff. These fields track the
+        retry state:
+        - api_retry_count: Number of retries attempted so far
+        - next_retry_at: ISO timestamp when the next retry is allowed
+        """
+        self.connection.executescript(
+            """
+            -- Add api_retry_count column for tracking retry attempts
+            ALTER TABLE work_units ADD COLUMN api_retry_count INTEGER DEFAULT 0;
+            -- Add next_retry_at column for scheduling retry timing
+            ALTER TABLE work_units ADD COLUMN next_retry_at TEXT;
+            """
+        )
+
+    # Chunk: docs/chunks/orch_pre_review_rebase - REBASE phase between IMPLEMENT and REVIEW
+    def _migrate_v13(self) -> None:
+        """Document REBASE as a valid WorkUnitPhase value.
+
+        This migration documents that REBASE is now a valid phase value.
+        No schema change is needed because:
+        - The phase column stores TEXT values (not an enum constraint)
+        - Existing rows have valid phase values (GOAL, PLAN, IMPLEMENT, REVIEW, COMPLETE)
+        - New rows can use REBASE as a valid phase value
+
+        The REBASE phase is inserted between IMPLEMENT and REVIEW to merge
+        trunk into the worktree branch and resolve conflicts before review.
+        """
+        # No SQL needed - phase is stored as TEXT
+        # This migration exists to document the schema version change
+        pass
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -306,8 +417,13 @@ class StateStore:
     # CRUD Operations
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit creation
+    # Chunk: docs/chunks/orch_state_transactions - Atomic work unit creation with status log
     def create_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
         """Create a new work unit.
+
+        The INSERT and status log are wrapped in a transaction to ensure
+        atomicity. Either both the work unit and status log are created,
+        or neither is.
 
         Args:
             work_unit: The work unit to create
@@ -321,43 +437,47 @@ class StateStore:
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
-        try:
-            self.connection.execute(
-                """
-                INSERT INTO work_units
-                    (chunk, phase, status, blocked_by, worktree, priority, session_id,
-                     completion_retries, attention_reason, displaced_chunk, pending_answer,
-                     conflict_verdicts, conflict_override, explicit_deps, review_iterations,
-                     review_nudge_count, retain_worktree, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    work_unit.chunk,
-                    work_unit.phase.value,
-                    work_unit.status.value,
-                    blocked_by_json,
-                    work_unit.worktree,
-                    work_unit.priority,
-                    work_unit.session_id,
-                    work_unit.completion_retries,
-                    work_unit.attention_reason,
-                    work_unit.displaced_chunk,
-                    work_unit.pending_answer,
-                    conflict_verdicts_json,
-                    work_unit.conflict_override,
-                    1 if work_unit.explicit_deps else 0,
-                    work_unit.review_iterations,
-                    work_unit.review_nudge_count,
-                    1 if work_unit.retain_worktree else 0,
-                    work_unit.created_at.isoformat(),
-                    work_unit.updated_at.isoformat(),
-                ),
-            )
-        except sqlite3.IntegrityError:
-            raise ValueError(f"Work unit for chunk '{work_unit.chunk}' already exists")
+        with self.transaction():
+            try:
+                self.connection.execute(
+                    """
+                    INSERT INTO work_units
+                        (chunk, phase, status, blocked_by, worktree, priority, session_id,
+                         completion_retries, attention_reason, displaced_chunk, pending_answer,
+                         conflict_verdicts, conflict_override, explicit_deps, review_iterations,
+                         review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        work_unit.chunk,
+                        work_unit.phase.value,
+                        work_unit.status.value,
+                        blocked_by_json,
+                        work_unit.worktree,
+                        work_unit.priority,
+                        work_unit.session_id,
+                        work_unit.completion_retries,
+                        work_unit.attention_reason,
+                        work_unit.displaced_chunk,
+                        work_unit.pending_answer,
+                        conflict_verdicts_json,
+                        work_unit.conflict_override,
+                        1 if work_unit.explicit_deps else 0,
+                        work_unit.review_iterations,
+                        work_unit.review_nudge_count,
+                        1 if work_unit.retain_worktree else 0,
+                        work_unit.api_retry_count,
+                        work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                        work_unit.created_at.isoformat(),
+                        work_unit.updated_at.isoformat(),
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError(f"Work unit for chunk '{work_unit.chunk}' already exists")
 
-        # Log the initial status
-        self._log_status_transition(work_unit.chunk, None, work_unit.status)
+            # Log the initial status
+            self._log_status_transition(work_unit.chunk, None, work_unit.status)
 
         return work_unit
 
@@ -381,64 +501,96 @@ class StateStore:
         return self._row_to_work_unit(row)
 
     # Chunk: docs/chunks/orch_attention_reason - Persisting attention_reason on work unit update
-    def update_work_unit(self, work_unit: WorkUnit) -> WorkUnit:
+    # Chunk: docs/chunks/orch_state_transactions - Atomic work unit update with status log
+    # Chunk: docs/chunks/optimistic_locking - Optimistic locking for stale write detection
+    def update_work_unit(
+        self,
+        work_unit: WorkUnit,
+        expected_updated_at: Optional[datetime] = None,
+    ) -> WorkUnit:
         """Update an existing work unit.
+
+        The SELECT, UPDATE, and status log INSERT are wrapped in a transaction
+        to ensure atomicity. The status log is only written if the update
+        succeeds, and both changes commit together.
+
+        When expected_updated_at is provided, the update performs optimistic
+        locking: it verifies that the work unit's current updated_at timestamp
+        matches the expected value before writing. This prevents silent overwrites
+        when multiple processes read and modify the same work unit concurrently.
 
         Args:
             work_unit: The work unit with updated values
+            expected_updated_at: If provided, the update will only succeed if
+                the work unit's current updated_at matches this timestamp.
+                Use this to detect concurrent modifications.
 
         Returns:
             The updated work unit
 
         Raises:
             ValueError: If the work unit doesn't exist
+            StaleWriteError: If expected_updated_at is provided and doesn't match
+                the work unit's current updated_at (indicating concurrent modification)
         """
-        # Get the old status for logging
-        old_unit = self.get_work_unit(work_unit.chunk)
-        if old_unit is None:
-            raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
-
         blocked_by_json = json.dumps(work_unit.blocked_by)
         conflict_verdicts_json = json.dumps(work_unit.conflict_verdicts)
 
-        self.connection.execute(
-            """
-            UPDATE work_units
-            SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
-                priority = ?, session_id = ?, completion_retries = ?,
-                attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
-                conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
-                review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
-                updated_at = ?
-            WHERE chunk = ?
-            """,
-            (
-                work_unit.phase.value,
-                work_unit.status.value,
-                blocked_by_json,
-                work_unit.worktree,
-                work_unit.priority,
-                work_unit.session_id,
-                work_unit.completion_retries,
-                work_unit.attention_reason,
-                work_unit.displaced_chunk,
-                work_unit.pending_answer,
-                conflict_verdicts_json,
-                work_unit.conflict_override,
-                1 if work_unit.explicit_deps else 0,
-                work_unit.review_iterations,
-                work_unit.review_nudge_count,
-                1 if work_unit.retain_worktree else 0,
-                work_unit.updated_at.isoformat(),
-                work_unit.chunk,
-            ),
-        )
+        with self.transaction():
+            # Get the old status for logging (within transaction)
+            old_unit = self.get_work_unit(work_unit.chunk)
+            if old_unit is None:
+                raise ValueError(f"Work unit for chunk '{work_unit.chunk}' not found")
 
-        # Log status transition if status changed
-        if old_unit.status != work_unit.status:
-            self._log_status_transition(
-                work_unit.chunk, old_unit.status, work_unit.status
+            # Optimistic locking check: verify updated_at matches expected value
+            if expected_updated_at is not None:
+                if old_unit.updated_at != expected_updated_at:
+                    raise StaleWriteError(
+                        chunk=work_unit.chunk,
+                        expected_updated_at=expected_updated_at,
+                        actual_updated_at=old_unit.updated_at,
+                    )
+
+            self.connection.execute(
+                """
+                UPDATE work_units
+                SET phase = ?, status = ?, blocked_by = ?, worktree = ?,
+                    priority = ?, session_id = ?, completion_retries = ?,
+                    attention_reason = ?, displaced_chunk = ?, pending_answer = ?,
+                    conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
+                    review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
+                    api_retry_count = ?, next_retry_at = ?, updated_at = ?
+                WHERE chunk = ?
+                """,
+                (
+                    work_unit.phase.value,
+                    work_unit.status.value,
+                    blocked_by_json,
+                    work_unit.worktree,
+                    work_unit.priority,
+                    work_unit.session_id,
+                    work_unit.completion_retries,
+                    work_unit.attention_reason,
+                    work_unit.displaced_chunk,
+                    work_unit.pending_answer,
+                    conflict_verdicts_json,
+                    work_unit.conflict_override,
+                    1 if work_unit.explicit_deps else 0,
+                    work_unit.review_iterations,
+                    work_unit.review_nudge_count,
+                    1 if work_unit.retain_worktree else 0,
+                    work_unit.api_retry_count,
+                    work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
+                    work_unit.updated_at.isoformat(),
+                    work_unit.chunk,
+                ),
             )
+
+            # Log status transition if status changed
+            if old_unit.status != work_unit.status:
+                self._log_status_transition(
+                    work_unit.chunk, old_unit.status, work_unit.status
+                )
 
         return work_unit
 
@@ -571,6 +723,8 @@ class StateStore:
 
     # Queue operations
 
+    # Chunk: docs/chunks/orch_attention_queue - Query NEEDS_ATTENTION work units ordered by blocks count and time
+    # Chunk: docs/chunks/artifact_index_cache - Optimized to use single SQL query with subquery
     def get_attention_queue(self) -> list[tuple[WorkUnit, int]]:
         """Get NEEDS_ATTENTION work units ordered by priority.
 
@@ -583,42 +737,45 @@ class StateStore:
             is the number of other work units that have this chunk in
             their blocked_by list.
         """
-        # Query NEEDS_ATTENTION work units
+        # Single query with subquery to compute blocks_count
+        # Uses json_each() to search the blocked_by JSON array
         cursor = self.connection.execute(
             """
-            SELECT * FROM work_units
-            WHERE status = ?
-            ORDER BY updated_at ASC
+            SELECT w.*, (
+                SELECT COUNT(*) FROM work_units b
+                WHERE EXISTS (
+                    SELECT 1 FROM json_each(b.blocked_by)
+                    WHERE value = w.chunk
+                )
+            ) as blocks_count
+            FROM work_units w
+            WHERE w.status = ?
+            ORDER BY blocks_count DESC, w.updated_at ASC
             """,
             (WorkUnitStatus.NEEDS_ATTENTION.value,),
         )
-        attention_units = [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
-        if not attention_units:
-            return []
-
-        # Compute blocks_count for each attention unit
-        # This is the number of work units that have this chunk in their blocked_by
         results: list[tuple[WorkUnit, int]] = []
-        for unit in attention_units:
-            # Count work units that are blocked by this chunk
-            cursor = self.connection.execute(
-                """
-                SELECT COUNT(*) FROM work_units
-                WHERE blocked_by LIKE ?
-                """,
-                (f'%"{unit.chunk}"%',),
-            )
-            blocks_count = cursor.fetchone()[0]
-            results.append((unit, blocks_count))
-
-        # Sort by blocks_count descending, then by updated_at ascending (already sorted)
-        results.sort(key=lambda x: (-x[1], x[0].updated_at))
+        for row in cursor.fetchall():
+            work_unit = self._row_to_work_unit(row)
+            blocks_count = row["blocks_count"]
+            results.append((work_unit, blocks_count))
 
         return results
 
+    # Chunk: docs/chunks/orch_ready_critical_path - Critical-path scheduling for ready queue
+    # Chunk: docs/chunks/artifact_index_cache - Optimized to use single SQL query with subquery
     def get_ready_queue(self, limit: Optional[int] = None) -> list[WorkUnit]:
-        """Get READY work units ordered by priority (highest first), then creation time.
+        """Get READY work units ordered by critical-path priority.
+
+        Ordering:
+        1. blocks_count DESC - chunks that unblock the most other work come first
+        2. priority DESC - higher priority as tiebreaker
+        3. created_at ASC - earlier creation time as final tiebreaker
+
+        The blocks_count is the number of BLOCKED or READY work units that have
+        this chunk in their blocked_by list. This ensures critical-path chunks
+        (those blocking dependency chains) are dispatched before leaf chunks.
 
         Args:
             limit: Optional maximum number of work units to return
@@ -626,15 +783,36 @@ class StateStore:
         Returns:
             List of READY work units in scheduling order
         """
+        # Single query with subquery to compute blocks_count
+        # Uses json_each() to search the blocked_by JSON array
+        # Only counts BLOCKED or READY work units as blockers
         query = """
-            SELECT * FROM work_units
-            WHERE status = ?
-            ORDER BY priority DESC, created_at ASC
+            SELECT w.*, (
+                SELECT COUNT(*) FROM work_units b
+                WHERE b.status IN (?, ?)
+                AND EXISTS (
+                    SELECT 1 FROM json_each(b.blocked_by)
+                    WHERE value = w.chunk
+                )
+            ) as blocks_count
+            FROM work_units w
+            WHERE w.status = ?
+            ORDER BY blocks_count DESC, w.priority DESC, w.created_at ASC
         """
-        if limit is not None:
-            query += f" LIMIT {limit}"
 
-        cursor = self.connection.execute(query, (WorkUnitStatus.READY.value,))
+        params: tuple = (
+            WorkUnitStatus.BLOCKED.value,
+            WorkUnitStatus.READY.value,
+            WorkUnitStatus.READY.value,
+        )
+
+        # Apply LIMIT at SQL level if specified
+        if limit is not None:
+            query += " LIMIT ?"
+            params = params + (limit,)
+
+        cursor = self.connection.execute(query, params)
+
         return [self._row_to_work_unit(row) for row in cursor.fetchall()]
 
     # Chunk: docs/chunks/orch_blocked_lifecycle - Query for work units blocked by a specific chunk
@@ -740,6 +918,18 @@ class StateStore:
         except (IndexError, KeyError):
             retain_worktree = False
 
+        # Chunk: docs/chunks/orch_api_retry - API retry state for 5xx error resilience
+        try:
+            api_retry_count = row["api_retry_count"] if row["api_retry_count"] is not None else 0
+        except (IndexError, KeyError):
+            api_retry_count = 0
+
+        try:
+            next_retry_at_str = row["next_retry_at"]
+            next_retry_at = datetime.fromisoformat(next_retry_at_str) if next_retry_at_str else None
+        except (IndexError, KeyError):
+            next_retry_at = None
+
         return WorkUnit(
             chunk=row["chunk"],
             phase=WorkUnitPhase(row["phase"]),
@@ -758,6 +948,8 @@ class StateStore:
             review_iterations=review_iterations,
             review_nudge_count=review_nudge_count,
             retain_worktree=retain_worktree,
+            api_retry_count=api_retry_count,
+            next_retry_at=next_retry_at,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

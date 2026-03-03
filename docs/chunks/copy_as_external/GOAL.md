@@ -3,13 +3,14 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/task_utils.py
+  - src/task/exceptions.py
+  - src/task/external.py
   - src/ve.py
   - tests/test_artifact_copy_external.py
 code_references:
-  - ref: src/task_utils.py#TaskCopyExternalError
+  - ref: src/task/exceptions.py#TaskCopyExternalError
     implements: "Error class for artifact copy failures"
-  - ref: src/task_utils.py#copy_artifact_as_external
+  - ref: src/task/external.py#copy_artifact_as_external
     implements: "Core function to copy external artifact as reference in target project"
   - ref: src/ve.py#copy_external
     implements: "CLI command ve artifact copy-external"
@@ -17,6 +18,8 @@ code_references:
     implements: "Test suite for copy_artifact_as_external functionality"
   - ref: src/cli/artifact.py#copy_external
     implements: "CLI artifact copy-external command after CLI modularization"
+  - ref: src/task_utils.py
+    implements: "Artifact copy-external command implementation re-export module"
 narrative: null
 subsystems: []
 created_after: ["ordering_audit_seqnums", "cluster_rename", "cluster_prefix_suggest", "task_list_proposed"]

@@ -3,17 +3,18 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
+  - src/orchestrator/activation.py
   - src/orchestrator/models.py
   - src/orchestrator/state.py
   - src/orchestrator/scheduler.py
   - src/orchestrator/agent.py
-  - tests/test_orchestrator_scheduler.py
+  - tests/test_orchestrator_scheduler_activation.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#VerificationStatus
+  - ref: src/orchestrator/activation.py#VerificationStatus
     implements: "Enum for verification result states (ACTIVE, IMPLEMENTING, ERROR)"
-  - ref: src/orchestrator/scheduler.py#VerificationResult
+  - ref: src/orchestrator/activation.py#VerificationResult
     implements: "Dataclass for verification outcomes with status and optional error"
-  - ref: src/orchestrator/scheduler.py#verify_chunk_active_status
+  - ref: src/orchestrator/activation.py#verify_chunk_active_status
     implements: "Helper function to read and verify GOAL.md frontmatter status"
   - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
     implements: "ACTIVE status verification logic before commit/merge, with retry handling"
@@ -25,9 +26,9 @@ code_references:
     implements: "Configurable maximum retries for ACTIVE status verification"
   - ref: src/orchestrator/state.py#StateStore::_migrate_v3
     implements: "Database migration adding completion_retries column"
-  - ref: tests/test_orchestrator_scheduler.py#TestVerifyChunkActiveStatus
+  - ref: tests/test_orchestrator_scheduler_activation.py#TestVerifyChunkActiveStatus
     implements: "Unit tests for verify_chunk_active_status helper function"
-  - ref: tests/test_orchestrator_scheduler.py#TestActiveStatusVerification
+  - ref: tests/test_orchestrator_scheduler_activation.py#TestActiveStatusVerification
     implements: "Integration tests for ACTIVE status verification in scheduler"
 narrative: null
 investigation: parallel_agent_orchestration

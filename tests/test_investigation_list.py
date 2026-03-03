@@ -13,13 +13,13 @@ class TestInvestigationListCommand:
         assert result.exit_code == 0
         assert "List" in result.output or "list" in result.output.lower()
 
-    def test_empty_project_exits_with_error(self, runner, temp_project):
-        """Empty project: stderr says 'No investigations found', exit code 1."""
+    def test_empty_project_exits_with_success(self, runner, temp_project):
+        """Empty project: outputs 'No investigations found', exit code 0 (success)."""
         result = runner.invoke(
             cli,
             ["investigation", "list", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No investigations found" in result.output
 
     def test_single_investigation_outputs_path_with_status(self, runner, temp_project):
@@ -75,12 +75,12 @@ class TestInvestigationListCommand:
         assert result.exit_code == 0
         assert "memory_leak" in result.output
 
-        # Filter by SOLVED (should not find it)
+        # Filter by SOLVED (should not find it, but exits with success)
         result = runner.invoke(
             cli,
             ["investigation", "list", "--state", "SOLVED", "--project-dir", str(temp_project)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "No investigations found" in result.output
 
     def test_invalid_state_errors_with_message(self, runner, temp_project):
@@ -107,3 +107,118 @@ class TestInvestigationListCommand:
         assert result.exit_code == 0
         # Format should be: docs/investigations/memory_leak [ONGOING]
         assert "docs/investigations/memory_leak [ONGOING]" in result.output
+
+
+# Chunk: docs/chunks/cli_json_output - JSON output tests for ve investigation list
+class TestInvestigationListJsonOutput:
+    """Tests for --json output in 've investigation list' command."""
+
+    def test_json_output_basic(self, runner, temp_project):
+        """--json outputs valid JSON with investigation objects."""
+        import json
+
+        # Create an investigation
+        runner.invoke(
+            cli,
+            ["investigation", "create", "memory_leak", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["investigation", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        # Verify it's valid JSON
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+
+        # Verify investigation structure
+        investigation = data[0]
+        assert investigation["name"] == "memory_leak"
+        assert investigation["status"] == "ONGOING"
+        assert "is_tip" in investigation
+
+    def test_json_output_includes_frontmatter(self, runner, temp_project):
+        """JSON output includes all frontmatter fields."""
+        import json
+
+        # Create an investigation
+        runner.invoke(
+            cli,
+            ["investigation", "create", "memory_leak", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["investigation", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        investigation = data[0]
+
+        # Check for standard frontmatter fields
+        assert "name" in investigation
+        assert "status" in investigation
+
+    def test_json_output_empty(self, runner, temp_project):
+        """Empty project returns empty array with exit code 0 in JSON mode."""
+        import json
+
+        result = runner.invoke(
+            cli,
+            ["investigation", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data == []
+
+    def test_json_output_multiple_investigations(self, runner, temp_project):
+        """JSON output correctly lists multiple investigations."""
+        import json
+
+        # Create multiple investigations
+        runner.invoke(
+            cli,
+            ["investigation", "create", "first", "--project-dir", str(temp_project)]
+        )
+        runner.invoke(
+            cli,
+            ["investigation", "create", "second", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["investigation", "list", "--json", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 2
+
+        names = [i["name"] for i in data]
+        assert "first" in names
+        assert "second" in names
+
+    def test_json_output_with_state_filter(self, runner, temp_project):
+        """--json works with --state filter."""
+        import json
+
+        # Create an investigation
+        runner.invoke(
+            cli,
+            ["investigation", "create", "memory_leak", "--project-dir", str(temp_project)]
+        )
+
+        result = runner.invoke(
+            cli,
+            ["investigation", "list", "--json", "--state", "ONGOING", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["status"] == "ONGOING"

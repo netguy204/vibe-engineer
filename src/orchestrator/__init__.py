@@ -11,7 +11,8 @@ from orchestrator.models import (
     WorkUnitPhase,
     WorkUnitStatus,
 )
-from orchestrator.state import StateStore, get_default_db_path
+# Chunk: docs/chunks/optimistic_locking - Export StaleWriteError for optimistic locking
+from orchestrator.state import StateStore, StaleWriteError, get_default_db_path
 from orchestrator.daemon import (
     DaemonError,
     start_daemon,
@@ -43,6 +44,12 @@ from orchestrator.scheduler import (
     SchedulerError,
     create_scheduler,
 )
+# Chunk: docs/chunks/orch_cli_extract - Dependency resolution functions extracted from CLI layer
+from orchestrator.dependencies import (
+    topological_sort_chunks,
+    read_chunk_dependencies,
+    validate_external_dependencies,
+)
 
 __all__ = [
     # Models
@@ -54,6 +61,7 @@ __all__ = [
     "WorkUnitStatus",
     # State
     "StateStore",
+    "StaleWriteError",
     "get_default_db_path",
     # Daemon
     "DaemonError",
@@ -82,4 +90,8 @@ __all__ = [
     "Scheduler",
     "SchedulerError",
     "create_scheduler",
+    # Dependencies
+    "topological_sort_chunks",
+    "read_chunk_dependencies",
+    "validate_external_dependencies",
 ]

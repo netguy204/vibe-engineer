@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/narrative.py
 - src/narratives.py
 - src/project.py
 code_references:
@@ -13,9 +13,9 @@ code_references:
   implements: Creates narrative directory with template files
 - ref: src/project.py#Project::_init_narratives
   implements: Creates docs/narratives/ during ve init
-- ref: src/ve.py#narrative
+- ref: src/cli/narrative.py#narrative
   implements: Narrative CLI command group
-- ref: src/ve.py#create_narrative
+- ref: src/cli/narrative.py#create_narrative
   implements: ve narrative create CLI command with validation
 created_after:
 - chunk_validate

@@ -25,6 +25,10 @@ code_references:
     implements: "Skill integration to call suggest-prefix during planning"
   - ref: src/cli/chunk.py#suggest_prefix_cmd
     implements: "CLI chunk suggest-prefix command after CLI modularization"
+  - ref: src/cluster_analysis.py#SuggestPrefixResult
+    implements: "TF-IDF prefix suggestion result dataclass"
+  - ref: src/cluster_analysis.py#suggest_prefix
+    implements: "Main TF-IDF similarity computation and prefix suggestion logic"
 narrative: null
 subsystems: []
 created_after:

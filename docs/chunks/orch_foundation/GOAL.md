@@ -8,7 +8,7 @@ code_paths:
 - src/orchestrator/models.py
 - src/orchestrator/state.py
 - src/orchestrator/daemon.py
-- src/orchestrator/api.py
+- src/orchestrator/api/app.py
 - src/orchestrator/client.py
 - src/ve.py
 - tests/test_orchestrator_state.py
@@ -39,30 +39,32 @@ code_references:
     implements: "Daemon running status check via PID file"
   - ref: src/orchestrator/daemon.py#get_daemon_status
     implements: "Comprehensive daemon status including uptime and work unit counts"
-  - ref: src/orchestrator/api.py#create_app
+  - ref: src/orchestrator/api/app.py#create_app
     implements: "Starlette app factory with REST endpoints for work unit CRUD"
   - ref: src/orchestrator/client.py#OrchestratorClient
     implements: "HTTP client for CLI-to-daemon communication via Unix socket"
   - ref: src/orchestrator/client.py#DaemonNotRunningError
     implements: "Client exception for daemon not running"
-  - ref: src/ve.py#orch
+  - ref: src/cli/orch.py#orch
     implements: "CLI command group for orchestrator commands"
-  - ref: src/ve.py#start
+  - ref: src/cli/orch.py#start
     implements: "ve orch start command"
-  - ref: src/ve.py#stop
+  - ref: src/cli/orch.py#stop
     implements: "ve orch stop command"
-  - ref: src/ve.py#orch_status
+  - ref: src/cli/orch.py#orch_status
     implements: "ve orch status command with JSON output support"
-  - ref: src/ve.py#orch_ps
+  - ref: src/cli/orch.py#orch_ps
     implements: "ve orch ps command to list work units"
-  - ref: src/ve.py#work_unit
+  - ref: src/cli/orch.py#work_unit
     implements: "Work unit subcommand group"
-  - ref: src/ve.py#work_unit_create
+  - ref: src/cli/orch.py#work_unit_create
     implements: "ve orch work-unit create command"
-  - ref: src/ve.py#work_unit_status
+  - ref: src/cli/orch.py#work_unit_status
     implements: "ve orch work-unit status command"
-  - ref: src/ve.py#work_unit_delete
+  - ref: src/cli/orch.py#work_unit_delete
     implements: "ve orch work-unit delete command"
+  - ref: src/orchestrator/api/work_units.py
+    implements: "REST endpoints for work unit CRUD and daemon status"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

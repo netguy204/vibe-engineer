@@ -1172,3 +1172,344 @@ class TestIntegrityValidatorExternalChunks:
         assert result.success
         assert len(result.errors) == 0
         assert result.chunk_backrefs_found == 1
+
+
+# Chunk: docs/chunks/integrity_subsystem_bidir - Tests for chunk↔subsystem bidirectional warnings
+class TestIntegrityValidatorChunkSubsystemBidirectional:
+    """Tests for chunk↔subsystem bidirectional consistency warnings."""
+
+    def test_chunk_subsystem_bidirectional_warning(self, temp_project):
+        """Chunk references subsystem but subsystem's chunks doesn't list the chunk → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem WITHOUT this chunk in its chunks field
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(subsystem_path, chunks=[])  # Empty - chunk not listed
+
+        # Create chunk referencing the subsystem
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass (no errors) but have warnings
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔subsystem"
+        assert "test_subsystem" in result.warnings[0].message
+        assert "chunks" in result.warnings[0].message
+
+    def test_chunk_subsystem_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem WITH this chunk in its chunks field
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        # Create chunk referencing the subsystem
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_subsystem_chunk_bidirectional_warning(self, temp_project):
+        """Subsystem lists chunk in its chunks field but chunk's subsystems doesn't reference subsystem → expect warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITHOUT subsystem reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, subsystems=[])  # Empty - no subsystem reference
+
+        # Create subsystem listing the chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass (no errors) but have warnings
+        assert result.success  # Bidirectional issues are warnings, not errors
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "subsystem↔chunk"
+        assert "test_chunk" in result.warnings[0].message
+        assert "subsystems" in result.warnings[0].message
+
+    def test_subsystem_chunk_bidirectional_valid(self, temp_project):
+        """Both directions exist → no warning."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk WITH subsystem reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "test_subsystem", "relationship": "implements"}],
+        )
+
+        # Create subsystem listing the chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success
+        assert len(result.warnings) == 0
+
+    def test_subsystem_chunk_bidirectional_warning_external_chunk_skipped(self, temp_project):
+        """Subsystem lists external chunk → no bidirectional warning (external chunks don't have GOAL.md)."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create external chunk (no GOAL.md, just external.yaml)
+        external_chunk_path = temp_project / "docs" / "chunks" / "xr_external"
+        write_external_chunk(external_chunk_path)
+
+        # Create subsystem listing the external chunk
+        subsystem_path = temp_project / "docs" / "subsystems" / "test_subsystem"
+        subsystem_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_path,
+            chunks=[{"chunk_id": "xr_external", "relationship": "implements"}],
+        )
+
+        result = validate_integrity(temp_project)
+        # Should pass with no warnings - external chunks don't have subsystems field
+        assert result.success
+        assert len(result.warnings) == 0
+        assert len(result.errors) == 0
+
+    def test_multiple_subsystems_each_checked(self, temp_project):
+        """Chunk referencing multiple subsystems: each is checked for bidirectionality."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create subsystem A WITH this chunk in its chunks field
+        subsystem_a_path = temp_project / "docs" / "subsystems" / "subsystem_a"
+        subsystem_a_path.mkdir(parents=True)
+        write_subsystem_overview(
+            subsystem_a_path,
+            chunks=[{"chunk_id": "test_chunk", "relationship": "implements"}],
+        )
+
+        # Create subsystem B WITHOUT this chunk in its chunks field
+        subsystem_b_path = temp_project / "docs" / "subsystems" / "subsystem_b"
+        subsystem_b_path.mkdir(parents=True)
+        write_subsystem_overview(subsystem_b_path, chunks=[])  # Missing chunk
+
+        # Create chunk referencing both subsystems
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[
+                {"subsystem_id": "subsystem_a", "relationship": "implements"},
+                {"subsystem_id": "subsystem_b", "relationship": "uses"},
+            ],
+        )
+
+        result = validate_integrity(temp_project)
+        assert result.success  # Bidirectional issues are warnings, not errors
+        # Should have one warning for subsystem_b
+        assert len(result.warnings) == 1
+        assert result.warnings[0].link_type == "chunk↔subsystem"
+        assert "subsystem_b" in result.warnings[0].message
+
+
+# Chunk: docs/chunks/integrity_deprecate_standalone - Tests for deprecation warnings on standalone functions
+class TestDeprecatedStandaloneFunctions:
+    """Tests that deprecated standalone functions emit DeprecationWarning."""
+
+    def test_validate_chunk_subsystem_refs_emits_deprecation_warning(self, temp_project):
+        """Standalone validate_chunk_subsystem_refs emits deprecation warning."""
+        import warnings
+        from integrity import validate_chunk_subsystem_refs
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create a simple chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            validate_chunk_subsystem_refs(temp_project, "test_chunk")
+
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "deprecated" in str(w[0].message).lower()
+        assert "validate_subsystem_refs" in str(w[0].message)
+
+    def test_validate_chunk_investigation_ref_emits_deprecation_warning(self, temp_project):
+        """Standalone validate_chunk_investigation_ref emits deprecation warning."""
+        import warnings
+        from integrity import validate_chunk_investigation_ref
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create a simple chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            validate_chunk_investigation_ref(temp_project, "test_chunk")
+
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "deprecated" in str(w[0].message).lower()
+        assert "validate_investigation_ref" in str(w[0].message)
+
+    def test_validate_chunk_narrative_ref_emits_deprecation_warning(self, temp_project):
+        """Standalone validate_chunk_narrative_ref emits deprecation warning."""
+        import warnings
+        from integrity import validate_chunk_narrative_ref
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create a simple chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            validate_chunk_narrative_ref(temp_project, "test_chunk")
+
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "deprecated" in str(w[0].message).lower()
+        assert "validate_narrative_ref" in str(w[0].message)
+
+    def test_validate_chunk_friction_entries_ref_emits_deprecation_warning(self, temp_project):
+        """Standalone validate_chunk_friction_entries_ref emits deprecation warning."""
+        import warnings
+        from integrity import validate_chunk_friction_entries_ref
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create a simple chunk
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            validate_chunk_friction_entries_ref(temp_project, "test_chunk")
+
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "deprecated" in str(w[0].message).lower()
+        assert "validate_friction_entries_ref" in str(w[0].message)
+
+    def test_deprecated_function_still_returns_correct_errors(self, temp_project):
+        """Deprecated functions still return correct validation errors."""
+        import warnings
+        from integrity import validate_chunk_subsystem_refs
+
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk with invalid subsystem reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            subsystems=[{"subsystem_id": "nonexistent", "relationship": "implements"}],
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            errors = validate_chunk_subsystem_refs(temp_project, "test_chunk")
+
+        assert len(errors) == 1
+        assert "nonexistent" in errors[0]
+
+
+# Chunk: docs/chunks/integrity_deprecate_standalone - Tests for IntegrityValidator.validate_chunk()
+class TestIntegrityValidatorSingleChunk:
+    """Tests for IntegrityValidator.validate_chunk() method."""
+
+    def test_validate_chunk_returns_errors_for_invalid_refs(self, temp_project):
+        """validate_chunk returns errors for invalid references."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create chunk with invalid narrative reference
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, narrative="nonexistent_narrative")
+
+        validator = IntegrityValidator(temp_project)
+        errors, warnings = validator.validate_chunk("test_chunk")
+
+        assert len(errors) == 1
+        assert errors[0].link_type == "chunk→narrative"
+        assert "nonexistent_narrative" in errors[0].message
+
+    def test_validate_chunk_returns_warnings_for_bidirectional_issues(self, temp_project):
+        """validate_chunk returns warnings for bidirectional consistency issues."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create narrative WITHOUT this chunk in proposed_chunks
+        narrative_path = temp_project / "docs" / "narratives" / "test_narrative"
+        narrative_path.mkdir(parents=True)
+        write_narrative_overview(narrative_path, proposed_chunks=[])
+
+        # Create chunk referencing the narrative
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, narrative="test_narrative")
+
+        validator = IntegrityValidator(temp_project)
+        errors, warnings = validator.validate_chunk("test_chunk")
+
+        # No errors (narrative exists)
+        assert len(errors) == 0
+        # But warning for bidirectional issue
+        assert len(warnings) == 1
+        assert warnings[0].link_type == "chunk↔narrative"
+
+    def test_validate_chunk_returns_empty_for_valid_chunk(self, temp_project):
+        """validate_chunk returns empty lists for valid chunk."""
+        make_ve_initialized_git_repo(temp_project)
+
+        # Create valid chunk with no outbound references
+        chunk_path = temp_project / "docs" / "chunks" / "test_chunk"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path)
+
+        validator = IntegrityValidator(temp_project)
+        errors, warnings = validator.validate_chunk("test_chunk")
+
+        assert len(errors) == 0
+        assert len(warnings) == 0
+
+    def test_validate_chunk_handles_nonexistent_chunk(self, temp_project):
+        """validate_chunk handles nonexistent chunk gracefully."""
+        make_ve_initialized_git_repo(temp_project)
+
+        validator = IntegrityValidator(temp_project)
+        errors, warnings = validator.validate_chunk("nonexistent")
+
+        # Should return an error about parsing failure
+        assert len(errors) == 1
+        assert "frontmatter" in errors[0].message.lower() or "parse" in errors[0].message.lower()

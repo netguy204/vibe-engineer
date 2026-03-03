@@ -3,18 +3,16 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/task_utils.py
-  - src/ve.py
+  - src/task/artifact_ops.py
+  - src/cli/chunk.py
   - tests/test_task_chunk_list.py
 code_references:
-  - ref: src/task_utils.py#get_current_task_chunk
+  - ref: src/task/artifact_ops.py#get_current_task_chunk
     implements: "Return tuple of (chunk_name, external_artifact_repo) for task context"
-  - ref: src/ve.py#_list_task_chunks
-    implements: "Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode"
-  - ref: tests/test_task_chunk_list.py#TestChunkListInTaskDirectory::test_latest_returns_implementing_chunk_from_external_repo
-    implements: "Test for repo-prefixed output format in task context"
   - ref: src/cli/chunk.py#_list_task_chunks
-    implements: "CLI handler for task-context chunk list after CLI modularization"
+    implements: "Format output as {external_repo}::docs/chunks/{chunk_name} in --current mode"
+  - ref: tests/test_task_chunk_list.py#TestChunkListInTaskDirectory::test_current_returns_implementing_chunk_from_external_repo
+    implements: "Test for repo-prefixed output format in task context"
 narrative: null
 investigation: null
 subsystems: []

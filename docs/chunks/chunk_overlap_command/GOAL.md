@@ -3,13 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
 - src/chunks.py
+- src/cli/chunk.py
 - tests/test_chunk_overlap.py
 code_references:
-- ref: src/ve.py#overlap
-  implements: CLI command - accepts chunk_id, --project-dir, outputs affected chunk
-    paths
 - ref: src/chunks.py#Chunks::resolve_chunk_id
   implements: Resolves 4-digit or full name to directory name
 - ref: src/chunks.py#Chunks::get_chunk_goal_path

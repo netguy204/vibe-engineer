@@ -26,7 +26,7 @@ from external_refs import (
 )
 from git_utils import get_current_sha
 from models import ArtifactType
-from task_utils import (
+from task import (
     is_task_directory,
     load_task_config,
     resolve_repo_directory,
@@ -59,7 +59,7 @@ def find_artifact_in_project(
 
     Args:
         project_path: Path to the project directory
-        local_artifact_id: Artifact ID pattern to match (e.g., "0001-feature" or "0001")
+        local_artifact_id: Artifact ID to match (e.g., "feature_name")
         artifact_type: The type of artifact to find
 
     Returns:
@@ -72,8 +72,8 @@ def find_artifact_in_project(
 
     for artifact_dir in artifacts_dir.iterdir():
         if artifact_dir.is_dir():
-            # Match by exact name or by prefix (e.g., "0001" matches "0001-feature")
-            if artifact_dir.name == local_artifact_id or artifact_dir.name.startswith(f"{local_artifact_id}-"):
+            # Match by exact name
+            if artifact_dir.name == local_artifact_id:
                 return artifact_dir
 
     return None
@@ -86,7 +86,7 @@ def find_chunk_in_project(project_path: Path, local_chunk_id: str) -> Path | Non
 
     Args:
         project_path: Path to the project directory
-        local_chunk_id: Chunk ID pattern to match (e.g., "0001-feature" or "0001")
+        local_chunk_id: Chunk ID to match (e.g., "feature_name")
 
     Returns:
         Path to the matching chunk directory, or None if not found
@@ -265,7 +265,7 @@ def resolve_artifact_single_repo(
 
     Args:
         repo_path: Path to the local repository
-        local_artifact_id: Local artifact ID (e.g., "0001-feature")
+        local_artifact_id: Local artifact ID (e.g., "feature_name")
         artifact_type: The type of artifact to resolve
 
     Returns:
@@ -363,7 +363,7 @@ def resolve_single_repo(
 
     Args:
         repo_path: Path to the local repository
-        local_chunk_id: Local chunk ID (e.g., "0001-feature")
+        local_chunk_id: Local chunk ID (e.g., "feature_name")
 
     Returns:
         ResolveResult with resolved chunk information and content

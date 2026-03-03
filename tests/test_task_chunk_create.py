@@ -9,7 +9,8 @@ import pytest
 from click.testing import CliRunner
 
 from ve import cli
-from task_utils import load_external_ref, load_task_config
+from external_refs import load_external_ref
+from task import load_task_config
 from conftest import make_ve_initialized_git_repo, setup_task_directory
 
 

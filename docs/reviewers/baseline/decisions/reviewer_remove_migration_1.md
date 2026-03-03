@@ -1,7 +1,7 @@
 ---
 decision: APPROVE
 summary: All success criteria satisfied - migration code, tests, CLI command, and DECISION_LOG.md deleted; no orphan imports; all 2204 tests pass
-operator_review: null  # DO NOT SET - reserved for operator curation
+operator_review: good
 ---
 
 ## Criteria Assessment

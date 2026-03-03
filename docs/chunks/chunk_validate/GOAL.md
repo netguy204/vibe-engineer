@@ -3,25 +3,24 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/chunk.py
 - src/chunks.py
-- src/models.py
+- src/chunk_validation.py
+- src/models/references.py
 - tests/test_chunk_validate.py
 code_references:
-- ref: src/models.py#SymbolicReference
+- ref: src/models/references.py#SymbolicReference
   implements: Pydantic model for symbolic code references with validation
-- ref: src/chunks.py#ValidationResult
+- ref: src/chunk_validation.py#ValidationResult
   implements: Dataclass for structured error reporting
-- ref: src/chunks.py#Chunks::validate_chunk_complete
+- ref: src/chunk_validation.py#validate_chunk_complete
   implements: Status, code_references, subsystem, investigation, and narrative validation
 - ref: src/chunks.py#Chunks::validate_investigation_ref
   implements: Validation that referenced investigations exist
 - ref: src/chunks.py#Chunks::validate_narrative_ref
   implements: Validation that referenced narratives exist
-- ref: src/chunks.py#Chunks::_validate_symbol_exists
+- ref: src/chunk_validation.py#_validate_symbol_exists
   implements: Symbol existence verification for code references
-- ref: src/ve.py#validate
-  implements: CLI command interface - chunk validate command
 - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
   implements: Test coverage for investigation reference validation
 - ref: tests/test_chunk_validate.py#TestSymbolicReferenceValidation
@@ -30,6 +29,10 @@ code_references:
   implements: Test coverage for narrative reference validation
 - ref: src/cli/chunk.py#validate
   implements: "CLI chunk validate command after CLI modularization"
+- ref: src/integrity.py#validate_chunk_investigation_ref
+  implements: "Validation that referenced investigations exist"
+- ref: src/integrity.py#validate_chunk_narrative_ref
+  implements: "Validation that referenced narratives exist"
 created_after:
 - chunk_overlap_command
 ---

@@ -3,9 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/references.py
 - src/symbols.py
 - src/chunks.py
+- src/chunk_validation.py
 - src/ve.py
 - src/templates/chunk/GOAL.md.jinja2
 - src/templates/commands/chunk-complete.md.jinja2
@@ -16,7 +17,7 @@ code_paths:
 - tests/test_chunk_validate.py
 - docs/trunk/SPEC.md
 code_references:
-- ref: src/models.py#SymbolicReference
+- ref: src/models/references.py#SymbolicReference
   implements: Pydantic model for symbolic reference format validation
 - ref: src/symbols.py#extract_symbols
   implements: Python AST-based symbol extraction from source files
@@ -27,8 +28,8 @@ code_references:
 - ref: src/chunks.py#compute_symbolic_overlap
   implements: Overlap detection using symbolic references
 - ref: src/chunks.py#Chunks::validate_chunk_complete
-  implements: Chunk completion validation with symbolic reference support
-- ref: src/chunks.py#Chunks::_validate_symbol_exists
+  implements: Thin wrapper delegating to chunk_validation module for chunk completion with symbolic reference support
+- ref: src/chunk_validation.py#_validate_symbol_exists
   implements: Symbol existence validation producing warnings
 - ref: src/chunks.py#Chunks::_extract_symbolic_refs
   implements: Extract symbolic reference strings from code_references

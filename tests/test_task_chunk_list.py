@@ -135,6 +135,7 @@ class TestChunkListInTaskDirectory:
         assert "acme/service_a" in result.output
         assert "acme/service_b" in result.output
 
+    # Chunk: docs/chunks/chunk_list_repo_source - Test for repo-prefixed output format in task context
     def test_current_returns_implementing_chunk_from_external_repo(self, tmp_path):
         """--current returns implementing chunk from external repo with repo prefix."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)

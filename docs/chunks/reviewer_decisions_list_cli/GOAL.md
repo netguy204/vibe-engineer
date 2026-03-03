@@ -3,19 +3,15 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/reviewer.py
 - tests/test_reviewer_decisions.py
 code_references:
-  - ref: src/ve.py#reviewer
-    implements: "CLI command group for reviewer agent commands"
-  - ref: src/ve.py#decisions
-    implements: "Core logic for listing curated decisions with --recent N and --reviewer options"
+  - ref: src/cli/reviewer.py#reviewer
+    implements: "CLI reviewer command group for managing reviewer agent operations and decisions"
+  - ref: src/cli/reviewer.py#decisions
+    implements: "CLI reviewer decisions command with --recent N and --reviewer filtering for few-shot context"
   - ref: tests/test_reviewer_decisions.py
     implements: "Comprehensive test suite for reviewer decisions CLI command"
-  - ref: src/cli/reviewer.py#reviewer
-    implements: "CLI reviewer command group after CLI modularization"
-  - ref: src/cli/reviewer.py#decisions
-    implements: "CLI reviewer decisions command with --recent and --reviewer after CLI modularization"
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []

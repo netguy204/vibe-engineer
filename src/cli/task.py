@@ -13,7 +13,11 @@ from task_init import TaskInit
 
 @click.group()
 def task():
-    """Task directory commands."""
+    """Manage task directories - cross-repository work coordination.
+
+    Task directories enable working across multiple repositories with
+    shared artifacts stored in an external repository.
+    """
     pass
 
 

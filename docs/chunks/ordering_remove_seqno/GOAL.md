@@ -3,7 +3,8 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/shared.py
+- src/models/references.py
 - src/chunks.py
 - src/narratives.py
 - src/investigations.py
@@ -18,13 +19,13 @@ code_paths:
 - tests/test_chunk_start.py
 - tests/conftest.py
 code_references:
-  - ref: src/models.py#extract_short_name
+  - ref: src/models/shared.py#extract_short_name
     implements: "Utility to extract short_name from directory names (handles both legacy and new formats)"
-  - ref: src/models.py#ARTIFACT_ID_PATTERN
+  - ref: src/models/references.py#ARTIFACT_ID_PATTERN
     implements: "Regex pattern accepting both legacy NNNN-name and new name-only formats"
-  - ref: src/models.py#ChunkRelationship::validate_chunk_id
+  - ref: src/models/references.py#ChunkRelationship::validate_chunk_id
     implements: "Validator updated to accept both legacy and new chunk ID formats"
-  - ref: src/models.py#SubsystemRelationship::validate_subsystem_id
+  - ref: src/models/references.py#SubsystemRelationship::validate_subsystem_id
     implements: "Validator updated to accept both legacy and new subsystem ID formats"
   - ref: src/chunks.py#Chunks::find_duplicates
     implements: "Collision detection using extract_short_name for both naming patterns"
@@ -52,12 +53,14 @@ code_references:
     implements: "Validate directory name pattern for both formats"
   - ref: src/external_refs.py#create_external_yaml
     implements: "Create external.yaml using short_name only directory format"
-  - ref: src/task_utils.py#create_task_chunk
+  - ref: src/task/artifact_ops.py#create_task_chunk
     implements: "Multi-repo chunk creation updated for short_name format"
   - ref: src/artifact_ordering.py#ArtifactIndex::get_ancestors
     implements: "Compute transitive ancestors for causal ordering (used by find_overlapping_chunks)"
   - ref: scripts/migrate_artifact_names.py
     implements: "Migration script to rename directories and update frontmatter references"
+  - ref: src/task_utils.py
+    implements: "Short name format for task chunk creation re-export module"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts

@@ -110,21 +110,22 @@ class TestSubsystems:
         # Create subsystems directory with some subsystems
         subsystems_dir = temp_project / "docs" / "subsystems"
         subsystems_dir.mkdir(parents=True)
-        (subsystems_dir / "0001-validation").mkdir()
-        (subsystems_dir / "0002-chunk_management").mkdir()
+        (subsystems_dir / "validation").mkdir()
+        (subsystems_dir / "chunk_management").mkdir()
 
         subsystems = Subsystems(temp_project)
         result = subsystems.enumerate_subsystems()
-        assert set(result) == {"0001-validation", "0002-chunk_management"}
+        assert set(result) == {"validation", "chunk_management"}
 
     def test_is_subsystem_dir_valid_pattern(self, temp_project):
         """is_subsystem_dir() returns True for valid pattern."""
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
-        assert subsystems.is_subsystem_dir("0001-validation") is True
-        assert subsystems.is_subsystem_dir("0123-some_feature") is True
-        assert subsystems.is_subsystem_dir("9999-test") is True
+        assert subsystems.is_subsystem_dir("validation") is True
+        assert subsystems.is_subsystem_dir("some_feature") is True
+        assert subsystems.is_subsystem_dir("test-name") is True
+        assert subsystems.is_subsystem_dir("with123numbers") is True
 
     def test_is_subsystem_dir_invalid_patterns(self, temp_project):
         """is_subsystem_dir() returns False for invalid patterns.
@@ -135,12 +136,11 @@ class TestSubsystems:
         subsystems = Subsystems(temp_project)
         # Uppercase is invalid
         assert subsystems.is_subsystem_dir("INVALID_UPPERCASE") is False
-        # Starting with number (but not 4 digits) is invalid
+        # Starting with number is invalid
         assert subsystems.is_subsystem_dir("1abc") is False
-        # Legacy 3-digit prefix still invalid
-        assert subsystems.is_subsystem_dir("001-short") is False
-        # No name after legacy hyphen
-        assert subsystems.is_subsystem_dir("0001-") is False
+        assert subsystems.is_subsystem_dir("0123-some_feature") is False
+        # Starting with hyphen is invalid
+        assert subsystems.is_subsystem_dir("-starts-with-hyphen") is False
 
     def test_parse_subsystem_frontmatter_valid(self, temp_project):
         """parse_subsystem_frontmatter() returns validated frontmatter."""
@@ -148,13 +148,13 @@ class TestSubsystems:
 
         # Create a valid subsystem with frontmatter
         subsystems_dir = temp_project / "docs" / "subsystems"
-        subsystem_path = subsystems_dir / "0001-validation"
+        subsystem_path = subsystems_dir / "validation"
         subsystem_path.mkdir(parents=True)
 
         overview_content = """---
 status: DOCUMENTED
 chunks:
-  - chunk_id: "0001-setup"
+  - chunk_id: "setup"
     relationship: implements
 code_references:
   - ref: src/validation.py#validate_input
@@ -168,12 +168,12 @@ This subsystem handles validation logic.
         (subsystem_path / "OVERVIEW.md").write_text(overview_content)
 
         subsystems = Subsystems(temp_project)
-        frontmatter = subsystems.parse_subsystem_frontmatter("0001-validation")
+        frontmatter = subsystems.parse_subsystem_frontmatter("validation")
 
         assert frontmatter is not None
         assert frontmatter.status == SubsystemStatus.DOCUMENTED
         assert len(frontmatter.chunks) == 1
-        assert frontmatter.chunks[0].chunk_id == "0001-setup"
+        assert frontmatter.chunks[0].chunk_id == "setup"
         assert len(frontmatter.code_references) == 1
 
     def test_parse_subsystem_frontmatter_nonexistent(self, temp_project):
@@ -181,7 +181,7 @@ This subsystem handles validation logic.
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
-        result = subsystems.parse_subsystem_frontmatter("0001-nonexistent")
+        result = subsystems.parse_subsystem_frontmatter("nonexistent")
         assert result is None
 
     def test_parse_subsystem_frontmatter_no_overview(self, temp_project):
@@ -190,11 +190,11 @@ This subsystem handles validation logic.
 
         # Create subsystem directory without OVERVIEW.md
         subsystems_dir = temp_project / "docs" / "subsystems"
-        subsystem_path = subsystems_dir / "0001-validation"
+        subsystem_path = subsystems_dir / "validation"
         subsystem_path.mkdir(parents=True)
 
         subsystems = Subsystems(temp_project)
-        result = subsystems.parse_subsystem_frontmatter("0001-validation")
+        result = subsystems.parse_subsystem_frontmatter("validation")
         assert result is None
 
     def test_parse_subsystem_frontmatter_invalid_frontmatter(self, temp_project):
@@ -203,7 +203,7 @@ This subsystem handles validation logic.
 
         # Create a subsystem with invalid frontmatter
         subsystems_dir = temp_project / "docs" / "subsystems"
-        subsystem_path = subsystems_dir / "0001-validation"
+        subsystem_path = subsystems_dir / "validation"
         subsystem_path.mkdir(parents=True)
 
         overview_content = """---
@@ -215,7 +215,7 @@ status: INVALID_STATUS
         (subsystem_path / "OVERVIEW.md").write_text(overview_content)
 
         subsystems = Subsystems(temp_project)
-        result = subsystems.parse_subsystem_frontmatter("0001-validation")
+        result = subsystems.parse_subsystem_frontmatter("validation")
         assert result is None
 
 
@@ -320,13 +320,13 @@ class TestSubsystemsFindByShortname:
         # Create a subsystem directory
         subsystems_dir = temp_project / "docs" / "subsystems"
         subsystems_dir.mkdir(parents=True)
-        (subsystems_dir / "0001-validation").mkdir()
-        (subsystems_dir / "0001-validation" / "OVERVIEW.md").touch()
+        (subsystems_dir / "validation").mkdir()
+        (subsystems_dir / "validation" / "OVERVIEW.md").touch()
 
         subsystems = Subsystems(temp_project)
         result = subsystems.find_by_shortname("validation")
 
-        assert result == "0001-validation"
+        assert result == "validation"
 
     def test_find_by_shortname_returns_none_if_not_found(self, temp_project):
         """Returns None if shortname doesn't exist."""
@@ -344,15 +344,15 @@ class TestSubsystemsFindByShortname:
         # Create multiple subsystem directories
         subsystems_dir = temp_project / "docs" / "subsystems"
         subsystems_dir.mkdir(parents=True)
-        (subsystems_dir / "0001-validation").mkdir()
-        (subsystems_dir / "0002-chunk_management").mkdir()
-        (subsystems_dir / "0003-frontmatter").mkdir()
+        (subsystems_dir / "validation").mkdir()
+        (subsystems_dir / "chunk_management").mkdir()
+        (subsystems_dir / "frontmatter").mkdir()
 
         subsystems = Subsystems(temp_project)
 
-        assert subsystems.find_by_shortname("validation") == "0001-validation"
-        assert subsystems.find_by_shortname("chunk_management") == "0002-chunk_management"
-        assert subsystems.find_by_shortname("frontmatter") == "0003-frontmatter"
+        assert subsystems.find_by_shortname("validation") == "validation"
+        assert subsystems.find_by_shortname("chunk_management") == "chunk_management"
+        assert subsystems.find_by_shortname("frontmatter") == "frontmatter"
         assert subsystems.find_by_shortname("nonexistent") is None
 
 
@@ -398,65 +398,65 @@ code_references: []
         """Empty chunks list returns no errors."""
         from subsystems import Subsystems
 
-        self._write_subsystem_with_chunks(temp_project, "0001-validation", [])
+        self._write_subsystem_with_chunks(temp_project, "validation", [])
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert errors == []
 
     def test_valid_chunk_reference_returns_no_errors(self, temp_project):
         """Valid chunk reference returns no errors."""
         from subsystems import Subsystems
 
-        self._create_chunk(temp_project, "0001-feature")
-        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
-            {"chunk_id": "0001-feature", "relationship": "implements"}
+        self._create_chunk(temp_project, "feature")
+        self._write_subsystem_with_chunks(temp_project, "validation", [
+            {"chunk_id": "feature", "relationship": "implements"}
         ])
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert errors == []
 
     def test_nonexistent_chunk_reference_returns_error(self, temp_project):
         """Non-existent chunk reference returns error message."""
         from subsystems import Subsystems
 
-        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
-            {"chunk_id": "0001-nonexistent", "relationship": "implements"}
+        self._write_subsystem_with_chunks(temp_project, "validation", [
+            {"chunk_id": "nonexistent", "relationship": "implements"}
         ])
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert len(errors) == 1
-        assert "0001-nonexistent" in errors[0]
+        assert "nonexistent" in errors[0]
         assert "not found" in errors[0].lower() or "does not exist" in errors[0].lower()
 
     def test_multiple_valid_references_returns_no_errors(self, temp_project):
         """Multiple valid chunk references returns no errors."""
         from subsystems import Subsystems
 
-        self._create_chunk(temp_project, "0001-feature")
-        self._create_chunk(temp_project, "0002-enhancement")
-        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
-            {"chunk_id": "0001-feature", "relationship": "implements"},
-            {"chunk_id": "0002-enhancement", "relationship": "uses"},
+        self._create_chunk(temp_project, "feature")
+        self._create_chunk(temp_project, "enhancement")
+        self._write_subsystem_with_chunks(temp_project, "validation", [
+            {"chunk_id": "feature", "relationship": "implements"},
+            {"chunk_id": "enhancement", "relationship": "uses"},
         ])
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert errors == []
 
     def test_multiple_errors_collected(self, temp_project):
         """Multiple invalid references return multiple errors."""
         from subsystems import Subsystems
 
-        self._write_subsystem_with_chunks(temp_project, "0001-validation", [
-            {"chunk_id": "0001-nonexistent1", "relationship": "implements"},
-            {"chunk_id": "0002-nonexistent2", "relationship": "uses"},
+        self._write_subsystem_with_chunks(temp_project, "validation", [
+            {"chunk_id": "nonexistent1", "relationship": "implements"},
+            {"chunk_id": "nonexistent_two", "relationship": "uses"},
         ])
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert len(errors) == 2
 
     def test_subsystem_not_found_returns_empty(self, temp_project):
@@ -464,14 +464,14 @@ code_references: []
         from subsystems import Subsystems
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("9999-nonexistent")
+        errors = subsystems.validate_chunk_refs("nonexistent")
         assert errors == []
 
     def test_subsystem_without_chunks_field_returns_no_errors(self, temp_project):
         """Subsystem without chunks field returns no errors (backward compat)."""
         from subsystems import Subsystems
 
-        subsystem_path = temp_project / "docs" / "subsystems" / "0001-validation"
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
         subsystem_path.mkdir(parents=True, exist_ok=True)
         (subsystem_path / "OVERVIEW.md").write_text("""---
 status: DOCUMENTED
@@ -482,5 +482,5 @@ code_references: []
 """)
 
         subsystems = Subsystems(temp_project)
-        errors = subsystems.validate_chunk_refs("0001-validation")
+        errors = subsystems.validate_chunk_refs("validation")
         assert errors == []

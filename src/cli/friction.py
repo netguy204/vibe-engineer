@@ -4,15 +4,116 @@ Commands for managing friction log entries.
 """
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
 # Chunk: docs/chunks/cli_modularize - Friction CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+# Chunk: docs/chunks/cli_decompose - Extract shared prompting logic
 
+import json
 import pathlib
 
 import click
 
 
+# Chunk: docs/chunks/cli_decompose - Extract shared friction prompting logic
+def _prompt_friction_inputs(
+    title: str | None,
+    description: str | None,
+    impact: str | None,
+    theme: str | None,
+    theme_name: str | None,
+    existing_themes: set[str],
+    themes_display: list | None = None,
+    theme_source_label: str = "",
+) -> tuple[str, str, str, str, str | None]:
+    """Prompt for missing friction entry inputs.
+
+    This function encapsulates the interactive prompting logic shared between
+    single-repo and task-context friction logging.
+
+    Args:
+        title: Optional title from CLI
+        description: Optional description from CLI
+        impact: Optional impact level from CLI
+        theme: Optional theme ID from CLI
+        theme_name: Optional theme name from CLI
+        existing_themes: Set of existing theme IDs for validation
+        themes_display: Optional list of theme objects for display
+        theme_source_label: Label to append when displaying themes (e.g., "(from external repo)")
+
+    Returns:
+        Tuple of (title, description, impact, theme_id, theme_name).
+
+    Raises:
+        SystemExit: On validation errors or when non-interactive input is required.
+    """
+    # Helper function to prompt with graceful failure for non-interactive mode
+    def prompt_or_fail(prompt_text, missing_option, **kwargs):
+        """Prompt for input, or fail with clear error if prompting isn't possible."""
+        try:
+            return click.prompt(prompt_text, **kwargs)
+        except click.exceptions.Abort:
+            click.echo(
+                f"Error: Missing required option {missing_option}\n"
+                "When running non-interactively, all options must be provided.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    # Display existing themes for interactive users
+    if themes_display and (not title or not description or not impact or not theme):
+        label = f"\nExisting themes{theme_source_label}:"
+        click.echo(label)
+        for t in themes_display:
+            click.echo(f"  - {t.id}: {t.name}")
+
+    # Prompt for missing required options
+    if not title:
+        title = prompt_or_fail("Title", "--title")
+    if not description:
+        description = prompt_or_fail("Description", "--description")
+    if not impact:
+        impact = prompt_or_fail(
+            "Impact",
+            "--impact",
+            type=click.Choice(["low", "medium", "high", "blocking"]),
+        )
+    if not theme:
+        theme = prompt_or_fail("Theme ID (or 'new' to create)", "--theme")
+
+    # Handle 'new' theme placeholder
+    if theme == "new":
+        try:
+            theme = click.prompt("New theme ID (e.g., 'code-refs')")
+        except click.exceptions.Abort:
+            click.echo(
+                "Error: --theme 'new' requires interactive prompts.\n"
+                "For non-interactive use, provide the actual theme ID and use --theme-name for new themes.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    # Handle new theme creation (theme not in existing themes)
+    is_new_theme = theme not in existing_themes
+    if is_new_theme and not theme_name:
+        try:
+            theme_name = click.prompt(f"Name for theme '{theme}' (e.g., 'Code Reference Friction')")
+        except click.exceptions.Abort:
+            click.echo(
+                f"Error: Theme '{theme}' is new. --theme-name is required for new themes in non-interactive mode.\n"
+                f"Example: --theme-name \"My Theme Name\"",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    return title, description, impact, theme, theme_name
+
+
 @click.group()
 def friction():
-    """Friction log commands."""
+    """Manage friction log - accumulative ledger for pain points.
+
+    Log friction as you encounter it. When patterns emerge (3+ entries),
+    consider creating a chunk or investigation to address them.
+    """
     pass
 
 
@@ -45,20 +146,22 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
       ve friction log --title "X" --description "Y" --impact low --theme cli --projects proj1,proj2
     """
     from friction import Friction
-    from task_utils import (
+    from task import (
         is_task_directory,
         create_task_friction_entry,
         TaskFrictionError,
         load_task_config,
         parse_projects_option,
     )
+    from cli.utils import handle_task_context
 
-    # Detect task directory context
-    if is_task_directory(project_dir):
-        # Task context: create friction in external repo
-        _log_entry_task_context(
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _log_entry_task_context(
             project_dir, title, description, impact, theme, theme_name, projects
-        )
+        ),
+    ):
         return
 
     # Single-repo context: original behavior
@@ -72,64 +175,13 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
     themes = friction_log.get_themes()
     existing_theme_ids = {t.id for t in themes}
 
-    # Helper function to prompt with graceful failure for non-interactive mode
-    def prompt_or_fail(prompt_text, missing_option, **kwargs):
-        """Prompt for input, or fail with clear error if prompting isn't possible."""
-        try:
-            return click.prompt(prompt_text, **kwargs)
-        except click.exceptions.Abort:
-            # Prompting failed - we're in non-interactive mode
-            click.echo(
-                f"Error: Missing required option {missing_option}\n"
-                "When running non-interactively, all options must be provided.",
-                err=True,
-            )
-            raise SystemExit(1)
-
-    # Display existing themes for interactive users
-    if themes and (not title or not description or not impact or not theme):
-        click.echo("\nExisting themes:")
-        for t in themes:
-            click.echo(f"  - {t.id}: {t.name}")
-
-    # Prompt for missing required options
-    if not title:
-        title = prompt_or_fail("Title", "--title")
-    if not description:
-        description = prompt_or_fail("Description", "--description")
-    if not impact:
-        impact = prompt_or_fail(
-            "Impact",
-            "--impact",
-            type=click.Choice(["low", "medium", "high", "blocking"]),
-        )
-    if not theme:
-        theme = prompt_or_fail("Theme ID (or 'new' to create)", "--theme")
-
-    # Handle 'new' theme placeholder
-    if theme == "new":
-        try:
-            theme = click.prompt("New theme ID (e.g., 'code-refs')")
-        except click.exceptions.Abort:
-            click.echo(
-                "Error: --theme 'new' requires interactive prompts.\n"
-                "For non-interactive use, provide the actual theme ID and use --theme-name for new themes.",
-                err=True,
-            )
-            raise SystemExit(1)
-
-    # Handle new theme creation (theme not in existing themes)
-    is_new_theme = theme not in existing_theme_ids
-    if is_new_theme and not theme_name:
-        try:
-            theme_name = click.prompt(f"Name for theme '{theme}' (e.g., 'Code Reference Friction')")
-        except click.exceptions.Abort:
-            click.echo(
-                f"Error: Theme '{theme}' is new. --theme-name is required for new themes in non-interactive mode.\n"
-                f"Example: --theme-name \"My Theme Name\"",
-                err=True,
-            )
-            raise SystemExit(1)
+    # Chunk: docs/chunks/cli_decompose - Use shared prompting helper
+    title, description, impact, theme, theme_name = _prompt_friction_inputs(
+        title, description, impact, theme, theme_name,
+        existing_themes=existing_theme_ids,
+        themes_display=themes,
+        theme_source_label="",
+    )
 
     try:
         entry_id = friction_log.append_entry(
@@ -148,7 +200,7 @@ def log_entry(project_dir, title, description, impact, theme, theme_name, projec
 def _log_entry_task_context(project_dir, title, description, impact, theme, theme_name, projects):
     """Handle friction logging in task context."""
     from friction import Friction
-    from task_utils import (
+    from task import (
         create_task_friction_entry,
         TaskFrictionError,
         load_task_config,
@@ -188,63 +240,13 @@ def _log_entry_task_context(project_dir, title, description, impact, theme, them
     themes = friction_log.get_themes()
     existing_theme_ids = {t.id for t in themes}
 
-    # Helper function to prompt with graceful failure for non-interactive mode
-    def prompt_or_fail(prompt_text, missing_option, **kwargs):
-        """Prompt for input, or fail with clear error if prompting isn't possible."""
-        try:
-            return click.prompt(prompt_text, **kwargs)
-        except click.exceptions.Abort:
-            click.echo(
-                f"Error: Missing required option {missing_option}\n"
-                "When running non-interactively, all options must be provided.",
-                err=True,
-            )
-            raise SystemExit(1)
-
-    # Display existing themes for interactive users
-    if themes and (not title or not description or not impact or not theme):
-        click.echo("\nExisting themes (from external repo):")
-        for t in themes:
-            click.echo(f"  - {t.id}: {t.name}")
-
-    # Prompt for missing required options
-    if not title:
-        title = prompt_or_fail("Title", "--title")
-    if not description:
-        description = prompt_or_fail("Description", "--description")
-    if not impact:
-        impact = prompt_or_fail(
-            "Impact",
-            "--impact",
-            type=click.Choice(["low", "medium", "high", "blocking"]),
-        )
-    if not theme:
-        theme = prompt_or_fail("Theme ID (or 'new' to create)", "--theme")
-
-    # Handle 'new' theme placeholder
-    if theme == "new":
-        try:
-            theme = click.prompt("New theme ID (e.g., 'code-refs')")
-        except click.exceptions.Abort:
-            click.echo(
-                "Error: --theme 'new' requires interactive prompts.\n"
-                "For non-interactive use, provide the actual theme ID and use --theme-name for new themes.",
-                err=True,
-            )
-            raise SystemExit(1)
-
-    # Handle new theme creation (theme not in existing themes)
-    is_new_theme = theme not in existing_theme_ids
-    if is_new_theme and not theme_name:
-        try:
-            theme_name = click.prompt(f"Name for theme '{theme}' (e.g., 'Code Reference Friction')")
-        except click.exceptions.Abort:
-            click.echo(
-                f"Error: Theme '{theme}' is new. --theme-name is required for new themes in non-interactive mode.\n"
-                f"Example: --theme-name \"My Theme Name\"",
-                err=True,
-            )
-            raise SystemExit(1)
+    # Chunk: docs/chunks/cli_decompose - Use shared prompting helper
+    title, description, impact, theme, theme_name = _prompt_friction_inputs(
+        title, description, impact, theme, theme_name,
+        existing_themes=existing_theme_ids,
+        themes_display=themes,
+        theme_source_label=" (from external repo)",
+    )
 
     # Parse --projects option
     try:
@@ -284,7 +286,9 @@ def _log_entry_task_context(project_dir, title, description, impact, theme, them
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 @click.option("--open", "status_open", is_flag=True, help="Show only OPEN entries")
 @click.option("--tags", multiple=True, help="Filter by theme tags")
-def list_entries(project_dir, status_open, tags):
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_entries(project_dir, status_open, tags, json_output):
     """List friction entries."""
     from friction import Friction, FrictionStatus
 
@@ -303,11 +307,27 @@ def list_entries(project_dir, status_open, tags):
     entries = friction_log.list_entries(status_filter=status_filter, theme_filter=theme_filter)
 
     if not entries:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No friction entries found", err=True)
         raise SystemExit(0)
 
-    for entry, status in entries:
-        click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
+    if json_output:
+        results = []
+        for entry, status in entries:
+            results.append({
+                "id": entry.id,
+                "status": status.value,
+                "theme_id": entry.theme_id,
+                "title": entry.title,
+                "date": entry.date,
+                "content": entry.content,
+            })
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for entry, status in entries:
+            click.echo(f"{entry.id} [{status.value}] [{entry.theme_id}] {entry.title}")
 
 
 @friction.command("analyze")

@@ -13,8 +13,9 @@ import pathlib
 import click
 
 from models import ArtifactType
-from task_utils import is_task_directory, TaskChunkError
+from task import TaskChunkError
 from external_refs import ARTIFACT_MAIN_FILE
+from cli.utils import handle_task_context
 from external_resolve import (
     resolve_artifact_task_directory,
     resolve_artifact_single_repo,
@@ -59,11 +60,15 @@ def resolve(local_artifact_id, main_only, secondary_only, goal_only, plan_only, 
         click.echo("Error: --main-only and --secondary-only are mutually exclusive", err=True)
         raise SystemExit(1)
 
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
     # Determine mode and resolve
-    if is_task_directory(project_dir):
-        _resolve_external_task_directory(
+    if handle_task_context(
+        project_dir,
+        lambda: _resolve_external_task_directory(
             project_dir, local_artifact_id, main_only, secondary_only, project
-        )
+        ),
+    ):
+        return
     else:
         if project:
             click.echo("Error: --project can only be used in task directory context", err=True)
@@ -127,7 +132,7 @@ def _resolve_external_task_directory(
 ):
     """Handle resolve in task directory mode."""
     from external_refs import ARTIFACT_DIR_NAME
-    from task_utils import load_task_config, resolve_repo_directory
+    from task import load_task_config, resolve_repo_directory
 
     # Parse project:artifact format if present
     if ":" in local_artifact_id:

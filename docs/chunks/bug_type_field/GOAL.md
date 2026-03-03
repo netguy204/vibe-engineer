@@ -21,6 +21,10 @@ code_references:
     implements: "Bug type-aware backreference and status transition guidance"
   - ref: tests/test_models.py#TestChunkFrontmatterBugType
     implements: "Unit tests for bug_type field validation"
+  - ref: src/models/chunk.py#BugType
+    implements: "BugType enum with SEMANTIC and IMPLEMENTATION values"
+  - ref: src/models/chunk.py#ChunkFrontmatter
+    implements: "bug_type field added to ChunkFrontmatter model"
 narrative: null
 investigation: bug_chunk_semantic_value
 subsystems: []

@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/chunks.py
 - src/ve.py
-- src/task_utils.py
+- src/task/artifact_ops.py
 - src/templates/chunk/GOAL.md.jinja2
 - src/templates/commands/chunk-create.md.jinja2
 - tests/test_chunks.py
@@ -20,15 +20,15 @@ code_references:
   implements: "Transitions FUTURE chunk to IMPLEMENTING, enforcing single IMPLEMENTING constraint"
 - ref: src/chunks.py#Chunks::create_chunk
   implements: "Extended with status parameter to support FUTURE and IMPLEMENTING statuses"
-- ref: src/ve.py#create
+- ref: src/cli/chunk.py#create
   implements: "CLI command with --future flag for creating FUTURE chunks"
-- ref: src/ve.py#list_chunks
+- ref: src/cli/chunk.py#list_chunks
   implements: "CLI command showing status, --latest uses get_current_chunk to find IMPLEMENTING chunk"
-- ref: src/ve.py#activate
+- ref: src/cli/chunk.py#activate
   implements: "CLI command to activate a FUTURE chunk to IMPLEMENTING status"
-- ref: src/task_utils.py#update_frontmatter_field
+- ref: src/frontmatter.py#update_frontmatter_field
   implements: "Reusable utility for modifying YAML frontmatter fields including status"
-- ref: src/task_utils.py#create_task_chunk
+- ref: src/task/artifact_ops.py#create_task_chunk
   implements: "Extended with status parameter for cross-repo chunk creation supporting FUTURE/IMPLEMENTING"
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: "Template with FUTURE status documentation, Jinja status variable, and FUTURE/IMPLEMENTING examples"

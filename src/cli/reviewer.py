@@ -12,13 +12,61 @@ import pathlib
 import click
 
 from chunks import Chunks
-from models import DecisionFrontmatter, FeedbackReview
+from models import FeedbackReview
+from reviewers import CuratedDecision
 from template_system import render_template
+
+
+# Chunk: docs/chunks/reviewer_decisions_dedup - Shared formatting helper for curated decisions
+def _format_curated_decision(
+    decision: CuratedDecision,
+    project_dir: pathlib.Path,
+    include_nudge: bool = False,
+) -> str:
+    """Format a curated decision for CLI output.
+
+    Args:
+        decision: The CuratedDecision to format.
+        project_dir: Project directory for computing relative paths.
+        include_nudge: If True, appends a nudge note for FeedbackReview entries.
+
+    Returns:
+        Formatted string for output.
+    """
+    # Compute relative path
+    try:
+        rel_path = decision.path.relative_to(project_dir)
+    except ValueError:
+        rel_path = decision.path
+
+    lines = []
+    lines.append(f"## {rel_path}")
+    lines.append("")
+    lines.append(f"- **Decision**: {decision.frontmatter.decision.value if decision.frontmatter.decision else 'None'}")
+    lines.append(f"- **Summary**: {decision.frontmatter.summary or ''}")
+
+    # Format operator_review based on type
+    if isinstance(decision.frontmatter.operator_review, str):
+        lines.append(f"- **Operator review**: {decision.frontmatter.operator_review}")
+    elif isinstance(decision.frontmatter.operator_review, FeedbackReview):
+        lines.append("- **Operator review**:")
+        lines.append(f"  - feedback: {decision.frontmatter.operator_review.feedback}")
+        # Chunk: docs/chunks/reviewer_decisions_nudge - Nudge agents toward detailed decision files
+        if include_nudge:
+            lines.append("")
+            lines.append(f"NOTE TO AGENT: Read the full decision context if this may be relevant to your current review: {rel_path}")
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 @click.group()
 def reviewer():
-    """Reviewer agent commands."""
+    """Manage reviewer agent - automated decision tracking and review.
+
+    Reviewer agents evaluate chunk implementations against success criteria.
+    Curated decisions provide few-shot examples for future reviews.
+    """
     pass
 
 
@@ -44,8 +92,6 @@ def decisions(ctx, pending, recent, reviewer_filter, project_dir):
     When invoked with --recent N, lists N most recent curated decisions.
     Otherwise, use subcommands like 'review' to interact with decisions.
     """
-    import os
-    import yaml
     from reviewers import Reviewers
 
     # If invoked without a subcommand and --pending flag is set
@@ -66,62 +112,17 @@ def decisions(ctx, pending, recent, reviewer_filter, project_dir):
                 click.echo(f"    Summary: {info.frontmatter.summary}")
             click.echo()
 
+    # Chunk: docs/chunks/reviewer_decisions_dedup - Use shared helper for --recent
     # If invoked without a subcommand and --recent is set
     elif ctx.invoked_subcommand is None and recent is not None:
         # Use reviewer_filter if provided, otherwise default to "baseline"
         reviewer_name = reviewer_filter if reviewer_filter else "baseline"
-        decisions_path = project_dir / "docs" / "reviewers" / reviewer_name / "decisions"
+        reviewers = Reviewers(project_dir)
+        curated_decisions = reviewers.list_curated_decisions(reviewer_name, limit=recent)
 
-        if not decisions_path.exists():
-            return
-
-        decision_files = list(decisions_path.glob("*.md"))
-        if not decision_files:
-            return
-
-        curated_decisions = []
-        for filepath in decision_files:
-            try:
-                content = filepath.read_text()
-                if not content.startswith("---"):
-                    continue
-                parts = content.split("---", 2)
-                if len(parts) < 3:
-                    continue
-                frontmatter_text = parts[1].strip()
-                frontmatter_data = yaml.safe_load(frontmatter_text)
-                if frontmatter_data is None:
-                    continue
-                decision = DecisionFrontmatter(**frontmatter_data)
-                if decision.operator_review is None:
-                    continue
-                mtime = os.path.getmtime(filepath)
-                curated_decisions.append((filepath, decision, mtime))
-            except (yaml.YAMLError, ValueError) as e:
-                click.echo(f"Warning: Skipping {filepath.name}: {e}", err=True)
-                continue
-
-        curated_decisions.sort(key=lambda x: x[2], reverse=True)
-        curated_decisions = curated_decisions[:recent]
-
-        for filepath, decision, _mtime in curated_decisions:
-            try:
-                rel_path = filepath.relative_to(project_dir)
-            except ValueError:
-                rel_path = filepath
-            click.echo(f"## {rel_path}")
-            click.echo()
-            click.echo(f"- **Decision**: {decision.decision.value if decision.decision else 'None'}")
-            click.echo(f"- **Summary**: {decision.summary or ''}")
-            if isinstance(decision.operator_review, str):
-                click.echo(f"- **Operator review**: {decision.operator_review}")
-            elif isinstance(decision.operator_review, FeedbackReview):
-                click.echo("- **Operator review**:")
-                click.echo(f"  - feedback: {decision.operator_review.feedback}")
-                # Chunk: docs/chunks/reviewer_decisions_nudge - Nudge agents toward detailed decision files
-                click.echo()
-                click.echo(f"NOTE TO AGENT: Read the full decision context if this may be relevant to your current review: {rel_path}")
-            click.echo()
+        for decision in curated_decisions:
+            # Group handler includes nudge note for FeedbackReview entries
+            click.echo(_format_curated_decision(decision, project_dir, include_nudge=True))
 
     elif ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -178,6 +179,7 @@ def decisions_review(path, verdict, feedback, project_dir):
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/reviewer_decisions_dedup - Use shared helper for decisions list
 @decisions.command("list")
 @click.option("--recent", type=int, required=True, help="Number of recent curated decisions to show")
 @click.option("--reviewer", "reviewer_name", default="baseline", help="Reviewer name (default: baseline)")
@@ -189,85 +191,14 @@ def list_decisions(recent, reviewer_name, project_dir):
     suitable for few-shot learning. Decisions are sorted by modification time with
     most recent first.
     """
-    import os
-    import yaml
+    from reviewers import Reviewers
 
-    # Build path to decisions directory
-    decisions_path = project_dir / "docs" / "reviewers" / reviewer_name / "decisions"
+    reviewers = Reviewers(project_dir)
+    curated_decisions = reviewers.list_curated_decisions(reviewer_name, limit=recent)
 
-    if not decisions_path.exists():
-        # No decisions directory - just return empty (not an error)
-        return
-
-    # Collect and parse decision files
-    decision_files = list(decisions_path.glob("*.md"))
-    if not decision_files:
-        return
-
-    curated_decisions = []
-
-    for filepath in decision_files:
-        try:
-            content = filepath.read_text()
-
-            # Parse frontmatter (content between first two --- lines)
-            if not content.startswith("---"):
-                continue
-
-            parts = content.split("---", 2)
-            if len(parts) < 3:
-                continue
-
-            frontmatter_text = parts[1].strip()
-            frontmatter_data = yaml.safe_load(frontmatter_text)
-
-            if frontmatter_data is None:
-                continue
-
-            # Validate with Pydantic model
-            decision = DecisionFrontmatter(**frontmatter_data)
-
-            # Skip non-curated decisions (operator_review is None)
-            if decision.operator_review is None:
-                continue
-
-            # Get modification time for sorting
-            mtime = os.path.getmtime(filepath)
-
-            curated_decisions.append((filepath, decision, mtime))
-
-        except (yaml.YAMLError, ValueError) as e:
-            # Skip files with parse errors, optionally warn
-            click.echo(f"Warning: Skipping {filepath.name}: {e}", err=True)
-            continue
-
-    # Sort by modification time (newest first)
-    curated_decisions.sort(key=lambda x: x[2], reverse=True)
-
-    # Limit to --recent N
-    curated_decisions = curated_decisions[:recent]
-
-    # Output each decision in the expected format
-    for filepath, decision, _mtime in curated_decisions:
-        # Calculate working-directory-relative path
-        try:
-            rel_path = filepath.relative_to(project_dir)
-        except ValueError:
-            rel_path = filepath
-
-        click.echo(f"## {rel_path}")
-        click.echo()
-        click.echo(f"- **Decision**: {decision.decision.value if decision.decision else 'None'}")
-        click.echo(f"- **Summary**: {decision.summary or ''}")
-
-        # Format operator_review based on type
-        if isinstance(decision.operator_review, str):
-            click.echo(f"- **Operator review**: {decision.operator_review}")
-        elif isinstance(decision.operator_review, FeedbackReview):
-            click.echo("- **Operator review**:")
-            click.echo(f"  - feedback: {decision.operator_review.feedback}")
-
-        click.echo()
+    for decision in curated_decisions:
+        # list subcommand does NOT include nudge note (intentional difference from group handler)
+        click.echo(_format_curated_decision(decision, project_dir, include_nudge=False))
 
 
 # Chunk: docs/chunks/reviewer_decision_create_cli - Creates decision file with frontmatter and criteria assessment template
@@ -287,7 +218,8 @@ def create_decision(chunk_id, reviewer_name, iteration, project_dir):
     # Validate chunk exists
     chunk_name = chunks.resolve_chunk_id(chunk_id)
     if chunk_name is None:
-        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     # Build decision file path

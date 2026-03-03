@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_conflict_oracle - Conflict Oracle for scheduling decisions
 """Conflict Oracle for intelligent chunk scheduling.
 
 The oracle analyzes potential conflicts between chunks to determine whether

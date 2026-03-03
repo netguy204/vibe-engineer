@@ -5,18 +5,18 @@ Commands for managing chunks - the primary work unit in Vibe Engineering.
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
 # Chunk: docs/chunks/cli_modularize - Chunk CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
 
 from chunks import Chunks
 from external_refs import strip_artifact_path_prefix, is_external_artifact, load_external_ref
-from investigations import Investigations
-from narratives import Narratives
-from subsystems import Subsystems
-from models import ChunkStatus, ArtifactType
-from task_utils import (
+from project import Project
+from models import ChunkStatus, ArtifactType, parse_status_filters
+from task import (
     is_task_directory,
     create_task_chunk,
     list_task_chunks,
@@ -31,19 +31,29 @@ from task_utils import (
 )
 from cluster_analysis import check_cluster_size, format_cluster_warning
 from chunks import get_chunk_prefix
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
 from cli.utils import (
     validate_short_name,
     validate_ticket_id,
-    validate_combined_chunk_name,
     warn_task_project_context,
+    handle_task_context,
+)
+from cli.formatters import (
+    artifact_to_json_dict,
+    format_grouped_artifact_list,
+    format_grouped_artifact_list_json,
+    format_chunk_list_entry,
 )
 
 
 @click.group()
 def chunk():
-    """Chunk commands"""
+    """Manage chunks - discrete units of implementation work.
+
+    Chunks are the primary work units in Vibe Engineering, each representing
+    a focused piece of implementation with a defined goal and success criteria.
+    """
     pass
 
 
@@ -55,8 +65,10 @@ def chunk():
 @click.option("--ticket", default=None, help="Ticket ID to apply to all chunks")
 @click.option("--projects", default=None, help="Comma-separated list of projects to link (default: all)")
 # Chunk: docs/chunks/chunk_batch_create - CLI command accepting variadic chunk names with batch creation logic
+# Chunk: docs/chunks/future_chunk_creation - CLI command with --future flag for creating FUTURE chunks
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - create command - argument parsing, validation, normalization, duplicate detection, --yes flag
 def create(short_names, project_dir, yes, future, ticket, projects):
-    """Create a new chunk (or multiple chunks).
+    """Create a new chunk (or multiple chunks). (Aliases: start)
 
     Creates chunks in docs/chunks/. Task context routes to task-scoped storage.
 
@@ -109,7 +121,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 
     for name in names_to_create:
         errors = validate_short_name(name)
-        errors.extend(validate_combined_chunk_name(name.lower(), ticket_id))
         if errors:
             validation_errors[name] = errors
         else:
@@ -136,9 +147,11 @@ def create(short_names, project_dir, yes, future, ticket, projects):
     # Determine status based on --future flag
     status = "FUTURE" if future else "IMPLEMENTING"
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _start_task_chunks(project_dir, valid_names, ticket_id, status, projects)
+    # Chunk: docs/chunks/cli_decompose - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _start_task_chunks(project_dir, valid_names, ticket_id, status, projects),
+    ):
         # If there were validation errors, exit with error code
         if validation_errors:
             raise SystemExit(1)
@@ -201,42 +214,6 @@ def create(short_names, project_dir, yes, future, ticket, projects):
 chunk.add_command(create, name="start")
 
 
-# Chunk: docs/chunks/chunk_create_task_aware - CLI handler for cross-repo mode output
-def _start_task_chunk(
-    task_dir: pathlib.Path,
-    short_name: str,
-    ticket_id: str | None,
-    status: str = "IMPLEMENTING",
-    projects_input: str | None = None,
-):
-    """Handle chunk creation in task directory (cross-repo mode)."""
-    # Parse and validate projects option
-    try:
-        config = load_task_config(task_dir)
-        projects = parse_projects_option(projects_input, config.projects)
-    except FileNotFoundError:
-        click.echo(f"Error: Task configuration not found in {task_dir}", err=True)
-        raise SystemExit(1)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
-    try:
-        result = create_task_chunk(task_dir, short_name, ticket_id, status=status, projects=projects)
-    except TaskChunkError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
-    # Report created paths
-    external_path = result["external_chunk_path"]
-    click.echo(f"Created chunk in external repo: {external_path.relative_to(task_dir)}/")
-
-    for project_ref, yaml_path in result["project_refs"].items():
-        # Show the chunk directory, not the yaml file
-        chunk_dir = yaml_path.parent
-        click.echo(f"Created reference in {project_ref}: {chunk_dir.relative_to(task_dir)}/")
-
-
 # Chunk: docs/chunks/chunk_batch_create - Batch chunk creation handler for task directory mode
 def _start_task_chunks(
     task_dir: pathlib.Path,
@@ -281,55 +258,6 @@ def _start_task_chunks(
         raise SystemExit(1)
 
 
-def _parse_status_filters(
-    status_option: tuple[str, ...],
-    future_flag: bool,
-    active_flag: bool,
-    implementing_flag: bool,
-) -> tuple[set[ChunkStatus] | None, str | None]:
-    """Parse and validate status filters from CLI options.
-
-    Args:
-        status_option: Tuple of status strings from --status option (may include comma-separated)
-        future_flag: Whether --future flag was set
-        active_flag: Whether --active flag was set
-        implementing_flag: Whether --implementing flag was set
-
-    Returns:
-        Tuple of (status_set, error_message). status_set is None if no filtering requested,
-        or a set of ChunkStatus values. error_message is None on success, or contains
-        the error message with valid options listed.
-    """
-    statuses: set[ChunkStatus] = set()
-
-    # Add statuses from convenience flags
-    if future_flag:
-        statuses.add(ChunkStatus.FUTURE)
-    if active_flag:
-        statuses.add(ChunkStatus.ACTIVE)
-    if implementing_flag:
-        statuses.add(ChunkStatus.IMPLEMENTING)
-
-    # Parse statuses from --status option (handles comma-separated and multiple options)
-    for status_str in status_option:
-        # Split by comma to handle --status FUTURE,ACTIVE
-        parts = [s.strip() for s in status_str.split(",") if s.strip()]
-        for part in parts:
-            # Case-insensitive lookup
-            upper_part = part.upper()
-            try:
-                statuses.add(ChunkStatus(upper_part))
-            except ValueError:
-                valid_statuses = ", ".join(s.value for s in ChunkStatus)
-                return None, f"Invalid status '{part}'. Valid statuses: {valid_statuses}"
-
-    # Return None if no filtering requested (empty set means show all)
-    if not statuses:
-        return None, None
-
-    return statuses, None
-
-
 @chunk.command("list")
 @click.option("--current", is_flag=True, help="Output only the current IMPLEMENTING chunk")
 @click.option("--last-active", is_flag=True, help="Output only the most recently completed ACTIVE chunk")
@@ -349,6 +277,7 @@ def _parse_status_filters(
     is_flag=True,
     help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
 )
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 # Chunk: docs/chunks/artifact_list_ordering - CLI command with tip indicator display using ArtifactIndex
 # Chunk: docs/chunks/chunk_list_command-ve-002 - CLI command ve chunk list with --latest, --last-active, and --project-dir options
@@ -356,7 +285,10 @@ def _parse_status_filters(
 # Chunk: docs/chunks/chunk_last_active - CLI handler with --last-active flag and mutual exclusivity check
 # Chunk: docs/chunks/chunklist_status_filter - Status filter parsing and handling
 # Chunk: docs/chunks/chunklist_external_status - External chunk status display in list output
-def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, project_dir):
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty chunk list results
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+# Chunk: docs/chunks/future_chunk_creation - CLI command showing status, --latest uses get_current_chunk to find IMPLEMENTING chunk
+def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, json_output, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
@@ -373,7 +305,7 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
     with --current, --last-active, and --recent.
     """
     # Parse status filters
-    status_set, error = _parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
+    status_set, error = parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
     if error:
         click.echo(f"Error: {error}", err=True)
         raise SystemExit(1)
@@ -411,9 +343,11 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
         )
         raise SystemExit(1)
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_chunks(current, last_active, recent, status_set, project_dir)
+    # Chunk: docs/chunks/cli_decompose - Using handle_task_context for routing
+    if handle_task_context(
+        project_dir,
+        lambda: _list_task_chunks(current, last_active, recent, status_set, project_dir, json_output),
+    ):
         return
 
     # Single-repo mode - list from docs/chunks/
@@ -422,43 +356,89 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
     if current:
         current_chunk = chunks.get_current_chunk()
         if current_chunk is None:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No implementing chunk found", err=True)
             raise SystemExit(1)
-        click.echo(f"docs/chunks/{current_chunk}")
+        if json_output:
+            # Get frontmatter for the current chunk
+            frontmatter = chunks.parse_chunk_frontmatter(current_chunk)
+            result = artifact_to_json_dict(current_chunk, frontmatter)
+            click.echo(json.dumps([result], indent=2))
+        else:
+            click.echo(f"docs/chunks/{current_chunk}")
     elif last_active:
         active_chunk = chunks.get_last_active_chunk()
         if active_chunk is None:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No active tip chunk found", err=True)
             raise SystemExit(1)
-        click.echo(f"docs/chunks/{active_chunk}")
+        if json_output:
+            frontmatter = chunks.parse_chunk_frontmatter(active_chunk)
+            result = artifact_to_json_dict(active_chunk, frontmatter)
+            click.echo(json.dumps([result], indent=2))
+        else:
+            click.echo(f"docs/chunks/{active_chunk}")
     elif recent:
         recent_chunks = chunks.get_recent_active_chunks(limit=10)
         if not recent_chunks:
+            if json_output:
+                click.echo(json.dumps([]))
+                return
             click.echo("No active chunks found", err=True)
             raise SystemExit(1)
-        for chunk_name in recent_chunks:
-            click.echo(f"docs/chunks/{chunk_name}")
+        if json_output:
+            results = []
+            for chunk_name in recent_chunks:
+                frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+                results.append(artifact_to_json_dict(chunk_name, frontmatter))
+            click.echo(json.dumps(results, indent=2))
+        else:
+            for chunk_name in recent_chunks:
+                click.echo(f"docs/chunks/{chunk_name}")
     else:
         chunk_list = chunks.list_chunks()
         if not chunk_list:
-            click.echo("No chunks found", err=True)
-            raise SystemExit(1)
+            if json_output:
+                click.echo(json.dumps([]))
+                return
+            click.echo("No chunks found")
+            raise SystemExit(0)
 
         artifact_index = ArtifactIndex(project_dir)
         tips = set(artifact_index.find_tips(ArtifactType.CHUNK))
 
-        # Track if any chunks pass the filter
+        # Collect results for JSON output or track count for text output
+        results = []
         filtered_count = 0
 
         for chunk_name in chunk_list:
             chunk_path = project_dir / "docs" / "chunks" / chunk_name
+            is_tip = chunk_name in tips
+
             # Check for external artifact reference before parsing frontmatter
             if is_external_artifact(chunk_path, ArtifactType.CHUNK):
                 external_ref = load_external_ref(chunk_path)
                 # External chunks have no parseable status - skip when filtering
                 if status_set is not None:
                     continue
-                status = f"EXTERNAL: {external_ref.repo}"
+                filtered_count += 1
+                if json_output:
+                    results.append({
+                        "name": chunk_name,
+                        "status": "EXTERNAL",
+                        "repo": external_ref.repo,
+                        "artifact_id": external_ref.artifact_id,
+                        "track": external_ref.track,
+                        "is_tip": is_tip,
+                    })
+                else:
+                    click.echo(format_chunk_list_entry(
+                        chunk_name, "EXTERNAL", is_tip, external_ref=external_ref
+                    ))
             else:
                 frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
                 if frontmatter:
@@ -466,31 +446,55 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                     # Apply status filter if specified
                     if status_set is not None and chunk_status not in status_set:
                         continue
-                    status = chunk_status.value
+                    filtered_count += 1
+                    if json_output:
+                        results.append(artifact_to_json_dict(chunk_name, frontmatter, tips))
+                    else:
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, chunk_status.value, is_tip
+                        ))
                 elif errors:
                     # Chunks with parse errors - skip when filtering
                     if status_set is not None:
                         continue
-                    # Show first error for brevity
-                    first_error = errors[0]
-                    status = f"PARSE ERROR: {first_error}"
+                    filtered_count += 1
+                    if json_output:
+                        results.append({
+                            "name": chunk_name,
+                            "status": "PARSE_ERROR",
+                            "error": errors[0],
+                            "is_tip": is_tip,
+                        })
+                    else:
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, "PARSE_ERROR", is_tip, error=errors[0]
+                        ))
                 else:
                     # Unknown status - skip when filtering
                     if status_set is not None:
                         continue
-                    status = "UNKNOWN"
-            filtered_count += 1
-            tip_indicator = " *" if chunk_name in tips else ""
-            click.echo(f"docs/chunks/{chunk_name} [{status}]{tip_indicator}")
+                    filtered_count += 1
+                    if json_output:
+                        results.append({
+                            "name": chunk_name,
+                            "status": "UNKNOWN",
+                            "is_tip": is_tip,
+                        })
+                    else:
+                        click.echo(format_chunk_list_entry(
+                            chunk_name, "UNKNOWN", is_tip
+                        ))
 
-        # Handle case where all chunks were filtered out
-        if filtered_count == 0:
+        if json_output:
+            click.echo(json.dumps(results, indent=2))
+        elif filtered_count == 0:
+            # Handle case where all chunks were filtered out
             if status_set is not None:
                 status_names = ", ".join(s.value for s in status_set)
-                click.echo(f"No chunks found matching status: {status_names}", err=True)
+                click.echo(f"No chunks found matching status: {status_names}")
             else:
-                click.echo("No chunks found", err=True)
-            raise SystemExit(1)
+                click.echo("No chunks found")
+            raise SystemExit(0)
 
 
 @chunk.command("complete")
@@ -501,7 +505,7 @@ def complete_chunk(chunk_id, project_dir):
 
     If no CHUNK_ID is provided, completes the current IMPLEMENTING chunk.
     """
-    from task_utils import update_frontmatter_field
+    from frontmatter import update_frontmatter_field
 
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
@@ -519,7 +523,8 @@ def complete_chunk(chunk_id, project_dir):
 
     chunk_name = chunks.resolve_chunk_id(chunk_id)
     if chunk_name is None:
-        click.echo(f"Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
     goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
@@ -527,96 +532,16 @@ def complete_chunk(chunk_id, project_dir):
     click.echo(f"Completed docs/chunks/{chunk_name}")
 
 
-def _format_grouped_artifact_list(
-    grouped_data: dict,
-    artifact_type_dir: str,
-    status_set: set[ChunkStatus] | None = None,
-) -> None:
-    """Format and display grouped artifact listing output.
-
-    Args:
-        grouped_data: Dict from list_task_artifacts_grouped with external and projects keys
-        artifact_type_dir: Directory name for the artifact type (e.g., "chunks", "narratives")
-        status_set: If provided, filter to only artifacts with matching status (chunks only)
-    """
-    external = grouped_data["external"]
-    projects = grouped_data["projects"]
-
-    # Apply status filtering if specified (only applies to chunks)
-    def status_matches(status_str: str) -> bool:
-        """Check if an artifact's status string matches the filter."""
-        if status_set is None:
-            return True
-        # Try to convert status string to ChunkStatus
-        try:
-            artifact_status = ChunkStatus(status_str.upper())
-            return artifact_status in status_set
-        except ValueError:
-            # Status doesn't match any ChunkStatus (e.g., EXTERNAL, PARSE ERROR)
-            # Exclude when filtering
-            return False
-
-    # Filter external artifacts
-    filtered_external = [a for a in external["artifacts"] if status_matches(a["status"])]
-
-    # Filter project artifacts
-    filtered_projects = []
-    for project in projects:
-        filtered_artifacts = [a for a in project["artifacts"] if status_matches(a["status"])]
-        filtered_projects.append({**project, "artifacts": filtered_artifacts})
-
-    # Check if there are any artifacts after filtering
-    has_external = bool(filtered_external)
-    has_projects = any(p["artifacts"] for p in filtered_projects)
-
-    if not has_external and not has_projects:
-        if status_set is not None:
-            status_names = ", ".join(s.value for s in status_set)
-            click.echo(f"No {artifact_type_dir} found matching status: {status_names}", err=True)
-        else:
-            click.echo(f"No {artifact_type_dir} found", err=True)
-        raise SystemExit(1)
-
-    # Display external artifacts
-    if filtered_external:
-        click.echo(f"# External Artifacts ({external['repo']})")
-        for artifact in filtered_external:
-            name = artifact["name"]
-            status = artifact["status"]
-            is_tip = artifact.get("is_tip", False)
-            tip_indicator = " (tip)" if is_tip else ""
-
-            click.echo(f"{name} [{status}]{tip_indicator}")
-
-            # Show dependents for external artifacts
-            dependents = artifact.get("dependents", [])
-            if dependents:
-                repos = sorted(set(d["repo"] for d in dependents))
-                click.echo(f"  → referenced by: {', '.join(repos)}")
-        click.echo()
-
-    # Display each project's local artifacts
-    for project in filtered_projects:
-        if project["artifacts"]:
-            click.echo(f"# {project['repo']} (local)")
-            for artifact in project["artifacts"]:
-                name = artifact["name"]
-                status = artifact["status"]
-                is_tip = artifact.get("is_tip", False)
-                tip_indicator = " (tip)" if is_tip else ""
-
-                click.echo(f"{name} [{status}]{tip_indicator}")
-            click.echo()
-
-
 # Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode
 # Chunk: docs/chunks/chunk_last_active - Cross-repo (task context) support for --last-active
+# Chunk: docs/chunks/cli_json_output - JSON output for task context chunk listing
 def _list_task_chunks(
     current: bool,
     last_active: bool,
     recent: bool,
     status_set: set[ChunkStatus] | None,
     task_dir: pathlib.Path,
+    json_output: bool = False,
 ):
     """Handle chunk listing in task directory (cross-repo mode).
 
@@ -626,42 +551,81 @@ def _list_task_chunks(
         recent: If True, output the 10 most recently created ACTIVE chunks
         status_set: If provided, filter to only chunks with matching status
         task_dir: Path to the task directory
+        json_output: If True, output in JSON format
     """
     try:
         if current:
             current_chunk, external_repo = get_current_task_chunk(task_dir)
             if current_chunk is None:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No implementing chunk found", err=True)
                 raise SystemExit(1)
-            click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
+            if json_output:
+                # Get frontmatter for the current chunk
+                from task import resolve_repo_directory, load_task_config
+                config = load_task_config(task_dir)
+                external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+                external_chunks = Chunks(external_path)
+                frontmatter = external_chunks.parse_chunk_frontmatter(current_chunk)
+                result = artifact_to_json_dict(current_chunk, frontmatter)
+                result["repo"] = external_repo
+                click.echo(json.dumps([result], indent=2))
+            else:
+                click.echo(f"{external_repo}::docs/chunks/{current_chunk}")
         elif last_active:
             # For task context, get the last active chunk from the external artifacts repo
-            from task_utils import resolve_repo_directory, load_task_config
+            from task import resolve_repo_directory, load_task_config
 
             config = load_task_config(task_dir)
             external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
             external_chunks = Chunks(external_path)
             active_chunk = external_chunks.get_last_active_chunk()
             if active_chunk is None:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No active tip chunk found", err=True)
                 raise SystemExit(1)
-            click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
+            if json_output:
+                frontmatter = external_chunks.parse_chunk_frontmatter(active_chunk)
+                result = artifact_to_json_dict(active_chunk, frontmatter)
+                result["repo"] = config.external_artifact_repo
+                click.echo(json.dumps([result], indent=2))
+            else:
+                click.echo(f"{config.external_artifact_repo}::docs/chunks/{active_chunk}")
         elif recent:
             # For task context, get recent active chunks from the external artifacts repo
-            from task_utils import resolve_repo_directory, load_task_config
+            from task import resolve_repo_directory, load_task_config
 
             config = load_task_config(task_dir)
             external_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
             external_chunks = Chunks(external_path)
             recent_chunks = external_chunks.get_recent_active_chunks(limit=10)
             if not recent_chunks:
+                if json_output:
+                    click.echo(json.dumps([]))
+                    return
                 click.echo("No active chunks found", err=True)
                 raise SystemExit(1)
-            for chunk_name in recent_chunks:
-                click.echo(f"{config.external_artifact_repo}::docs/chunks/{chunk_name}")
+            if json_output:
+                results = []
+                for chunk_name in recent_chunks:
+                    frontmatter = external_chunks.parse_chunk_frontmatter(chunk_name)
+                    result = artifact_to_json_dict(chunk_name, frontmatter)
+                    result["repo"] = config.external_artifact_repo
+                    results.append(result)
+                click.echo(json.dumps(results, indent=2))
+            else:
+                for chunk_name in recent_chunks:
+                    click.echo(f"{config.external_artifact_repo}::docs/chunks/{chunk_name}")
         else:
             grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.CHUNK)
-            _format_grouped_artifact_list(grouped_data, "chunks", status_set)
+            if json_output:
+                format_grouped_artifact_list_json(grouped_data, "chunks", status_set)
+            else:
+                format_grouped_artifact_list(grouped_data, "chunks", status_set)
     except (TaskChunkError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -739,20 +703,17 @@ def _list_task_proposed_chunks(task_dir: pathlib.Path):
 
 @chunk.command("list-proposed")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+# Chunk: docs/chunks/project_artifact_registry - Uses Project for unified manager access
+# Chunk: docs/chunks/chunks_class_decouple - Calls Project.list_proposed_chunks() directly
 def list_proposed_chunks_cmd(project_dir):
     """List all proposed chunks that haven't been created yet."""
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_proposed_chunks(project_dir)
+    if handle_task_context(project_dir, lambda: _list_task_proposed_chunks(project_dir)):
         return
 
     # Single-repo mode
-    chunks = Chunks(project_dir)
-    investigations = Investigations(project_dir)
-    narratives = Narratives(project_dir)
-    subsystems_mgr = Subsystems(project_dir)
-
-    proposed = chunks.list_proposed_chunks(investigations, narratives, subsystems_mgr)
+    project = Project(project_dir)
+    proposed = project.list_proposed_chunks()
 
     if not proposed:
         click.echo("No proposed chunks found", err=True)
@@ -762,6 +723,7 @@ def list_proposed_chunks_cmd(project_dir):
 
 
 # Chunk: docs/chunks/accept_full_artifact_paths - CLI command using strip_artifact_path_prefix
+# Chunk: docs/chunks/future_chunk_creation - CLI command to activate a FUTURE chunk to IMPLEMENTING status
 @chunk.command()
 @click.argument("chunk_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -771,7 +733,7 @@ def activate(chunk_id, project_dir):
     When run in task context (directory with .ve-task.yaml), searches for
     the chunk across the external repo and all project repos.
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         activate_task_chunk,
@@ -817,8 +779,6 @@ def activate(chunk_id, project_dir):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(chunk_id, new_status, project_dir):
     """Show or update chunk status."""
-    from models import extract_short_name
-
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
@@ -827,17 +787,15 @@ def status(chunk_id, new_status, project_dir):
     # Resolve chunk_id
     resolved_id = chunks.resolve_chunk_id(chunk_id)
     if resolved_id is None:
-        click.echo(f"Error: Chunk '{chunk_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
-
-    # Extract shortname for display
-    shortname = extract_short_name(resolved_id)
 
     # Display mode: just show current status
     if new_status is None:
         try:
             current_status = chunks.get_status(resolved_id)
-            click.echo(f"{shortname}: {current_status.value}")
+            click.echo(f"{resolved_id}: {current_status.value}")
         except ValueError as e:
             click.echo(f"Error: {e}", err=True)
             raise SystemExit(1)
@@ -858,7 +816,7 @@ def status(chunk_id, new_status, project_dir):
     # Attempt the transition
     try:
         old_status, updated_status = chunks.update_status(resolved_id, new_status_enum)
-        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+        click.echo(f"{resolved_id}: {old_status.value} -> {updated_status.value}")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -876,7 +834,7 @@ def overlap(chunk_id, project_dir):
     overlapping chunks across the external repo and all project repos.
     Supports project-qualified code references (e.g., "project::src/foo.py#Bar").
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         find_task_overlapping_chunks,
@@ -972,7 +930,7 @@ def backrefs(project_dir, threshold, pattern):
     This helps identify code areas with excessive chunk backreferences
     that may benefit from consolidation into a narrative.
     """
-    from chunks import count_backreferences
+    from backreferences import count_backreferences
 
     # Use default patterns if none provided
     patterns = list(pattern) if pattern else None
@@ -1062,6 +1020,7 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/chunk_validate - CLI command for chunk validation
+# Chunk: docs/chunks/bidirectional_refs - Renamed from 'complete' to 'validate', includes subsystem ref validation
 # Chunk: docs/chunks/orch_inject_validate - --injectable flag for injection validation
 # Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk validate command using strip_artifact_path_prefix
 # Chunk: docs/chunks/task_chunk_validation - CLI command with task context detection
@@ -1079,7 +1038,7 @@ def validate(chunk_id, project_dir, injectable):
     checking status-content consistency (e.g., IMPLEMENTING/ACTIVE status
     requires a populated PLAN.md).
     """
-    from task_utils import find_task_directory, is_task_directory
+    from task import find_task_directory, is_task_directory
 
     # Normalize chunk_id to strip path prefixes (if provided)
     if chunk_id is not None:
@@ -1097,7 +1056,7 @@ def validate(chunk_id, project_dir, injectable):
     # Determine which project directory to use for chunks
     # If we're in a task directory directly, we need to find the external repo
     if task_dir is not None and is_task_directory(project_dir):
-        from task_utils import load_task_config, resolve_repo_directory
+        from task import load_task_config, resolve_repo_directory
 
         try:
             config = load_task_config(task_dir)

@@ -23,6 +23,8 @@ code_references:
   implements: Extracts created_after field from YAML frontmatter
 - ref: tests/test_artifact_ordering.py
   implements: Comprehensive test suite for artifact ordering
+- ref: src/models/references.py#ArtifactType
+  implements: "Enum defining workflow artifact types"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts

@@ -109,6 +109,8 @@ ve orch inject my_chunk
 
 ## Batch Creating Multiple Chunks
 
+<!-- Chunk: docs/chunks/chunk_batch_create - Documentation for batch creation in orchestrator reference -->
+
 When creating multiple chunks at once (e.g., from a narrative's proposed_chunks):
 
 ```bash

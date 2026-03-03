@@ -2,6 +2,8 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
 # Chunk: docs/chunks/task_list_proposed - Task-aware proposed chunk listing
+# Chunk: docs/chunks/project_artifact_registry - Updated to use Project for unified manager access
+# Chunk: docs/chunks/chunks_class_decouple - Updated to call Project.list_proposed_chunks() directly
 
 import pathlib
 
@@ -9,10 +11,7 @@ import pytest
 from click.testing import CliRunner
 
 from ve import cli
-from chunks import Chunks
-from investigations import Investigations
-from narratives import Narratives
-from subsystems import Subsystems
+from project import Project
 from conftest import setup_task_directory
 
 
@@ -21,12 +20,8 @@ class TestListProposedChunksLogic:
 
     def test_empty_project_returns_empty_list(self, temp_project):
         """Verify empty project has no proposed chunks."""
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
         assert result == []
 
     def test_investigation_with_proposed_chunks(self, temp_project):
@@ -48,12 +43,8 @@ proposed_chunks:
 # Test Investigation
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         # Should only include the one without chunk_directory
         assert len(result) == 1
@@ -78,12 +69,8 @@ proposed_chunks:
 # Test Narrative
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 1
         assert result[0]["prompt"] == "Narrative chunk prompt"
@@ -107,12 +94,8 @@ chunks:
 # Legacy Narrative
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         # Should map legacy 'chunks' to 'proposed_chunks'
         assert len(result) == 1
@@ -137,12 +120,8 @@ proposed_chunks:
 # test_sub
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 1
         assert result[0]["prompt"] == "Consolidation chunk prompt"
@@ -166,12 +145,8 @@ proposed_chunks:
 # Test Narrative
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         # Should be empty since the only proposed chunk has been created
         assert result == []
@@ -215,12 +190,8 @@ proposed_chunks:
 ---
 """)
 
-        chunks = Chunks(temp_project)
-        investigations = Investigations(temp_project)
-        narratives = Narratives(temp_project)
-        subsystems = Subsystems(temp_project)
-
-        result = chunks.list_proposed_chunks(investigations, narratives, subsystems)
+        project = Project(temp_project)
+        result = project.list_proposed_chunks()
 
         assert len(result) == 3
         prompts = {r["prompt"] for r in result}
@@ -521,7 +492,7 @@ class TestListTaskProposedChunksLogic:
 
     def test_returns_grouped_dict_structure(self, tmp_path):
         """Verify return structure has external and projects keys."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -535,7 +506,7 @@ class TestListTaskProposedChunksLogic:
 
     def test_collects_from_external_repo(self, tmp_path):
         """Verify proposed chunks from external repo are collected."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -560,7 +531,7 @@ proposed_chunks:
 
     def test_collects_from_project_repos(self, tmp_path):
         """Verify proposed chunks from each project repo are collected."""
-        from task_utils import list_task_proposed_chunks
+        from task import list_task_proposed_chunks
 
         task_dir, external_path, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1", "proj2"]
@@ -588,7 +559,7 @@ proposed_chunks:
 
     def test_raises_on_missing_external_repo(self, tmp_path):
         """Verify TaskChunkError raised when external repo not found."""
-        from task_utils import list_task_proposed_chunks, TaskChunkError
+        from task import list_task_proposed_chunks, TaskChunkError
 
         task_dir = tmp_path
 

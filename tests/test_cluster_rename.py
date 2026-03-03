@@ -213,17 +213,19 @@ class TestFindChunksByPrefix:
         assert "task_init" in result
         assert "taskforce" not in result
 
-    def test_handles_legacy_numbered_format(self, git_project):
-        """Matches chunks in legacy {NNNN}-{short_name} format."""
-        create_chunk(git_project, "0001-task_init")
-        create_chunk(git_project, "0002-task_config")
-        create_chunk(git_project, "0003-other_feature")
+    def test_handles_multiple_matching_chunks(self, git_project):
+        """Matches multiple chunks with same prefix."""
+        create_chunk(git_project, "task_init")
+        create_chunk(git_project, "task_config")
+        create_chunk(git_project, "task_cleanup")
+        create_chunk(git_project, "other_feature")
 
         result = find_chunks_by_prefix(git_project, "task")
 
-        assert "0001-task_init" in result
-        assert "0002-task_config" in result
-        assert "0003-other_feature" not in result
+        assert "task_init" in result
+        assert "task_config" in result
+        assert "task_cleanup" in result
+        assert "other_feature" not in result
 
 
 class TestCheckRenameCollisions:
@@ -251,16 +253,19 @@ class TestCheckRenameCollisions:
 
         assert errors == []
 
-    def test_preserves_legacy_sequence_number(self, git_project):
-        """Legacy format chunks preserve sequence number in collision check."""
-        create_chunk(git_project, "0001-task_init")
-        create_chunk(git_project, "0001-chunk_init")  # Same sequence, would collide
+    def test_multiple_collisions_detected(self, git_project):
+        """Multiple collisions are all detected."""
+        create_chunk(git_project, "task_init")
+        create_chunk(git_project, "task_config")
+        create_chunk(git_project, "chunk_init")
+        create_chunk(git_project, "chunk_config")
 
-        matching = ["0001-task_init"]
+        matching = ["task_init", "task_config"]
         errors = check_rename_collisions(git_project, "task", "chunk", matching)
 
-        assert len(errors) == 1
-        assert "0001-chunk_init" in errors[0]
+        assert len(errors) == 2
+        assert "chunk_init" in errors[0]
+        assert "chunk_config" in errors[1]
 
 
 class TestIsGitClean:

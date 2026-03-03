@@ -15,6 +15,8 @@ code_references:
     implements: "API endpoint that calls unblock_dependents when status is manually set to DONE"
   - ref: src/orchestrator/api.py#retry_merge_endpoint
     implements: "API endpoint that calls unblock_dependents after successful merge retry"
+  - ref: src/orchestrator/api/work_units.py#update_work_unit_endpoint
+    implements: "Unblock dependents when manually set to DONE"
 narrative: null
 investigation: null
 subsystems: []

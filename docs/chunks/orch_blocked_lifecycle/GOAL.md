@@ -3,13 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/api.py
+  - src/orchestrator/api/conflicts.py
   - src/orchestrator/scheduler.py
   - src/orchestrator/state.py
   - tests/test_orchestrator_api.py
-  - tests/test_orchestrator_scheduler.py
+  - tests/test_orchestrator_scheduler_unblock.py
 code_references:
-  - ref: src/orchestrator/api.py#resolve_conflict_endpoint
+  - ref: src/orchestrator/api/conflicts.py#resolve_conflict_endpoint
     implements: "Bug 1 fix: SERIALIZE verdict transitions status to BLOCKED and clears attention_reason"
   - ref: src/orchestrator/scheduler.py#Scheduler::_unblock_dependents
     implements: "Bug 2 fix: Automatic unblock when blockers complete"
@@ -21,10 +21,12 @@ code_references:
     implements: "Unit tests for SERIALIZE status transition and attention_reason clearing"
   - ref: tests/test_orchestrator_api.py#TestBlockedLifecycleIntegration
     implements: "Integration test for full blocked lifecycle flow"
-  - ref: tests/test_orchestrator_scheduler.py#TestAutomaticUnblock
+  - ref: tests/test_orchestrator_scheduler_unblock.py#TestAutomaticUnblock
     implements: "Unit tests for automatic unblocking when blockers complete"
   - ref: tests/test_orchestrator_state.py#TestListBlockedByChunk
     implements: "Unit tests for list_blocked_by_chunk query method"
+  - ref: src/orchestrator/api/conflicts.py
+    implements: "SERIALIZE verdict transitions to BLOCKED and clears attention_reason"
 narrative: null
 investigation: null
 subsystems: []

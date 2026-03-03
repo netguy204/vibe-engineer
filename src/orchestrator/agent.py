@@ -41,11 +41,13 @@ class AgentRunnerError(Exception):
 
 
 # Chunk: docs/chunks/orch_review_phase - Added chunk-review.md as skill for REVIEW phase
+# Chunk: docs/chunks/orch_pre_review_rebase - REBASE skill for pre-review trunk integration
 # Mapping from phase to skill file name
 PHASE_SKILL_FILES = {
     WorkUnitPhase.GOAL: "chunk-create.md",
     WorkUnitPhase.PLAN: "chunk-plan.md",
     WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
+    WorkUnitPhase.REBASE: "chunk-rebase.md",
     WorkUnitPhase.REVIEW: "chunk-review.md",
     WorkUnitPhase.COMPLETE: "chunk-complete.md",
 }
@@ -289,6 +291,12 @@ def create_question_intercept_hook(
 ) -> dict[str, list[HookMatcher]]:
     """Create a PreToolUse hook that intercepts AskUserQuestion calls.
 
+    IMPORTANT: This hook is defined but non-functional. PreToolUse hooks in the
+    Claude Agent SDK do not fire for built-in tools like AskUserQuestion. The
+    actual capture happens via message parsing in run_orchestrator_agent(), which
+    extracts AskUserQuestion calls from AssistantMessage content. This hook is
+    retained for potential future SDK compatibility.
+
     When AskUserQuestion is called, extracts the question data and calls
     on_question callback, then returns a result that blocks the tool and
     stops the agent loop.
@@ -364,6 +372,12 @@ def create_review_decision_hook(
     on_decision: Callable[[ReviewToolDecision], None],
 ) -> dict[str, list[HookMatcher]]:
     """Create a PreToolUse hook that intercepts ReviewDecision tool calls.
+
+    IMPORTANT: This hook is defined but non-functional. PreToolUse hooks in the
+    Claude Agent SDK do not fire for MCP tools like mcp__orchestrator__ReviewDecision.
+    The actual capture happens via message parsing in run_orchestrator_agent(), which
+    extracts ReviewDecision calls from AssistantMessage content. This hook is retained
+    for potential future SDK compatibility.
 
     When the reviewer agent calls the ReviewDecision tool, this hook captures
     the decision data and allows the tool to succeed from the agent's perspective.
@@ -506,6 +520,7 @@ class AgentRunner:
 
     # Chunk: docs/chunks/orch_question_forward - Accepts question_callback and configures hook to capture questions
     # Chunk: docs/chunks/orch_reviewer_decision_mcp - Migrate to ClaudeSDKClient for hooks and MCP tools
+    # Chunk: docs/chunks/orch_attention_queue - Accept and inject answer parameter when resuming sessions
     async def run_phase(
         self,
         chunk: str,
@@ -570,6 +585,7 @@ class AgentRunner:
             max_turns=100,  # Reasonable limit per phase
             setting_sources=["project"],  # Enable project-level skills/commands
             env=env,  # Restrict git operations to worktree
+            max_buffer_size=10 * 1024 * 1024,  # 10MB - default 1MB too small for COMPLETE phase
         )
 
         # Always add sandbox hook to prevent agents from escaping worktree
@@ -617,12 +633,15 @@ class AgentRunner:
             # Allow the ReviewDecision MCP tool
             options.allowed_tools.append("mcp__orchestrator__ReviewDecision")
 
-        # Handle resume with answer
+        # Handle resume and/or operator answer
         if resume_session_id:
             options.resume = resume_session_id
-            if answer:
-                # Prepend answer to prompt when resuming
-                prompt = f"User answer: {answer}\n\n{prompt}"
+        if answer:
+            # Inject operator answer into prompt. This applies both when
+            # resuming a suspended session (question flow) and when starting
+            # a fresh session after ESCALATE (where session_id is None but
+            # the operator answered via the attention queue).
+            prompt = f"Operator feedback: {answer}\n\n{prompt}"
 
         session_id: Optional[str] = None
         error: Optional[str] = None

@@ -65,18 +65,18 @@ chunks: []
     def test_exits_0_with_no_output_when_no_overlap(self, runner, temp_project):
         """Exits 0 with no output when no overlap detected."""
         # Create chunk referencing one file
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py", "implements": "Foo module"}
         ])
 
         # Create subsystem referencing different file
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/bar.py", "implements": "Bar module"}
         ])
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
@@ -141,39 +141,39 @@ chunks: []
     def test_exits_0_listing_overlapping_subsystems(self, runner, temp_project):
         """Exits 0 and lists overlapping subsystems when overlap detected."""
         # Create overlapping chunk and subsystem
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         self._create_subsystem_with_refs(
-            temp_project, "0001-validation",
+            temp_project, "validation",
             [{"ref": "src/foo.py#Bar", "implements": "Bar class"}],
             status="STABLE"
         )
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
 
     def test_shows_subsystem_status(self, runner, temp_project):
         """Each output line includes subsystem status."""
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ])
 
         self._create_subsystem_with_refs(
-            temp_project, "0001-validation",
+            temp_project, "validation",
             [{"ref": "src/foo.py#Bar", "implements": "Bar class"}],
             status="STABLE"
         )
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
@@ -182,30 +182,30 @@ chunks: []
     def test_lists_multiple_overlapping_subsystems(self, runner, temp_project):
         """Lists all overlapping subsystems when multiple exist."""
         # Chunk references two files
-        self._create_chunk_with_refs(temp_project, "0001-feature", code_refs=[
+        self._create_chunk_with_refs(temp_project, "feature", code_refs=[
             {"ref": "src/foo.py#Bar", "implements": "Bar class"},
             {"ref": "src/baz.py#Qux", "implements": "Qux class"},
         ])
 
         # First subsystem overlaps with src/foo.py
-        self._create_subsystem_with_refs(temp_project, "0001-validation", [
+        self._create_subsystem_with_refs(temp_project, "validation", [
             {"ref": "src/foo.py#Bar", "implements": "Bar class"}
         ], status="STABLE")
 
         # Second subsystem overlaps with src/baz.py
-        self._create_subsystem_with_refs(temp_project, "0002-processing", [
+        self._create_subsystem_with_refs(temp_project, "processing", [
             {"ref": "src/baz.py#Qux", "implements": "Qux class"}
         ], status="DOCUMENTED")
 
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "0001-feature", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "feature", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 0
-        assert "docs/subsystems/0001-validation" in result.output
+        assert "docs/subsystems/validation" in result.output
         assert "[STABLE]" in result.output
-        assert "docs/subsystems/0002-processing" in result.output
+        assert "docs/subsystems/processing" in result.output
         assert "[DOCUMENTED]" in result.output
 
 
@@ -216,7 +216,7 @@ class TestSubsystemOverlapErrors:
         """Exits 1 with error message when chunk not found."""
         result = runner.invoke(
             cli,
-            ["subsystem", "overlap", "9999-nonexistent", "--project-dir", str(temp_project)]
+            ["subsystem", "overlap", "nonexistent", "--project-dir", str(temp_project)]
         )
 
         assert result.exit_code == 1

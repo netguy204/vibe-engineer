@@ -734,3 +734,169 @@ class TestFrictionLogNonInteractive:
         )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Created friction entry: F002" in result.output
+
+
+# Chunk: docs/chunks/cli_json_output - JSON output tests for ve friction list
+class TestFrictionListJsonOutput:
+    """Tests for --json output in 've friction list' command."""
+
+    def test_json_output_basic(self, runner, initialized_project):
+        """--json outputs valid JSON with friction entry objects."""
+        import json
+
+        # Create a friction entry
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Test friction",
+                "--description", "A test friction entry",
+                "--impact", "high",
+                "--theme", "test-theme",
+                "--theme-name", "Test Theme",
+            ],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["friction", "list", "--json", "--project-dir", str(initialized_project)]
+        )
+        assert result.exit_code == 0
+
+        # Verify it's valid JSON
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+
+        # Verify friction entry structure
+        entry = data[0]
+        assert entry["id"] == "F001"
+        assert entry["title"] == "Test friction"
+        assert entry["theme_id"] == "test-theme"
+        assert entry["status"] == "OPEN"
+        assert "date" in entry
+        assert "content" in entry
+
+    def test_json_output_empty(self, runner, initialized_project):
+        """Empty friction log returns empty array with exit code 0 in JSON mode."""
+        import json
+
+        result = runner.invoke(
+            cli,
+            ["friction", "list", "--json", "--project-dir", str(initialized_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data == []
+
+    def test_json_output_multiple_entries(self, runner, initialized_project):
+        """JSON output correctly lists multiple friction entries."""
+        import json
+
+        # Create multiple entries
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "First entry",
+                "--description", "Desc 1",
+                "--impact", "low",
+                "--theme", "test-theme",
+                "--theme-name", "Test Theme",
+            ],
+        )
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Second entry",
+                "--description", "Desc 2",
+                "--impact", "high",
+                "--theme", "test-theme",
+            ],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["friction", "list", "--json", "--project-dir", str(initialized_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 2
+
+        ids = [e["id"] for e in data]
+        assert "F001" in ids
+        assert "F002" in ids
+
+    def test_json_output_with_open_filter(self, runner, initialized_project):
+        """--json works with --open filter."""
+        import json
+
+        # Create an entry
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Open entry",
+                "--description", "Desc",
+                "--impact", "low",
+                "--theme", "test-theme",
+                "--theme-name", "Test Theme",
+            ],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["friction", "list", "--json", "--open", "--project-dir", str(initialized_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["status"] == "OPEN"
+
+    def test_json_output_with_tags_filter(self, runner, initialized_project):
+        """--json works with --tags filter."""
+        import json
+
+        # Create entries with different themes
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Alpha entry",
+                "--description", "Desc",
+                "--impact", "low",
+                "--theme", "alpha",
+                "--theme-name", "Alpha Theme",
+            ],
+        )
+        runner.invoke(
+            cli,
+            [
+                "friction", "log",
+                "--project-dir", str(initialized_project),
+                "--title", "Beta entry",
+                "--description", "Desc",
+                "--impact", "low",
+                "--theme", "beta",
+                "--theme-name", "Beta Theme",
+            ],
+        )
+
+        result = runner.invoke(
+            cli,
+            ["friction", "list", "--json", "--tags", "alpha", "--project-dir", str(initialized_project)]
+        )
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["theme_id"] == "alpha"

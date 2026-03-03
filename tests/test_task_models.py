@@ -189,11 +189,11 @@ class TestExternalArtifactRef:
         assert ref.pinned == "a" * 40  # Parsed but ignored during resolution
         assert ref.created_after == ["previous_chunk"]
 
-    def test_external_artifact_ref_accepts_legacy_chunk_id_format(self):
-        """Accepts legacy NNNN-short_name format for artifact_id."""
+    def test_external_artifact_ref_accepts_hyphenated_artifact_id(self):
+        """Accepts hyphenated identifier for artifact_id."""
         ref = ExternalArtifactRef(
             artifact_type=ArtifactType.CHUNK,
             repo="acme/myproject",
-            artifact_id="0001-my_feature",
+            artifact_id="my_feature",
         )
-        assert ref.artifact_id == "0001-my_feature"
+        assert ref.artifact_id == "my_feature"

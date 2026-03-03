@@ -3,8 +3,11 @@
 Commands for managing narratives - multi-chunk initiatives.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
-# Chunk: docs/chunks/cli_modularize - Narrative CLI commands
+# Chunk: docs/chunks/narrative_cli_commands - Narrative CLI command group and create command
+# Chunk: docs/chunks/cli_modularize - Narrative CLI commands (moved from src/ve.py)
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -13,8 +16,7 @@ from chunks import Chunks
 from external_refs import strip_artifact_path_prefix
 from narratives import Narratives
 from models import NarrativeStatus, ArtifactType
-from task_utils import (
-    is_task_directory,
+from task import (
     create_task_narrative,
     list_task_narratives,
     TaskNarrativeError,
@@ -22,14 +24,19 @@ from task_utils import (
     parse_projects_option,
     check_task_project_context,
 )
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
+from cli.formatters import artifact_to_json_dict
 
 
 @click.group()
 def narrative():
-    """Narrative commands"""
+    """Manage narratives - multi-chunk initiatives with upfront decomposition.
+
+    Use narratives when work is too large for a single chunk. They decompose
+    big ambitions into ordered chunks with a shared context.
+    """
     pass
 
 
@@ -53,9 +60,8 @@ def create_narrative(short_name, project_dir, projects):
     # Normalize to lowercase
     short_name = short_name.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _start_task_narrative(project_dir, short_name, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _start_task_narrative(project_dir, short_name, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
@@ -109,16 +115,18 @@ def _start_task_narrative(
 
 
 @narrative.command("list")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_narratives(project_dir):
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty narrative list results
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_narratives(json_output, project_dir):
     """List all narratives.
 
     In task directory mode, lists narratives from the external artifact repo.
     In single-repo mode, lists narratives from docs/narratives/.
     """
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_narratives_cmd(project_dir)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_narratives_cmd(project_dir, json_output)):
         return
 
     # Single-repo mode - list from docs/narratives/
@@ -126,23 +134,35 @@ def list_narratives(project_dir):
     narrative_list = narratives.enumerate_narratives()
 
     if not narrative_list:
-        click.echo("No narratives found", err=True)
-        raise SystemExit(1)
+        if json_output:
+            click.echo(json.dumps([]))
+            return
+        click.echo("No narratives found")
+        raise SystemExit(0)
 
     # Use ArtifactIndex for causal ordering and tip detection
     artifact_index = ArtifactIndex(project_dir)
     ordered = artifact_index.get_ordered(ArtifactType.NARRATIVE)
     tips = set(artifact_index.find_tips(ArtifactType.NARRATIVE))
 
-    # Reverse for newest first (ArtifactIndex returns oldest first)
-    for narrative_name in reversed(ordered):
-        frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if narrative_name in tips else ""
-        click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for narrative_name in reversed(ordered):
+            frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+            result = artifact_to_json_dict(narrative_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        # Reverse for newest first (ArtifactIndex returns oldest first)
+        for narrative_name in reversed(ordered):
+            frontmatter = narratives.parse_narrative_frontmatter(narrative_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if narrative_name in tips else ""
+            click.echo(f"docs/narratives/{narrative_name} [{status}]{tip_indicator}")
 
 
-def _list_task_narratives_cmd(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context narrative listing
+def _list_task_narratives_cmd(task_dir: pathlib.Path, json_output: bool = False):
     """Handle narrative listing in task directory (cross-repo mode)."""
     try:
         narratives = list_task_narratives(task_dir)
@@ -151,14 +171,20 @@ def _list_task_narratives_cmd(task_dir: pathlib.Path):
         raise SystemExit(1)
 
     if not narratives:
+        if json_output:
+            click.echo(json.dumps([]))
+            return
         click.echo("No narratives found", err=True)
         raise SystemExit(1)
 
-    for narrative in narratives:
-        click.echo(f"{narrative['name']} [{narrative['status']}]")
-        if narrative.get("dependents"):
-            for dep in narrative["dependents"]:
-                click.echo(f"  → {dep}")
+    if json_output:
+        click.echo(json.dumps(narratives, indent=2))
+    else:
+        for narrative in narratives:
+            click.echo(f"{narrative['name']} [{narrative['status']}]")
+            if narrative.get("dependents"):
+                for dep in narrative["dependents"]:
+                    click.echo(f"  → {dep}")
 
 
 @narrative.command()
@@ -178,7 +204,8 @@ def status(narrative_id, new_status, project_dir):
     if new_status is None:
         fm = narratives.parse_narrative_frontmatter(narrative_id)
         if fm is None:
-            click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+            from cli.utils import format_not_found_error
+            click.echo(f"Error: {format_not_found_error('Narrative', narrative_id, 've narrative list')}", err=True)
             raise SystemExit(1)
         click.echo(f"{narrative_id}: {fm.status.value}")
         return
@@ -208,6 +235,7 @@ def status(narrative_id, new_status, project_dir):
 @click.option("--name", required=True, help="Short name for the consolidated narrative")
 @click.option("--description", default="Consolidated narrative", help="Description for the narrative")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/narrative_compact_extract - Refactored to delegate to domain method
 def compact(chunk_ids, name, description, project_dir):
     """Consolidate multiple chunks into a single narrative.
 
@@ -218,9 +246,6 @@ def compact(chunk_ids, name, description, project_dir):
     Example:
         ve narrative compact chunk_a chunk_b chunk_c --name my_narrative
     """
-    import re
-    import yaml
-
     if len(chunk_ids) < 2:
         click.echo("Error: Need at least 2 chunks to consolidate", err=True)
         raise SystemExit(1)
@@ -238,37 +263,16 @@ def compact(chunk_ids, name, description, project_dir):
             raise SystemExit(1)
         normalized_ids.append(normalized)
 
-    # Create the narrative
+    # Delegate to domain method for file manipulation
     narratives = Narratives(project_dir)
 
     try:
-        narrative_path = narratives.create_narrative(name)
+        narrative_path = narratives.compact(normalized_ids, name, description)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    # Update OVERVIEW.md with chunk references
-    overview_path = narrative_path / "OVERVIEW.md"
-    content = overview_path.read_text()
-
-    # Parse existing frontmatter
-    match = re.match(r"^(---\s*\n)(.*?)(\n---)", content, re.DOTALL)
-    if match:
-        frontmatter = yaml.safe_load(match.group(2))
-        if not isinstance(frontmatter, dict):
-            frontmatter = {}
-
-        # Add proposed_chunks listing the consolidated chunks
-        frontmatter["proposed_chunks"] = [
-            {"prompt": f"Consolidated from {chunk_id}", "chunk_directory": chunk_id}
-            for chunk_id in normalized_ids
-        ]
-        frontmatter["advances_trunk_goal"] = description
-
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        rest_of_file = content[match.end():]
-        overview_path.write_text(f"---\n{new_frontmatter}---{rest_of_file}")
-
+    # Output formatting
     relative_path = narrative_path.relative_to(project_dir)
     click.echo(f"Created narrative: {relative_path}")
     click.echo("")
@@ -292,7 +296,7 @@ def update_refs(narrative_id, project_dir, dry_run, file_path):
         ve narrative update-refs my_narrative
         ve narrative update-refs my_narrative --dry-run
     """
-    from chunks import update_backreferences, count_backreferences
+    from backreferences import update_backreferences, count_backreferences
 
     # Normalize narrative_id
     narrative_id = strip_artifact_path_prefix(narrative_id, ArtifactType.NARRATIVE)
@@ -302,7 +306,8 @@ def update_refs(narrative_id, project_dir, dry_run, file_path):
     # Parse narrative frontmatter to get consolidated chunk IDs
     frontmatter = narratives.parse_narrative_frontmatter(narrative_id)
     if frontmatter is None:
-        click.echo(f"Error: Narrative '{narrative_id}' not found", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Narrative', narrative_id, 've narrative list')}", err=True)
         raise SystemExit(1)
 
     # Get chunk IDs from proposed_chunks

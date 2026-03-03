@@ -28,7 +28,7 @@ class TestRemoveArtifactFromExternalCoreFunction:
 
     def test_happy_path_removes_external_yaml(self, tmp_path):
         """Removes external.yaml from project artifact directory."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -75,7 +75,7 @@ A feature chunk.
 
     def test_removes_dependent_from_artifact_frontmatter(self, tmp_path):
         """Updates dependents list in external repo to remove the project entry."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -122,7 +122,7 @@ A feature chunk.
 
     def test_idempotent_no_error_when_external_yaml_missing(self, tmp_path):
         """No error if external.yaml doesn't exist (idempotent)."""
-        from task_utils import remove_artifact_from_external
+        from task import remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -154,7 +154,7 @@ dependents: []
 
     def test_cleans_up_empty_artifact_directory(self, tmp_path):
         """Removes empty directory after deleting external.yaml."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -195,7 +195,7 @@ dependents: []
 
     def test_preserves_other_files_in_artifact_directory(self, tmp_path):
         """Doesn't delete directory if other files are present."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -238,7 +238,7 @@ dependents: []
 
     def test_error_when_not_in_task_directory(self, tmp_path):
         """Errors when not in task directory context."""
-        from task_utils import remove_artifact_from_external, TaskRemoveExternalError
+        from task import remove_artifact_from_external, TaskRemoveExternalError
 
         # Create a standalone project (no .ve-task.yaml)
         project_path = tmp_path / "standalone"
@@ -255,7 +255,7 @@ dependents: []
 
     def test_error_when_artifact_not_in_external_repo(self, tmp_path):
         """Errors when artifact doesn't exist in external repo."""
-        from task_utils import remove_artifact_from_external, TaskRemoveExternalError
+        from task import remove_artifact_from_external, TaskRemoveExternalError
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -270,7 +270,7 @@ dependents: []
 
     def test_error_when_project_not_in_task_config(self, tmp_path):
         """Errors when target project is not in task configuration."""
-        from task_utils import remove_artifact_from_external, TaskRemoveExternalError
+        from task import remove_artifact_from_external, TaskRemoveExternalError
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -296,7 +296,7 @@ created_after: []
 
     def test_removes_all_artifact_types(self, tmp_path):
         """Works for chunks, investigations, narratives, subsystems."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -346,7 +346,7 @@ dependents: []
 
     def test_flexible_path_input(self, tmp_path):
         """Accepts 'my_chunk', 'chunks/my_chunk', 'docs/chunks/my_chunk'."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -396,7 +396,7 @@ dependents: []
 
     def test_flexible_project_input(self, tmp_path):
         """Accepts 'proj' or 'acme/proj' formats."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -439,7 +439,7 @@ dependents: []
 
     def test_warns_when_removing_last_project_link(self, tmp_path):
         """Returns warning flag when artifact becomes orphaned."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 
@@ -478,7 +478,7 @@ dependents: []
 
     def test_preserves_other_dependents(self, tmp_path):
         """Only removes matching dependent entry, preserves others."""
-        from task_utils import copy_artifact_as_external, remove_artifact_from_external
+        from task import copy_artifact_as_external, remove_artifact_from_external
 
         task_dir, external_path, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1", "proj2"]
@@ -539,7 +539,7 @@ class TestRemoveArtifactFromExternalCLI:
 
     def test_cli_happy_path(self, tmp_path):
         """CLI removes external reference and reports success."""
-        from task_utils import copy_artifact_as_external
+        from task import copy_artifact_as_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
         project_path = project_paths[0]
@@ -630,7 +630,7 @@ dependents: []
 
     def test_cli_warns_on_orphan(self, tmp_path):
         """Output includes warning when last link removed."""
-        from task_utils import copy_artifact_as_external
+        from task import copy_artifact_as_external
 
         task_dir, external_path, project_paths = setup_task_directory(tmp_path)
 

@@ -7,11 +7,11 @@ code_paths:
   - src/chunks.py
   - tests/test_ve.py
 code_references:
-  - ref: src/ve.py#validate_short_name
+  - ref: src/cli/utils.py#validate_short_name
     implements: "Short name validation delegating to validate_identifier()"
-  - ref: src/ve.py#validate_ticket_id
+  - ref: src/cli/utils.py#validate_ticket_id
     implements: "Ticket ID validation delegating to validate_identifier()"
-  - ref: src/ve.py#create
+  - ref: src/cli/chunk.py#create
     implements: "create command (formerly start) - argument parsing, validation, normalization, duplicate detection, --yes flag"
   - ref: src/chunks.py#Chunks::__init__
     implements: "Chunks class initialization"

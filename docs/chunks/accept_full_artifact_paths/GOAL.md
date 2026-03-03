@@ -5,7 +5,11 @@ parent_chunk: null
 code_paths:
   - src/external_refs.py
   - src/task_utils.py
-  - src/ve.py
+  - src/task/config.py
+  - src/task/external.py
+  - src/cli/artifact.py
+  - src/cli/chunk.py
+  - src/cli/external.py
   - tests/test_external_refs.py
   - tests/test_task_utils.py
   - tests/test_flexible_paths.py
@@ -14,24 +18,10 @@ code_references:
     implements: "Flexible artifact path normalization accepting any reasonable format"
   - ref: src/external_refs.py#strip_artifact_path_prefix
     implements: "Simple prefix stripping for known artifact types"
-  - ref: src/task_utils.py#resolve_project_ref
+  - ref: src/task/config.py#resolve_project_ref
     implements: "Flexible project reference resolution"
-  - ref: src/task_utils.py#copy_artifact_as_external
+  - ref: src/task/external.py#copy_artifact_as_external
     implements: "Integration of flexible path/project resolution for copy-external"
-  - ref: src/ve.py#activate
-    implements: "CLI command using strip_artifact_path_prefix"
-  - ref: src/ve.py#status
-    implements: "CLI chunk status command using strip_artifact_path_prefix"
-  - ref: src/ve.py#overlap
-    implements: "CLI chunk overlap command using strip_artifact_path_prefix"
-  - ref: src/ve.py#validate
-    implements: "CLI chunk validate command using strip_artifact_path_prefix"
-  - ref: src/ve.py#suggest_prefix_cmd
-    implements: "CLI suggest-prefix command using strip_artifact_path_prefix"
-  - ref: src/ve.py#copy_external
-    implements: "CLI copy-external command using flexible path normalization"
-  - ref: src/ve.py#_detect_artifact_type_from_id
-    implements: "Artifact type detection using normalize_artifact_path"
   - ref: tests/test_external_refs.py#TestNormalizeArtifactPath
     implements: "Unit tests for normalize_artifact_path covering all input formats"
   - ref: tests/test_external_refs.py#TestStripArtifactPathPrefix

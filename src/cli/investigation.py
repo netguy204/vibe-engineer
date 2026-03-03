@@ -4,7 +4,10 @@ Commands for managing investigations - exploratory documents.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Investigation CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+# Chunk: docs/chunks/investigation_commands - CLI commands for investigation management
 
+import json
 import pathlib
 
 import click
@@ -12,8 +15,7 @@ import click
 from external_refs import strip_artifact_path_prefix
 from investigations import Investigations
 from models import InvestigationStatus, ArtifactType
-from task_utils import (
-    is_task_directory,
+from task import (
     create_task_investigation,
     list_task_artifacts_grouped,
     TaskInvestigationError,
@@ -22,17 +24,27 @@ from task_utils import (
     parse_projects_option,
     check_task_project_context,
 )
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
+from cli.formatters import (
+    artifact_to_json_dict,
+    format_grouped_artifact_list,
+    format_grouped_artifact_list_json,
+)
 
 
 @click.group()
 def investigation():
-    """Investigation commands"""
+    """Manage investigations - exploratory documents for understanding before acting.
+
+    Start an investigation when you need to explore before committing to
+    implementation, such as diagnosing issues or validating hypotheses.
+    """
     pass
 
 
+# Chunk: docs/chunks/task_aware_investigations - CLI command extended with task directory detection
 @investigation.command("create")
 @click.argument("short_name")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -49,9 +61,8 @@ def create_investigation(short_name, project_dir, projects):
     # Normalize to lowercase
     short_name = short_name.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _create_task_investigation(project_dir, short_name, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _create_task_investigation(project_dir, short_name, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
@@ -67,6 +78,7 @@ def create_investigation(short_name, project_dir, projects):
     click.echo(f"Created {relative_path}")
 
 
+# Chunk: docs/chunks/task_aware_investigations - Handler for task directory investigation creation
 def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects_input: str | None = None):
     """Handle investigation creation in task directory (cross-repo mode)."""
     # Parse and validate projects option
@@ -96,16 +108,19 @@ def _create_task_investigation(task_dir: pathlib.Path, short_name: str, projects
         click.echo(f"Created reference in {project_ref}: {investigation_dir.relative_to(task_dir)}/")
 
 
+# Chunk: docs/chunks/task_aware_investigations - CLI command extended with task directory detection
 @investigation.command("list")
 @click.option("--state", type=str, default=None, help="Filter by investigation state")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_investigations(state, project_dir):
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty investigation list results
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_investigations(state, json_output, project_dir):
     """List all investigations."""
-    from artifact_ordering import ArtifactIndex, ArtifactType
+    from artifact_ordering import ArtifactIndex
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_investigations(project_dir)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_investigations(project_dir, json_output)):
         return
 
     # Validate state filter if provided
@@ -139,26 +154,40 @@ def list_investigations(state, project_dir):
         investigation_list = filtered_list
 
     if not investigation_list:
-        click.echo("No investigations found", err=True)
-        raise SystemExit(1)
+        if json_output:
+            click.echo(json.dumps([]))
+            return
+        click.echo("No investigations found")
+        raise SystemExit(0)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.INVESTIGATION))
 
-    for inv_name in investigation_list:
-        frontmatter = investigations.parse_investigation_frontmatter(inv_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if inv_name in tips else ""
-        click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for inv_name in investigation_list:
+            frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+            result = artifact_to_json_dict(inv_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for inv_name in investigation_list:
+            frontmatter = investigations.parse_investigation_frontmatter(inv_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if inv_name in tips else ""
+            click.echo(f"docs/investigations/{inv_name} [{status}]{tip_indicator}")
 
 
-def _list_task_investigations(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context investigation listing
+# Chunk: docs/chunks/task_aware_investigations - Handler for task directory investigation listing
+def _list_task_investigations(task_dir: pathlib.Path, json_output: bool = False):
     """Handle investigation listing in task directory (cross-repo mode)."""
-    from cli.chunk import _format_grouped_artifact_list
-
     try:
         grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.INVESTIGATION)
-        _format_grouped_artifact_list(grouped_data, "investigations")
+        if json_output:
+            format_grouped_artifact_list_json(grouped_data, "investigations")
+        else:
+            format_grouped_artifact_list(grouped_data, "investigations")
     except (TaskInvestigationError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -170,24 +199,19 @@ def _list_task_investigations(task_dir: pathlib.Path):
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def status(investigation_id, new_status, project_dir):
     """Show or update investigation status."""
-    from models import extract_short_name
-
     # Normalize investigation_id to strip path prefixes
     investigation_id = strip_artifact_path_prefix(investigation_id, ArtifactType.INVESTIGATION)
 
     investigations = Investigations(project_dir)
 
-    # Extract shortname for display
-    shortname = extract_short_name(investigation_id)
-
     # Display mode: just show current status
     if new_status is None:
-        try:
-            current_status = investigations.get_status(investigation_id)
-            click.echo(f"{shortname}: {current_status.value}")
-        except ValueError as e:
-            click.echo(f"Error: {e}", err=True)
+        frontmatter = investigations.parse_investigation_frontmatter(investigation_id)
+        if frontmatter is None:
+            from cli.utils import format_not_found_error
+            click.echo(f"Error: {format_not_found_error('Investigation', investigation_id, 've investigation list')}", err=True)
             raise SystemExit(1)
+        click.echo(f"{investigation_id}: {frontmatter.status.value}")
         return
 
     # Transition mode: validate and update status
@@ -205,7 +229,7 @@ def status(investigation_id, new_status, project_dir):
     # Attempt the transition
     try:
         old_status, updated_status = investigations.update_status(investigation_id, new_status_enum)
-        click.echo(f"{shortname}: {old_status.value} -> {updated_status.value}")
+        click.echo(f"{investigation_id}: {old_status.value} -> {updated_status.value}")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

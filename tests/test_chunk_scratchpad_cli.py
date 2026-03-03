@@ -120,13 +120,13 @@ class TestChunkListCLI:
         assert "IMPLEMENTING" in result.output
 
     def test_no_chunks_found(self, cli_runner, temp_project):
-        """Reports no chunks found."""
+        """Reports no chunks found with exit code 0 (success)."""
         result = cli_runner.invoke(
             cli,
             ["chunk", "list", "--project-dir", str(temp_project)],
         )
 
-        assert result.exit_code != 0
+        assert result.exit_code == 0
         assert "No chunks found" in result.output
 
     def test_current_returns_implementing_chunk(self, cli_runner, temp_project):

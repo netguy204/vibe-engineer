@@ -3,32 +3,33 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/task_utils.py
-  - src/ve.py
+  - src/task/exceptions.py
+  - src/task/config.py
+  - src/task/artifact_ops.py
+  - src/task/promote.py
+  - src/cli/artifact.py
   - tests/test_artifact_promote.py
 code_references:
-  - ref: src/task_utils.py#TaskPromoteError
+  - ref: src/task/exceptions.py#TaskPromoteError
     implements: "Exception class for user-friendly promotion error messages"
-  - ref: src/task_utils.py#find_task_directory
+  - ref: src/task/config.py#find_task_directory
     implements: "Walk up from artifact path to find task directory containing .ve-task.yaml"
-  - ref: src/task_utils.py#identify_source_project
+  - ref: src/task/promote.py#identify_source_project
     implements: "Determine which project (org/repo) contains the artifact being promoted"
-  - ref: src/task_utils.py#add_dependents_to_artifact
+  - ref: src/task/artifact_ops.py#add_dependents_to_artifact
     implements: "Generic helper to add dependents to any artifact type's main file"
-  - ref: src/task_utils.py#_get_artifact_created_after
+  - ref: src/task/promote.py#_get_artifact_created_after
     implements: "Parse created_after field from artifact's main file frontmatter"
-  - ref: src/task_utils.py#promote_artifact
+  - ref: src/task/promote.py#promote_artifact
     implements: "Core promotion logic: copy to external repo, update frontmatter, create external.yaml"
-  - ref: src/ve.py#artifact
+  - ref: src/cli/artifact.py#artifact
     implements: "CLI command group for artifact management commands"
-  - ref: src/ve.py#promote
+  - ref: src/cli/artifact.py#promote
     implements: "CLI command ve artifact promote <path> [--name]"
   - ref: tests/test_artifact_promote.py#TestPromoteArtifactCoreFunction
     implements: "Unit tests for promote_artifact() function"
   - ref: tests/test_artifact_promote.py#TestPromoteArtifactCLI
     implements: "CLI integration tests for ve artifact promote command"
-  - ref: src/cli/artifact.py#promote
-    implements: "CLI artifact promote command after CLI modularization"
 narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts

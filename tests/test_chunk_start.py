@@ -1,4 +1,5 @@
 """Tests for the 'chunk start' CLI command."""
+# Chunk: docs/chunks/implement_chunk_start-ve-001 - Comprehensive test suite covering chunk start command
 
 from ve import cli
 from chunks import Chunks
@@ -81,7 +82,7 @@ class TestShortNameValidation:
         # Should mention multiple issues
         output_lower = result.output.lower()
         assert "invalid characters" in output_lower
-        assert "32" in result.output or "less than" in output_lower
+        assert "31" in result.output or "at most" in output_lower
 
 
 class TestTicketIdValidation:
@@ -458,6 +459,7 @@ class TestCombinedNameLengthValidation:
         assert result.exit_code == 0, f"Failed with: {result.output}"
 
 
+# Chunk: docs/chunks/chunk_batch_create - Test suite for batch chunk creation functionality
 class TestBatchCreation:
     """Tests for batch chunk creation.
 

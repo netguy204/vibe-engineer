@@ -1,8 +1,10 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/orch_foundation - Daemon lifecycle, state persistence, and work unit tracking
 # Chunk: docs/chunks/orch_scheduling - Async daemon runner with scheduler integration
 # Chunk: docs/chunks/orch_tcp_port - TCP port support for browser dashboard access
 # Chunk: docs/chunks/orch_url_command - URL command for getting orchestrator endpoint
 # Chunk: docs/chunks/orch_task_detection - Task context detection for daemon startup
+# Chunk: docs/chunks/orch_daemon_stale_files - Stale file cleanup on SIGKILL fallback
 """Daemon process management for the orchestrator.
 
 Handles starting, stopping, and monitoring the orchestrator daemon process.
@@ -24,6 +26,7 @@ from typing import Optional, Tuple
 
 import uvicorn
 
+from orchestrator.git_utils import GitError, get_current_branch
 from orchestrator.models import (
     OrchestratorConfig,
     OrchestratorState,
@@ -284,6 +287,12 @@ def _write_pid_file(pid_path: Path, pid: int) -> None:
         os.lseek(fd, 0, os.SEEK_SET)
         os.write(fd, f"{pid}\n".encode())
 
+        # NOTE: fd is intentionally NOT closed here.
+        # The open file descriptor maintains the flock for the daemon's lifetime.
+        # When the daemon process exits, the fd is closed by the OS and the lock
+        # is released automatically. This prevents race conditions where another
+        # instance could acquire the lock between close() and process exit.
+
     except BlockingIOError:
         os.close(fd)
         raise DaemonError("Could not acquire lock on PID file - daemon may be starting")
@@ -302,6 +311,24 @@ def _remove_pid_file(pid_path: Path) -> None:
         pid_path.unlink()
     except FileNotFoundError:
         pass
+
+
+# Chunk: docs/chunks/orch_daemon_stale_files - Stale file cleanup on SIGKILL fallback
+def _cleanup_state_files(project_dir: Path) -> None:
+    """Remove all daemon state files (PID, socket, port).
+
+    Called after daemon shutdown to clean up state files.
+    Handles missing files gracefully - no error if files don't exist.
+
+    Args:
+        project_dir: The project directory (resolved to absolute path)
+    """
+    for get_path in (get_pid_path, get_socket_path, get_port_path):
+        path = get_path(project_dir)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _daemonize() -> None:
@@ -513,31 +540,10 @@ def _get_current_branch(project_dir: Path) -> str:
     Raises:
         DaemonError: If not in a git repo or git command fails
     """
-    import subprocess
-
-    result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=project_dir,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise DaemonError(f"Failed to get current branch: {result.stderr}")
-
-    branch = result.stdout.strip()
-    if branch == "HEAD":
-        # Detached HEAD state - get the commit instead
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise DaemonError("Failed to get current commit in detached HEAD state")
-        return result.stdout.strip()
-
-    return branch
+    try:
+        return get_current_branch(project_dir)
+    except GitError as e:
+        raise DaemonError(str(e)) from e
 
 
 def _load_config(store: StateStore) -> OrchestratorConfig:
@@ -695,23 +701,23 @@ def stop_daemon(project_dir: Path, timeout: float = 5.0) -> bool:
         return False
 
     if not is_process_running(pid):
-        # Stale PID file - clean up
-        _remove_pid_file(pid_path)
+        # Stale PID file - clean up all state files
+        _cleanup_state_files(project_dir)
         return False
 
     # Send SIGTERM for graceful shutdown
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
-        _remove_pid_file(pid_path)
+        _cleanup_state_files(project_dir)
         return False
 
     # Wait for process to exit
     start_time = time.time()
     while time.time() - start_time < timeout:
         if not is_process_running(pid):
-            # Clean up PID file if it still exists
-            _remove_pid_file(pid_path)
+            # Clean up all state files
+            _cleanup_state_files(project_dir)
             return True
         time.sleep(0.1)
 
@@ -727,5 +733,5 @@ def stop_daemon(project_dir: Path, timeout: float = 5.0) -> bool:
     if is_process_running(pid):
         raise DaemonError(f"Failed to stop daemon (PID {pid})")
 
-    _remove_pid_file(pid_path)
+    _cleanup_state_files(project_dir)
     return True

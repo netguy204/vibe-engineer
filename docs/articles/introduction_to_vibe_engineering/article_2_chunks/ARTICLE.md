@@ -90,7 +90,9 @@ I realized the plan was actually two things tangled together: the *why* (intent,
 
 So I split them. The "why" lives in a file I named GOAL.md. The "how" lives in PLAN.md. I commit both files for each chunk of work I define, but the GOAL is what matters in the long term. It's what agents read to understand intent. The PLAN is there if they need implementation details, but most of the time, they don't. (See sidebar: *How Agents Build Context*.)
 
-### The Insight
+These "chunks" are the foundation of the vibe engineering toolset I'm building.
+
+### The Workflow
 
 Creating a chunk is no more difficult than creating a plan. We start by giving `/chunk-create` a rough direction of what we want to do. The agent uses a CLI to instantiate GOAL and PLAN templates and then folds your rough direction into the GOAL. The template guides the agent to investigate the broader context and ask you clarification questions regarding the desired result. When the command completes, you'll have a GOAL file full of rich "why" and "why not" judgments that future agents will recognize and follow.
 
@@ -123,7 +125,7 @@ Second, *what* agents read when they do follow:
 
 The two-file split isn't overhead. It's the natural structure agents already want.
 
-### The Resolution
+### Why This Matters
 
 One advantage of retaining the *why* is that you can refer back to it explicitly as you're prompting the next chunk of work. "Hey, we're debugging what we did in this chunk." — and you reference the chunk. You don't need to explain the setup, how you got there, or what the scope was. All of that lives in the chunk.
 
@@ -133,7 +135,27 @@ But chunks do more than solve amnesia. They hold the shape.
 
 I think of chunk GOALs as tent-poles and stakes. They are points of judgment that help the sprawling codebase maintain its intended form. An agent working on a section of the tent can see the nearby poles and stakes without needing to understand the entire structure. They work locally, but are aligned.
 
+Here's how this works in practice. An example from the vibe engineering codebase:
+
+```python
+# Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
+def is_parent_of(parent: str, child: str) -> bool:
+    # ... validation and file matching ...
+
+    # Check if child's symbol starts with parent's symbol followed by ::
+    # e.g., "Bar::baz" starts with "Bar::" making "Bar" a parent
+    return child_symbol.startswith(parent_symbol + "::")
+```
+
+Without context, this looks like an arbitrary choice. Why `::` instead of `.`? Why string prefix matching instead of AST comparison?
+
+The GOAL.md explains that the `::` separator was explicitly chosen so that overlap detection between chunks can be performed using simple string operations. If chunk A references `foo.py#Bar` and chunk B references `foo.py#Bar::baz`, containment is computable via `startswith()` — no parsing required.
+
+The agent reading this code now understands the design force behind it. The choice isn't arbitrary; it's load-bearing.
+
 Every chunk you write is like another page in your onboarding wiki that you never have to explain again. Future agents discover it through backreferences in the code — they trace from implementation to intent, exploring as needed. They're not reading everything; they're finding applicable context when they need it. The wiki page is there when the agent needs its insights.
+
+### The Payoff
 
 Your effort compounds into institutional memory. As the tent gets bigger, it gets more poles and stakes. The shape holds, and everyone feels a little safer running around inside.
 
@@ -159,24 +181,6 @@ This is all part of the emerging discipline of **context engineering** — desig
 The problem: if the agent's exploration finds only code, it won't understand the forces that formed it. You end up with a surgeon obsessed with the symptoms but ignorant of the medical history. The result is that the agent does what you asked but also hallucinates worthless features, ignores architectural patterns, and reinvents things that already exist. It's operating brilliantly on what's there, but without the intent that caused it to be there.
 
 **How chunks help:** When agents explore, backreferences in the code point them to chunk GOALs. Instead of inferring intent from implementation, they can read it directly. The context they build includes *why*, not just *what*.
-
-Here's a real example from the vibe engineering codebase:
-
-```python
-# Chunk: docs/chunks/symbolic_code_refs - Hierarchical containment check
-def is_parent_of(parent: str, child: str) -> bool:
-    # ... validation and file matching ...
-
-    # Check if child's symbol starts with parent's symbol followed by ::
-    # e.g., "Bar::baz" starts with "Bar::" making "Bar" a parent
-    return child_symbol.startswith(parent_symbol + "::")
-```
-
-Without context, this looks like an arbitrary choice. Why `::` instead of `.`? Why string prefix matching instead of AST comparison?
-
-The GOAL.md explains that the `::` separator was explicitly chosen so that overlap detection between chunks can be performed using simple string operations. If chunk A references `foo.py#Bar` and chunk B references `foo.py#Bar::baz`, containment is computable via `startswith()` — no parsing required.
-
-The agent reading this code now understands the design force behind it. The choice isn't arbitrary; it's load-bearing.
 
 ---
 

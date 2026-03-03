@@ -5,9 +5,10 @@ parent_chunk: null
 code_paths:
   - src/orchestrator/models.py
   - src/orchestrator/scheduler.py
+  - src/orchestrator/review_parsing.py
   - src/orchestrator/agent.py
   - src/orchestrator/state.py
-  - tests/test_orchestrator_scheduler.py
+  - tests/test_orchestrator_scheduler_review.py
 code_references:
   - ref: src/orchestrator/models.py#WorkUnitPhase
     implements: "Added REVIEW enum value between IMPLEMENT and COMPLETE"
@@ -19,11 +20,11 @@ code_references:
     implements: "Structured representation of a single review issue"
   - ref: src/orchestrator/models.py#ReviewResult
     implements: "Structured output from /chunk-review skill"
-  - ref: src/orchestrator/scheduler.py#create_review_feedback_file
+  - ref: src/orchestrator/review_parsing.py#create_review_feedback_file
     implements: "Creates REVIEW_FEEDBACK.md with reviewer feedback for implementer"
-  - ref: src/orchestrator/scheduler.py#parse_review_decision
+  - ref: src/orchestrator/review_parsing.py#parse_review_decision
     implements: "Parse YAML decision block from /chunk-review skill output"
-  - ref: src/orchestrator/scheduler.py#load_reviewer_config
+  - ref: src/orchestrator/review_parsing.py#load_reviewer_config
     implements: "Load reviewer config for loop detection settings"
   - ref: src/orchestrator/scheduler.py#Scheduler::_handle_review_result
     implements: "Route work unit based on review decision (APPROVE/FEEDBACK/ESCALATE)"
@@ -35,11 +36,11 @@ code_references:
     implements: "Added chunk-review.md as skill for REVIEW phase"
   - ref: src/orchestrator/state.py#StateStore::_migrate_v9
     implements: "Schema migration adding review_iterations column"
-  - ref: tests/test_orchestrator_scheduler.py#TestReviewPhase
+  - ref: tests/test_orchestrator_scheduler_review.py#TestReviewPhase
     implements: "Tests for REVIEW phase transitions and handling"
-  - ref: tests/test_orchestrator_scheduler.py#TestReviewDecisionParsing
+  - ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionParsing
     implements: "Tests for parsing review decision from agent output"
-  - ref: tests/test_orchestrator_scheduler.py#TestReviewFeedbackFile
+  - ref: tests/test_orchestrator_scheduler_review.py#TestReviewFeedbackFile
     implements: "Tests for REVIEW_FEEDBACK.md file creation"
 narrative: null
 investigation: orchestrator_quality_assurance

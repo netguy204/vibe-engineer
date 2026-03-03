@@ -2,6 +2,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Subsystem: docs/subsystems/template_system - Template rendering system
 # Subsystem: docs/subsystems/template_system - Uses template rendering
+# Chunk: docs/chunks/artifact_manager_base - Refactored to inherit from ArtifactManager
 # Chunk: docs/chunks/ordering_remove_seqno - Short name directory format for subsystems
 # Chunk: docs/chunks/populate_created_after - Automatic created_after population on subsystem creation
 
@@ -9,13 +10,13 @@ from __future__ import annotations
 
 import pathlib
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
-import yaml
 
+from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
-from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS, extract_short_name
+from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
 from symbols import is_parent_of, parse_reference, qualify_ref
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
@@ -24,60 +25,69 @@ if TYPE_CHECKING:
 
 
 # Regex for validating subsystem directory name pattern
-# Legacy: {NNNN}-{short_name}, New: {short_name} (lowercase, starting with letter)
-SUBSYSTEM_DIR_PATTERN = re.compile(r"^(\d{4}-.+|[a-z][a-z0-9_-]*)$")
+# {short_name}: lowercase, starting with letter
+SUBSYSTEM_DIR_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 # Subsystem: docs/subsystems/template_system - Uses template rendering
-class Subsystems:
+# Chunk: docs/chunks/subsystem_schemas_and_model - Subsystem documentation management class
+class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
     """Utility class for managing subsystem documentation.
 
     Provides methods for enumerating subsystems, validating directory names,
     and parsing subsystem frontmatter.
     """
 
-    def __init__(self, project_dir):
+    def __init__(self, project_dir: Path | pathlib.Path) -> None:
         """Initialize with project directory.
 
         Args:
             project_dir: Path to the project root directory.
         """
-        self.project_dir = project_dir
+        super().__init__(Path(project_dir))
+
+    # Abstract property implementations from ArtifactManager
+    @property
+    def artifact_dir_name(self) -> str:
+        return "subsystems"
 
     @property
-    def subsystems_dir(self):
-        """Return the path to the subsystems directory."""
-        return self.project_dir / "docs" / "subsystems"
+    def main_filename(self) -> str:
+        return "OVERVIEW.md"
+
+    @property
+    def frontmatter_model_class(self) -> type[SubsystemFrontmatter]:
+        return SubsystemFrontmatter
+
+    @property
+    def status_enum(self) -> type[SubsystemStatus]:
+        return SubsystemStatus
+
+    @property
+    def transition_map(self) -> dict[SubsystemStatus, set[SubsystemStatus]]:
+        return VALID_STATUS_TRANSITIONS
+
+    # Backward compatibility aliases
+    @property
+    def project_dir(self) -> Path:
+        """Return the project root directory (alias for backward compatibility)."""
+        return self._project_dir
+
+    @property
+    def subsystems_dir(self) -> Path:
+        """Return the path to the subsystems directory (alias for artifact_dir)."""
+        return self.artifact_dir
 
     def enumerate_subsystems(self) -> list[str]:
-        """List subsystem directory names.
+        """List subsystem directory names (alias for enumerate_artifacts)."""
+        return self.enumerate_artifacts()
 
-        Returns:
-            List of subsystem directory names, or empty list if none exist.
-        """
-        if not self.subsystems_dir.exists():
-            return []
-        return [f.name for f in self.subsystems_dir.iterdir() if f.is_dir()]
-
-    def is_subsystem_dir(self, name: str) -> bool:
-        """Check if a directory name matches the subsystem pattern.
-
-        Args:
-            name: Directory name to check.
-
-        Returns:
-            True if name matches valid artifact ID pattern, False otherwise.
-        """
-        if not SUBSYSTEM_DIR_PATTERN.match(name):
-            return False
-        # For legacy format, ensure there's content after the prefix
-        if re.match(r"^\d{4}-", name):
-            parts = name.split("-", 1)
-            return len(parts) == 2 and bool(parts[1])
-        return True
-
+    # Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
     def parse_subsystem_frontmatter(self, subsystem_id: str) -> SubsystemFrontmatter | None:
         """Parse and validate OVERVIEW.md frontmatter for a subsystem.
+
+        This is an alias for parse_frontmatter() that maintains the original
+        method name for backward compatibility.
 
         Args:
             subsystem_id: The subsystem directory name.
@@ -88,24 +98,42 @@ class Subsystems:
             - OVERVIEW.md doesn't exist
             - Frontmatter is malformed or fails validation
         """
-        overview_path = self.subsystems_dir / subsystem_id / "OVERVIEW.md"
-        if not overview_path.exists():
-            return None
+        return self.parse_frontmatter(subsystem_id)
 
-        content = overview_path.read_text()
+    # Chunk: docs/chunks/validation_error_surface - Error surfacing for frontmatter parsing
+    def parse_subsystem_frontmatter_with_errors(
+        self, subsystem_id: str
+    ) -> tuple[SubsystemFrontmatter | None, list[str]]:
+        """Parse OVERVIEW.md frontmatter with error details.
 
-        # Extract frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not match:
-            return None
+        This is an alias for parse_frontmatter_with_errors() that maintains the
+        original method name for backward compatibility and consistency with
+        parse_subsystem_frontmatter().
 
-        try:
-            frontmatter_data = yaml.safe_load(match.group(1))
-            if not isinstance(frontmatter_data, dict):
-                return None
-            return SubsystemFrontmatter.model_validate(frontmatter_data)
-        except (yaml.YAMLError, ValidationError):
-            return None
+        Use this method when callers need to report errors to users (e.g., validation
+        commands, CLI feedback). For silent failure scenarios where None is acceptable,
+        use parse_subsystem_frontmatter() instead.
+
+        Args:
+            subsystem_id: The subsystem directory name.
+
+        Returns:
+            Tuple of (frontmatter, errors) where:
+            - frontmatter is the validated model if successful, None otherwise
+            - errors is a list of error messages (empty if parsing succeeded)
+        """
+        return self.parse_frontmatter_with_errors(subsystem_id)
+
+    def is_subsystem_dir(self, name: str) -> bool:
+        """Check if a directory name matches the subsystem pattern.
+
+        Args:
+            name: Directory name to check.
+
+        Returns:
+            True if name matches valid artifact ID pattern, False otherwise.
+        """
+        return bool(SUBSYSTEM_DIR_PATTERN.match(name))
 
     # Chunk: docs/chunks/subsystem_cli_scaffolding - Lookup subsystem directory by shortname
     def find_by_shortname(self, shortname: str) -> str | None:
@@ -119,14 +147,13 @@ class Subsystems:
         """
         for dirname in self.enumerate_subsystems():
             if self.is_subsystem_dir(dirname):
-                # Extract short_name (handles both patterns)
-                existing_short = extract_short_name(dirname)
-                if existing_short == shortname:
+                # Directory name is the short name
+                if dirname == shortname:
                     return dirname
         return None
 
     @property
-    def num_subsystems(self):
+    def num_subsystems(self) -> int:
         """Return the number of subsystems."""
         return len(self.enumerate_subsystems())
 
@@ -180,21 +207,7 @@ class Subsystems:
 
         return subsystem_path
 
-    def find_duplicates(self, shortname: str) -> list[str]:
-        """Find existing subsystems with the same short_name.
-
-        Args:
-            shortname: The short name to check for collisions.
-
-        Returns:
-            List of existing subsystem directory names that would collide.
-        """
-        duplicates = []
-        for name in self.enumerate_subsystems():
-            existing_short = extract_short_name(name)
-            if existing_short == shortname:
-                duplicates.append(name)
-        return duplicates
+    # find_duplicates inherited from ArtifactManager base class
 
     # Chunk: docs/chunks/bidirectional_refs - Validates chunk references in subsystem frontmatter exist
     def validate_chunk_refs(self, subsystem_id: str) -> list[str]:
@@ -235,101 +248,6 @@ class Subsystems:
                 )
 
         return errors
-
-    # Chunk: docs/chunks/subsystem_status_transitions - Get current subsystem status
-    def get_status(self, subsystem_id: str) -> SubsystemStatus:
-        """Get the current status of a subsystem.
-
-        Args:
-            subsystem_id: The subsystem directory name.
-
-        Returns:
-            The current SubsystemStatus.
-
-        Raises:
-            ValueError: If subsystem not found or has invalid frontmatter.
-        """
-        frontmatter = self.parse_subsystem_frontmatter(subsystem_id)
-        if frontmatter is None:
-            raise ValueError(f"Subsystem '{subsystem_id}' not found in docs/subsystems/")
-        return frontmatter.status
-
-    # Chunk: docs/chunks/subsystem_status_transitions - Validate transition and update status
-    def update_status(
-        self, subsystem_id: str, new_status: SubsystemStatus
-    ) -> tuple[SubsystemStatus, SubsystemStatus]:
-        """Update subsystem status with transition validation.
-
-        Args:
-            subsystem_id: The subsystem directory name.
-            new_status: The new status to transition to.
-
-        Returns:
-            Tuple of (old_status, new_status) on success.
-
-        Raises:
-            ValueError: If subsystem not found, invalid status, or invalid transition.
-        """
-        # Get current status
-        current_status = self.get_status(subsystem_id)
-
-        # Validate the transition
-        valid_transitions = VALID_STATUS_TRANSITIONS.get(current_status, set())
-        if new_status not in valid_transitions:
-            valid_names = sorted(s.value for s in valid_transitions)
-            if valid_names:
-                valid_str = ", ".join(valid_names)
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"Valid transitions: {valid_str}"
-                )
-            else:
-                raise ValueError(
-                    f"Cannot transition from {current_status.value} to {new_status.value}. "
-                    f"{current_status.value} is a terminal state with no valid transitions"
-                )
-
-        # Update the frontmatter
-        self._update_overview_frontmatter(subsystem_id, "status", new_status.value)
-
-        return (current_status, new_status)
-
-    def _update_overview_frontmatter(
-        self, subsystem_id: str, field: str, value
-    ) -> None:
-        """Update a single field in OVERVIEW.md frontmatter.
-
-        Args:
-            subsystem_id: The subsystem directory name.
-            field: The frontmatter field name to update.
-            value: The new value for the field.
-
-        Raises:
-            ValueError: If the file has no frontmatter.
-        """
-        overview_path = self.subsystems_dir / subsystem_id / "OVERVIEW.md"
-
-        content = overview_path.read_text()
-
-        # Parse frontmatter between --- markers
-        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
-        if not match:
-            raise ValueError(f"Could not parse frontmatter in {overview_path}")
-
-        frontmatter_text = match.group(1)
-        body = match.group(2)
-
-        # Parse YAML frontmatter
-        frontmatter = yaml.safe_load(frontmatter_text) or {}
-
-        # Update the field
-        frontmatter[field] = value
-
-        # Reconstruct the file
-        new_frontmatter = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-        new_content = f"---\n{new_frontmatter}---\n{body}"
-
-        overview_path.write_text(new_content)
 
     # Chunk: docs/chunks/subsystem_impact_resolution - Find subsystems with overlapping code refs
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.code_references and code_paths

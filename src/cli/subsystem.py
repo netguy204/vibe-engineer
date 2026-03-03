@@ -4,7 +4,9 @@ Commands for managing subsystems - emergent architectural patterns.
 """
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 # Chunk: docs/chunks/cli_modularize - Subsystem CLI commands
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 
+import json
 import pathlib
 
 import click
@@ -13,7 +15,7 @@ from chunks import Chunks
 from external_refs import strip_artifact_path_prefix
 from subsystems import Subsystems
 from models import SubsystemStatus, ArtifactType
-from task_utils import (
+from task import (
     is_task_directory,
     create_task_subsystem,
     list_task_artifacts_grouped,
@@ -23,26 +25,40 @@ from task_utils import (
     parse_projects_option,
     check_task_project_context,
 )
-from artifact_ordering import ArtifactIndex, ArtifactType
+from artifact_ordering import ArtifactIndex
 
-from cli.utils import validate_short_name, warn_task_project_context
+from cli.utils import validate_short_name, warn_task_project_context, handle_task_context
+from cli.formatters import (
+    artifact_to_json_dict,
+    format_grouped_artifact_list,
+    format_grouped_artifact_list_json,
+)
 
 
+# Chunk: docs/chunks/subsystem_cli_scaffolding - CLI command group for subsystem commands
 @click.group()
 def subsystem():
-    """Subsystem commands"""
+    """Manage subsystems - documented architectural patterns.
+
+    Subsystems emerge when you notice recurring patterns across chunks.
+    They capture invariants and coordinate related code.
+    """
     pass
 
 
-@subsystem.command("list")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def list_subsystems(project_dir):
-    """List all subsystems."""
-    from artifact_ordering import ArtifactIndex, ArtifactType
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _list_task_subsystems(project_dir)
+# Chunk: docs/chunks/subsystem_cli_scaffolding - ve subsystem list command - displays subsystems with status
+@subsystem.command("list")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+# Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty subsystem list results
+# Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
+def list_subsystems(json_output, project_dir):
+    """List all subsystems."""
+    from artifact_ordering import ArtifactIndex
+
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _list_task_subsystems(project_dir, json_output)):
         return
 
     # Single-repo mode
@@ -54,31 +70,45 @@ def list_subsystems(project_dir):
     subsystem_list = list(reversed(ordered))
 
     if not subsystem_list:
-        click.echo("No subsystems found", err=True)
-        raise SystemExit(1)
+        if json_output:
+            click.echo(json.dumps([]))
+            return
+        click.echo("No subsystems found")
+        raise SystemExit(0)
 
     # Get tips for indicator display
     tips = set(artifact_index.find_tips(ArtifactType.SUBSYSTEM))
 
-    for subsystem_name in subsystem_list:
-        frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
-        status = frontmatter.status.value if frontmatter else "UNKNOWN"
-        tip_indicator = " *" if subsystem_name in tips else ""
-        click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
+    if json_output:
+        results = []
+        for subsystem_name in subsystem_list:
+            frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
+            result = artifact_to_json_dict(subsystem_name, frontmatter, tips)
+            results.append(result)
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for subsystem_name in subsystem_list:
+            frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            tip_indicator = " *" if subsystem_name in tips else ""
+            click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
 
 
-def _list_task_subsystems(task_dir: pathlib.Path):
+# Chunk: docs/chunks/cli_json_output - JSON output for task context subsystem listing
+def _list_task_subsystems(task_dir: pathlib.Path, json_output: bool = False):
     """Handle subsystem listing in task directory (cross-repo mode)."""
-    from cli.chunk import _format_grouped_artifact_list
-
     try:
         grouped_data = list_task_artifacts_grouped(task_dir, ArtifactType.SUBSYSTEM)
-        _format_grouped_artifact_list(grouped_data, "subsystems")
+        if json_output:
+            format_grouped_artifact_list_json(grouped_data, "subsystems")
+        else:
+            format_grouped_artifact_list(grouped_data, "subsystems")
     except (TaskSubsystemError, TaskArtifactListError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
 
+# Chunk: docs/chunks/subsystem_cli_scaffolding - ve subsystem discover command - creates new subsystem with validation
 @subsystem.command()
 @click.argument("shortname")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
@@ -95,9 +125,8 @@ def discover(shortname, project_dir, projects):
     # Normalize to lowercase
     shortname = shortname.lower()
 
-    # Check if we're in a task directory (cross-repo mode)
-    if is_task_directory(project_dir):
-        _create_task_subsystem(project_dir, shortname, projects)
+    # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
+    if handle_task_context(project_dir, lambda: _create_task_subsystem(project_dir, shortname, projects)):
         return
 
     # Single-repo mode - check if we're in a project that's part of a task
@@ -164,7 +193,8 @@ def validate(subsystem_id, project_dir):
     # Check if subsystem exists
     frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_id)
     if frontmatter is None:
-        click.echo(f"Error: Subsystem '{subsystem_id}' not found or has invalid frontmatter", err=True)
+        from cli.utils import format_not_found_error
+        click.echo(f"Error: {format_not_found_error('Subsystem', subsystem_id, 've subsystem list')}", err=True)
         raise SystemExit(1)
 
     # Validate chunk references
@@ -245,7 +275,7 @@ def overlap(chunk_id, project_dir):
     the chunk across the external repo and all project repos, then checks
     for overlapping subsystems in the same repo where the chunk was found.
     """
-    from task_utils import (
+    from task import (
         is_task_directory,
         find_task_directory,
         load_task_config,

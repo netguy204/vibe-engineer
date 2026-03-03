@@ -5,6 +5,7 @@
 # Subsystem: docs/subsystems/workflow_artifacts - Artifact ordering
 # Chunk: docs/chunks/external_chunk_causal - External chunk ordering in ArtifactIndex
 # Chunk: docs/chunks/ordering_active_only - Status-filtered tip detection for causal ordering
+# Chunk: docs/chunks/ordering_remove_seqno - Ancestor computation for causal ordering
 
 This module provides the ArtifactIndex class which maintains ordered artifact
 listings using directory enumeration for staleness detection and topological sorting.
@@ -12,7 +13,6 @@ Works in any directory without requiring git.
 """
 
 import json
-import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from external_refs import ARTIFACT_MAIN_FILE, ARTIFACT_DIR_NAME, is_external_artifact
+# Chunk: docs/chunks/consolidate_ext_refs - Import ArtifactType from models.py instead of defining locally
 from models import ArtifactType
 
 
@@ -107,10 +108,7 @@ def _enumerate_artifacts(artifact_dir: Path, artifact_type: ArtifactType) -> set
     return result
 
 
-# Regex to extract YAML frontmatter from markdown files
-_FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
-
-
+# Chunk: docs/chunks/frontmatter_io - Migrated to use shared frontmatter utilities
 def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
     """Parse YAML frontmatter from a markdown file.
 
@@ -121,22 +119,40 @@ def _parse_frontmatter(file_path: Path) -> dict[str, Any] | None:
         Parsed frontmatter dict, or None if file doesn't exist,
         has no frontmatter, or invalid YAML.
     """
-    if not file_path.exists():
-        return None
+    from frontmatter import extract_frontmatter_dict
 
-    try:
-        content = file_path.read_text()
-    except (OSError, IOError):
-        return None
+    return extract_frontmatter_dict(file_path)
 
-    match = _FRONTMATTER_PATTERN.match(content)
-    if not match:
-        return None
 
-    try:
-        return yaml.safe_load(match.group(1)) or {}
-    except yaml.YAMLError:
-        return None
+# Chunk: docs/chunks/artifact_pattern_consolidation - Unified created_after normalization
+def _normalize_created_after(value: Any) -> list[str]:
+    """Normalize a created_after value to a list of strings.
+
+    Handles the three valid input forms:
+    - None/null → []
+    - string → [string] (legacy single-value format)
+    - list → list (standard format)
+
+    Args:
+        value: The raw created_after value from YAML.
+
+    Returns:
+        List of artifact names. Returns empty list for None, invalid types,
+        or missing values.
+    """
+    # Handle null/None
+    if value is None:
+        return []
+
+    # Handle legacy single string format
+    if isinstance(value, str):
+        return [value]
+
+    # Should be a list
+    if isinstance(value, list):
+        return value
+
+    return []
 
 
 # Chunk: docs/chunks/artifact_ordering_index - Extracts created_after field from YAML frontmatter
@@ -155,21 +171,7 @@ def _parse_created_after(file_path: Path) -> list[str]:
     if frontmatter is None:
         return []
 
-    created_after = frontmatter.get("created_after", [])
-
-    # Handle null/None
-    if created_after is None:
-        return []
-
-    # Handle legacy single string format
-    if isinstance(created_after, str):
-        return [created_after]
-
-    # Should be a list
-    if isinstance(created_after, list):
-        return created_after
-
-    return []
+    return _normalize_created_after(frontmatter.get("created_after", []))
 
 
 def _parse_yaml_created_after(file_path: Path) -> list[str]:
@@ -191,21 +193,7 @@ def _parse_yaml_created_after(file_path: Path) -> list[str]:
         if not data:
             return []
 
-        created_after = data.get("created_after", [])
-
-        # Handle null/None
-        if created_after is None:
-            return []
-
-        # Handle legacy single string format
-        if isinstance(created_after, str):
-            return [created_after]
-
-        # Should be a list
-        if isinstance(created_after, list):
-            return created_after
-
-        return []
+        return _normalize_created_after(data.get("created_after", []))
     except (yaml.YAMLError, OSError):
         return []
 

@@ -3,29 +3,30 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/task_utils.py
-- src/ve.py
+- src/models/investigation.py
+- src/task/exceptions.py
+- src/task/artifact_ops.py
+- src/cli/investigation.py
 - tests/test_task_investigation_create.py
 - tests/test_task_investigation_list.py
 code_references:
-  - ref: src/models.py#InvestigationFrontmatter
+  - ref: src/models/investigation.py#InvestigationFrontmatter
     implements: "Added dependents field for cross-repo investigation tracking"
-  - ref: src/task_utils.py#TaskInvestigationError
+  - ref: src/task/exceptions.py#TaskInvestigationError
     implements: "Error class for task investigation operations with user-friendly messages"
-  - ref: src/task_utils.py#add_dependents_to_investigation
+  - ref: src/task/artifact_ops.py#add_dependents_to_investigation
     implements: "Helper to update investigation OVERVIEW.md frontmatter with dependents list"
-  - ref: src/task_utils.py#create_task_investigation
+  - ref: src/task/artifact_ops.py#create_task_investigation
     implements: "Orchestrates multi-repo investigation creation with external.yaml and dependents"
-  - ref: src/task_utils.py#list_task_investigations
+  - ref: src/task/artifact_ops.py#list_task_investigations
     implements: "Lists investigations from external repo with their dependents"
-  - ref: src/ve.py#create_investigation
+  - ref: src/cli/investigation.py#create_investigation
     implements: "CLI command extended with task directory detection"
-  - ref: src/ve.py#_create_task_investigation
+  - ref: src/cli/investigation.py#_create_task_investigation
     implements: "Handler for task directory investigation creation"
-  - ref: src/ve.py#list_investigations
+  - ref: src/cli/investigation.py#list_investigations
     implements: "CLI command extended with task directory detection"
-  - ref: src/ve.py#_list_task_investigations
+  - ref: src/cli/investigation.py#_list_task_investigations
     implements: "Handler for task directory investigation listing"
   - ref: tests/test_task_investigation_create.py
     implements: "Integration tests for task-aware investigation creation"

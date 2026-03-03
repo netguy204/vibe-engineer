@@ -9,7 +9,7 @@ code_paths:
   - src/orchestrator/api.py
   - src/orchestrator/scheduler.py
   - src/orchestrator/client.py
-  - src/ve.py
+  - src/cli/orch.py
   - tests/test_orchestrator_oracle.py
   - tests/test_orchestrator_state.py
   - tests/test_orchestrator_scheduler.py
@@ -65,12 +65,14 @@ code_references:
     implements: "Client method for triggering conflict analysis"
   - ref: src/orchestrator/client.py#OrchestratorClient::resolve_conflict
     implements: "Client method for submitting operator resolution"
-  - ref: src/ve.py#orch_conflicts
+  - ref: src/cli/orch.py#orch_conflicts
     implements: "ve orch conflicts CLI command"
-  - ref: src/ve.py#orch_resolve
+  - ref: src/cli/orch.py#orch_resolve
     implements: "ve orch resolve CLI command for operator resolution"
-  - ref: src/ve.py#orch_analyze
+  - ref: src/cli/orch.py#orch_analyze
     implements: "ve orch analyze CLI command for manual conflict analysis"
+  - ref: src/orchestrator/api/conflicts.py
+    implements: "Conflict analysis API endpoints"
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []

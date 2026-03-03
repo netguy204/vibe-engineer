@@ -476,7 +476,7 @@ class TestResolveProjectQualifiedRef:
 
     def test_parses_project_qualified_ref(self, tmp_path):
         """Parses project::file#symbol format correctly."""
-        from task_utils import resolve_project_qualified_ref
+        from task import resolve_project_qualified_ref
 
         task_dir, _, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1"]
@@ -494,7 +494,7 @@ class TestResolveProjectQualifiedRef:
 
     def test_parses_ref_without_symbol(self, tmp_path):
         """Parses project::file format (no symbol)."""
-        from task_utils import resolve_project_qualified_ref
+        from task import resolve_project_qualified_ref
 
         task_dir, _, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1"]
@@ -512,7 +512,7 @@ class TestResolveProjectQualifiedRef:
 
     def test_uses_default_for_non_qualified_ref(self, tmp_path):
         """Uses default_project for refs without :: prefix."""
-        from task_utils import resolve_project_qualified_ref
+        from task import resolve_project_qualified_ref
 
         task_dir, _, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1"]
@@ -531,7 +531,7 @@ class TestResolveProjectQualifiedRef:
 
     def test_error_without_default_for_non_qualified(self, tmp_path):
         """Raises error when non-qualified ref has no default_project."""
-        from task_utils import resolve_project_qualified_ref
+        from task import resolve_project_qualified_ref
 
         task_dir, _, _ = setup_task_directory(tmp_path, project_names=["proj1"])
 
@@ -547,7 +547,7 @@ class TestResolveProjectQualifiedRef:
 
     def test_handles_short_project_name(self, tmp_path):
         """Resolves short project name (without org prefix)."""
-        from task_utils import resolve_project_qualified_ref
+        from task import resolve_project_qualified_ref
 
         task_dir, _, project_paths = setup_task_directory(
             tmp_path, project_names=["proj1"]

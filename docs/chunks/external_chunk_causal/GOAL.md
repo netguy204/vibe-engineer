@@ -3,13 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
+  - src/models/references.py
   - src/artifact_ordering.py
-  - src/task_utils.py
+  - src/task/artifact_ops.py
   - tests/test_artifact_ordering.py
   - tests/test_task_utils.py
 code_references:
-  - ref: src/models.py#ExternalArtifactRef
+  - ref: src/models/references.py#ExternalArtifactRef
     implements: "Added created_after field for local causal ordering"
   - ref: src/artifact_ordering.py#_enumerate_artifacts
     implements: "Include external chunk directories (external.yaml without GOAL.md)"
@@ -23,12 +23,14 @@ code_references:
     implements: "Handle external chunks in ancestor lookup"
   - ref: src/external_refs.py#create_external_yaml
     implements: "Accept created_after parameter for causal ordering"
-  - ref: src/task_utils.py#create_task_chunk
+  - ref: src/task/artifact_ops.py#create_task_chunk
     implements: "Pass current tips to create_external_yaml for causal ordering"
   - ref: tests/test_artifact_ordering.py#TestExternalChunkOrdering
     implements: "External chunk ordering test coverage"
   - ref: tests/test_task_utils.py#TestCreateExternalYamlCreatedAfter
     implements: "External.yaml created_after parameter tests"
+  - ref: src/task_utils.py
+    implements: "Re-export layer referencing external chunk causal ordering"
 narrative: null
 subsystems:
   - subsystem_id: workflow_artifacts

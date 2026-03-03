@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/integrity.py
-- src/ve.py
+- src/cli/init_cmd.py
 - tests/test_integrity.py
 code_references:
   - ref: src/integrity.py#IntegrityError
@@ -17,6 +17,8 @@ code_references:
     implements: "Core validator class for project-wide artifact reference validation"
   - ref: src/integrity.py#IntegrityValidator::validate
     implements: "Main validation entry point orchestrating all checks"
+  - ref: src/integrity.py#IntegrityValidator::validate_chunk
+    implements: "Public single-chunk validation entry point for focused validation routing"
   - ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
     implements: "Validates chunk→narrative, chunk→investigation, chunk→subsystem, chunk→friction, chunk→chunk references"
   - ref: src/integrity.py#IntegrityValidator::_validate_narrative_chunk_refs
@@ -31,12 +33,10 @@ code_references:
     implements: "Validates code→chunk and code→subsystem backreferences in source files"
   - ref: src/integrity.py#validate_integrity
     implements: "Convenience function for running integrity validation"
-  - ref: src/ve.py#validate
-    implements: "CLI command: ve validate for project-wide referential integrity validation"
   - ref: tests/test_integrity.py
     implements: "Comprehensive test suite covering all validation scenarios"
   - ref: src/cli/init_cmd.py#validate
-    implements: "CLI validate command after CLI modularization"
+    implements: "CLI command: ve validate for project-wide referential integrity validation"
 narrative: null
 investigation: referential_integrity
 subsystems: []

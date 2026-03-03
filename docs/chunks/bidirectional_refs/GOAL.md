@@ -17,7 +17,7 @@ code_paths:
 - README.md
 - docs/trunk/SPEC.md
 code_references:
-- ref: src/models.py#SubsystemRelationship
+- ref: src/models/references.py#SubsystemRelationship
   implements: Pydantic model for chunk-to-subsystem relationship (inverse of ChunkRelationship)
 - ref: src/chunks.py#Chunks::validate_subsystem_refs
   implements: Validates subsystem references in chunk frontmatter exist in docs/subsystems/
@@ -25,14 +25,16 @@ code_references:
   implements: Extended to include subsystem reference validation
 - ref: src/subsystems.py#Subsystems::validate_chunk_refs
   implements: Validates chunk references in subsystem frontmatter exist in docs/chunks/
-- ref: src/ve.py#validate
+- ref: src/cli/chunk.py#validate
   implements: Chunk validate CLI command (renamed from 'complete', includes subsystem ref validation)
-- ref: src/ve.py#validate
-  implements: Subsystem validate CLI command ('ve subsystem validate' for chunk ref validation)
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: Template updated with subsystems field and documentation
 - ref: src/cli/subsystem.py#validate
   implements: "CLI subsystem validate command after CLI modularization"
+- ref: src/chunk_validation.py#validate_chunk_complete
+  implements: "Extended to include subsystem reference validation"
+- ref: src/integrity.py#validate_chunk_subsystem_refs
+  implements: "Validates subsystem references in chunk frontmatter exist"
 narrative: subsystem_documentation
 created_after:
 - subsystem_template

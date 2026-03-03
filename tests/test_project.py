@@ -1,8 +1,13 @@
 """Tests for the Project class."""
 # Chunk: docs/chunks/project_init_command - Tests for Project class, init(), and idempotency
+# Chunk: docs/chunks/project_artifact_registry - Tests for unified artifact registry properties
 
 from chunks import Chunks
+from friction import Friction
+from investigations import Investigations
+from narratives import Narratives
 from project import Project, InitResult
+from subsystems import Subsystems
 
 
 class TestProjectClass:
@@ -27,6 +32,91 @@ class TestProjectClass:
         chunks1 = project.chunks
         chunks2 = project.chunks
         assert chunks1 is chunks2
+
+
+# Chunk: docs/chunks/project_artifact_registry - Tests for new lazy-loaded manager properties
+class TestProjectArtifactRegistry:
+    """Tests for Project artifact registry properties."""
+
+    # Narratives property tests
+    def test_narratives_property_returns_narratives_instance(self, temp_project):
+        """Project.narratives returns a Narratives instance."""
+        project = Project(temp_project)
+        assert isinstance(project.narratives, Narratives)
+
+    def test_narratives_property_is_lazy(self, temp_project):
+        """Project.narratives is lazily instantiated."""
+        project = Project(temp_project)
+        assert project._narratives is None
+        _ = project.narratives
+        assert project._narratives is not None
+
+    def test_narratives_property_returns_same_instance(self, temp_project):
+        """Project.narratives returns the same instance on repeated calls."""
+        project = Project(temp_project)
+        narratives1 = project.narratives
+        narratives2 = project.narratives
+        assert narratives1 is narratives2
+
+    # Investigations property tests
+    def test_investigations_property_returns_investigations_instance(self, temp_project):
+        """Project.investigations returns an Investigations instance."""
+        project = Project(temp_project)
+        assert isinstance(project.investigations, Investigations)
+
+    def test_investigations_property_is_lazy(self, temp_project):
+        """Project.investigations is lazily instantiated."""
+        project = Project(temp_project)
+        assert project._investigations is None
+        _ = project.investigations
+        assert project._investigations is not None
+
+    def test_investigations_property_returns_same_instance(self, temp_project):
+        """Project.investigations returns the same instance on repeated calls."""
+        project = Project(temp_project)
+        investigations1 = project.investigations
+        investigations2 = project.investigations
+        assert investigations1 is investigations2
+
+    # Subsystems property tests
+    def test_subsystems_property_returns_subsystems_instance(self, temp_project):
+        """Project.subsystems returns a Subsystems instance."""
+        project = Project(temp_project)
+        assert isinstance(project.subsystems, Subsystems)
+
+    def test_subsystems_property_is_lazy(self, temp_project):
+        """Project.subsystems is lazily instantiated."""
+        project = Project(temp_project)
+        assert project._subsystems is None
+        _ = project.subsystems
+        assert project._subsystems is not None
+
+    def test_subsystems_property_returns_same_instance(self, temp_project):
+        """Project.subsystems returns the same instance on repeated calls."""
+        project = Project(temp_project)
+        subsystems1 = project.subsystems
+        subsystems2 = project.subsystems
+        assert subsystems1 is subsystems2
+
+    # Friction property tests
+    def test_friction_property_returns_friction_instance(self, temp_project):
+        """Project.friction returns a Friction instance."""
+        project = Project(temp_project)
+        assert isinstance(project.friction, Friction)
+
+    def test_friction_property_is_lazy(self, temp_project):
+        """Project.friction is lazily instantiated."""
+        project = Project(temp_project)
+        assert project._friction is None
+        _ = project.friction
+        assert project._friction is not None
+
+    def test_friction_property_returns_same_instance(self, temp_project):
+        """Project.friction returns the same instance on repeated calls."""
+        project = Project(temp_project)
+        friction1 = project.friction
+        friction2 = project.friction
+        assert friction1 is friction2
 
 
 class TestProjectInit:

@@ -10,15 +10,15 @@ code_paths:
 - tests/test_task_investigation_create.py
 - tests/test_task_subsystem_discover.py
 code_references:
-  - ref: src/task_utils.py#parse_projects_option
+  - ref: src/task/config.py#parse_projects_option
     implements: "Parse --projects CLI option into resolved project refs"
-  - ref: src/task_utils.py#create_task_chunk
+  - ref: src/task/artifact_ops.py#create_task_chunk
     implements: "Optional project filtering for task chunk creation"
-  - ref: src/task_utils.py#create_task_narrative
+  - ref: src/task/artifact_ops.py#create_task_narrative
     implements: "Optional project filtering for task narrative creation"
-  - ref: src/task_utils.py#create_task_investigation
+  - ref: src/task/artifact_ops.py#create_task_investigation
     implements: "Optional project filtering for task investigation creation"
-  - ref: src/task_utils.py#create_task_subsystem
+  - ref: src/task/artifact_ops.py#create_task_subsystem
     implements: "Optional project filtering for task subsystem creation"
   - ref: src/ve.py#create
     implements: "--projects CLI option for ve chunk create"

@@ -385,3 +385,99 @@ proposed_chunks:
         # Both chunks should have empty depends_on (default)
         assert frontmatter.proposed_chunks[0].depends_on == []
         assert frontmatter.proposed_chunks[1].depends_on == []
+
+
+class TestNarrativeCompact:
+    """Tests for Narratives.compact() domain method.
+
+    # Chunk: docs/chunks/narrative_compact_extract - Domain method for compact command
+    """
+
+    def test_compact_creates_narrative_directory(self, temp_project):
+        """compact() creates a narrative directory with OVERVIEW.md."""
+        narratives = Narratives(temp_project)
+
+        result_path = narratives.compact(
+            chunk_ids=["chunk_a", "chunk_b"],
+            name="consolidated",
+            description="Test consolidation",
+        )
+
+        assert result_path.exists()
+        assert result_path.is_dir()
+        assert result_path.name == "consolidated"
+        assert (result_path / "OVERVIEW.md").exists()
+
+    def test_compact_populates_proposed_chunks(self, temp_project):
+        """compact() populates proposed_chunks in frontmatter with entries for each chunk ID."""
+        narratives = Narratives(temp_project)
+
+        narratives.compact(
+            chunk_ids=["chunk_a", "chunk_b", "chunk_c"],
+            name="my_narrative",
+            description="Test consolidation",
+        )
+
+        frontmatter = narratives.parse_narrative_frontmatter("my_narrative")
+        assert frontmatter is not None
+        assert len(frontmatter.proposed_chunks) == 3
+
+        # Verify each chunk ID is referenced
+        chunk_dirs = [pc.chunk_directory for pc in frontmatter.proposed_chunks]
+        assert "chunk_a" in chunk_dirs
+        assert "chunk_b" in chunk_dirs
+        assert "chunk_c" in chunk_dirs
+
+        # Verify prompts contain "Consolidated from"
+        for pc in frontmatter.proposed_chunks:
+            assert "Consolidated from" in pc.prompt
+
+    def test_compact_populates_advances_trunk_goal(self, temp_project):
+        """compact() populates advances_trunk_goal with the provided description."""
+        narratives = Narratives(temp_project)
+
+        narratives.compact(
+            chunk_ids=["chunk_x", "chunk_y"],
+            name="desc_test",
+            description="My custom description",
+        )
+
+        frontmatter = narratives.parse_narrative_frontmatter("desc_test")
+        assert frontmatter is not None
+        assert frontmatter.advances_trunk_goal == "My custom description"
+
+    def test_compact_returns_created_path(self, temp_project):
+        """compact() returns the created narrative path."""
+        narratives = Narratives(temp_project)
+
+        result_path = narratives.compact(
+            chunk_ids=["a", "b"],
+            name="path_test",
+            description="Testing path return",
+        )
+
+        expected_path = temp_project / "docs" / "narratives" / "path_test"
+        assert result_path == expected_path
+
+    def test_compact_raises_on_duplicate_name(self, temp_project):
+        """compact() raises ValueError if the narrative name already exists."""
+        import pytest
+
+        narratives = Narratives(temp_project)
+
+        # First creation succeeds
+        narratives.compact(
+            chunk_ids=["chunk_1", "chunk_2"],
+            name="duplicate_name",
+            description="First narrative",
+        )
+
+        # Second creation with same name should fail
+        with pytest.raises(ValueError) as exc_info:
+            narratives.compact(
+                chunk_ids=["chunk_3", "chunk_4"],
+                name="duplicate_name",
+                description="Second narrative",
+            )
+
+        assert "duplicate_name" in str(exc_info.value)

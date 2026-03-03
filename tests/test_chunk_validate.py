@@ -676,6 +676,7 @@ code_references: []
 
 
 # Chunk: docs/chunks/chunk_validate - Test coverage for investigation reference validation
+# Chunk: docs/chunks/investigation_chunk_refs - Tests for investigation reference validation
 class TestInvestigationRefValidation:
     """Tests for investigation reference validation in 've chunk validate'."""
 
@@ -1338,6 +1339,7 @@ proposed_chunks: []
 
 
 # Subsystem: docs/subsystems/friction_tracking - Friction log management
+# Chunk: docs/chunks/friction_chunk_linking - Test class validating friction entry reference validation behavior
 class TestFrictionEntryRefValidation:
     """Tests for friction entry reference validation in 've chunk validate'."""
 
