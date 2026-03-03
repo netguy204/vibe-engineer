@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/integrity.py
-- src/cli/init_cmd.py
+- src/ve.py
 - tests/test_integrity.py
 code_references:
   - ref: src/integrity.py#IntegrityResult
@@ -17,8 +17,10 @@ code_references:
     implements: "Test helper for creating external chunk fixtures"
   - ref: tests/test_integrity.py#TestIntegrityValidatorExternalChunks
     implements: "Test coverage for external chunk validation scenarios"
+  - ref: src/ve.py#validate
+    implements: "External chunk skip reporting in verbose output"
   - ref: src/cli/init_cmd.py#validate
-    implements: "CLI validate command with external chunk skip reporting in verbose output"
+    implements: "CLI validate command after CLI modularization"
 narrative: null
 investigation: null
 subsystems:
