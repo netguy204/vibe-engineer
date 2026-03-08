@@ -29,6 +29,8 @@ chunks:
     relationship: implements
   - chunk_id: finalization_recovery
     relationship: implements
+  - chunk_id: merge_strategy_simplify
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module

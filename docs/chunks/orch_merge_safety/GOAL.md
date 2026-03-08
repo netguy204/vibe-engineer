@@ -4,7 +4,9 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/worktree.py
-- tests/test_orchestrator_worktree.py
+- src/orchestrator/merge.py
+- tests/test_orchestrator_worktree_persistence.py
+- tests/test_orchestrator_worktree_multirepo.py
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::_lock_worktree
     implements: "Lock worktrees to prevent premature pruning by git worktree prune"
@@ -20,23 +22,21 @@ code_references:
     implements: "Primary checkout-free merge using git merge-tree --write-tree (Git 2.38+)"
   - ref: src/orchestrator/merge.py#merge_via_index
     implements: "Fallback checkout-free merge for older Git versions"
-  - ref: src/orchestrator/merge.py#update_working_tree_if_on_branch
-    implements: "Update working tree after ref update when user is on target branch"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_to_base_single_repo
     implements: "Single-repo merge using checkout-free strategy"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_to_base_multi_repo
     implements: "Multi-repo merge using checkout-free strategy"
-  - ref: tests/test_orchestrator_worktree.py#TestBaseBranchPersistence
+  - ref: tests/test_orchestrator_worktree_persistence.py#TestBaseBranchPersistence
     implements: "Tests for base branch capture at worktree creation time"
-  - ref: tests/test_orchestrator_worktree.py#TestCheckoutFreeMerge
+  - ref: tests/test_orchestrator_worktree_persistence.py#TestCheckoutFreeMerge
     implements: "Tests for merging without git checkout in main repo"
-  - ref: tests/test_orchestrator_worktree.py#TestWorktreeLocking
+  - ref: tests/test_orchestrator_worktree_persistence.py#TestWorktreeLocking
     implements: "Tests for git worktree locking to prevent premature pruning"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoBaseBranchPersistence
+  - ref: tests/test_orchestrator_worktree_multirepo.py#TestMultiRepoBaseBranchPersistence
     implements: "Tests for base branch persistence in multi-repo mode"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoCheckoutFreeMerge
+  - ref: tests/test_orchestrator_worktree_multirepo.py#TestMultiRepoCheckoutFreeMerge
     implements: "Tests for checkout-free merge in multi-repo mode"
-  - ref: tests/test_orchestrator_worktree.py#TestMultiRepoWorktreeLocking
+  - ref: tests/test_orchestrator_worktree_multirepo.py#TestMultiRepoWorktreeLocking
     implements: "Tests for worktree locking in multi-repo mode"
 narrative: arch_consolidation
 investigation: null

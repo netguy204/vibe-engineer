@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: HISTORICAL
 ticket: null
 parent_chunk: null
 code_paths:
@@ -8,15 +8,14 @@ code_paths:
 - src/orchestrator/__init__.py
 code_references:
   - ref: src/orchestrator/merge.py#merge_without_checkout
-    implements: "Primary checkout-free merge using git merge-tree --write-tree (Git 2.38+)"
+    implements: "Primary checkout-free merge using branch-aware strategy (simplified from git merge-tree by merge_strategy_simplify)"
   - ref: src/orchestrator/merge.py#merge_via_index
     implements: "Fallback merge using temporary index file for older Git versions"
-  - ref: src/orchestrator/merge.py#update_working_tree_if_on_branch
-    implements: "Working tree sync after ref update via update-ref"
   - ref: src/orchestrator/merge.py#WorktreeError
     implements: "Exception class for worktree and merge-related errors"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_merge_without_checkout
     implements: "Delegation wrapper that calls orchestrator.merge.merge_without_checkout"
+superseded_by: merge_strategy_simplify
 narrative: arch_review_gaps
 investigation: null
 subsystems: []
