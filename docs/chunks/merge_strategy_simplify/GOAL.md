@@ -1,20 +1,22 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/merge.py
+- tests/test_orchestrator_merge.py
 code_references: []
 narrative: null
 investigation: null
 subsystems:
-  - subsystem_id: "orchestrator"
-    relationship: implements
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["rename_rebase_guard"]
+created_after:
+- rename_rebase_guard
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

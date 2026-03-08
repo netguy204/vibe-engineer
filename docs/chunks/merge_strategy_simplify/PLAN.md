@@ -8,170 +8,113 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk replaces the orchestrator's complex plumbing-based merge strategy with a simpler branch-aware approach that uses native `git merge` when appropriate.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Current problem:** The existing code uses `git merge-tree`/`commit-tree`/`update-ref` plumbing commands for all merges, then attempts to sync the working tree with `reset --mixed` + `checkout -- .`. This leaves the working tree in a broken state when the user is on the target branch: git log shows the merge, git diff is clean, but git status shows all merged files as modified.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**New strategy:**
+1. **User on target branch, clean tree** → Use `git merge {chunk_branch}`. Git handles index + working tree + ref atomically.
+2. **User on different branch** → Use the existing `update-ref` plumbing path (no working tree sync needed).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/merge_strategy_simplify/GOAL.md)
-with references to the files that you expect to touch.
--->
+The key insight is that `git merge` does exactly what we need when the user is on the target branch—it's atomic and correct. The plumbing approach only makes sense when we can't checkout the target branch.
+
+**Testing approach:** Following TESTING_PHILOSOPHY.md, we'll write tests that verify semantic behavior:
+- After merge while on target branch, working tree matches the merged state
+- After merge while on different branch, target ref is updated but working tree unchanged
+- Conflicts during merge trigger abort and route to REBASE phase
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS the orchestrator subsystem by modifying merge strategy. The subsystem is DOCUMENTED status, so no deviations will be addressed beyond this chunk's scope.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add helper function to detect current branch state
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add two helper functions to `src/orchestrator/merge.py`:
+- `is_on_branch(branch: str, repo_dir: Path) -> bool` - Returns True if the current HEAD is on the given branch
+- `has_clean_working_tree(repo_dir: Path) -> bool` - Returns True if working tree is clean (no staged or unstaged changes to tracked files)
 
-Example:
+Location: `src/orchestrator/merge.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add native merge function
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add `merge_native(source_branch: str, target_branch: str, repo_dir: Path) -> None`:
+- Runs `git merge {source_branch}` with no-edit flag
+- On success, returns normally
+- On conflict (non-zero exit with CONFLICT in output), runs `git merge --abort` and raises `WorktreeError` with merge conflict message
 
-Location: src/segment/format.rs
+This function assumes the caller has verified we're on the target branch.
 
-### Step 2: Implement header serialization
+Location: `src/orchestrator/merge.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Refactor merge_without_checkout to use branch-aware strategy
 
-### Step 3: ...
+Modify `merge_without_checkout()` to:
+1. Check if source is already an ancestor of target (already merged) - no-op
+2. Check if user is on target branch AND working tree is clean:
+   - If yes: call `merge_native()` instead of plumbing approach
+   - If no (on different branch OR dirty tree): use existing plumbing approach
+3. Delete the call to `update_working_tree_if_on_branch()` from the plumbing paths
 
----
+The fast-forward case should also use `merge_native()` when on target branch (git merge handles fast-forward correctly).
 
-**BACKREFERENCE COMMENTS**
+Location: `src/orchestrator/merge.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: Delete update_working_tree_if_on_branch function
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Remove the `update_working_tree_if_on_branch()` function entirely. It is no longer needed because:
+- When on target branch with clean tree, `git merge` handles working tree updates atomically
+- When on different branch, no working tree update is needed
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Also remove it from any call sites in `merge_via_index()`.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Location: `src/orchestrator/merge.py`
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 5: Write tests for new merge strategy
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add/update tests in `tests/test_orchestrator_merge.py`:
 
-## Dependencies
+**Test 1: `test_merge_on_target_branch_clean_tree_uses_native_merge`**
+- Given: user on target branch, clean working tree
+- When: merge_without_checkout called
+- Then: working tree, index, and ref all consistent; new files appear in working tree
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**Test 2: `test_merge_on_target_branch_conflict_aborts_and_raises`**
+- Given: user on target branch, clean tree, conflicting changes
+- When: merge_without_checkout called
+- Then: WorktreeError raised with "Merge conflict", working tree is clean (merge aborted)
 
-If there are no dependencies, delete this section.
--->
+**Test 3: `test_merge_on_different_branch_updates_ref_only`**
+- Given: user on different branch than target
+- When: merge_without_checkout called
+- Then: target branch ref updated, user's working tree unchanged
+
+**Test 4: `test_merge_on_target_branch_dirty_tree_uses_plumbing`**
+- Given: user on target branch, uncommitted changes
+- When: merge_without_checkout called
+- Then: ref updated via plumbing, uncommitted changes preserved
+
+Location: `tests/test_orchestrator_merge.py`
+
+### Step 6: Update backreferences
+
+Update chunk backreference comments in `src/orchestrator/merge.py` to reference this chunk for the new merge strategy.
+
+### Step 7: Run full test suite and fix any regressions
+
+Run `uv run pytest tests/` to ensure all existing tests pass. Fix any regressions introduced by the changes.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Dirty working tree handling:** When the user is on the target branch but has uncommitted changes, we fall back to the plumbing approach. This preserves their changes but leaves the working tree behind the branch tip (same as current behavior with `merge_safety` chunk's early return). This is acceptable as documented behavior.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Git version compatibility:** `git merge --no-edit` and `git merge --abort` are widely supported. No version concerns expected.
+
+- **Multi-repo case:** The same strategy applies per-repo in `_merge_to_base_multi_repo`. Each repo's merge uses the same logic independently.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

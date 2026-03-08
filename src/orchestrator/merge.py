@@ -1,18 +1,22 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/orch_merge_safety - Checkout-free merge strategies (original implementation)
 # Chunk: docs/chunks/worktree_merge_extract - Extracted merge logic from worktree.py
-"""Checkout-free merge strategies for orchestrator worktrees.
+# Chunk: docs/chunks/merge_strategy_simplify - Simplified to branch-aware merge strategy
+"""Merge strategies for orchestrator worktrees.
 
-This module provides merge strategies that don't require checking out
-the target branch, preserving the user's working directory state.
-The merge operations are used by WorktreeManager to merge completed
-chunk branches back to their base branches without disrupting the
-user's checkout or uncommitted changes.
+This module provides merge strategies for merging completed chunk branches
+back to their base branches. The primary function, merge_without_checkout,
+uses a branch-aware strategy:
+
+1. If user is on target branch with clean working tree: use native git merge
+   (atomic update of index, working tree, and ref)
+2. Otherwise: use git plumbing commands to update the ref only, without
+   touching the user's working tree
 
 Merge strategies:
-- merge_without_checkout: Primary strategy using git merge-tree --write-tree (Git 2.38+)
-- merge_via_index: Fallback strategy using a temporary index file for older Git
-- update_working_tree_if_on_branch: Syncs working tree after ref update
+- merge_without_checkout: Primary entry point with branch-aware strategy
+- merge_native: Uses native git merge (for on-branch, clean-tree case)
+- merge_via_index: Fallback plumbing strategy for older Git
 """
 
 import logging
@@ -28,6 +32,56 @@ class WorktreeError(Exception):
     """Exception raised for worktree and merge-related errors."""
 
     pass
+
+
+# Chunk: docs/chunks/merge_strategy_simplify - Helper to detect current branch
+def is_on_branch(branch: str, repo_dir: Path) -> bool:
+    """Check if the current HEAD is on the given branch.
+
+    Args:
+        branch: Branch name to check
+        repo_dir: Repository directory
+
+    Returns:
+        True if the current HEAD is on the given branch
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    return result.stdout.strip() == branch
+
+
+# Chunk: docs/chunks/merge_strategy_simplify - Helper to detect clean working tree
+def has_clean_working_tree(repo_dir: Path) -> bool:
+    """Check if the working tree is clean (no staged or unstaged changes to tracked files).
+
+    Untracked files are ignored.
+
+    Args:
+        repo_dir: Repository directory
+
+    Returns:
+        True if working tree is clean
+    """
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    # Filter out untracked files (lines starting with "??")
+    changes = [
+        line for line in result.stdout.strip().split("\n")
+        if line and not line.startswith("??")
+    ]
+    return len(changes) == 0
 
 
 # Chunk: docs/chunks/orch_merge_rebase_retry - Helper to detect merge conflict errors
@@ -48,23 +102,62 @@ def is_merge_conflict_error(error: "WorktreeError | str") -> bool:
     return "Merge conflict" in error_str or "CONFLICT" in error_str
 
 
+# Chunk: docs/chunks/merge_strategy_simplify - Native git merge for clean on-branch merges
+def merge_native(source_branch: str, target_branch: str, repo_dir: Path) -> None:
+    """Perform a merge using native git merge command.
+
+    This function assumes the caller has verified we're on the target branch
+    with a clean working tree. It uses `git merge` which handles index,
+    working tree, and ref updates atomically.
+
+    Args:
+        source_branch: Branch to merge from (e.g., orch/chunk_name)
+        target_branch: Branch to merge into (e.g., main) - must be current branch
+        repo_dir: Repository directory
+
+    Raises:
+        WorktreeError: If merge fails (e.g., conflicts). On conflict, the merge
+                      is aborted before raising.
+    """
+    result = subprocess.run(
+        ["git", "merge", "--no-edit", source_branch],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        # Check if it's a conflict
+        if "CONFLICT" in result.stdout or "CONFLICT" in result.stderr:
+            # Abort the merge to leave working tree clean
+            subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=repo_dir,
+                capture_output=True,
+            )
+            raise WorktreeError(
+                f"Merge conflict between {source_branch} and {target_branch}"
+            )
+        raise WorktreeError(
+            f"Failed to merge {source_branch} into {target_branch}: {result.stderr}"
+        )
+
+
 # Chunk: docs/chunks/orch_merge_safety - Merge safety without git checkout
 # Chunk: docs/chunks/worktree_merge_extract - Extracted from WorktreeManager._merge_without_checkout
+# Chunk: docs/chunks/merge_strategy_simplify - Branch-aware merge strategy
 def merge_without_checkout(
     source_branch: str, target_branch: str, repo_dir: Path
 ) -> None:
-    """Perform a merge without checking out the target branch.
+    """Perform a merge, using native git merge when possible.
 
-    This preserves the user's current checkout and any uncommitted changes.
+    This function uses a branch-aware strategy:
+    1. If user is on target branch with clean tree: use native git merge
+    2. Otherwise: use plumbing commands (update-ref) without touching working tree
 
     Strategy:
     1. Check if source is an ancestor of target (already merged) - no-op
-    2. Check if target is an ancestor of source (fast-forward possible)
-       - Use git update-ref to fast-forward
-    3. Otherwise, create a merge commit using git plumbing commands:
-       - Use git merge-tree to compute the merge
-       - If clean, create merge commit with git commit-tree
-       - Update ref with git update-ref
+    2. If on target branch with clean working tree: use git merge (atomic)
+    3. Otherwise, use plumbing commands to update the ref without checkout
 
     Args:
         source_branch: Branch to merge from (e.g., orch/chunk_name)
@@ -105,6 +198,15 @@ def merge_without_checkout(
         # Already merged, nothing to do
         return
 
+    # Branch-aware strategy: if on target branch with clean tree, use native merge
+    # This handles both fast-forward and real merges atomically
+    if is_on_branch(target_branch, repo_dir) and has_clean_working_tree(repo_dir):
+        merge_native(source_branch, target_branch, repo_dir)
+        return
+
+    # Not on target branch (or dirty tree): use plumbing approach
+    # No working tree update needed - user will see changes when they checkout target branch
+
     # Check if target is an ancestor of source (fast-forward possible)
     result = subprocess.run(
         ["git", "merge-base", "--is-ancestor", target_sha, source_sha],
@@ -113,7 +215,6 @@ def merge_without_checkout(
     )
     if result.returncode == 0:
         # Fast-forward: update the target branch ref to source
-        # Use update-ref instead of branch -f to handle checked-out branches
         result = subprocess.run(
             ["git", "update-ref", f"refs/heads/{target_branch}", source_sha],
             cwd=repo_dir,
@@ -124,8 +225,6 @@ def merge_without_checkout(
             raise WorktreeError(
                 f"Failed to fast-forward {target_branch} to {source_branch}: {result.stderr}"
             )
-        # If the working tree is on the target branch, update it
-        update_working_tree_if_on_branch(target_branch, repo_dir)
         return
 
     # Need a real merge - use git merge-tree (Git 2.38+) for clean merge detection
@@ -138,7 +237,6 @@ def merge_without_checkout(
     )
     if result.returncode != 0:
         raise WorktreeError(f"Failed to find merge base: {result.stderr}")
-    merge_base = result.stdout.strip()
 
     # Try git merge-tree --write-tree (Git 2.38+)
     result = subprocess.run(
@@ -199,8 +297,6 @@ def merge_without_checkout(
         raise WorktreeError(
             f"Failed to update {target_branch} ref: {result.stderr}"
         )
-    # If the working tree is on the target branch, update it
-    update_working_tree_if_on_branch(target_branch, repo_dir)
 
 
 # Chunk: docs/chunks/orch_merge_safety - Fallback merge for older Git
@@ -315,8 +411,8 @@ def merge_via_index(
             raise WorktreeError(
                 f"Failed to update {target_branch} ref: {result.stderr}"
             )
-        # If the working tree is on the target branch, update it
-        update_working_tree_if_on_branch(target_branch, repo_dir)
+        # No working tree update needed - merge_without_checkout routes through
+        # merge_native when on target branch with clean tree
 
     finally:
         # Clean up temp index
@@ -324,74 +420,3 @@ def merge_via_index(
             Path(tmp_index).unlink()
 
 
-# Chunk: docs/chunks/orch_merge_safety - Update working tree after ref update
-# Chunk: docs/chunks/worktree_merge_extract - Extracted from WorktreeManager._update_working_tree_if_on_branch
-# Chunk: docs/chunks/merge_safety - Dirty working tree detection and early return
-def update_working_tree_if_on_branch(
-    target_branch: str, repo_dir: Path
-) -> None:
-    """Update the working tree if it's currently on the target branch.
-
-    After updating a branch ref with update-ref, the working tree is out
-    of sync if the user is on that branch. This method checks if the user
-    is on the target branch and updates their working tree to match.
-
-    If the working tree has uncommitted changes (staged or unstaged), this
-    function skips the update and logs a warning. The user must manually
-    reconcile their changes with the updated branch using git merge or rebase.
-
-    Args:
-        target_branch: Branch that was just updated
-        repo_dir: Repository directory
-    """
-    # Check if working tree is on the target branch
-    result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return  # Can't determine current branch, skip update
-
-    current_branch = result.stdout.strip()
-    if current_branch != target_branch:
-        return  # Not on target branch, no update needed
-
-    # Check for uncommitted changes (staged or unstaged) before modifying working tree
-    # git status --porcelain outputs one line per changed file, empty if clean
-    # We only check tracked file modifications (exclude untracked files with "??")
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        # Filter out untracked files (lines starting with "??")
-        changes = [
-            line for line in result.stdout.strip().split("\n")
-            if line and not line.startswith("??")
-        ]
-        if changes:
-            logger.warning(
-                "Working tree has uncommitted changes; skipping update. "
-                "Your working tree is behind branch '%s'. "
-                "Manually run 'git merge' or 'git rebase' to reconcile.",
-                target_branch,
-            )
-            return  # Don't destroy uncommitted changes
-
-    # Reset the working tree to match the new HEAD
-    # Use --mixed to update index but not touch uncommitted changes
-    subprocess.run(
-        ["git", "reset", "--mixed", "HEAD"],
-        cwd=repo_dir,
-        capture_output=True,
-    )
-    # Checkout to update the working tree files
-    subprocess.run(
-        ["git", "checkout", "--", "."],
-        cwd=repo_dir,
-        capture_output=True,
-    )
