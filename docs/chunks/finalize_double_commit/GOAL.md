@@ -1,10 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/worktree.py
+- tests/test_orchestrator_worktree_operations.py
+- tests/test_orchestrator_worktree_core.py
+- tests/test_orchestrator_worktree_multirepo.py
+- tests/test_orchestrator_scheduler.py
 code_references: []
 narrative: null
 investigation: null
@@ -14,9 +18,9 @@ subsystems:
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["merge_strategy_simplify"]
+created_after:
+- merge_strategy_simplify
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

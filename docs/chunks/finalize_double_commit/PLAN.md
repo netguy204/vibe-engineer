@@ -8,153 +8,139 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a semantic bug fix targeting the double-commit race in the orchestrator's finalization path. The fix has three prongs:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Eliminate the double-commit**: The scheduler's `_finalize_completed_work_unit()` currently calls `commit_changes()` (lines 1042–1053) and then `finalize_work_unit()` calls it again (lines 1310–1311). We make `finalize_work_unit()` the single owner of the commit→remove→merge sequence. The scheduler's pre-commit block is narrowed to only fire for `retain_worktree` work units (which skip `finalize_work_unit()` entirely).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Harden `commit_changes()` against empty-stderr exit-code-1**: `git commit` can return exit code 1 with empty stderr in edge cases (e.g., submodule entries make `git status --porcelain` non-empty but `git commit` finds nothing staged). The current code only checks for "nothing to commit" in stdout/stderr text. We add a fallback: exit code 1 with empty stderr is treated as a no-op (returns `False`), not an error.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/finalize_double_commit/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Submodule-resilient worktree removal**: `git worktree remove` fails on worktrees with submodules ("working trees containing submodules cannot be moved or removed"). The existing `_remove_worktree_from_repo` already has a fallback to `shutil.rmtree`, but we should ensure it also runs `git worktree prune` after the rmtree to clean up stale worktree metadata—which it currently does only on the intermediate retry, not the final fallback.
+
+Tests follow TDD per docs/trunk/TESTING_PHILOSOPHY.md. We write failing tests first for each behavioral change, then implement the fix.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS bug fixes in the orchestrator's worktree finalization and scheduling paths. The orchestrator subsystem's invariant that "worktrees are isolated execution environments" is preserved—this fix ensures cleanup succeeds even when submodules are present. No deviations from the subsystem's patterns are introduced.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `commit_changes()` empty-stderr hardening
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a test to `tests/test_orchestrator_worktree_operations.py` in the `TestCommitChanges` class:
 
-Example:
+- **`test_commit_changes_empty_stderr_exit_code_1_returns_false`**: Set up a worktree where `git commit` returns exit code 1 with empty stderr (simulate by committing in a clean tree where `git add -A` stages nothing new). The method should return `False` instead of raising `WorktreeError`.
 
-### Step 1: Define the SegmentHeader struct
+The existing test `test_commit_changes_nothing_to_commit` covers the "nothing to commit" text case. This new test covers the edge case where the exit code is 1 but stderr is empty (no "nothing to commit" message).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_worktree_operations.py`
 
-Location: src/segment/format.rs
+### Step 2: Implement `commit_changes()` empty-stderr hardening
 
-### Step 2: Implement header serialization
+In `src/orchestrator/worktree.py`, modify `commit_changes()` (line 1193–1196). After the existing check for "nothing to commit" in stdout/stderr, add: if `result.returncode == 1` and `result.stderr.strip() == ""`, return `False`. This treats exit-code-1-with-empty-stderr as a no-op rather than an error.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Add a backreference comment:
+```python
+# Chunk: docs/chunks/finalize_double_commit - Harden against empty-stderr exit-code-1
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/orchestrator/worktree.py#WorktreeManager::commit_changes`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Write failing tests for double-commit elimination
+
+Add tests to `tests/test_orchestrator_worktree_multirepo.py` in the `TestFinalizeWorkUnit` class or a nearby scheduler test file:
+
+- **`test_finalize_work_unit_with_clean_tree_succeeds`**: Create a worktree, commit all changes manually (leaving the tree clean), then call `finalize_work_unit()`. It should succeed without error — `commit_changes()` should gracefully no-op and the merge should proceed.
+
+Add a scheduler-level test (in `tests/test_orchestrator_scheduler.py` or appropriate file):
+
+- **`test_finalize_completed_does_not_commit_before_finalize`**: Mock `worktree_manager.commit_changes` and `worktree_manager.finalize_work_unit`. After `_finalize_completed_work_unit()` runs with `retain_worktree=False`, assert that `commit_changes` was NOT called directly by the scheduler (only `finalize_work_unit` is called, which internally handles commits).
+
+- **`test_finalize_completed_retain_worktree_commits_directly`**: With `retain_worktree=True`, assert the scheduler DOES call `commit_changes` directly (since `finalize_work_unit` is skipped).
+
+Location: `tests/test_orchestrator_worktree_multirepo.py`, `tests/test_orchestrator_scheduler.py`
+
+### Step 4: Eliminate the double-commit in the scheduler
+
+In `src/orchestrator/scheduler.py`, modify `_finalize_completed_work_unit()`:
+
+**Before** (lines 1040–1053): The scheduler unconditionally checks for uncommitted changes and commits them, then later calls `finalize_work_unit()`.
+
+**After**: Move the commit block (lines 1042–1053) inside the `if work_unit.retain_worktree:` branch. For the normal (non-retain) path, `finalize_work_unit()` already handles commit→remove→merge as a single sequence. The displaced-chunk restoration (lines 1056–1061) stays before both branches since it applies regardless.
+
+The restructured logic:
+```python
+# Restore displaced chunk (unchanged)
+if work_unit.displaced_chunk:
+    restore_displaced_chunk(...)
+
+if work_unit.retain_worktree:
+    # Retained worktrees skip finalize_work_unit, so commit here
+    if self.worktree_manager.has_uncommitted_changes(chunk):
+        try:
+            committed = self.worktree_manager.commit_changes(chunk)
+            ...
+        except WorktreeError as e:
+            ...
+            return
+    logger.info(f"Retaining worktree for {chunk} ...")
+else:
+    # finalize_work_unit owns the full commit→remove→merge sequence
+    try:
+        self.worktree_manager.finalize_work_unit(chunk)
+    except WorktreeError as e:
+        ...
+```
+
+Update the backreference comment on the commit block to reference this chunk:
+```python
+# Chunk: docs/chunks/finalize_double_commit - Commit only for retained worktrees
+```
+
+Location: `src/orchestrator/scheduler.py#Scheduler::_finalize_completed_work_unit`
+
+### Step 5: Write failing tests for submodule-resilient worktree removal
+
+Add a test to `tests/test_orchestrator_worktree_core.py`:
+
+- **`test_remove_worktree_submodule_fallback`**: Create a worktree, add a `.gitmodules` file (or mock the subprocess to simulate the submodule error), then call `remove_worktree()`. Assert the worktree directory is removed and `git worktree prune` is called.
+
+Location: `tests/test_orchestrator_worktree_core.py`
+
+### Step 6: Harden `_remove_worktree_from_repo` for submodule worktrees
+
+In `src/orchestrator/worktree.py`, modify `_remove_worktree_from_repo()` (lines 743–778). The current final fallback at line 777–778 does `shutil.rmtree` but does not follow up with `git worktree prune`. Add a `git worktree prune` call after the `shutil.rmtree` fallback to ensure git's worktree metadata is cleaned up.
+
+The flow becomes:
+1. Unlock worktree
+2. Try `git worktree remove --force`
+3. On failure: prune, retry `git worktree remove --force`
+4. On second failure: `shutil.rmtree` + `git worktree prune` (the prune after rmtree is the new addition)
+
+Add a backreference comment:
+```python
+# Chunk: docs/chunks/finalize_double_commit - Prune after rmtree fallback for submodule worktrees
+```
+
+Location: `src/orchestrator/worktree.py#WorktreeManager::_remove_worktree_from_repo`
+
+### Step 7: Run full test suite and verify
+
+Run `uv run pytest tests/` to verify:
+- All existing tests continue to pass
+- All new tests pass
+- The double-commit path is eliminated
+- `commit_changes()` handles the empty-stderr edge case
+- Worktree removal handles submodule cases
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. This chunk modifies existing code in `src/orchestrator/scheduler.py` and `src/orchestrator/worktree.py`. The `merge_strategy_simplify` chunk (listed in `created_after`) is already ACTIVE.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Displaced chunk restoration ordering**: The displaced chunk restore currently sits between the commit block and the retain/finalize branch. Moving the commit block into the retain branch means the restore still runs before both paths, which is correct. But verify that `restore_displaced_chunk` doesn't create new uncommitted changes that `finalize_work_unit` needs to capture.
+- **Test isolation for scheduler tests**: The scheduler tests may need mocking of `worktree_manager` methods. Check how existing scheduler tests handle this (likely via `unittest.mock` or fixture-injected fakes) and follow the same pattern.
+- **Submodule test realism**: Real submodule scenarios are hard to reproduce in test fixtures. The submodule removal test may need to mock subprocess output rather than set up actual git submodules, to keep tests fast and reliable.
 
 ## Deviations
 

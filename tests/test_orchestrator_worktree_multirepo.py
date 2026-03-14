@@ -357,6 +357,36 @@ class TestFinalizeWorkUnit:
         assert not worktree_path.exists()
         assert not manager.worktree_exists("test_chunk")
 
+    # Chunk: docs/chunks/finalize_double_commit - Test clean tree finalization
+    def test_finalize_work_unit_with_clean_tree_succeeds(self, git_repo):
+        """finalize_work_unit succeeds when tree is already clean (all changes committed).
+
+        This verifies that commit_changes() gracefully no-ops and the merge proceeds,
+        preventing the double-commit bug where a second commit attempt would fail.
+        """
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Make changes and commit them manually (simulating agent committing)
+        (worktree_path / "new_file.txt").write_text("agent committed content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Agent commit"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+        )
+
+        # Tree is now clean - finalize_work_unit should succeed without error
+        manager.finalize_work_unit("test_chunk")
+
+        # Worktree should be removed
+        assert not worktree_path.exists()
+
+        # Changes should be merged to base
+        assert (git_repo / "new_file.txt").exists()
+        assert (git_repo / "new_file.txt").read_text() == "agent committed content"
+
     def test_finalize_work_unit_raises_on_merge_conflict(self, git_repo):
         """finalize_work_unit raises WorktreeError on merge conflict."""
         manager = WorktreeManager(git_repo)

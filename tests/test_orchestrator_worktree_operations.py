@@ -106,6 +106,35 @@ class TestCommitChanges:
         assert "new_file.txt" in show_result.stdout
         assert "README.md" in show_result.stdout
 
+    # Chunk: docs/chunks/finalize_double_commit - Test empty-stderr exit-code-1 hardening
+    def test_commit_changes_empty_stderr_exit_code_1_returns_false(self, git_repo):
+        """Returns False when git commit exits 1 with empty stderr.
+
+        This covers edge cases like submodule entries making git status --porcelain
+        non-empty but git commit finding nothing to stage.
+        """
+        from unittest.mock import patch, MagicMock
+
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("test_chunk")
+
+        # Mock subprocess.run to simulate: git add succeeds, git commit exits 1 with empty stderr
+        original_run = subprocess.run
+
+        def mock_run(cmd, **kwargs):
+            if cmd[:2] == ["git", "commit"]:
+                result = MagicMock()
+                result.returncode = 1
+                result.stdout = ""
+                result.stderr = ""
+                return result
+            return original_run(cmd, **kwargs)
+
+        with patch("orchestrator.worktree.subprocess.run", side_effect=mock_run):
+            result = manager.commit_changes("test_chunk")
+
+        assert result is False
+
     def test_commit_changes_nonexistent_worktree_raises(self, git_repo):
         """Raises WorktreeError for non-existent worktree."""
         manager = WorktreeManager(git_repo)

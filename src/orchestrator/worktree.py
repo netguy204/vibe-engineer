@@ -774,8 +774,15 @@ class WorktreeManager:
             )
 
             # If still failing, just remove the directory
+            # Chunk: docs/chunks/finalize_double_commit - Prune after rmtree fallback for submodule worktrees
             if result.returncode != 0 and worktree_path.exists():
                 shutil.rmtree(worktree_path, ignore_errors=True)
+                # Prune stale worktree metadata after manual removal
+                subprocess.run(
+                    ["git", "worktree", "prune"],
+                    cwd=repo_path,
+                    capture_output=True,
+                )
 
     def has_uncommitted_changes(self, chunk: str) -> bool:
         """Check if a worktree has uncommitted changes.
@@ -1192,6 +1199,12 @@ class WorktreeManager:
         # Return False if nothing to commit (exit code 1 with "nothing to commit")
         if result.returncode != 0:
             if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                return False
+            # Chunk: docs/chunks/finalize_double_commit - Harden against empty-stderr exit-code-1
+            # git commit can return exit code 1 with empty stderr in edge cases
+            # (e.g., submodule entries make git status --porcelain non-empty but
+            # git commit finds nothing staged). Treat this as a no-op.
+            if result.returncode == 1 and result.stderr.strip() == "":
                 return False
             raise WorktreeError(f"git commit failed: {result.stderr}")
 

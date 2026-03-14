@@ -28,10 +28,15 @@ class TestMechanicalCommit:
     """Tests for mechanical commit in scheduler."""
 
     @pytest.mark.asyncio
-    async def test_mechanical_commit_called_when_uncommitted_changes(
+    async def test_mechanical_commit_delegated_to_finalize_work_unit(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """Mechanical commit is called when uncommitted changes are detected."""
+        """Commit is delegated to finalize_work_unit, not called directly by scheduler.
+
+        Chunk: docs/chunks/finalize_double_commit - The scheduler no longer calls
+        commit_changes directly for non-retained worktrees. Instead,
+        finalize_work_unit owns the full commit→remove→merge sequence.
+        """
         # Set up chunk with ACTIVE status
         chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
         chunk_dir.mkdir(parents=True)
@@ -61,8 +66,10 @@ status: ACTIVE
 
         await scheduler._advance_phase(work_unit)
 
-        # Should have called commit_changes
-        mock_worktree_manager.commit_changes.assert_called_once_with("test_chunk")
+        # commit_changes should NOT be called directly by the scheduler
+        mock_worktree_manager.commit_changes.assert_not_called()
+        # finalize_work_unit should be called (it handles commit internally)
+        mock_worktree_manager.finalize_work_unit.assert_called_once_with("test_chunk")
 
     @pytest.mark.asyncio
     async def test_mechanical_commit_not_called_when_no_changes(
@@ -100,10 +107,14 @@ status: ACTIVE
         mock_worktree_manager.commit_changes.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_mechanical_commit_error_marks_needs_attention(
+    async def test_finalization_error_marks_needs_attention(
         self, scheduler, state_store, mock_worktree_manager, tmp_path
     ):
-        """Commit error marks work unit as NEEDS_ATTENTION."""
+        """Finalization error (including commit errors) marks work unit as NEEDS_ATTENTION.
+
+        Chunk: docs/chunks/finalize_double_commit - Commit errors now surface through
+        finalize_work_unit, not through direct scheduler commit_changes calls.
+        """
         from orchestrator.worktree import WorktreeError
 
         # Set up chunk with ACTIVE status
@@ -119,8 +130,7 @@ status: ACTIVE
 """
         )
         mock_worktree_manager.get_worktree_path.return_value = tmp_path
-        mock_worktree_manager.has_uncommitted_changes.return_value = True
-        mock_worktree_manager.commit_changes.side_effect = WorktreeError("git commit failed")
+        mock_worktree_manager.finalize_work_unit.side_effect = WorktreeError("git commit failed")
 
         now = datetime.now(timezone.utc)
         work_unit = WorkUnit(
@@ -137,7 +147,7 @@ status: ACTIVE
         # Should be marked NEEDS_ATTENTION
         updated = state_store.get_work_unit("test_chunk")
         assert updated.status == WorkUnitStatus.NEEDS_ATTENTION
-        assert "Commit error" in updated.attention_reason
+        assert "Finalization failed" in updated.attention_reason
 
     @pytest.mark.asyncio
     async def test_mechanical_commit_proceeds_after_nothing_to_commit(

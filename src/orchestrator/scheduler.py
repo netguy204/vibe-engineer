@@ -1037,21 +1037,6 @@ class Scheduler:
         # Status is post-IMPLEMENTING - proceed with commit/merge
         logger.info(f"Chunk {chunk} verified completed, proceeding to commit/merge")
 
-        # Check for uncommitted changes that need to be committed
-        # Chunk: docs/chunks/orch_mechanical_commit - Mechanical commit after COMPLETE phase
-        if self.worktree_manager.has_uncommitted_changes(chunk):
-            logger.info(f"Uncommitted changes detected for {chunk}, committing")
-            try:
-                committed = self.worktree_manager.commit_changes(chunk)
-                if committed:
-                    logger.info(f"Committed changes for {chunk}")
-                else:
-                    logger.info(f"No changes to commit for {chunk}")
-            except WorktreeError as e:
-                logger.error(f"Error committing changes for {chunk}: {e}")
-                await self._mark_needs_attention(work_unit, f"Commit error: {e}")
-                return
-
         # Restore any displaced chunk to IMPLEMENTING before the merge
         if work_unit.displaced_chunk:
             logger.info(
@@ -1065,6 +1050,20 @@ class Scheduler:
         # The worktree stays on its branch for debugging/inspection.
         # Use `ve orch prune` to clean up retained worktrees later.
         if work_unit.retain_worktree:
+            # Chunk: docs/chunks/finalize_double_commit - Commit only for retained worktrees
+            # Retained worktrees skip finalize_work_unit, so commit here directly
+            if self.worktree_manager.has_uncommitted_changes(chunk):
+                logger.info(f"Uncommitted changes detected for retained worktree {chunk}, committing")
+                try:
+                    committed = self.worktree_manager.commit_changes(chunk)
+                    if committed:
+                        logger.info(f"Committed changes for {chunk}")
+                    else:
+                        logger.info(f"No changes to commit for {chunk}")
+                except WorktreeError as e:
+                    logger.error(f"Error committing changes for {chunk}: {e}")
+                    await self._mark_needs_attention(work_unit, f"Commit error: {e}")
+                    return
             logger.info(
                 f"Retaining worktree for {chunk} at {worktree_path} "
                 f"(branch: {self.worktree_manager.get_branch_name(chunk)})"

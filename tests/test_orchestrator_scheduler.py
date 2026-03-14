@@ -24,7 +24,7 @@ Fixtures are defined in conftest.py:
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from orchestrator.retry import is_retryable_api_error
 from orchestrator.models import (
@@ -1391,3 +1391,86 @@ class TestFinalizationRecovery:
 
         # Check that appropriate warnings were logged
         assert any("incomplete finalization" in record.message.lower() for record in caplog.records)
+
+
+# Chunk: docs/chunks/finalize_double_commit - Tests for double-commit elimination
+class TestFinalizeDoubleCommitElimination:
+    """Tests that the scheduler does not double-commit during finalization.
+
+    The scheduler should only call commit_changes directly for retained worktrees.
+    For normal (non-retained) worktrees, finalize_work_unit owns the full
+    commit→remove→merge sequence.
+    """
+
+    @pytest.mark.asyncio
+    async def test_finalize_completed_does_not_commit_before_finalize(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Scheduler does NOT call commit_changes for non-retained worktrees.
+
+        finalize_work_unit() handles commit internally, so the scheduler
+        should not pre-commit.
+        """
+        now = datetime.now(timezone.utc)
+
+        work_unit = WorkUnit(
+            chunk="no_double_commit",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+            retain_worktree=False,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Mock verification to return COMPLETED (post-IMPLEMENTING status)
+        from orchestrator.activation import VerificationStatus, VerificationResult
+        mock_verification = VerificationResult(status=VerificationStatus.COMPLETED)
+
+        with patch("orchestrator.scheduler.verify_chunk_active_status", return_value=mock_verification), \
+             patch("orchestrator.scheduler.broadcast_work_unit_update", new_callable=AsyncMock), \
+             patch("orchestrator.scheduler.broadcast_attention_update", new_callable=AsyncMock):
+            await scheduler._finalize_completed_work_unit(work_unit)
+
+        # commit_changes should NOT have been called by the scheduler
+        mock_worktree_manager.commit_changes.assert_not_called()
+        # finalize_work_unit SHOULD have been called
+        mock_worktree_manager.finalize_work_unit.assert_called_once_with("no_double_commit")
+
+    @pytest.mark.asyncio
+    async def test_finalize_completed_retain_worktree_commits_directly(
+        self, scheduler, state_store, mock_worktree_manager
+    ):
+        """Scheduler DOES call commit_changes for retained worktrees.
+
+        When retain_worktree=True, finalize_work_unit is skipped, so the
+        scheduler must commit directly.
+        """
+        now = datetime.now(timezone.utc)
+
+        work_unit = WorkUnit(
+            chunk="retained_commit",
+            phase=WorkUnitPhase.COMPLETE,
+            status=WorkUnitStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+            retain_worktree=True,
+        )
+        state_store.create_work_unit(work_unit)
+
+        # Mock verification to return COMPLETED
+        from orchestrator.activation import VerificationStatus, VerificationResult
+        mock_verification = VerificationResult(status=VerificationStatus.COMPLETED)
+
+        mock_worktree_manager.has_uncommitted_changes.return_value = True
+        mock_worktree_manager.commit_changes.return_value = True
+
+        with patch("orchestrator.scheduler.verify_chunk_active_status", return_value=mock_verification), \
+             patch("orchestrator.scheduler.broadcast_work_unit_update", new_callable=AsyncMock), \
+             patch("orchestrator.scheduler.broadcast_attention_update", new_callable=AsyncMock):
+            await scheduler._finalize_completed_work_unit(work_unit)
+
+        # commit_changes SHOULD have been called by the scheduler
+        mock_worktree_manager.commit_changes.assert_called_once_with("retained_commit")
+        # finalize_work_unit should NOT have been called (retained worktree)
+        mock_worktree_manager.finalize_work_unit.assert_not_called()

@@ -472,3 +472,54 @@ class TestSafeBranchDeletion:
 
         # Branch should be deleted since it has no unmerged commits
         assert not manager._branch_exists("orch/test_chunk")
+
+
+# Chunk: docs/chunks/finalize_double_commit - Test submodule-resilient worktree removal
+class TestSubmoduleWorktreeRemoval:
+    """Tests that worktree removal handles submodule-containing worktrees."""
+
+    def test_remove_worktree_submodule_fallback(self, git_repo):
+        """Worktree removal falls back to rmtree + prune when git worktree remove fails.
+
+        When a worktree contains submodules, `git worktree remove` fails with
+        "working trees containing submodules cannot be moved or removed".
+        The fallback should use rmtree and then prune stale worktree metadata.
+        """
+        from unittest.mock import patch, call
+
+        manager = WorktreeManager(git_repo)
+        worktree_path = manager.create_worktree("submodule_chunk")
+
+        # Create a file so the worktree has content
+        (worktree_path / "some_file.txt").write_text("content")
+
+        original_run = subprocess.run
+
+        # Track prune calls
+        prune_calls = []
+
+        def mock_run(cmd, **kwargs):
+            # Make git worktree remove always fail (simulating submodule error)
+            if cmd[:3] == ["git", "worktree", "remove"]:
+                result = subprocess.CompletedProcess(
+                    cmd, returncode=1,
+                    stdout="",
+                    stderr="fatal: working trees containing submodules cannot be moved or removed"
+                )
+                return result
+            if cmd[:3] == ["git", "worktree", "prune"]:
+                prune_calls.append(cmd)
+                return original_run(cmd, **kwargs)
+            # Also handle unlock gracefully
+            if cmd[:3] == ["git", "worktree", "unlock"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            return original_run(cmd, **kwargs)
+
+        with patch("orchestrator.worktree.subprocess.run", side_effect=mock_run):
+            manager.remove_worktree("submodule_chunk", remove_branch=False)
+
+        # Worktree directory should be removed (via rmtree fallback)
+        assert not worktree_path.exists()
+
+        # git worktree prune should have been called (both intermediate and after rmtree)
+        assert len(prune_calls) >= 2, f"Expected at least 2 prune calls, got {len(prune_calls)}"
