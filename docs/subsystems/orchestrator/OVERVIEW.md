@@ -31,6 +31,8 @@ chunks:
     relationship: implements
   - chunk_id: merge_strategy_simplify
     relationship: implements
+  - chunk_id: finalize_double_commit
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module

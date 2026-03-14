@@ -10,8 +10,8 @@ code_paths:
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::commit_changes
     implements: "Mechanical commit: stages all changes and commits with standard message"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_finalize_completed_work_unit
-    implements: "Calls commit_changes instead of agent-driven commit after COMPLETE phase"
+  - ref: src/orchestrator/worktree.py#WorktreeManager::finalize_work_unit
+    implements: "Delegates to commit_changes as part of finalization lifecycle"
   - ref: tests/test_orchestrator_worktree_operations.py#TestCommitChanges
     implements: "Unit tests for commit_changes method"
   - ref: tests/test_orchestrator_scheduler_results.py#TestMechanicalCommit

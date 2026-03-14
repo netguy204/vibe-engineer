@@ -33,7 +33,7 @@ code_references:
     implements: "Unit tests for activate_chunk_in_worktree helper"
   - ref: tests/test_orchestrator_activation.py#TestRestoreDisplacedChunk
     implements: "Unit tests for restore_displaced_chunk helper"
-  - ref: tests/test_orchestrator_scheduler.py#TestChunkActivationInWorkUnit
+  - ref: tests/test_orchestrator_scheduler_activation.py#TestChunkActivationInWorkUnit
     implements: "Integration tests for chunk activation during work unit execution"
 narrative: null
 investigation: parallel_agent_orchestration
