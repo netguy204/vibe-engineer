@@ -9,11 +9,11 @@ code_references:
   - ref: src/orchestrator/merge.py#is_on_branch
     implements: "Helper to detect if HEAD is on a given branch"
   - ref: src/orchestrator/merge.py#has_clean_working_tree
-    implements: "Helper to detect if working tree has uncommitted changes"
+    implements: "Helper to detect if working tree has uncommitted changes (used by tests, no longer gating merge strategy)"
   - ref: src/orchestrator/merge.py#merge_native
-    implements: "Native git merge for clean on-branch merges with conflict abort"
+    implements: "Native git merge for on-branch merges (handles dirty trees correctly)"
   - ref: src/orchestrator/merge.py#merge_without_checkout
-    implements: "Branch-aware merge strategy that routes to native or plumbing approach"
+    implements: "Branch-aware merge strategy: native merge when on-branch, plumbing when off-branch"
 narrative: null
 investigation: null
 subsystems:
@@ -34,14 +34,14 @@ Simplify the orchestrator's merge-back strategy in `src/orchestrator/merge.py`. 
 
 Replace with a branch-aware strategy:
 
-1. **User on target branch, clean tree** → `git merge {chunk_branch}`. Git handles index + working tree + ref atomically. If the merge is clean, done. If there are conflicts, abort the merge and route the chunk back to the REBASE stage.
+1. **User on target branch** → `git merge {chunk_branch}`. Git handles index + working tree + ref atomically. Git merge handles dirty working trees correctly — it merges files that don't conflict with uncommitted changes and refuses if there are conflicts. If the merge has branch-level conflicts, abort the merge and route the chunk back to the REBASE stage.
 2. **User on different branch** → Use `update-ref` only (no working tree sync needed). The user won't see the change until they checkout the target branch, at which point git handles it natively.
 
 Delete the `update_working_tree_if_on_branch()` function entirely. The `merge_without_checkout()` plumbing path is retained only for case 2 (not on target branch).
 
 ## Success Criteria
 
-- When the user is on the target branch with a clean tree, the orchestrator runs `git merge {chunk_branch}` and the working tree, index, and ref are all consistent after merge
+- When the user is on the target branch (clean or dirty), the orchestrator runs `git merge {chunk_branch}` and the working tree, index, and ref are all consistent after merge
 - When `git merge` produces conflicts, the merge is aborted (`git merge --abort`) and the chunk is routed to REBASE stage
 - When the user is on a different branch, `update-ref` moves the target branch pointer without touching the working tree or index
 - The `update_working_tree_if_on_branch()` function is deleted

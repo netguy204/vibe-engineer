@@ -8,14 +8,14 @@ This module provides merge strategies for merging completed chunk branches
 back to their base branches. The primary function, merge_without_checkout,
 uses a branch-aware strategy:
 
-1. If user is on target branch with clean working tree: use native git merge
-   (atomic update of index, working tree, and ref)
-2. Otherwise: use git plumbing commands to update the ref only, without
-   touching the user's working tree
+1. If user is on target branch: use native git merge (atomic update of
+   index, working tree, and ref — handles dirty trees correctly)
+2. If user is on a different branch: use git plumbing commands to update
+   the ref only, without touching the user's working tree
 
 Merge strategies:
 - merge_without_checkout: Primary entry point with branch-aware strategy
-- merge_native: Uses native git merge (for on-branch, clean-tree case)
+- merge_native: Uses native git merge (for on-branch case)
 - merge_via_index: Fallback plumbing strategy for older Git
 """
 
@@ -106,9 +106,11 @@ def is_merge_conflict_error(error: "WorktreeError | str") -> bool:
 def merge_native(source_branch: str, target_branch: str, repo_dir: Path) -> None:
     """Perform a merge using native git merge command.
 
-    This function assumes the caller has verified we're on the target branch
-    with a clean working tree. It uses `git merge` which handles index,
-    working tree, and ref updates atomically.
+    This function assumes the caller has verified we're on the target branch.
+    It uses `git merge` which handles index, working tree, and ref updates
+    atomically. Git merge handles dirty working trees correctly — it merges
+    files that don't conflict with uncommitted changes and refuses if there
+    are conflicts.
 
     Args:
         source_branch: Branch to merge from (e.g., orch/chunk_name)
@@ -116,8 +118,9 @@ def merge_native(source_branch: str, target_branch: str, repo_dir: Path) -> None
         repo_dir: Repository directory
 
     Raises:
-        WorktreeError: If merge fails (e.g., conflicts). On conflict, the merge
-                      is aborted before raising.
+        WorktreeError: If merge fails (e.g., conflicts, or uncommitted changes
+                      conflict with merge). On conflict, the merge is aborted
+                      before raising.
     """
     result = subprocess.run(
         ["git", "merge", "--no-edit", source_branch],
@@ -151,12 +154,12 @@ def merge_without_checkout(
     """Perform a merge, using native git merge when possible.
 
     This function uses a branch-aware strategy:
-    1. If user is on target branch with clean tree: use native git merge
-    2. Otherwise: use plumbing commands (update-ref) without touching working tree
+    1. If user is on target branch: use native git merge (handles dirty trees)
+    2. If not on target branch: use plumbing commands (update-ref only)
 
     Strategy:
     1. Check if source is an ancestor of target (already merged) - no-op
-    2. If on target branch with clean working tree: use git merge (atomic)
+    2. If on target branch: use git merge (atomic index + working tree + ref update)
     3. Otherwise, use plumbing commands to update the ref without checkout
 
     Args:
@@ -198,14 +201,15 @@ def merge_without_checkout(
         # Already merged, nothing to do
         return
 
-    # Branch-aware strategy: if on target branch with clean tree, use native merge
-    # This handles both fast-forward and real merges atomically
-    if is_on_branch(target_branch, repo_dir) and has_clean_working_tree(repo_dir):
+    # Branch-aware strategy: if on target branch, use native merge
+    # git merge handles dirty working trees correctly (merges non-conflicting
+    # files, refuses if uncommitted changes conflict with the merge)
+    if is_on_branch(target_branch, repo_dir):
         merge_native(source_branch, target_branch, repo_dir)
         return
 
-    # Not on target branch (or dirty tree): use plumbing approach
-    # No working tree update needed - user will see changes when they checkout target branch
+    # Not on target branch: use plumbing approach (ref-only update)
+    # User will see changes when they checkout target branch
 
     # Check if target is an ancestor of source (fast-forward possible)
     result = subprocess.run(

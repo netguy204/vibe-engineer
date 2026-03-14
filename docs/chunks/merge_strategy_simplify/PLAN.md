@@ -13,10 +13,10 @@ This chunk replaces the orchestrator's complex plumbing-based merge strategy wit
 **Current problem:** The existing code uses `git merge-tree`/`commit-tree`/`update-ref` plumbing commands for all merges, then attempts to sync the working tree with `reset --mixed` + `checkout -- .`. This leaves the working tree in a broken state when the user is on the target branch: git log shows the merge, git diff is clean, but git status shows all merged files as modified.
 
 **New strategy:**
-1. **User on target branch, clean tree** → Use `git merge {chunk_branch}`. Git handles index + working tree + ref atomically.
+1. **User on target branch** → Use `git merge {chunk_branch}`. Git handles index + working tree + ref atomically. Git merge handles dirty working trees correctly (merges non-conflicting files, refuses if uncommitted changes conflict).
 2. **User on different branch** → Use the existing `update-ref` plumbing path (no working tree sync needed).
 
-The key insight is that `git merge` does exactly what we need when the user is on the target branch—it's atomic and correct. The plumbing approach only makes sense when we can't checkout the target branch.
+The key insight is that `git merge` does exactly what we need when the user is on the target branch—it's atomic and correct. The plumbing approach only makes sense when we can't checkout the target branch. A clean working tree is NOT required; git merge handles dirty trees natively.
 
 **Testing approach:** Following TESTING_PHILOSOPHY.md, we'll write tests that verify semantic behavior:
 - After merge while on target branch, working tree matches the merged state
@@ -52,9 +52,9 @@ Location: `src/orchestrator/merge.py`
 
 Modify `merge_without_checkout()` to:
 1. Check if source is already an ancestor of target (already merged) - no-op
-2. Check if user is on target branch AND working tree is clean:
-   - If yes: call `merge_native()` instead of plumbing approach
-   - If no (on different branch OR dirty tree): use existing plumbing approach
+2. Check if user is on target branch:
+   - If yes: call `merge_native()` (git merge handles dirty trees correctly)
+   - If no (on different branch): use existing plumbing approach
 3. Delete the call to `update_working_tree_if_on_branch()` from the plumbing paths
 
 The fast-forward case should also use `merge_native()` when on target branch (git merge handles fast-forward correctly).
