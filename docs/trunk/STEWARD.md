@@ -21,13 +21,15 @@ When a message arrives:
 1. **Triage** — Determine whether the message is a bug report, change request,
    question, or something else.
 
-2. **Create a chunk** — For bug reports and change requests, always create a
-   chunk (`/chunk-create`) as FUTURE. Plan it (`/chunk-plan`).
+2. **Create a FUTURE chunk** — For bug reports and change requests, create a
+   chunk (`/chunk-create`) as FUTURE. Write only the goal — do NOT plan or
+   implement. The orchestrator handles planning and implementation.
 
-3. **Inject into orchestrator** — Submit the chunk to the orchestrator
-   (`ve orch inject <chunk>`). Never implement chunks directly in the steward
-   context — always delegate to the orchestrator. This protects the steward's
-   context window from implementation noise.
+3. **Commit and inject** — Commit the chunk directory (both GOAL.md and
+   PLAN.md) and inject it into the orchestrator (`ve orch inject <chunk>`).
+   Never plan or implement chunks directly in the steward context — always
+   delegate to the orchestrator. This protects the steward's context window
+   from implementation noise.
 
 4. **Monitor the orchestrator** — After injection, monitor orchestrator
    progress (`ve orch status`). When a requested chunk completes, publish a
