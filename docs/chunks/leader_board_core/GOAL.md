@@ -1,18 +1,27 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/leader_board/__init__.py
+- src/leader_board/models.py
+- src/leader_board/storage.py
+- src/leader_board/memory_storage.py
+- src/leader_board/core.py
+- tests/test_leader_board_storage.py
+- tests/test_leader_board_core.py
+- tests/test_leader_board_adapter_contract.py
 code_references: []
 narrative: leader_board
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["leader_board_spec"]
-created_after: ["finalize_double_commit"]
+depends_on:
+- leader_board_spec
+created_after:
+- finalize_double_commit
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
