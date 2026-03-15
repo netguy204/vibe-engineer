@@ -678,6 +678,328 @@ The CLI follows semantic versioning:
 - Newer CLI versions may add optional frontmatter fields
 - Unknown frontmatter fields should be preserved by agents
 
+## Leader Board
+
+Leader Board is a lightweight message-passing service that enables cross-project communication between agents and operators. It allows an operator working in one project to send a message to another project's steward agent without context-switching. Leader Board is built on a single primitive — the **append-only channel log** — and adapts the design of the original leader-board project (a standalone messaging service) to a swarm-based tenant model with asymmetric key pairs, end-to-end encryption, cursor-based delivery, and a portable core/adapter architecture.
+
+This is a clean break from the original leader-board project's protocol, not a backward-compatible evolution.
+
+### Terminology
+
+- **Swarm**: An operator-global tenant boundary identified by its public key. One operator typically manages one swarm across many repos. All channels exist within a swarm; there is no cross-swarm communication.
+- **Channel**: An append-only, ordered log of messages within a swarm. Channels are created implicitly on first send. Channel names are 1–128 characters matching `[a-zA-Z0-9_-]`.
+- **Message**: An opaque, encrypted payload appended to a channel. Each message is assigned a monotonically increasing position (uint64, starting at 1).
+- **Cursor**: A client-side uint64 value representing the last-processed message position. Cursors are persisted locally by clients; the server has no visibility into them.
+- **Steward**: An agent appointed to watch a project's inbound channel and triage messages according to a Standard Operating Procedure. A steward channel has one consumer; this is a convention, not a protocol distinction.
+- **SOP (Standard Operating Procedure)**: A project-local document (`docs/trunk/STEWARD.md`) that defines how a steward responds to inbound messages — autonomously, by queuing work, or via custom behavior.
+- **Adapter**: A host-specific module that wraps the portable core, providing transport (WebSocket), durable storage, and connection lifecycle management.
+
+### Swarm Model
+
+A swarm is the operator-global tenant boundary for leader board communication.
+
+- A swarm is identified by its public key. The **swarm ID** is derived from the public key (base58 encoding of the first 16 bytes), yielding a 22–44 character identifier.
+- One operator typically manages one swarm across many repositories.
+- The asymmetric key pair (Ed25519) is generated at swarm creation time.
+- The private key is stored at `~/.ve/keys/{swarm_id}.key` (operator-global, not project-local).
+- The public key is registered with the server and stored alongside the private key at `~/.ve/keys/{swarm_id}.pub`.
+- All channels exist within a swarm — there is no cross-swarm communication.
+- Multiple swarms per server are supported (multi-tenant). Each swarm is cryptographically isolated from all others.
+
+### End-to-End Encryption
+
+Message bodies are encrypted client-side before transmission. The server stores and routes opaque ciphertext — it never sees plaintext message contents. Only the channel name and cursor position are visible to the server.
+
+**Key derivation:**
+
+- The symmetric encryption key is derived from the swarm's Ed25519 private key using a two-step process:
+  1. Convert the Ed25519 signing key to a Curve25519 key (libsodium `crypto_sign_ed25519_sk_to_curve25519`)
+  2. Derive a 32-byte symmetric key via HKDF-SHA256 with:
+     - IKM: the Curve25519 private key (32 bytes)
+     - Salt: empty (zero-length)
+     - Info: the ASCII string `leader-board-message-encryption`
+- All swarm members holding the private key can encrypt and decrypt messages.
+
+**Ciphertext format:**
+
+- Algorithm: XChaCha20-Poly1305 (NaCl secretbox)
+- Wire format: `nonce (24 bytes) || ciphertext`
+- The nonce MUST be generated randomly for each message (24 bytes from a CSPRNG)
+- The combined nonce+ciphertext is base64-encoded for transmission in JSON frames
+
+**Rationale for XChaCha20-Poly1305:** This is a widely implemented AEAD cipher available in libsodium (and thus in virtually every language ecosystem). The extended 24-byte nonce eliminates nonce-reuse risk with random generation, which is important since multiple clients may encrypt concurrently without coordination.
+
+**Server obligation:** The server MUST NOT require or inspect message body contents. Any server-side processing that depends on message body contents is a protocol violation.
+
+### Append-Only Log Channel Model
+
+Each channel is an append-only, ordered log of messages:
+
+- Messages are assigned monotonically increasing positions (uint64, starting at 1).
+- **Position 0** is the "before first message" sentinel — watching from position 0 receives the first message.
+- The server never deletes messages on delivery. This is a fundamental departure from the original leader-board design, which used at-most-once delivery (message deleted on consume).
+- Clients supply a cursor position when watching and receive the next message after that position.
+- If no message exists after the cursor, the server blocks (holds the WebSocket open) until one arrives.
+- Multiple clients can watch the same channel with independent cursors. Each client tracks its own position.
+- A single watch request receives one message, then the client must re-watch to receive the next.
+- Channels are created implicitly on first `send`. There is no explicit channel creation operation.
+
+### 30-Day TTL Compaction
+
+Messages older than 30 days are eligible for removal by the server:
+
+- Compaction is a server-side background process; clients have no control over it.
+- The 30-day TTL is a heuristic — the server makes no guarantee about exact compaction timing.
+- Compaction runs per-channel, not globally.
+- The server MUST retain at least the most recent message in each channel regardless of age.
+- When a client presents a cursor older than the oldest retained message, the server returns a `cursor_expired` error with the earliest available position (see Wire Protocol / Error Codes).
+- The client can then decide: resume from the earliest position (accepting a gap in message history) or alert the operator.
+
+### Cursor-Based At-Least-Once Delivery
+
+Leader board provides at-least-once delivery, not at-most-once (as in the original leader-board design) or exactly-once. Clients must be idempotent.
+
+**Cursor storage:**
+
+- Clients persist their cursor locally at `.ve/board/cursors/{channel_name}.cursor` (project-local, not operator-global).
+- The cursor file contains a single uint64 value: the last-processed message position.
+- Cursor storage follows the same root as other VE state (per DEC-002, git is not assumed).
+
+**Processing order:**
+
+1. Receive message from server (via `watch`)
+2. Process the message (triage, create chunk, etc.)
+3. Durably write the new cursor position to disk
+4. Acknowledge by re-watching with the advanced cursor (implicit ack)
+
+**Crash-and-resume:** If the client crashes between receiving a message and writing the cursor, it re-reads from the last persisted cursor on restart, potentially re-processing the same message. This is the at-least-once guarantee: messages are never lost, but may be delivered more than once.
+
+**Server visibility:** The server has no visibility into client cursors. It sees only the position supplied in each watch request. The server does not track which clients have consumed which messages.
+
+### Wire Protocol
+
+All communication uses WebSocket with JSON-encoded frames. All frames assume an authenticated connection (see Authentication Flow) except for the handshake frames.
+
+#### Handshake Frames
+
+**Server → Client:**
+
+- `challenge`: `{"type": "challenge", "nonce": "<random-32-bytes-hex>"}`
+
+**Client → Server:**
+
+- `auth`: `{"type": "auth", "swarm": "<swarm_id>", "signature": "<hex-signature>"}`
+- `register_swarm`: `{"type": "register_swarm", "swarm": "<swarm_id>", "public_key": "<hex-ed25519-pubkey>"}`
+
+**Server → Client:**
+
+- `auth_ok`: `{"type": "auth_ok"}`
+
+#### Client → Server Frames (Post-Authentication)
+
+- **watch**: `{"type": "watch", "channel": "<name>", "swarm": "<swarm_id>", "cursor": <uint64>}`
+
+  Subscribe to a channel starting after the given cursor position. The server holds the connection open until a message at position > cursor exists, then sends exactly one `message` frame.
+
+- **send**: `{"type": "send", "channel": "<name>", "swarm": "<swarm_id>", "body": "<base64-ciphertext>"}`
+
+  Append an encrypted message to a channel. The `body` field contains base64-encoded ciphertext (nonce || encrypted_body). The channel is created implicitly if it does not exist.
+
+- **channels**: `{"type": "channels", "swarm": "<swarm_id>"}`
+
+  List all channels in the swarm with their head and oldest positions.
+
+- **swarm_info**: `{"type": "swarm_info", "swarm": "<swarm_id>"}`
+
+  Retrieve metadata about the swarm.
+
+#### Server → Client Frames (Post-Authentication)
+
+- **message**: `{"type": "message", "channel": "<name>", "position": <uint64>, "body": "<base64-ciphertext>", "sent_at": "<ISO8601>"}`
+
+  Delivered in response to a `watch` frame. Contains exactly one message at the position immediately after the client's cursor.
+
+- **ack**: `{"type": "ack", "channel": "<name>", "position": <uint64>}`
+
+  Confirms a `send` was appended and returns the assigned position.
+
+- **channels_list**: `{"type": "channels_list", "channels": [{"name": "<name>", "head_position": <uint64>, "oldest_position": <uint64>}]}`
+
+  Response to a `channels` request. `head_position` is the most recent message position; `oldest_position` is the earliest retained message position (may differ from 1 after compaction).
+
+- **swarm_info**: `{"type": "swarm_info", "swarm": "<swarm_id>", "created_at": "<ISO8601>"}`
+
+  Response to a `swarm_info` request.
+
+- **error**: `{"type": "error", "code": "<error_code>", "message": "<description>"}`
+
+  Error response. May include additional fields depending on the error code (see Error Codes).
+
+#### Error Codes
+
+| Code | Meaning | Additional Fields |
+|------|---------|-------------------|
+| `auth_failed` | Signature verification failed | — |
+| `cursor_expired` | Cursor position older than oldest retained message | `earliest_position: <uint64>` |
+| `channel_not_found` | Referenced channel does not exist (for `watch` only — `send` creates implicitly) | — |
+| `invalid_frame` | Malformed JSON or missing required fields | — |
+| `swarm_not_found` | Swarm ID not registered | — |
+
+#### Behavioral Rules
+
+1. After sending a `watch` frame, the server holds the connection open until a message at position > cursor exists, then sends exactly one `message` frame.
+2. After sending a `send` frame, the server responds with an `ack` containing the assigned position.
+3. Channels are created implicitly on first `send`.
+4. The `body` field in `send` and `message` frames contains base64-encoded ciphertext. The server treats this as an opaque string.
+5. Position values are uint64. Position 0 is the "before first message" sentinel. Valid message positions start at 1 and increase monotonically.
+6. The `sent_at` timestamp is assigned by the server at append time and uses ISO 8601 format with UTC timezone (e.g., `2026-03-15T14:30:00Z`).
+
+### Authentication Flow
+
+Authentication uses asymmetric key cryptography (Ed25519). The server stores only public keys — compromise of the server does not compromise swarm private keys.
+
+**Swarm Registration (one-time):**
+
+1. Client sends `register_swarm`: `{"type": "register_swarm", "swarm": "<swarm_id>", "public_key": "<hex-ed25519-pubkey>"}`
+2. Server stores the swarm ID → public key mapping
+3. Server responds with `auth_ok` on success
+
+Registration is unauthenticated (first contact). A production deployment SHOULD implement rate limiting or proof-of-work to prevent spam registration.
+
+**Connection Authentication (every connection):**
+
+1. Client opens WebSocket connection with `swarm` query parameter (e.g., `wss://host/ws?swarm=<swarm_id>`)
+2. Server sends a `challenge` frame: `{"type": "challenge", "nonce": "<random-32-bytes-hex>"}`
+3. Client signs the nonce with the swarm's Ed25519 private key
+4. Client sends `auth` frame: `{"type": "auth", "swarm": "<swarm_id>", "signature": "<hex-signature>"}`
+5. Server looks up the public key for the swarm ID, verifies the signature
+6. On success: server sends `{"type": "auth_ok"}`
+7. On failure: server sends `{"type": "error", "code": "auth_failed", "message": "..."}` and closes the connection
+
+All subsequent frames on an authenticated connection are trusted. The server does not re-verify identity per frame.
+
+### Core/Adapter Boundary
+
+The leader board system is split into a **portable core** and **host-specific adapters**. This enables the same logic to run in a local development server and in a Cloudflare Durable Objects deployment with identical behavior.
+
+#### Core Responsibilities
+
+The core is a host-independent library that owns:
+
+- Swarm state management (registration, public key lookup)
+- Channel log operations (append, read-from-cursor)
+- Authentication verification (nonce + signature → public key lookup → verify)
+- Message position assignment (monotonic uint64 per channel)
+- FIFO ordering within channels
+
+The core treats message bodies as opaque byte strings — no encryption or decryption. The core has no concept of channel "types" — steward vs. changelog is a client convention, invisible to the core.
+
+**Core interface (language-agnostic):**
+
+```
+# Swarm operations
+register_swarm(swarm_id, public_key) → ok | error
+verify_auth(swarm_id, nonce, signature) → ok | error
+
+# Channel operations
+append(swarm_id, channel, body_bytes) → position
+read_after(swarm_id, channel, cursor) → (position, body_bytes, sent_at) | blocks
+list_channels(swarm_id) → [{name, head_position, oldest_position}]
+
+# Compaction
+compact(swarm_id, channel, min_age_days) → positions_removed
+```
+
+The core exposes this interface for adapters to call. It does not define a wire protocol — that is an adapter responsibility.
+
+#### Adapter Responsibilities
+
+Adapters wrap the core and handle everything host-specific:
+
+- **Transport**: WebSocket connection management, HTTP routing
+- **Durable storage**: Persisting the append-only log (filesystem, Durable Object storage, database, etc.)
+- **Connection lifecycle**: Opening, closing, and multiplexing connections
+- **Wire protocol encoding/decoding**: JSON frame parsing, base64 encoding, WebSocket frame management
+- **Blocking semantics**: Implementing the "hold connection open until message arrives" behavior for `read_after`
+
+The adapter and core responsibilities are disjoint — no overlap. The core never touches transport or storage directly; the adapter never assigns positions or verifies signatures.
+
+### Durable Object Topology
+
+The hosted multi-tenant variant runs on Cloudflare Workers with Durable Objects:
+
+- **One Durable Object per swarm.** Each swarm's state (channels, messages, public key) lives in a single DO instance.
+- A Cloudflare Worker routes incoming WebSocket connections to the correct swarm DO based on the swarm ID in the handshake query parameter.
+- The DO wraps the portable core, using DO storage for the append-only log.
+- **DO storage layout**: Key-value pairs keyed by `{channel}:{zero-padded-position}` (e.g., `steward:000000000001`). Zero-padding ensures lexicographic ordering matches position ordering.
+- **Compaction via DO alarm**: A periodic alarm (configured at DO creation) triggers 30-day TTL compaction sweeps.
+- The local server adapter and DO adapter speak the **identical wire protocol** — clients cannot distinguish between backends.
+- Rate limiting and abuse prevention are handled at the Worker/Cloudflare level, not in the core or the DO adapter.
+
+### Steward SOP Document Format
+
+Each project that appoints a steward stores its Standard Operating Procedure at `docs/trunk/STEWARD.md`:
+
+```yaml
+---
+steward_name: "<human-readable name>"
+swarm: "<swarm_id>"
+channel: "<channel-name>"
+changelog_channel: "<channel-name>"
+behavior:
+  mode: autonomous | queue | custom
+  custom_instructions: "<markdown>" | null
+---
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `steward_name` | string | Human-readable name for the steward (e.g., "Tool B Steward") |
+| `swarm` | string | Swarm ID this steward belongs to |
+| `channel` | string | Channel name the steward watches for inbound messages |
+| `changelog_channel` | string | Channel name where the steward posts outcomes |
+| `behavior.mode` | enum | How the steward responds to messages |
+| `behavior.custom_instructions` | string\|null | Freeform markdown instructions (required when mode is `custom`, null otherwise) |
+
+**Behavior modes:**
+
+- **`autonomous`**: The steward triages inbound messages, acts on them (creates chunks, investigations, fixes code), and publishes results to the changelog channel — all without human intervention.
+- **`queue`**: The steward creates work items (chunks, investigations) for human review but does not implement them. Results are posted to the changelog channel for operator visibility.
+- **`custom`**: The steward follows the freeform instructions in `custom_instructions`. This allows arbitrary operator-defined behavior.
+
+**Lifecycle:**
+
+- The SOP is created by the `/steward-setup` skill via an interactive interview with the operator. The operator is never required to write the SOP by hand.
+- The steward agent reads the SOP at startup and re-reads it on each watch-respond-rewatch iteration, allowing the operator to modify steward behavior by editing the SOP while the steward is running.
+- Swarm creation is NOT part of steward setup — the operator must have already created the swarm via `ve board swarm create`.
+
+### Guarantees
+
+**Provided:**
+
+- **FIFO within a channel**: Messages are ordered by position. A client watching from position N will always receive position N+1 before N+2.
+- **At-least-once delivery**: Client-side cursor management ensures no message is permanently lost. Clients may re-process messages after a crash.
+- **Durability**: Messages persist across server restarts until compacted (30-day TTL).
+- **End-to-end encryption**: The server never sees plaintext message contents. Even the service operator cannot read messages or impersonate a swarm.
+- **Cryptographic isolation between swarms**: Compromise of one swarm's private key does not affect other swarms. The server stores only public keys.
+
+**Not provided:**
+
+- **No cross-channel ordering**: Messages in different channels have no ordering relationship.
+- **No exactly-once delivery**: Clients must be idempotent. The same message may be delivered more than once after a crash-and-resume.
+- **No guaranteed compaction timing**: The 30-day TTL is a heuristic. The server may retain messages longer or compact slightly earlier.
+
+### Limits
+
+| Limit | Value | Behavior when exceeded |
+|-------|-------|------------------------|
+| Channel name length | 1–128 characters | `invalid_frame` error |
+| Channel name character set | `[a-zA-Z0-9_-]` | `invalid_frame` error |
+| Message body (plaintext, before encryption) | Maximum 1 MB | `invalid_frame` error |
+| Swarm ID length | 22–44 characters (base58-derived) | Determined by key derivation |
+
 ## DRAFT Sections
 
 *No draft sections at this time.*
