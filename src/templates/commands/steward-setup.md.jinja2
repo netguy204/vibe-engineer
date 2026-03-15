@@ -21,6 +21,21 @@ The operator must have already created a swarm via `ve board swarm create`. The
 swarm's private key should be stored in `~/.ve/keys/`. Swarm creation is NOT
 part of this setup — only the SOP configuration is.
 
+### Detect board defaults
+
+Before starting the interview, check whether `~/.ve/board.toml` exists and
+contains a default swarm configuration. This lets you pre-fill interview
+answers.
+
+1. Run `cat ~/.ve/board.toml` to read the board configuration
+2. If the file exists and contains a `default_swarm` key, note the swarm ID
+3. Look up the corresponding `[swarms.<id>]` section and extract `server_url`
+   if present
+4. Store the detected swarm ID and server URL as defaults for the interview
+
+If the file does not exist or has no `default_swarm`, proceed normally — all
+interview questions will require manual input and no error should be shown.
+
 ### Interview the operator
 
 Walk through each of the following questions. Explain what each field means and
@@ -32,7 +47,9 @@ offer sensible defaults where applicable.
 
 2. **Swarm ID** — Which swarm this steward belongs to. Help the operator
    identify their swarm:
-   - Run `ls ~/.ve/keys/` to list available swarm key files
+   - If a default swarm was detected from `board.toml`, present it as the
+     default and let the operator confirm or override
+   - Otherwise, run `ls ~/.ve/keys/` to list available swarm key files
    - Run `ve board channels --swarm <id>` to verify the swarm exists
    - The operator should provide the swarm ID from their `ve board swarm create`
      output
@@ -62,6 +79,9 @@ offer sensible defaults where applicable.
 6. **Server URL** (optional) — If the swarm is hosted on a remote backend
    rather than `ws://localhost:8787`, ask the operator for the server URL and
    note it in the SOP prose body so `/steward-watch` can pass `--server`.
+   - If a `server_url` was detected from the default swarm's config in
+     `board.toml`, present it as the default and let the operator confirm or
+     override
 
 ### Write the SOP
 
@@ -88,6 +108,24 @@ behavior:
 <Any additional context from the interview, such as server URL, special
 handling instructions, or project-specific conventions.>
 ```
+
+### Bootstrap channels
+
+After writing `STEWARD.md`, send bootstrap messages to ensure both channels
+exist on the swarm before the first watch attempt.
+
+1. Send a bootstrap message to the steward channel:
+   ```
+   ve board send <channel> "Steward channel bootstrapped." --swarm <swarm_id> [--server <url>]
+   ```
+2. Send a bootstrap message to the changelog channel:
+   ```
+   ve board send <changelog_channel> "Changelog channel bootstrapped." --swarm <swarm_id> [--server <url>]
+   ```
+
+The `--server` flag is only needed if the operator provided a non-default server
+URL. If either `ve board send` command fails, surface the error to the
+operator — this likely means the swarm doesn't exist or the key is missing.
 
 ### Validate
 
