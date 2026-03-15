@@ -1,18 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/commands/steward-setup.md.jinja2
+- src/templates/commands/steward-watch.md.jinja2
+- src/templates/commands/steward-send.md.jinja2
+- src/templates/commands/steward-changelog.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
 code_references: []
 narrative: leader_board
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["leader_board_cli"]
-created_after: ["finalize_double_commit"]
+depends_on:
+- leader_board_cli
+created_after:
+- finalize_double_commit
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

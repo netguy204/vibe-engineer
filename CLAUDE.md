@@ -120,6 +120,14 @@ Use these slash commands for artifact management:
 - `/validate-fix` - Iteratively fix validation errors until clean
 
 
+### Steward
+
+- `/steward-setup` - Set up a project steward via interactive interview
+- `/steward-watch` - Run the steward watch-respond-rewatch loop
+- `/steward-send` - Send a message to a project's steward
+- `/steward-changelog` - Watch a project's changelog channel
+
+
 ## Creating Artifacts
 
 **CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command.

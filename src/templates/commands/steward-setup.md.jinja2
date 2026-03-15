@@ -1,0 +1,105 @@
+---
+description: Set up a project steward via interactive interview
+---
+{% set source_template = "steward-setup.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/leader_board_steward_skills - Steward skill templates #}
+
+## Tips
+
+{% include "partials/common-tips.md.jinja2" %}
+
+## Instructions
+
+Set up a project steward by interviewing the operator to produce the steward's
+Standard Operating Procedure document at `docs/trunk/STEWARD.md`.
+
+{% raw %}
+### Prerequisites
+
+The operator must have already created a swarm via `ve board swarm create`. The
+swarm's private key should be stored in `~/.ve/keys/`. Swarm creation is NOT
+part of this setup — only the SOP configuration is.
+
+### Interview the operator
+
+Walk through each of the following questions. Explain what each field means and
+offer sensible defaults where applicable.
+
+1. **Steward name** — A human-readable identifier for this steward.
+   - Example: "Tool B Steward", "My Project Steward"
+   - Convention: `<Project Name> Steward`
+
+2. **Swarm ID** — Which swarm this steward belongs to. Help the operator
+   identify their swarm:
+   - Run `ls ~/.ve/keys/` to list available swarm key files
+   - Run `ve board channels --swarm <id>` to verify the swarm exists
+   - The operator should provide the swarm ID from their `ve board swarm create`
+     output
+
+3. **Channel name** — The inbound channel the steward will watch for messages.
+   - Convention: `<project-name>-steward`
+   - Example: `tool-b-steward`
+
+4. **Changelog channel name** — Where the steward posts outcome summaries.
+   - Convention: `<project-name>-changelog`
+   - Example: `tool-b-changelog`
+
+5. **Behavior mode** — How the steward responds to inbound messages. Explain
+   each option and ask the operator to choose:
+   - **`autonomous`**: The steward triages messages, acts on them (creates
+     chunks, investigations, fixes code), and publishes results — all without
+     human intervention.
+   - **`queue`**: The steward creates work items (chunks, investigations) for
+     human review but does not implement them. Results are posted to the
+     changelog.
+   - **`custom`**: The steward follows freeform instructions you provide. Choose
+     this for arbitrary operator-defined behavior.
+
+   If the operator chooses `custom`, capture their freeform instructions as
+   markdown.
+
+6. **Server URL** (optional) — If the swarm is hosted on a remote backend
+   rather than `ws://localhost:8787`, ask the operator for the server URL and
+   note it in the SOP prose body so `/steward-watch` can pass `--server`.
+
+### Write the SOP
+
+After collecting all answers, create `docs/trunk/STEWARD.md` with the following
+structure:
+
+```markdown
+---
+steward_name: "<name from interview>"
+swarm: "<swarm_id>"
+channel: "<channel-name>"
+changelog_channel: "<changelog-channel-name>"
+behavior:
+  mode: <autonomous|queue|custom>
+  custom_instructions: <markdown string if custom, null otherwise>
+---
+
+# <Steward Name>
+
+<Brief prose summary of the steward's purpose for this project.>
+
+## Notes
+
+<Any additional context from the interview, such as server URL, special
+handling instructions, or project-specific conventions.>
+```
+
+### Validate
+
+1. Verify the YAML frontmatter parses correctly by reading back the file
+2. Confirm the swarm exists by running `ve board channels --swarm <swarm_id>`
+3. Present the completed SOP to the operator for confirmation
+
+### What's Next
+
+Tell the operator:
+- Use `/steward-watch` to start the steward's watch loop
+- Other agents can send messages with `/steward-send`
+- Observers can follow outcomes with `/steward-changelog`
+- The SOP can be edited at any time — the steward re-reads it each iteration
+{% endraw %}
