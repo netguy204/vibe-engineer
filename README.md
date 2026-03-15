@@ -140,6 +140,88 @@ This creates a `.ve-task.yaml` configuration file that enables task-aware chunk 
 - All directories must be git repositories
 - All directories must be Vibe Engineer initialized (`ve init` run, so `docs/chunks/` exists)
 
+### Orchestrator
+
+The orchestrator (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously — you create the work, and the orchestrator schedules and executes it.
+
+#### Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `ve orch inject <chunk>` | Submit a chunk to the orchestrator |
+| `ve orch ps` | List all work units and their status |
+| `ve orch attention` | Show chunks needing operator input |
+| `ve orch answer <chunk>` | Answer a question from a work unit |
+
+#### Example Workflow
+
+```bash
+# 1. Create a FUTURE chunk
+ve chunk create my_feature --future
+
+# 2. Refine the goal, then commit
+git add docs/chunks/my_feature/ && git commit -m "feat(chunks): create my_feature"
+
+# 3. Submit to the orchestrator
+ve orch inject my_feature
+
+# 4. Check on progress
+ve orch ps
+
+# 5. Handle any attention items (questions, conflicts)
+ve orch attention
+ve orch answer my_feature "Yes, use the existing auth module"
+```
+
+For the full command reference and advanced topics (worktree retention, batch operations, conflict resolution), see `docs/trunk/ORCHESTRATOR.md`.
+
+### Steward
+
+The steward is a long-lived agent that watches an inbound message channel, triages requests according to a Standard Operating Procedure (SOP), and delegates work to the orchestrator. It turns cross-project messages into chunks and investigations without human intervention.
+
+#### Setup
+
+Run `/steward-setup` to create `docs/trunk/STEWARD.md` via an interactive interview. You'll configure:
+
+- **Steward name** — a human-readable identifier
+- **Channel** — the inbound channel the steward watches for messages
+- **Behavior mode** — how the steward responds to inbound messages:
+  - `autonomous` — creates and implements chunks end-to-end
+  - `queue` — creates work items for human review without implementing
+  - `custom` — follows freeform operator-defined instructions
+
+#### The Watch Loop
+
+Once set up, run `/steward-watch` to start the steward's core lifecycle:
+
+1. Read the SOP from `docs/trunk/STEWARD.md`
+2. Watch the inbound channel for messages
+3. Triage and act according to the behavior mode
+4. Post outcome summaries to the changelog channel
+5. Re-read the SOP and repeat
+
+The steward runs autonomously until the agent session ends. Editing the SOP mid-session takes effect on the next iteration.
+
+#### Cross-Project Messaging
+
+Use `/steward-send` to send a message to another project's steward without context-switching. This lets an operator in Project A request work from Project B's steward directly.
+
+#### Example Workflow
+
+```bash
+# 1. Set up the steward (interactive)
+/steward-setup
+
+# 2. Start the watch loop
+/steward-watch
+
+# 3. From another project, send a request to this steward
+/steward-send tool-b-steward "Please add rate limiting to the /api/submit endpoint"
+
+# 4. Watch for the outcome
+/steward-changelog
+```
+
 ## Development Setup (Improving the Vibe Engineering workflow)
 
 ### Prerequisites
