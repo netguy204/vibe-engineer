@@ -2,6 +2,7 @@
 """CLI commands for Leader Board messaging.
 
 Subcommands:
+  start         — start the local WebSocket server
   swarm create  — generate key pair and register with server
   send          — encrypt and send a message to a channel
   watch         — block until next message, decrypt, print to stdout
@@ -18,6 +19,7 @@ from pathlib import Path
 import click
 
 from board.client import BoardClient
+from leader_board.server import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_STORAGE_DIR
 from board.crypto import (
     derive_swarm_id,
     derive_symmetric_key,
@@ -43,6 +45,22 @@ def board():
 # ---------------------------------------------------------------------------
 # swarm subgroup
 # ---------------------------------------------------------------------------
+
+
+@board.command("start")
+@click.option("--host", default=DEFAULT_HOST, show_default=True, help="Bind address")
+@click.option("--port", type=int, default=DEFAULT_PORT, show_default=True, help="Bind port")
+@click.option(
+    "--storage-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=f"Storage directory (default: {DEFAULT_STORAGE_DIR})",
+)
+def start_cmd(host: str, port: int, storage_dir: Path | None) -> None:
+    """Start the local leader board WebSocket server."""
+    from leader_board.server import run_server
+
+    run_server(storage_dir=storage_dir, host=host, port=port)
 
 
 @board.group()

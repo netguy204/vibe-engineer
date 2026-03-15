@@ -410,7 +410,7 @@ def run_server(
 ) -> None:
     """Create and run the leader board server.
 
-    This is the entry point that the CLI chunk will eventually call.
+    Called by ``ve board start``.
     """
     app = create_app(
         storage_dir=storage_dir,
