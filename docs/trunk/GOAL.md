@@ -40,7 +40,14 @@ Maintaining the referential integrity of documents is an agent problem.
 Deciding if a document is still relevant is an agent-supported human problem. 
 
 Documents are never deleted, but they are superseded or noted as archaeological
-points of interest. 
+points of interest.
+
+A well-documented project is already structured for agent-independent work. It
+must be possible to appoint a long-lived agent steward over such a project and
+send it messages from other contexts without requiring the sender to
+context-switch. This enables an operator working on Project A to report a
+deficiency in Tool B to Tool B's steward, who can triage and act on it
+independently.
 
 ## Constraints
 
