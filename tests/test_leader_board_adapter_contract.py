@@ -68,11 +68,22 @@ class AdapterContractTests:
         m1 = await storage.append_message(swarm.swarm_id, "ch", b"old")
         m2 = await storage.append_message(swarm.swarm_id, "ch", b"recent")
 
-        # Age the first message (adapter-specific hack for in-memory)
+        # Age the first message (adapter-specific hack)
         if hasattr(storage, "_channels"):
+            # InMemoryStorage
             storage._channels[key][0] = m1.model_copy(
                 update={"sent_at": old_time}
             )
+        elif hasattr(storage, "_messages_path"):
+            # FileSystemStorage
+            import json as _json
+
+            mp = storage._messages_path(swarm.swarm_id, "ch")
+            lines = mp.read_text().strip().split("\n")
+            data = _json.loads(lines[0])
+            data["sent_at"] = old_time.isoformat()
+            lines[0] = _json.dumps(data)
+            mp.write_text("\n".join(lines) + "\n")
 
         removed = await storage.compact(swarm.swarm_id, "ch", 30)
         assert removed >= 1
