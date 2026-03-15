@@ -1,8 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- README.md
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +11,10 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["leader_board_durable_objects", "leader_board_user_config"]
+created_after:
+- leader_board_durable_objects
+- leader_board_user_config
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
