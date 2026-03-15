@@ -123,9 +123,10 @@ that their work was completed.
 Use `/loop 5m` with a prompt that:
 
 1. Runs `ve orch ps` and checks the status of all injected chunks
-2. For **DONE** chunks — posts a changelog entry announcing the completion
-   (include the chunk name and what it accomplished), then removes the chunk
-   from the monitoring prompt
+2. For **DONE** chunks — runs `git push` to publish the orchestrator's merged
+   work, posts a changelog entry announcing the completion (include the chunk
+   name and what it accomplished), then removes the chunk from the monitoring
+   prompt
 3. For **NEEDS_ATTENTION** chunks — alerts the operator or runs
    `/orchestrator-investigate` to diagnose and resolve
 4. For **RUNNING** chunks — takes no action
@@ -134,8 +135,8 @@ Use `/loop 5m` with a prompt that:
 Example `/loop` prompt:
 ```
 /loop 5m Check orchestrator status for injected chunks: run `ve orch ps`
-and look for `<chunk_name>`. If DONE, post a changelog entry via
-`ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`.
+and look for `<chunk_name>`. If DONE, run `git push`, then post a changelog
+entry via `ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`.
 If NEEDS_ATTENTION, alert me. If RUNNING, no action needed.
 ```
 
