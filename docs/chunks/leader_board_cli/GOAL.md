@@ -1,18 +1,31 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/board/__init__.py
+- src/board/crypto.py
+- src/board/storage.py
+- src/board/client.py
+- src/cli/board.py
+- src/cli/__init__.py
+- pyproject.toml
+- tests/test_board_crypto.py
+- tests/test_board_storage.py
+- tests/test_board_client.py
+- tests/test_board_cli.py
+- tests/test_board_e2e.py
 code_references: []
 narrative: leader_board
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["leader_board_spec"]
-created_after: ["finalize_double_commit"]
+depends_on:
+- leader_board_spec
+created_after:
+- finalize_double_commit
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
