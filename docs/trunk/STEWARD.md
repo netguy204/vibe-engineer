@@ -36,7 +36,11 @@ When a message arrives:
    changelog entry. When a chunk is stuck, investigate and resolve it
    autonomously (`/orchestrator-investigate`).
 
-5. **Publish to changelog** — Write a concise summary of what was done and
+5. **Push completed work** — When a chunk finishes in the orchestrator, run
+   `git push` to publish the merged work to the remote before posting the
+   changelog entry.
+
+6. **Publish to changelog** — Write a concise summary of what was done and
    publish it to the `vibe-engineer-changelog` channel so the requester and
    any observers can see the outcome. Publish when:
    - A chunk finishes successfully (include what changed and the branch/PR)
