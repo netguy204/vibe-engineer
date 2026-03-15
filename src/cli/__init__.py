@@ -29,6 +29,7 @@ from cli.orch import orch
 from cli.friction import friction
 from cli.migration import migration
 from cli.reviewer import reviewer
+from cli.board import board
 
 # Add top-level commands
 cli.add_command(init)
@@ -46,3 +47,4 @@ cli.add_command(orch)
 cli.add_command(friction)
 cli.add_command(migration)
 cli.add_command(reviewer)
+cli.add_command(board)
