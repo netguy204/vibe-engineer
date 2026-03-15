@@ -1,18 +1,34 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- workers/leader-board/package.json
+- workers/leader-board/tsconfig.json
+- workers/leader-board/wrangler.toml
+- workers/leader-board/src/index.ts
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/src/storage.ts
+- workers/leader-board/src/auth.ts
+- workers/leader-board/src/protocol.ts
+- workers/leader-board/test/protocol.test.ts
+- workers/leader-board/test/auth.test.ts
+- workers/leader-board/test/storage.test.ts
+- workers/leader-board/test/swarm-do.test.ts
+- workers/leader-board/test/index.test.ts
+- workers/leader-board/test/compaction.test.ts
+- workers/leader-board/test/e2e.test.ts
 code_references: []
 narrative: leader_board
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["leader_board_core"]
-created_after: ["finalize_double_commit"]
+depends_on:
+- leader_board_core
+created_after:
+- finalize_double_commit
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
