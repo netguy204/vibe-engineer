@@ -77,7 +77,7 @@ This mode determines *where* artifacts are created and listed.
 External artifacts (referenced via `external.yaml`) are **always dereferenceable**. The resolution context determines *how* they are dereferenced:
 
 - **With task context**: External artifacts resolve to the **live working copies** in the task directory. This enables editing and real-time validation.
-- **Without task context**: External artifacts resolve via the **repository cache** (`~/.ve/cache/repos/`) at the pinned SHA. This provides read-only access to the artifact content.
+- **Without task context**: External artifacts resolve via the **repository cache** (`~/.ve/cache/repos/`). This provides read-only access to the artifact content.
 
 **Resolution Behavior Summary**:
 
