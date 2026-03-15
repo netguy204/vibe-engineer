@@ -70,7 +70,7 @@ def swarm():
 
 
 @swarm.command("create")
-@click.option("--server", default="ws://localhost:8787", help="Server URL")
+@click.option("--server", default="ws://localhost:8374", help="Server URL")
 def swarm_create(server: str) -> None:
     """Generate a new swarm key pair and register with the server."""
     seed, public_key = generate_keypair()
@@ -97,7 +97,7 @@ def swarm_create(server: str) -> None:
 @click.argument("channel")
 @click.argument("body")
 @click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8787", help="Server URL")
+@click.option("--server", default="ws://localhost:8374", help="Server URL")
 def send_cmd(channel: str, body: str, swarm: str, server: str) -> None:
     """Encrypt and send a message to a channel."""
     keypair = load_keypair(swarm)
@@ -129,7 +129,7 @@ def send_cmd(channel: str, body: str, swarm: str, server: str) -> None:
 @board.command("watch")
 @click.argument("channel")
 @click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8787", help="Server URL")
+@click.option("--server", default="ws://localhost:8374", help="Server URL")
 @click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
 def watch_cmd(channel: str, swarm: str, server: str, project_root: Path) -> None:
     """Watch a channel for the next message after the persisted cursor.
@@ -182,7 +182,7 @@ def ack_cmd(channel: str, position: int, project_root: Path) -> None:
 
 @board.command("channels")
 @click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8787", help="Server URL")
+@click.option("--server", default="ws://localhost:8374", help="Server URL")
 def channels_cmd(swarm: str, server: str) -> None:
     """List channels in a swarm."""
     keypair = load_keypair(swarm)

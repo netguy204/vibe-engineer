@@ -32,7 +32,7 @@ class BoardClient:
 
     Usage::
 
-        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        client = BoardClient("ws://localhost:8374", swarm_id, seed)
         await client.connect()
         try:
             position = await client.send("channel", ciphertext_b64)

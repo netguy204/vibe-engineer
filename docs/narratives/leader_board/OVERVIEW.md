@@ -103,6 +103,17 @@ proposed_chunks:
   chunk_directory: leader_board_steward_skills
   depends_on:
   - 4
+- prompt: "Introduce a user global config file at ~/.ve/board.toml storing the\
+    \ operator's default coordination server URL and default swarm ID. All ve\
+    \ board client commands resolve --server and --swarm from this config when\
+    \ flags are not provided. Add a ve board bind command that writes the server\
+    \ URL (and optionally default swarm) to the config — this is how an operator\
+    \ points their CLI at the hosted Durable Objects coordination server or back\
+    \ to localhost.\n"
+  chunk_directory: leader_board_user_config
+  depends_on:
+  - 4
+  - 2
 created_after:
 - explicit_chunk_deps
 ---
