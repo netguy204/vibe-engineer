@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/cli/board.py
+- src/board/storage.py
+- tests/test_board_cli.py
+- tests/test_board_storage.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +14,10 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["leader_board_hibernate_watch", "readme_orch_steward_docs"]
+created_after:
+- leader_board_hibernate_watch
+- readme_orch_steward_docs
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

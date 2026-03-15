@@ -15,6 +15,7 @@ Subcommands:
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from board.crypto import (
     generate_keypair,
 )
 from board.storage import (
+    collect_board_files,
     list_swarms,
     load_cursor,
     load_keypair,
@@ -290,3 +292,73 @@ def channels_cmd(swarm: str | None, server: str | None) -> None:
             await client.close()
 
     asyncio.run(_channels())
+
+
+# ---------------------------------------------------------------------------
+# scp
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/board_scp_command - Board SCP command
+@board.command("scp")
+@click.argument("host")
+def scp_cmd(host: str) -> None:
+    """Copy board config and swarm keys to a remote host via SCP.
+
+    Copies ~/.ve/board.toml and all key material from ~/.ve/keys/ to
+    the same paths under ~/.ve/ on the remote HOST.
+    """
+    try:
+        files = collect_board_files()
+    except FileNotFoundError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    # Group files by their parent directory to preserve remote layout.
+    # board.toml → <host>:~/.ve/
+    # keys/*.key, keys/*.pub → <host>:~/.ve/keys/
+    home_ve = Path.home() / ".ve"
+
+    # Ensure remote directories exist
+    keys_files = [f for f in files if f.parent.name == "keys"]
+    if keys_files:
+        try:
+            subprocess.run(
+                ["ssh", host, "mkdir", "-p", "~/.ve/keys"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"Error: SSH to '{host}' failed: {exc.stderr.strip()}", err=True)
+            sys.exit(1)
+
+    # SCP board.toml
+    config_files = [f for f in files if f.name == "board.toml"]
+    if config_files:
+        try:
+            subprocess.run(
+                ["scp", *[str(f) for f in config_files], f"{host}:~/.ve/"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"Error: SCP to '{host}' failed: {exc.stderr.strip()}", err=True)
+            sys.exit(1)
+
+    # SCP key files
+    if keys_files:
+        try:
+            subprocess.run(
+                ["scp", *[str(f) for f in keys_files], f"{host}:~/.ve/keys/"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"Error: SCP to '{host}' failed: {exc.stderr.strip()}", err=True)
+            sys.exit(1)
+
+    file_count = len(files)
+    click.echo(f"Copied {file_count} file(s) to {host}:~/.ve/")

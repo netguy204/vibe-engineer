@@ -4,6 +4,7 @@
 import pytest
 from board.crypto import generate_keypair, derive_swarm_id
 from board.storage import (
+    collect_board_files,
     load_cursor,
     load_keypair,
     list_swarms,
@@ -64,3 +65,56 @@ def test_list_swarms(tmp_path):
 def test_list_swarms_empty(tmp_path):
     """Empty keys directory returns empty list."""
     assert list_swarms(keys_dir=tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# collect_board_files tests
+# Chunk: docs/chunks/board_scp_command - Board SCP command
+# ---------------------------------------------------------------------------
+
+
+def test_collect_board_files_missing_config(tmp_path):
+    """collect_board_files raises FileNotFoundError when board.toml missing."""
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        collect_board_files(config_path=tmp_path / "board.toml", keys_dir=tmp_path / "keys")
+
+
+def test_collect_board_files_config_only(tmp_path):
+    """collect_board_files returns only board.toml when no keys exist."""
+    config = tmp_path / "board.toml"
+    config.write_text("default_swarm = 'abc'\n")
+    files = collect_board_files(config_path=config, keys_dir=tmp_path / "keys")
+    assert files == [config]
+
+
+def test_collect_board_files_with_keys(tmp_path):
+    """collect_board_files returns board.toml and key files."""
+    config = tmp_path / "board.toml"
+    config.write_text("default_swarm = 'abc'\n")
+    keys_dir = tmp_path / "keys"
+    keys_dir.mkdir()
+    key_file = keys_dir / "abc.key"
+    pub_file = keys_dir / "abc.pub"
+    key_file.write_bytes(b"\x00" * 32)
+    pub_file.write_bytes(b"\x00" * 32)
+
+    files = collect_board_files(config_path=config, keys_dir=keys_dir)
+    assert config in files
+    assert key_file in files
+    assert pub_file in files
+    assert len(files) == 3
+
+
+def test_collect_board_files_ignores_non_key_files(tmp_path):
+    """collect_board_files ignores files without .key or .pub suffix."""
+    config = tmp_path / "board.toml"
+    config.write_text("")
+    keys_dir = tmp_path / "keys"
+    keys_dir.mkdir()
+    (keys_dir / "abc.key").write_bytes(b"\x00" * 32)
+    (keys_dir / "abc.pub").write_bytes(b"\x00" * 32)
+    (keys_dir / "notes.txt").write_text("random file")
+
+    files = collect_board_files(config_path=config, keys_dir=keys_dir)
+    assert len(files) == 3  # board.toml + .key + .pub
+    assert not any(f.name == "notes.txt" for f in files)

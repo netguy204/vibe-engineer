@@ -63,6 +63,36 @@ def list_swarms(keys_dir: Path | None = None) -> list[str]:
     )
 
 
+# Chunk: docs/chunks/board_scp_command - Board SCP command
+def collect_board_files(
+    config_path: Path | None = None,
+    keys_dir: Path | None = None,
+) -> list[Path]:
+    """Collect all board-related files for SCP transfer.
+
+    Returns a list of absolute paths to:
+    - ~/.ve/board.toml (if it exists)
+    - ~/.ve/keys/*.key and *.pub files
+
+    Raises FileNotFoundError if board.toml does not exist.
+    """
+    from board.config import DEFAULT_CONFIG_PATH
+
+    cfg = config_path or DEFAULT_CONFIG_PATH
+    if not cfg.exists():
+        raise FileNotFoundError(f"{cfg} does not exist")
+
+    files: list[Path] = [cfg]
+
+    kd = keys_dir or _DEFAULT_KEYS_DIR
+    if kd.exists():
+        for p in sorted(kd.iterdir()):
+            if p.suffix in (".key", ".pub"):
+                files.append(p)
+
+    return files
+
+
 # ---------------------------------------------------------------------------
 # Project-local cursor storage (.ve/board/cursors/)
 # ---------------------------------------------------------------------------

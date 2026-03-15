@@ -502,3 +502,131 @@ def test_no_config_no_flags_server_falls_back(runner, stored_swarm):
     assert result.exit_code == 0
     MockClient.assert_called_once()
     assert MockClient.call_args[0][0] == "ws://localhost:8374"
+
+
+# ---------------------------------------------------------------------------
+# scp command tests
+# Chunk: docs/chunks/board_scp_command - Board SCP command
+# ---------------------------------------------------------------------------
+
+
+def test_scp_help(runner):
+    """ve board scp --help shows the host argument."""
+    result = runner.invoke(board, ["scp", "--help"])
+    assert result.exit_code == 0
+    assert "HOST" in result.output
+
+
+def test_scp_no_board_toml(runner, tmp_path):
+    """scp errors when board.toml does not exist."""
+    missing = tmp_path / "board.toml"
+    with patch("cli.board.collect_board_files", side_effect=FileNotFoundError(f"{missing} does not exist")):
+        result = runner.invoke(board, ["scp", "remote-host"])
+
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+
+
+def test_scp_copies_files(runner, tmp_path):
+    """scp calls ssh mkdir and scp with correct arguments."""
+    # Set up fake board files
+    config_file = tmp_path / "board.toml"
+    config_file.write_text("default_swarm = 'abc'\n")
+    keys_dir = tmp_path / "keys"
+    keys_dir.mkdir()
+    (keys_dir / "abc.key").write_bytes(b"\x00" * 32)
+    (keys_dir / "abc.pub").write_bytes(b"\x00" * 32)
+
+    files = [config_file, keys_dir / "abc.key", keys_dir / "abc.pub"]
+    commands_run = []
+
+    def fake_run(cmd, **kwargs):
+        commands_run.append(cmd)
+        return MagicMock(returncode=0)
+
+    with patch("cli.board.collect_board_files", return_value=files), \
+         patch("cli.board.subprocess.run", side_effect=fake_run):
+        result = runner.invoke(board, ["scp", "myhost"])
+
+    assert result.exit_code == 0
+    assert "3 file(s)" in result.output
+    assert "myhost" in result.output
+
+    # Should have run: ssh mkdir, scp board.toml, scp keys
+    assert len(commands_run) == 3
+    assert commands_run[0][0] == "ssh"
+    assert "mkdir" in commands_run[0]
+    assert commands_run[1][0] == "scp"
+    assert str(config_file) in commands_run[1]
+    assert commands_run[2][0] == "scp"
+    assert str(keys_dir / "abc.key") in commands_run[2]
+
+
+def test_scp_config_only_no_keys(runner, tmp_path):
+    """scp with board.toml but no keys skips key transfer."""
+    config_file = tmp_path / "board.toml"
+    config_file.write_text("default_swarm = 'abc'\n")
+
+    files = [config_file]
+    commands_run = []
+
+    def fake_run(cmd, **kwargs):
+        commands_run.append(cmd)
+        return MagicMock(returncode=0)
+
+    with patch("cli.board.collect_board_files", return_value=files), \
+         patch("cli.board.subprocess.run", side_effect=fake_run):
+        result = runner.invoke(board, ["scp", "myhost"])
+
+    assert result.exit_code == 0
+    assert "1 file(s)" in result.output
+    # Should only run scp for board.toml, no ssh mkdir needed
+    assert len(commands_run) == 1
+    assert commands_run[0][0] == "scp"
+
+
+def test_scp_ssh_failure(runner, tmp_path):
+    """scp reports error when SSH fails."""
+    import subprocess as sp
+
+    config_file = tmp_path / "board.toml"
+    config_file.write_text("")
+    keys_dir = tmp_path / "keys"
+    keys_dir.mkdir()
+    (keys_dir / "abc.key").write_bytes(b"\x00" * 32)
+    (keys_dir / "abc.pub").write_bytes(b"\x00" * 32)
+
+    files = [config_file, keys_dir / "abc.key", keys_dir / "abc.pub"]
+
+    def fail_ssh(cmd, **kwargs):
+        if cmd[0] == "ssh":
+            raise sp.CalledProcessError(1, cmd, stderr="Connection refused")
+        return MagicMock(returncode=0)
+
+    with patch("cli.board.collect_board_files", return_value=files), \
+         patch("cli.board.subprocess.run", side_effect=fail_ssh):
+        result = runner.invoke(board, ["scp", "badhost"])
+
+    assert result.exit_code != 0
+    assert "SSH" in result.output or "failed" in result.output
+
+
+def test_scp_scp_failure(runner, tmp_path):
+    """scp reports error when SCP command fails."""
+    import subprocess as sp
+
+    config_file = tmp_path / "board.toml"
+    config_file.write_text("")
+    files = [config_file]
+
+    def fail_scp(cmd, **kwargs):
+        if cmd[0] == "scp":
+            raise sp.CalledProcessError(1, cmd, stderr="Permission denied")
+        return MagicMock(returncode=0)
+
+    with patch("cli.board.collect_board_files", return_value=files), \
+         patch("cli.board.subprocess.run", side_effect=fail_scp):
+        result = runner.invoke(board, ["scp", "badhost"])
+
+    assert result.exit_code != 0
+    assert "SCP" in result.output or "failed" in result.output
