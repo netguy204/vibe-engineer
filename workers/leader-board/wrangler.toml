@@ -11,3 +11,8 @@ class_name = "SwarmDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SwarmDO"]
+
+[observability]
+[observability.logs]
+enabled = false
+invocation_logs = true
