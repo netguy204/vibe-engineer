@@ -38,15 +38,15 @@ Run `ve board watch <channel> --swarm <swarm_id>` using `run_in_background`.
 This command blocks until a message arrives on the channel.
 
 **Important:** Before starting the watch, note the current cursor position.
-The cursor file is at `.ve/cursors/<channel>.cursor` (project-local). Read it
-to get the current position N. If the file doesn't exist, the cursor is at
-position 0. The next received message will be at position N+1 — you'll need
-this for the ack step.
+The cursor file is at `.ve/board/cursors/<channel>.cursor` (project-local).
+Read it to get the current position N. If the file doesn't exist, the cursor
+is at position 0. The next received message will be at position N+1 — you'll
+need this for the ack step.
 
 Example:
 ```
 # Read current cursor position (may not exist yet — that's OK, treat as 0)
-cat .ve/cursors/<channel>.cursor 2>/dev/null || echo 0
+cat .ve/board/cursors/<channel>.cursor 2>/dev/null || echo 0
 
 # Start watching in the background
 ve board watch <channel> --swarm <swarm_id>
@@ -59,15 +59,19 @@ to stdout. Read the output and triage according to the SOP's behavior mode:
 
 **If mode is `autonomous`:**
 - Analyze the inbound message to understand the request
-- Create a chunk or investigation as appropriate (`/chunk-create`,
-  `/investigation-create`)
-- Implement the work (create plan, implement, complete)
+- Create a FUTURE chunk or investigation as appropriate (`/chunk-create`,
+  `/investigation-create`). Write only the goal — do NOT plan or implement.
+- Commit the chunk directory (both GOAL.md and PLAN.md)
+- Inject into the orchestrator (`ve orch inject <chunk>`). The orchestrator
+  handles planning and implementation autonomously.
 - Summarize the outcome for the changelog
 
 **If mode is `queue`:**
 - Analyze the inbound message to understand the request
-- Create a chunk or investigation documenting the work item
-- Do NOT implement — leave it for the human operator
+- Create a FUTURE chunk or investigation documenting the work item.
+  Write only the goal — do NOT plan or implement.
+- Commit the chunk directory (both GOAL.md and PLAN.md)
+- Do NOT inject — leave it for the human operator to schedule
 - Summarize what was queued for the changelog
 
 **If mode is `custom`:**
