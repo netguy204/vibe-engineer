@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/leader_board_cli - Leader Board CLI client
+# Chunk: docs/chunks/leader_board_user_config - Board user config and defaults
 """Tests for cli.board — Click command integration tests."""
 
 import json
@@ -8,6 +9,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 from click.testing import CliRunner
 
+from board.config import BoardConfig, SwarmConfig
 from board.crypto import generate_keypair, derive_swarm_id, derive_symmetric_key, encrypt
 from board.storage import save_keypair, load_cursor
 from cli.board import board
@@ -28,6 +30,12 @@ def stored_swarm(tmp_path):
     return swarm_id, seed, pub, keys_dir
 
 
+@pytest.fixture
+def empty_config():
+    """Return an empty BoardConfig (no config file)."""
+    return BoardConfig()
+
+
 def test_board_group_exists(runner):
     """ve board --help exits 0 and shows subcommands."""
     result = runner.invoke(board, ["--help"])
@@ -37,14 +45,22 @@ def test_board_group_exists(runner):
     assert "watch" in result.output
     assert "ack" in result.output
     assert "channels" in result.output
+    assert "bind" in result.output
 
 
 def test_swarm_create(runner, tmp_path):
-    """swarm create generates key files and prints swarm ID."""
+    """swarm create generates key files, prints swarm ID, and updates board.toml."""
     keys_dir = tmp_path / "keys"
+    config_path = tmp_path / "board.toml"
+    saved_configs = []
+
+    def mock_save(config, config_path=None):
+        saved_configs.append(config)
 
     with patch("cli.board.save_keypair", wraps=lambda sid, s, p: save_keypair(sid, s, p, keys_dir=keys_dir)), \
-         patch("cli.board.BoardClient") as MockClient:
+         patch("cli.board.BoardClient") as MockClient, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.save_board_config", side_effect=mock_save):
 
         instance = MockClient.return_value
         instance.register_swarm = AsyncMock()
@@ -55,6 +71,35 @@ def test_swarm_create(runner, tmp_path):
     # Output should be the swarm ID (non-empty string)
     swarm_id = result.output.strip()
     assert len(swarm_id) > 0
+    # Config should have been updated with the new swarm
+    assert len(saved_configs) == 1
+    assert swarm_id in saved_configs[0].swarms
+    assert saved_configs[0].swarms[swarm_id].server_url == "ws://test:8787"
+    assert saved_configs[0].default_swarm == swarm_id
+
+
+def test_swarm_create_no_server_flag(runner, tmp_path):
+    """swarm create with no --server flag uses fallback from config resolution."""
+    keys_dir = tmp_path / "keys"
+    saved_configs = []
+
+    def mock_save(config, config_path=None):
+        saved_configs.append(config)
+
+    with patch("cli.board.save_keypair", wraps=lambda sid, s, p: save_keypair(sid, s, p, keys_dir=keys_dir)), \
+         patch("cli.board.BoardClient") as MockClient, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.save_board_config", side_effect=mock_save):
+
+        instance = MockClient.return_value
+        instance.register_swarm = AsyncMock()
+
+        result = runner.invoke(board, ["swarm", "create"])
+
+    assert result.exit_code == 0
+    swarm_id = result.output.strip()
+    # Should fall back to ws://localhost:8374
+    assert saved_configs[0].swarms[swarm_id].server_url == "ws://localhost:8374"
 
 
 def test_send_command(runner, stored_swarm, tmp_path):
@@ -62,6 +107,7 @@ def test_send_command(runner, stored_swarm, tmp_path):
     swarm_id, seed, pub, keys_dir = stored_swarm
 
     with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
          patch("cli.board.BoardClient") as MockClient:
 
         instance = MockClient.return_value
@@ -92,6 +138,7 @@ def test_watch_command(runner, stored_swarm, tmp_path):
 
     with patch("cli.board.load_keypair", return_value=(seed, pub)), \
          patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
          patch("cli.board.BoardClient") as MockClient:
 
         instance = MockClient.return_value
@@ -124,6 +171,7 @@ def test_watch_does_not_advance_cursor(runner, stored_swarm, tmp_path):
     project_root.mkdir()
 
     with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
          patch("cli.board.BoardClient") as MockClient:
 
         instance = MockClient.return_value
@@ -163,6 +211,7 @@ def test_channels_command(runner, stored_swarm):
     swarm_id, seed, pub, keys_dir = stored_swarm
 
     with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
          patch("cli.board.BoardClient") as MockClient:
 
         instance = MockClient.return_value
@@ -186,10 +235,270 @@ def test_channels_command(runner, stored_swarm):
 
 def test_send_missing_swarm(runner):
     """send with a missing swarm prints error."""
-    with patch("cli.board.load_keypair", return_value=None):
+    with patch("cli.board.load_keypair", return_value=None), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()):
         result = runner.invoke(board, [
             "send", "ch", "msg",
             "--swarm", "nonexistent",
         ])
     assert result.exit_code != 0
     assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# bind command tests
+# ---------------------------------------------------------------------------
+
+
+def test_bind_update_server_url(runner, tmp_path):
+    """ve board bind <swarm> <url> updates the swarm's server_url."""
+    config = BoardConfig(
+        default_swarm="s1",
+        swarms={"s1": SwarmConfig("ws://old-server")},
+    )
+    saved_configs = []
+
+    def mock_save(config, config_path=None):
+        saved_configs.append(config)
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.save_board_config", side_effect=mock_save):
+        result = runner.invoke(board, ["bind", "s1", "wss://new-server.com"])
+
+    assert result.exit_code == 0
+    assert "bound to" in result.output
+    assert saved_configs[0].swarms["s1"].server_url == "wss://new-server.com"
+
+
+def test_bind_unknown_swarm_errors(runner):
+    """ve board bind <swarm> <url> errors if swarm ID not found in config."""
+    config = BoardConfig(swarms={"s1": SwarmConfig("ws://server")})
+
+    with patch("cli.board.load_board_config", return_value=config):
+        result = runner.invoke(board, ["bind", "unknown", "ws://new"])
+
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
+def test_bind_default(runner, tmp_path):
+    """ve board bind --default <swarm> sets default_swarm."""
+    config = BoardConfig(
+        default_swarm="s1",
+        swarms={
+            "s1": SwarmConfig("ws://server1"),
+            "s2": SwarmConfig("ws://server2"),
+        },
+    )
+    saved_configs = []
+
+    def mock_save(config, config_path=None):
+        saved_configs.append(config)
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.save_board_config", side_effect=mock_save):
+        result = runner.invoke(board, ["bind", "--default", "s2"])
+
+    assert result.exit_code == 0
+    assert "Default swarm set to 's2'" in result.output
+    assert saved_configs[0].default_swarm == "s2"
+
+
+def test_bind_default_unknown_swarm_errors(runner):
+    """ve board bind --default <swarm> errors if swarm ID not in config."""
+    config = BoardConfig(swarms={"s1": SwarmConfig("ws://server")})
+
+    with patch("cli.board.load_board_config", return_value=config):
+        result = runner.invoke(board, ["bind", "--default", "unknown"])
+
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
+def test_bind_no_args(runner):
+    """ve board bind with no args prints usage."""
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, ["bind"])
+
+    assert result.exit_code != 0
+    assert "Usage" in result.output
+
+
+# ---------------------------------------------------------------------------
+# config-aware option resolution tests
+# ---------------------------------------------------------------------------
+
+
+def test_send_resolves_swarm_from_config(runner, stored_swarm):
+    """send with --swarm omitted resolves from default_swarm in config."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig("ws://configured-server")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.send = AsyncMock(return_value=1)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, ["send", "ch", "msg"])
+
+    assert result.exit_code == 0
+    # Verify the client was constructed with the config server URL
+    MockClient.assert_called_once()
+    call_args = MockClient.call_args
+    assert call_args[0][0] == "ws://configured-server"
+
+
+def test_send_resolves_server_from_config(runner, stored_swarm):
+    """send with --server omitted resolves from swarm's config entry."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig("wss://hosted.example.com")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.send = AsyncMock(return_value=1)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "send", "ch", "msg",
+            "--swarm", swarm_id,
+        ])
+
+    assert result.exit_code == 0
+    MockClient.assert_called_once()
+    assert MockClient.call_args[0][0] == "wss://hosted.example.com"
+
+
+def test_send_explicit_flags_override_config(runner, stored_swarm):
+    """send with explicit --swarm and --server ignores config."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    config = BoardConfig(
+        default_swarm="other-swarm",
+        swarms={
+            "other-swarm": SwarmConfig("ws://other-server"),
+            swarm_id: SwarmConfig("ws://config-server"),
+        },
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.send = AsyncMock(return_value=1)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "send", "ch", "msg",
+            "--swarm", swarm_id,
+            "--server", "ws://explicit",
+        ])
+
+    assert result.exit_code == 0
+    MockClient.assert_called_once()
+    assert MockClient.call_args[0][0] == "ws://explicit"
+    assert MockClient.call_args[0][1] == swarm_id
+
+
+def test_send_no_config_no_swarm_flag_errors(runner):
+    """send with no config and no --swarm flag errors."""
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, ["send", "ch", "msg"])
+
+    assert result.exit_code != 0
+    assert "no swarm specified" in result.output
+
+
+def test_channels_resolves_from_config(runner, stored_swarm):
+    """channels with --swarm and --server omitted resolves from config."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig("ws://config-channels")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.list_channels = AsyncMock(return_value=[])
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, ["channels"])
+
+    assert result.exit_code == 0
+    MockClient.assert_called_once()
+    assert MockClient.call_args[0][0] == "ws://config-channels"
+
+
+def test_watch_resolves_from_config(runner, stored_swarm, tmp_path):
+    """watch with --swarm and --server omitted resolves from config."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("test", sym_key)
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig("ws://config-watch")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch = AsyncMock(return_value={
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-15T14:30:00Z",
+        })
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "ch",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    MockClient.assert_called_once()
+    assert MockClient.call_args[0][0] == "ws://config-watch"
+
+
+def test_no_config_no_flags_server_falls_back(runner, stored_swarm):
+    """When no config and no --server flag, server falls back to ws://localhost:8374."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.send = AsyncMock(return_value=1)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "send", "ch", "msg",
+            "--swarm", swarm_id,
+        ])
+
+    assert result.exit_code == 0
+    MockClient.assert_called_once()
+    assert MockClient.call_args[0][0] == "ws://localhost:8374"

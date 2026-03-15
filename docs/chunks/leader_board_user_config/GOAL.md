@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/board/config.py
+- src/cli/board.py
+- pyproject.toml
+- tests/test_board_config.py
+- tests/test_board_cli.py
 code_references: []
 narrative: leader_board
 investigation: null
@@ -12,9 +17,13 @@ bug_type: null
 depends_on:
 - leader_board_cli
 - leader_board_local_server
-created_after: ["leader_board_cli", "leader_board_core", "leader_board_local_server", "leader_board_spec", "leader_board_steward_skills"]
+created_after:
+- leader_board_cli
+- leader_board_core
+- leader_board_local_server
+- leader_board_spec
+- leader_board_steward_skills
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

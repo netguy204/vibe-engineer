@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/leader_board_cli - Leader Board CLI client
+# Chunk: docs/chunks/leader_board_user_config - Board user config and defaults
 """CLI commands for Leader Board messaging.
 
 Subcommands:
@@ -8,6 +9,7 @@ Subcommands:
   watch         — block until next message, decrypt, print to stdout
   ack           — advance persisted cursor
   channels      — list channels in a swarm
+  bind          — update swarm server binding or default swarm
 """
 
 from __future__ import annotations
@@ -19,6 +21,13 @@ from pathlib import Path
 import click
 
 from board.client import BoardClient
+from board.config import (
+    add_swarm,
+    load_board_config,
+    resolve_server,
+    resolve_swarm,
+    save_board_config,
+)
 from leader_board.server import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_STORAGE_DIR
 from board.crypto import (
     derive_swarm_id,
@@ -70,22 +79,76 @@ def swarm():
 
 
 @swarm.command("create")
-@click.option("--server", default="ws://localhost:8374", help="Server URL")
-def swarm_create(server: str) -> None:
+@click.option("--server", default=None, help="Server URL")
+def swarm_create(server: str | None) -> None:
     """Generate a new swarm key pair and register with the server."""
+    config = load_board_config()
+    # For swarm create, resolve server without a swarm ID (no swarm exists yet)
+    resolved_server = resolve_server(config, None, server)
+
     seed, public_key = generate_keypair()
     swarm_id = derive_swarm_id(public_key)
 
     # Register with server
     async def _register():
-        client = BoardClient(server, swarm_id, seed)
+        client = BoardClient(resolved_server, swarm_id, seed)
         await client.register_swarm(public_key)
 
     asyncio.run(_register())
 
     # Persist keys (operator-global)
     save_keypair(swarm_id, seed, public_key)
+
+    # Update board.toml with the new swarm entry
+    add_swarm(config, swarm_id, resolved_server)
+    save_board_config(config)
+
     click.echo(swarm_id)
+
+
+# ---------------------------------------------------------------------------
+# bind
+# ---------------------------------------------------------------------------
+
+
+@board.command("bind")
+@click.argument("swarm_id", required=False, default=None)
+@click.argument("url", required=False, default=None)
+@click.option("--default", "set_default", default=None, metavar="SWARM", help="Set the default swarm")
+def bind_cmd(swarm_id: str | None, url: str | None, set_default: str | None) -> None:
+    """Update swarm server binding or default swarm.
+
+    \b
+    ve board bind <swarm> <url>      — update server URL for a swarm
+    ve board bind --default <swarm>  — set the default swarm
+    """
+    if swarm_id is None and set_default is None:
+        click.echo("Usage: ve board bind <swarm> <url>  or  ve board bind --default <swarm>", err=True)
+        sys.exit(1)
+
+    config = load_board_config()
+
+    if set_default is not None:
+        if set_default not in config.swarms:
+            click.echo(f"Error: swarm '{set_default}' not found in config.", err=True)
+            sys.exit(1)
+        config.default_swarm = set_default
+        save_board_config(config)
+        click.echo(f"Default swarm set to '{set_default}'")
+        return
+
+    # swarm_id + url mode
+    if url is None:
+        click.echo("Usage: ve board bind <swarm> <url>", err=True)
+        sys.exit(1)
+
+    if swarm_id not in config.swarms:
+        click.echo(f"Error: swarm '{swarm_id}' not found in config.", err=True)
+        sys.exit(1)
+
+    config.swarms[swarm_id].server_url = url
+    save_board_config(config)
+    click.echo(f"Swarm '{swarm_id}' bound to {url}")
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +159,17 @@ def swarm_create(server: str) -> None:
 @board.command("send")
 @click.argument("channel")
 @click.argument("body")
-@click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8374", help="Server URL")
-def send_cmd(channel: str, body: str, swarm: str, server: str) -> None:
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+def send_cmd(channel: str, body: str, swarm: str | None, server: str | None) -> None:
     """Encrypt and send a message to a channel."""
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
     keypair = load_keypair(swarm)
     if keypair is None:
         click.echo(f"Error: swarm '{swarm}' not found. Run 've board swarm create' first.", err=True)
@@ -128,16 +198,23 @@ def send_cmd(channel: str, body: str, swarm: str, server: str) -> None:
 
 @board.command("watch")
 @click.argument("channel")
-@click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8374", help="Server URL")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
 @click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
-def watch_cmd(channel: str, swarm: str, server: str, project_root: Path) -> None:
+def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path) -> None:
     """Watch a channel for the next message after the persisted cursor.
 
     Blocks until a message exists, decrypts the body, prints plaintext to
     stdout, then exits. The cursor is NOT auto-advanced — use 'ack' after
     durable processing.
     """
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
     keypair = load_keypair(swarm)
     if keypair is None:
         click.echo(f"Error: swarm '{swarm}' not found.", err=True)
@@ -181,10 +258,17 @@ def ack_cmd(channel: str, position: int, project_root: Path) -> None:
 
 
 @board.command("channels")
-@click.option("--swarm", required=True, help="Swarm ID")
-@click.option("--server", default="ws://localhost:8374", help="Server URL")
-def channels_cmd(swarm: str, server: str) -> None:
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+def channels_cmd(swarm: str | None, server: str | None) -> None:
     """List channels in a swarm."""
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
     keypair = load_keypair(swarm)
     if keypair is None:
         click.echo(f"Error: swarm '{swarm}' not found.", err=True)

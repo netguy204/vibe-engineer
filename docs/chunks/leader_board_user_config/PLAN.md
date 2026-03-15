@@ -10,170 +10,214 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a `~/.ve/board.toml` config file that stores per-swarm server bindings and
+the operator's default swarm. Introduce a `BoardConfig` dataclass in a new
+`src/board/config.py` module with `load` / `save` functions. Wire all existing
+`ve board` client commands to resolve `--server` and `--swarm` from this config
+when flags are not explicitly provided. Add a `ve board bind` command to update
+bindings.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design choices:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+- **TOML format** — The goal specifies `board.toml`. Python ≥3.12 includes
+  `tomllib` for reading. For writing, we'll use `tomli_w` (a lightweight,
+  well-maintained TOML writer) rather than hand-formatting strings. This avoids
+  bugs with quoting and escaping.
+- **Config location** — `Path.home() / ".ve" / "board.toml"`, co-located with
+  the existing `~/.ve/keys/` directory. The config is operator-global (not
+  project-local), matching the swarm ownership model.
+- **Resolution order** — Explicit CLI flags → config file → hardcoded fallback
+  (`ws://localhost:8374` for server, `None` for swarm). This preserves backward
+  compatibility: commands with no config and no flags behave exactly as today.
+- **Integration with `swarm create`** — After successful registration and key
+  storage, `swarm create` updates `board.toml` to add the new swarm with its
+  server URL and sets `default_swarm` if none is set yet. This means the config
+  is bootstrapped naturally — no separate setup step.
+- **TDD** — Tests are written before implementation per
+  docs/trunk/TESTING_PHILOSOPHY.md. Config load/save tests exercise real
+  filesystem behavior in tmp directories. CLI tests mock config functions to
+  test resolution logic.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/leader_board_user_config/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new architectural decisions are needed. This follows existing patterns:
+config is a file in `~/.ve/` (like keys), CLI commands use Click options with
+defaults, and the resolution logic is straightforward precedence.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `tomli_w` dependency
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `tomli-w>=1.0.0` to `pyproject.toml` dependencies. This is needed for
+writing TOML files. Reading uses stdlib `tomllib`.
 
-Example:
+Location: `pyproject.toml`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Write tests for `BoardConfig` load/save
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Write tests in `tests/test_board_config.py` that verify:
 
-Location: src/segment/format.rs
+- `load_board_config` returns a default (empty) config when no file exists
+- `load_board_config` reads a valid TOML file and returns structured data
+- `save_board_config` writes a TOML file that round-trips correctly
+- `add_swarm` adds a swarm entry with server_url and sets `default_swarm` if
+  it's the first swarm
+- `add_swarm` does not overwrite `default_swarm` if one is already set
+- `set_server_url` updates an existing swarm's server binding
+- `set_default_swarm` changes the default swarm
+- `set_default_swarm` raises an error for an unknown swarm ID
+- `resolve_swarm` returns explicit value if provided, else `default_swarm`,
+  else `None`
+- `resolve_server` returns explicit value if provided, else the swarm's
+  `server_url`, else the fallback `ws://localhost:8374`
 
-### Step 2: Implement header serialization
+These tests should use `tmp_path` to create real TOML files and exercise the
+actual parsing/serialization — no mocking of file I/O.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_board_config.py`
 
-### Step 3: ...
+### Step 3: Implement `BoardConfig` module
 
----
+Create `src/board/config.py` with:
 
-**BACKREFERENCE COMMENTS**
+```python
+@dataclass
+class SwarmConfig:
+    server_url: str
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+@dataclass
+class BoardConfig:
+    default_swarm: str | None
+    swarms: dict[str, SwarmConfig]
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Functions:
+- `load_board_config(config_path: Path | None = None) -> BoardConfig` — reads
+  `~/.ve/board.toml`, returns empty config if file absent
+- `save_board_config(config: BoardConfig, config_path: Path | None = None)` —
+  writes the TOML file atomically (write to tmp, rename)
+- `add_swarm(config: BoardConfig, swarm_id: str, server_url: str) -> BoardConfig`
+  — adds swarm entry, sets `default_swarm` if not already set
+- `resolve_swarm(config: BoardConfig, explicit: str | None) -> str | None` —
+  returns explicit or default_swarm
+- `resolve_server(config: BoardConfig, swarm_id: str | None, explicit: str | None) -> str`
+  — returns explicit, or swarm's server_url, or `ws://localhost:8374`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+The config path defaults to `Path.home() / ".ve" / "board.toml"` but is
+injectable for testing.
+
+Add module-level backreference:
+`# Chunk: docs/chunks/leader_board_user_config - Board user config and defaults`
+
+Location: `src/board/config.py`
+
+### Step 4: Write tests for `ve board bind` command
+
+Add tests in `tests/test_board_config.py` (or extend `tests/test_board_cli.py`)
+for the new CLI command:
+
+- `ve board bind <swarm> <url>` updates the swarm's `server_url` in config
+- `ve board bind <swarm> <url>` errors if swarm ID not found in config
+- `ve board bind --default <swarm>` sets `default_swarm` without changing
+  server URL
+- `ve board bind --default <swarm>` errors if swarm ID not found in config
+
+Use Click's `CliRunner` with a patched config path pointing to `tmp_path`.
+
+Location: `tests/test_board_cli.py`
+
+### Step 5: Implement `ve board bind` command
+
+Add a `bind` subcommand to the board group in `src/cli/board.py`:
+
+```
+ve board bind <swarm> <url>     — update server URL for a swarm
+ve board bind --default <swarm> — set the default swarm
+```
+
+The command loads the config, validates the swarm exists, makes the change,
+and saves. If neither `<url>` nor `--default` is meaningful, print usage help.
+
+Location: `src/cli/board.py`
+
+### Step 6: Write tests for config-aware option resolution
+
+Add tests that verify existing commands resolve options from config:
+
+- `send` with `--swarm` omitted resolves from `default_swarm` in config
+- `send` with `--server` omitted resolves from swarm's config entry
+- `send` with explicit `--swarm` and `--server` ignores config
+- Same patterns for `watch`, `channels`
+- `swarm create` with no config file still works (backward compat)
+- `swarm create` updates `board.toml` with the new swarm entry
+- Commands with no config and no flags: `--server` falls back to
+  `ws://localhost:8374`, `--swarm` is required (error if missing)
+
+Mock `load_board_config` and `save_board_config` in CLI tests to control config
+state without touching the filesystem.
+
+Location: `tests/test_board_cli.py`
+
+### Step 7: Wire config resolution into existing CLI commands
+
+Modify `src/cli/board.py`:
+
+1. Change `--swarm` from `required=True` to `required=False, default=None`
+   on `send`, `watch`, and `channels` commands.
+2. Change `--server` from `default="ws://localhost:8374"` to `default=None`
+   on `swarm create`, `send`, `watch`, and `channels` commands.
+3. At the top of each command function, load config and resolve:
+   ```python
+   config = load_board_config()
+   swarm = resolve_swarm(config, swarm)
+   if swarm is None:
+       click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+       sys.exit(1)
+   server = resolve_server(config, swarm, server)
+   ```
+4. Update `swarm_create` to call `add_swarm` after successful registration
+   and key storage, then `save_board_config`.
+
+The `start` and `ack` commands are unaffected — `start` uses its own
+`--host`/`--port` flags, and `ack` doesn't need server or swarm.
+
+Location: `src/cli/board.py`
+
+### Step 8: Verify all existing tests still pass
+
+Run `uv run pytest tests/test_board_cli.py tests/test_board_config.py` and
+fix any regressions. Existing tests that pass explicit `--server` and `--swarm`
+flags should continue to work unchanged because explicit flags override config.
+Tests that mock `load_keypair` may need to also mock `load_board_config` to
+prevent the resolution logic from trying to read a real `~/.ve/board.toml`.
+
+Location: `tests/`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **leader_board_cli** (ACTIVE) — Provides the existing `ve board` command
+  group and all client subcommands that this chunk modifies.
+- **leader_board_local_server** (ACTIVE) — The `ws://localhost:8374` fallback
+  default references this server.
+- **tomli-w** — New pyproject.toml dependency for TOML writing. No other
+  external dependencies needed (`tomllib` is stdlib in Python ≥3.12).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Atomic writes on Windows** — `os.replace` is atomic on POSIX but has
+  caveats on Windows. Since VE targets developer machines (primarily macOS and
+  Linux per existing usage), this is acceptable. If Windows support becomes
+  important, revisit with `tempfile.NamedTemporaryFile(delete=False)` +
+  `os.replace`.
+- **Config file corruption** — If the process is killed mid-write, the config
+  could be truncated. The write-to-tmp-then-rename pattern in Step 3 mitigates
+  this: the rename is atomic, so the file is either the old version or the new
+  version, never partial.
+- **Multiple swarm create calls** — Two concurrent `swarm create` invocations
+  could race on updating `board.toml`. This is unlikely in practice (operator
+  runs one at a time) and the worst case is a lost entry that can be recovered
+  with `ve board bind`. Not worth adding file locking for.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
