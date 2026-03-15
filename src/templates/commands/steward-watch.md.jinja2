@@ -106,7 +106,31 @@ steward's recovery mechanism — if the agent crashes, it will re-read from the
 last acked position on restart, automatically re-processing the unfinished
 message.
 
-### Step 6: Re-read SOP and rewatch
+### Step 6: Check orchestrator progress
+
+Before rewatching, check the status of any chunks the steward has injected.
+Keep a running list of injected chunk names throughout the session.
+
+```
+ve orch ps
+```
+
+For each injected chunk, check its status:
+
+- **DONE** — The orchestrator completed the chunk. Post a changelog entry
+  announcing the completion (include the chunk name and what it accomplished).
+  Remove it from your tracking list.
+- **RUNNING** — Still in progress. No action needed.
+- **NEEDS_ATTENTION** — The chunk is stuck. Run `/orchestrator-investigate` to
+  diagnose and resolve it. Post a changelog entry with what went wrong and how
+  it was fixed (or that it's being investigated).
+- **FAILED** — Post a failure summary to the changelog so the requester knows.
+
+This step is critical — without it, the requester never learns that their
+work was completed. The steward is the bridge between the orchestrator's
+async execution and the human-visible changelog.
+
+### Step 7: Re-read SOP and rewatch
 
 The operator may edit the SOP while the steward is running to change behavior.
 Before starting the next watch iteration:
