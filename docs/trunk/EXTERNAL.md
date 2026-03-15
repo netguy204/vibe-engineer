@@ -1,3 +1,5 @@
+<!-- Chunk: docs/chunks/claudemd_external_prompt - Full External Artifacts documentation -->
+<!-- Chunk: docs/chunks/progressive_disclosure_external - Comprehensive external artifacts documentation -->
 # External Artifacts Reference
 
 External artifacts enable multi-repository workflows by providing pointers to artifacts that live in other repositories. This is useful when work spans multiple codebases but needs coordinated documentation.
