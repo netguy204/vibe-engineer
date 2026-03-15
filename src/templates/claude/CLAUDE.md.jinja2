@@ -1,4 +1,7 @@
 {# Chunk: docs/chunks/progressive_disclosure_refactor - Slim CLAUDE.md template with signpost pattern #}
+{# Chunk: docs/chunks/claudemd_magic_markers - Template with magic markers wrapping VE-managed content #}
+{# Chunk: docs/chunks/code_to_docs_backrefs - Code Backreferences section documenting the convention #}
+{# Chunk: docs/chunks/scratchpad_docs_cleanup - Removed scratchpad language from backreference section #}
 <!-- VE:MANAGED:START -->
 # Vibe Engineering Workflow
 
@@ -72,12 +75,14 @@ Accumulative ledger for pain points. **Read when**: capturing friction, or when 
 See: `docs/trunk/ARTIFACTS.md#friction-log`
 
 {# Chunk: docs/chunks/claudemd_external_prompt - External artifact guidance in CLAUDE.md #}
+{# Chunk: docs/chunks/progressive_disclosure_external - External artifacts signpost in CLAUDE.md #}
 ### External Artifacts
 
 Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
 
 See: `docs/trunk/EXTERNAL.md`
 
+{# Chunk: docs/chunks/claudemd_uv_examples - Plain ve commands for orchestrator examples #}
 ## Orchestrator (`ve orch`)
 
 Manages parallel chunk execution across worktrees. **Read when**:
@@ -112,13 +117,23 @@ Use these slash commands for artifact management:
 {# Chunk: docs/chunks/chunk_review_skill - Added /chunk-review to Available Commands #}
 - `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references
+{# Chunk: docs/chunks/cluster_rename - cluster-rename command in Available Commands #}
 - `/cluster-rename` - Batch-rename chunks matching a prefix
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
 - `/narrative-compact` - Consolidate multiple chunks into a narrative
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation
 - `/friction-log` - Capture a friction point
+{# Chunk: docs/chunks/integrity_validate_fix_command - /validate-fix command in Available Commands #}
 - `/validate-fix` - Iteratively fix validation errors until clean
+
+{# Chunk: docs/chunks/leader_board_steward_skills - Steward skill commands #}
+### Steward
+
+- `/steward-setup` - Set up a project steward via interactive interview
+- `/steward-watch` - Run the steward watch-respond-rewatch loop
+- `/steward-send` - Send a message to a project's steward
+- `/steward-changelog` - Watch a project's changelog channel
 
 {# Chunk: docs/chunks/template_artifact_guidance - Creating Artifacts section with artifact creation guidance #}
 ## Creating Artifacts

@@ -142,6 +142,8 @@ When you see backreferences, read the referenced artifact to understand the code
 
 Always use the local path within the current repository (e.g., `docs/chunks/chunk_name`), not cross-repository paths. Each participating project has `external.yaml` pointers for chunks that live in the external artifacts repo.
 
+<!-- Chunk: docs/chunks/claudemd_external_prompt - External Artifacts section with redirect to EXTERNAL.md -->
+<!-- Chunk: docs/chunks/progressive_disclosure_external - Simplified external artifacts section -->
 ## External Artifacts {#external-artifacts}
 
 External artifacts enable multi-repository workflows by providing pointers to artifacts in other repositories. When an artifact directory contains `external.yaml` instead of GOAL.md or OVERVIEW.md, it's pointing to content in another repo.
