@@ -5,7 +5,7 @@
  * Tests verify wire protocol compatibility with the spec and
  * exercise the complete flow: register → auth → send → watch → receive.
  */
-import { SELF } from "cloudflare:test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 import * as ed from "@noble/ed25519";
 
@@ -323,5 +323,60 @@ describe("E2E: Full lifecycle", () => {
     expect(err2.code).toBe("invalid_frame");
 
     ws.close();
+  });
+
+  // Chunk: docs/chunks/leader_board_hibernate_watch - Hibernation recovery test
+  it("watcher receives message after hibernation clears in-memory state", async () => {
+    const swarmId = "e2e-hibernate-" + Date.now();
+    const { privKey } = await registerSwarm(swarmId);
+
+    const sender = await authenticateWs(swarmId, privKey);
+    const watcher = await authenticateWs(swarmId, privKey);
+
+    // Create channel with first message
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch",
+        swarm: swarmId,
+        body: "Zmlyc3Q=",
+      })
+    );
+    const ack1 = await nextMessage(sender);
+    expect(ack1.position).toBe(1);
+
+    // Watcher blocks at cursor 1 (waiting for next message)
+    watcher.send(
+      JSON.stringify({ type: "watch", channel: "ch", swarm: swarmId, cursor: 1 })
+    );
+
+    // Simulate hibernation: clear in-memory watchers Map via the DO instance
+    const id = env.SWARM_DO.idFromName(swarmId);
+    const stub = env.SWARM_DO.get(id);
+    await runInDurableObject(stub, (instance) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (instance as any)._clearWatchersForTest();
+    });
+
+    // Sender sends another message — wakeWatchers must recover from attachments
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch",
+        swarm: swarmId,
+        body: "c2Vjb25k",
+      })
+    );
+    const ack2 = await nextMessage(sender);
+    expect(ack2.position).toBe(2);
+
+    // Watcher should receive the message despite in-memory Map being empty
+    const watchMsg = await nextMessage(watcher);
+    expect(watchMsg.type).toBe("message");
+    expect(watchMsg.position).toBe(2);
+    expect(watchMsg.body).toBe("c2Vjb25k");
+
+    sender.close();
+    watcher.close();
   });
 });
