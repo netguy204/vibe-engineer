@@ -26,6 +26,13 @@ interface Watcher {
   cursor: number;
 }
 
+// Chunk: docs/chunks/leader_board_hibernate_watch - WebSocket attachment schema
+interface WsAttachment {
+  state: "handshake" | "authenticated";
+  nonce?: string;
+  watching?: { channel: string; cursor: number };
+}
+
 export class SwarmDO implements DurableObject {
   private storage: SwarmStorage;
   private ctx: DurableObjectState;
@@ -66,10 +73,7 @@ export class SwarmDO implements DurableObject {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const raw = typeof message === "string" ? message : new TextDecoder().decode(message);
-    const attachment = ws.deserializeAttachment() as {
-      state: "handshake" | "authenticated";
-      nonce?: string;
-    };
+    const attachment = ws.deserializeAttachment() as WsAttachment;
 
     if (attachment.state === "handshake") {
       await this.handleHandshake(ws, raw, attachment.nonce!);
@@ -233,6 +237,11 @@ export class SwarmDO implements DurableObject {
       this.watchers.set(frame.channel, channelWatchers);
     }
     channelWatchers.add({ ws, cursor: frame.cursor });
+
+    // Chunk: docs/chunks/leader_board_hibernate_watch - Persist watch state for hibernation recovery
+    const attachment = ws.deserializeAttachment() as WsAttachment;
+    attachment.watching = { channel: frame.channel, cursor: frame.cursor };
+    ws.serializeAttachment(attachment);
   }
 
   private handleChannels(ws: WebSocket): void {
@@ -265,17 +274,58 @@ export class SwarmDO implements DurableObject {
   // --- Watcher Management ---
 
   private wakeWatchers(channel: string, newPosition: number): void {
+    // 1. Try in-memory watchers first (fast path, no hibernation)
     const channelWatchers = this.watchers.get(channel);
-    if (!channelWatchers) return;
+    if (channelWatchers && channelWatchers.size > 0) {
+      const toRemove: Watcher[] = [];
 
-    const toRemove: Watcher[] = [];
+      for (const watcher of channelWatchers) {
+        if (watcher.cursor < newPosition) {
+          // Read the message for this watcher
+          const msg = this.storage.readAfter(channel, watcher.cursor);
+          if (msg) {
+            try {
+              const msgFrame: ServerFrame = {
+                type: "message",
+                channel: msg.channel,
+                position: msg.position,
+                body: msg.body,
+                sent_at: msg.sent_at,
+              };
+              watcher.ws.send(serializeFrame(msgFrame));
+              // Clear watch state from attachment after delivery
+              const att = watcher.ws.deserializeAttachment() as WsAttachment;
+              delete att.watching;
+              watcher.ws.serializeAttachment(att);
+            } catch {
+              // WebSocket may have closed — will be cleaned up
+            }
+            toRemove.push(watcher);
+          }
+        }
+      }
 
-    for (const watcher of channelWatchers) {
-      if (watcher.cursor < newPosition) {
-        // Read the message for this watcher
-        const msg = this.storage.readAfter(channel, watcher.cursor);
-        if (msg) {
-          try {
+      for (const w of toRemove) {
+        channelWatchers.delete(w);
+      }
+      if (channelWatchers.size === 0) {
+        this.watchers.delete(channel);
+      }
+      return;
+    }
+
+    // 2. Hibernation recovery: scan all connected WebSockets
+    // Chunk: docs/chunks/leader_board_hibernate_watch - Recover watchers after hibernation
+    const allSockets = this.ctx.getWebSockets();
+    for (const ws of allSockets) {
+      try {
+        const attachment = ws.deserializeAttachment() as WsAttachment;
+        if (
+          attachment?.watching?.channel === channel &&
+          attachment.watching.cursor < newPosition
+        ) {
+          const msg = this.storage.readAfter(channel, attachment.watching.cursor);
+          if (msg) {
             const msgFrame: ServerFrame = {
               type: "message",
               channel: msg.channel,
@@ -283,24 +333,20 @@ export class SwarmDO implements DurableObject {
               body: msg.body,
               sent_at: msg.sent_at,
             };
-            watcher.ws.send(serializeFrame(msgFrame));
-          } catch {
-            // WebSocket may have closed — will be cleaned up
+            ws.send(serializeFrame(msgFrame));
+            // Clear watch state after delivery
+            delete attachment.watching;
+            ws.serializeAttachment(attachment);
           }
-          toRemove.push(watcher);
         }
+      } catch {
+        // WebSocket may have closed
       }
-    }
-
-    for (const w of toRemove) {
-      channelWatchers.delete(w);
-    }
-    if (channelWatchers.size === 0) {
-      this.watchers.delete(channel);
     }
   }
 
   private removeWatcher(ws: WebSocket): void {
+    // Clear in-memory state
     for (const [channel, watchers] of this.watchers) {
       for (const watcher of watchers) {
         if (watcher.ws === ws) {
@@ -311,6 +357,24 @@ export class SwarmDO implements DurableObject {
         this.watchers.delete(channel);
       }
     }
+
+    // Chunk: docs/chunks/leader_board_hibernate_watch - Clear attachment watch state
+    try {
+      const attachment = ws.deserializeAttachment() as WsAttachment;
+      if (attachment?.watching) {
+        delete attachment.watching;
+        ws.serializeAttachment(attachment);
+      }
+    } catch {
+      // WebSocket may already be closed/invalid
+    }
+  }
+
+  // --- Test Helpers ---
+
+  /** @internal Clear in-memory watcher state to simulate hibernation memory loss. Test-only. */
+  _clearWatchersForTest(): void {
+    this.watchers.clear();
   }
 
   // --- Helpers ---
