@@ -1,37 +1,20 @@
 ---
-status: ACTIVE
+status: SUPERSEDED
+superseded_by: websocket_hibernation_compat
 ticket: null
 parent_chunk: null
 code_paths:
 - src/board/client.py
-- src/leader_board/server.py
-- src/leader_board/protocol.py
 - src/cli/board.py
-- workers/leader-board/src/swarm-do.ts
-- workers/leader-board/src/protocol.ts
 - tests/test_board_client.py
 - tests/test_leader_board_e2e.py
 code_references:
-- ref: src/board/client.py#BoardClient::_recv_data_frame
-  implements: "Filter out server-side ping keepalive frames from data flow"
 - ref: src/board/client.py#BoardClient::watch_with_reconnect
   implements: "Automatic reconnect with exponential backoff on WebSocket disconnect"
 - ref: src/board/client.py#BoardClient::connect
   implements: "Configure client-side ping_interval/ping_timeout for dead connection detection"
-- ref: src/leader_board/server.py#_heartbeat_loop
-  implements: "Server-side periodic ping frame sending to prevent idle timeout"
-- ref: src/leader_board/server.py#websocket_handler
-  implements: "Spawns heartbeat task after auth, cancels on disconnect"
-- ref: src/leader_board/protocol.py#PingFrame
-  implements: "Wire protocol ping frame dataclass for keepalive"
 - ref: src/cli/board.py#watch_cmd
   implements: "CLI watch command uses reconnect by default with --no-reconnect opt-out"
-- ref: workers/leader-board/src/swarm-do.ts#SwarmDO::alarm
-  implements: "DO alarm sends pings to all connected WebSockets and conditionally runs compaction"
-- ref: workers/leader-board/src/swarm-do.ts#SwarmDO::ensureHeartbeatAlarm
-  implements: "Reschedule alarm to heartbeat interval when WebSockets are connected"
-- ref: workers/leader-board/src/protocol.ts#PingFrame
-  implements: "TypeScript wire protocol ping frame interface"
 narrative: null
 investigation: null
 subsystems: []
