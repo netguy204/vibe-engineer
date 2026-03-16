@@ -260,6 +260,26 @@ describe("Invite instruction page", () => {
     expect(resp.status).toBe(404);
   });
 
+  // Chunk: docs/chunks/gateway_cors_and_docs - Invite page response schema documentation test
+  it("invite page documents GET and POST response schemas", async () => {
+    const { swarmId, tokenHex } = await setupGateway("schema-docs");
+
+    const resp = await SELF.fetch(
+      `https://test.local/invite/${tokenHex}?swarm=${swarmId}`
+    );
+    expect(resp.status).toBe(200);
+    const body = await resp.text();
+
+    // GET response schema fields
+    expect(body).toContain("position");
+    expect(body).toContain("body");
+    expect(body).toContain("sent_at");
+    expect(body).toContain("channel");
+
+    // Explicit note about no sender/author field
+    expect(body).toMatch(/no sender|no author|anonymous/i);
+  });
+
   it("non-GET method returns 405", async () => {
     const { swarmId, tokenHex } = await setupGateway("method-not-allowed");
 

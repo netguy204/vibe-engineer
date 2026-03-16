@@ -10,170 +10,119 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add CORS support and response schema documentation to the cleartext gateway HTTP routes in `workers/leader-board/src/swarm-do.ts`. The approach is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **CORS helper**: Extract a small helper that merges `Access-Control-Allow-Origin: *` into every response from the gateway and invite routes. Apply it consistently at the response-return points inside `handleGatewayAPI` and `handleInvitePage`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **OPTIONS preflight handler**: Add an `OPTIONS` case in `handleGatewayAPI` (and match it in the `fetch` router) that returns 204 with the standard CORS preflight headers (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/gateway_cors_and_docs/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Invite page documentation**: Update the `renderInvitePage` template string to include GET and POST response schema documentation with field names, types, and explicit notes about what fields are *not* present (e.g., no sender/author field).
 
-## Subsystem Considerations
+4. **Tests first** per docs/trunk/TESTING_PHILOSOPHY.md: Write failing tests for CORS headers on GET, POST, and OPTIONS responses before implementing the CORS logic. Write a test asserting the invite page contains response schema documentation before updating the template.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new dependencies. No subsystems are relevant — this is entirely within the Cloudflare Worker HTTP handler code.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing CORS tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `workers/leader-board/test/gateway-api.test.ts`:
 
-Example:
+- `OPTIONS /gateway/{token}/channels/{channel}/messages returns 204 with CORS headers` — asserts status 204, `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods` includes GET/POST/OPTIONS, `Access-Control-Allow-Headers` includes Content-Type.
+- `GET gateway response includes CORS headers` — asserts existing GET response has `Access-Control-Allow-Origin: *`.
+- `POST gateway response includes CORS headers` — asserts existing POST response has `Access-Control-Allow-Origin: *`.
 
-### Step 1: Define the SegmentHeader struct
+Add a test to `workers/leader-board/test/invite-page.test.ts`:
+- `invite page documents GET and POST response schemas` — asserts the invite page text contains response field documentation (`position`, `body`, `sent_at`, `channel`, and a note about no sender/author field).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Run tests, confirm they fail.
 
-Location: src/segment/format.rs
+Location: `workers/leader-board/test/gateway-api.test.ts`, `workers/leader-board/test/invite-page.test.ts`
 
-### Step 2: Implement header serialization
+### Step 2: Add OPTIONS handler to handleGatewayAPI
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+In `workers/leader-board/src/swarm-do.ts`, add an `OPTIONS` case at the top of the `switch (request.method)` block inside `handleGatewayAPI`. Return:
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Response(null, {
+  status: 204,
+  headers: {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  }
+})
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The OPTIONS handler does NOT need token validation — preflight requests don't carry credentials. Add it as a short-circuit before the token resolution logic.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `workers/leader-board/src/swarm-do.ts#SwarmDO.handleGatewayAPI`
 
-## Dependencies
+### Step 3: Add CORS headers to all gateway GET/POST responses
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Define a `corsHeaders` constant at the top of `handleGatewayAPI`:
 
-If there are no dependencies, delete this section.
--->
+```typescript
+const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+```
+
+Merge `corsHeaders` into every `headers` object in the GET and POST response paths. This includes:
+- Successful GET responses (messages array)
+- Long-poll timeout empty responses
+- No-wait empty responses
+- Successful POST responses
+- Error responses (400, 401, 405, 500)
+
+Also add `Access-Control-Allow-Origin: *` to the invite page responses in `handleInvitePage` (both the success and 404/405 responses).
+
+Location: `workers/leader-board/src/swarm-do.ts#SwarmDO.handleGatewayAPI`, `workers/leader-board/src/swarm-do.ts#SwarmDO.handleInvitePage`
+
+### Step 4: Update renderInvitePage with response schema documentation
+
+Add two new sections to the `renderInvitePage` template string, after the existing "Reading Messages" and "Posting Messages" sections:
+
+**After "Reading Messages"**, add a response schema block:
+
+```
+### GET Response Schema
+
+    {"messages": [{"position": 1, "body": "message text", "sent_at": "2026-03-16T12:00:00Z"}]}
+
+Fields:
+- position (number) — monotonically increasing message index within the channel
+- body (string) — the plaintext message content
+- sent_at (string) — ISO 8601 timestamp when the message was stored
+
+Note: There is no sender or author field. All messages are anonymous in the gateway API.
+```
+
+**After "Posting Messages"**, add a response schema block:
+
+```
+### POST Response Schema
+
+    {"position": 1, "channel": "changelog"}
+
+Fields:
+- position (number) — the position assigned to the newly stored message
+- channel (string) — the channel the message was posted to
+```
+
+Location: `workers/leader-board/src/swarm-do.ts#renderInvitePage`
+
+### Step 5: Run tests and verify all pass
+
+Run the full test suite for the worker. All four new tests from Step 1 should now pass. Verify no existing tests have regressed.
+
+Location: `workers/leader-board/test/`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The OPTIONS handler deliberately skips token validation since preflight requests can't carry custom headers. This is standard CORS behavior but worth noting: an OPTIONS request to a path with an invalid token will return 204 rather than 401. This is correct — browsers send preflight before the real request, and the real request will still be validated.
+- Using `Access-Control-Allow-Origin: *` is intentionally permissive. The gateway is designed for agent consumption from arbitrary origins. If origin-scoping is ever needed, this is where to add it.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

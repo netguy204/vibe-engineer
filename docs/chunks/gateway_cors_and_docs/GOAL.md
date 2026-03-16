@@ -1,8 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/test/gateway-api.test.ts
+- workers/leader-board/test/invite-page.test.ts
 code_references: []
 narrative: null
 investigation: agent_invite_links
@@ -10,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["gateway_message_read_fix"]
+created_after:
+- gateway_message_read_fix
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

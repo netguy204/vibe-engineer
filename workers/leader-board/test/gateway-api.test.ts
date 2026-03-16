@@ -495,4 +495,45 @@ describe("Gateway cleartext API", () => {
     );
     expect(resp.status).toBe(400);
   });
+
+  // Chunk: docs/chunks/gateway_cors_and_docs - CORS header tests
+  it("OPTIONS /gateway/{token}/channels/{channel}/messages returns 204 with CORS headers", async () => {
+    const { swarmId, tokenHex } = await setupGateway("options-cors");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/changelog/messages?swarm=${swarmId}`,
+      { method: "OPTIONS" }
+    );
+    expect(resp.status).toBe(204);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("GET");
+    expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("OPTIONS");
+    expect(resp.headers.get("Access-Control-Allow-Headers")).toContain("Content-Type");
+  });
+
+  it("GET gateway response includes CORS headers", async () => {
+    const { swarmId, tokenHex } = await setupGateway("get-cors");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/ch/messages?after=0&swarm=${swarmId}`
+    );
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  it("POST gateway response includes CORS headers", async () => {
+    const { swarmId, tokenHex } = await setupGateway("post-cors");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/changelog/messages?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "cors test" }),
+      }
+    );
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
 });
