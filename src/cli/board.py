@@ -203,12 +203,14 @@ def send_cmd(channel: str, body: str, swarm: str | None, server: str | None) -> 
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/websocket_keepalive - Added --no-reconnect flag
 @board.command("watch")
 @click.argument("channel")
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
 @click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
-def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path) -> None:
+@click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
+def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool) -> None:
     """Watch a channel for the next message after the persisted cursor.
 
     Blocks until a message exists, decrypts the body, prints plaintext to
@@ -235,7 +237,10 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
         client = BoardClient(server, swarm, seed)
         await client.connect()
         try:
-            msg = await client.watch(channel, cursor)
+            if no_reconnect:
+                msg = await client.watch(channel, cursor)
+            else:
+                msg = await client.watch_with_reconnect(channel, cursor)
             plaintext = decrypt(msg["body"], sym_key)
             click.echo(plaintext)
         finally:

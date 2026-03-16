@@ -5,6 +5,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import websockets.exceptions
 
 from board.client import BoardClient, BoardError
 from board.crypto import generate_keypair, derive_swarm_id, sign
@@ -165,6 +166,204 @@ async def test_channels_frame(keypair):
     assert len(result) == 2
     assert result[0]["name"] == "steward"
     assert result[1]["name"] == "changelog"
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/websocket_keepalive - Ping frame filtering tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_ignores_ping_frames(keypair):
+    """watch() skips server ping frames and returns the next message frame."""
+    seed, pub, swarm_id = keypair
+    challenge = json.dumps({"type": "challenge", "nonce": "aa" * 32})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    ping1 = json.dumps({"type": "ping"})
+    ping2 = json.dumps({"type": "ping"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 7,
+        "body": "data==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    mock_ws = _make_mock_ws([challenge, auth_ok, ping1, ping2, msg])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        result = await client.watch("ch1", 6)
+
+    assert result["position"] == 7
+    assert result["body"] == "data=="
+
+
+@pytest.mark.asyncio
+async def test_send_ignores_ping_frames(keypair):
+    """send() skips server ping frames and returns the ack."""
+    seed, pub, swarm_id = keypair
+    challenge = json.dumps({"type": "challenge", "nonce": "aa" * 32})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    ping = json.dumps({"type": "ping"})
+    ack = json.dumps({"type": "ack", "channel": "ch1", "position": 10})
+
+    mock_ws = _make_mock_ws([challenge, auth_ok, ping, ack])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        position = await client.send("ch1", "body==")
+
+    assert position == 10
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/websocket_keepalive - Reconnect logic tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_on_disconnect(keypair):
+    """watch_with_reconnect() catches disconnect and retries after reconnect."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+
+    # First connection: will raise ConnectionClosedError on watch recv
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    # Second connection (after reconnect): succeeds
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 3,
+        "body": "hello==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        """Return different mock ws objects for each connect() call."""
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: auth succeeds, then watch recv raises ConnectionClosedError
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: auth succeeds, watch returns message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            result = await client.watch_with_reconnect("ch1", 2)
+
+    assert result["position"] == 3
+    assert result["body"] == "hello=="
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_max_retries(keypair):
+    """watch_with_reconnect() raises after exhausting max_retries."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    import websockets.exceptions
+
+    def make_ws_factory(*args, **kwargs):
+        """Every connection's watch recv raises ConnectionClosedError."""
+        ws = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge,
+            auth_ok,
+            websockets.exceptions.ConnectionClosedError(None, None),
+        ])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            with pytest.raises(websockets.exceptions.ConnectionClosedError):
+                await client.watch_with_reconnect("ch1", 0, max_retries=2)
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_backoff(keypair):
+    """watch_with_reconnect() uses exponential backoff between retries."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 1,
+        "body": "ok==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    import websockets.exceptions
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 3:
+            # First 3 connections fail
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # 4th connection succeeds
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):  # deterministic jitter
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                result = await client.watch_with_reconnect("ch1", 0)
+
+    assert result["position"] == 1
+    # Verify backoff progression: 1s, 2s, 4s (with jitter=0)
+    assert sleep_mock.call_count == 3
+    assert sleep_mock.call_args_list[0].args[0] == pytest.approx(1.0)
+    assert sleep_mock.call_args_list[1].args[0] == pytest.approx(2.0)
+    assert sleep_mock.call_args_list[2].args[0] == pytest.approx(4.0)
 
 
 # ---------------------------------------------------------------------------

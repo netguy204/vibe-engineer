@@ -1,8 +1,16 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/board/client.py
+- src/leader_board/server.py
+- src/leader_board/protocol.py
+- src/cli/board.py
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/src/protocol.ts
+- tests/test_board_client.py
+- tests/test_leader_board_e2e.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +18,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["steward_deploy_step"]
+created_after:
+- steward_deploy_step
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

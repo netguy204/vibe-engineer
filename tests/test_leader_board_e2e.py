@@ -362,3 +362,50 @@ class TestWireProtocolFormat:
             error = json.loads(ws.receive_text())
             assert set(error.keys()) >= {"type", "code", "message"}
             assert error["type"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/websocket_keepalive - Server heartbeat tests
+# ---------------------------------------------------------------------------
+
+
+class TestServerHeartbeat:
+    def test_server_sends_ping_frames_during_idle(self, tmp_path) -> None:
+        """Server sends ping frames at the heartbeat interval to keep connections alive."""
+        from leader_board.server import HEARTBEAT_INTERVAL
+
+        # Use a very short heartbeat interval for testing
+        app = create_app(storage_dir=tmp_path)
+        client = TestClient(app)
+        private_key, pub_bytes = _make_keypair()
+        swarm_id = "heartbeat-swarm"
+
+        # Patch the heartbeat interval to be very short for the test
+        import leader_board.server as server_mod
+        original_interval = server_mod.HEARTBEAT_INTERVAL
+
+        try:
+            server_mod.HEARTBEAT_INTERVAL = 0.1  # 100ms for fast test
+
+            with client.websocket_connect("/ws") as ws:
+                _register_and_auth(ws, private_key, pub_bytes, swarm_id)
+
+                # Wait for a ping frame to arrive
+                import time
+                time.sleep(0.3)  # Wait for at least one heartbeat cycle
+
+                # The server should have sent at least one ping frame
+                # We need to receive it — but since TestClient is synchronous,
+                # we check by trying to receive the next frame
+                frame = json.loads(ws.receive_text())
+                assert frame["type"] == "ping"
+        finally:
+            server_mod.HEARTBEAT_INTERVAL = original_interval
+
+    def test_ping_frame_has_correct_structure(self, tmp_path) -> None:
+        """Ping frame is a valid JSON object with type 'ping'."""
+        from leader_board.protocol import PingFrame, serialize_server_frame
+
+        serialized = serialize_server_frame(PingFrame())
+        parsed = json.loads(serialized)
+        assert parsed == {"type": "ping"}

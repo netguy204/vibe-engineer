@@ -88,6 +88,8 @@ To continuously watch a channel:
 }
 
 const COMPACTION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Chunk: docs/chunks/websocket_keepalive - Heartbeat interval for WebSocket keepalive
+const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 const COMPACTION_MIN_AGE_DAYS = 30;
 const CHANNEL_NAME_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 const GATEWAY_MESSAGE_MAX_BYTES = 1_048_576; // 1 MB
@@ -173,6 +175,9 @@ export class SwarmDO implements DurableObject {
 
     const challengeFrame: ServerFrame = { type: "challenge", nonce };
     server.send(serializeFrame(challengeFrame));
+
+    // Chunk: docs/chunks/websocket_keepalive - Ensure heartbeat alarm is scheduled for connected WebSockets
+    await this.ensureHeartbeatAlarm();
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -569,14 +574,36 @@ export class SwarmDO implements DurableObject {
     this.removeWatcher(ws);
   }
 
+  // Chunk: docs/chunks/websocket_keepalive - Track last compaction time
+  private lastCompactionAt: number = 0;
+
   async alarm(): Promise<void> {
-    // Compaction sweep
-    const channels = this.storage.listChannels();
-    for (const ch of channels) {
-      this.storage.compact(ch.name, COMPACTION_MIN_AGE_DAYS);
+    // Chunk: docs/chunks/websocket_keepalive - Send ping frames to all connected WebSockets
+    const allSockets = this.ctx.getWebSockets();
+    for (const ws of allSockets) {
+      try {
+        ws.send(serializeFrame({ type: "ping" }));
+      } catch {
+        // WebSocket may have closed
+      }
     }
-    // Re-schedule
-    await this.ctx.storage.setAlarm(Date.now() + COMPACTION_INTERVAL_MS);
+
+    // Run compaction only when enough time has elapsed
+    const now = Date.now();
+    if (now - this.lastCompactionAt >= COMPACTION_INTERVAL_MS) {
+      const channels = this.storage.listChannels();
+      for (const ch of channels) {
+        this.storage.compact(ch.name, COMPACTION_MIN_AGE_DAYS);
+      }
+      this.lastCompactionAt = now;
+    }
+
+    // Re-schedule: use heartbeat interval if WebSockets are connected,
+    // otherwise fall back to compaction interval
+    const nextInterval = allSockets.length > 0
+      ? HEARTBEAT_INTERVAL_MS
+      : COMPACTION_INTERVAL_MS;
+    await this.ctx.storage.setAlarm(Date.now() + nextInterval);
   }
 
   // --- Handshake ---
@@ -866,10 +893,25 @@ export class SwarmDO implements DurableObject {
     }
   }
 
+  // Chunk: docs/chunks/websocket_keepalive - Force alarm to heartbeat interval for active WebSockets
+  private async ensureHeartbeatAlarm(): Promise<void> {
+    const existing = await this.ctx.storage.getAlarm();
+    // If no alarm or existing alarm is more than heartbeat interval away, reschedule
+    const now = Date.now();
+    if (!existing || existing > now + HEARTBEAT_INTERVAL_MS) {
+      await this.ctx.storage.setAlarm(now + HEARTBEAT_INTERVAL_MS);
+    }
+  }
+
   private async ensureAlarm(): Promise<void> {
     const existing = await this.ctx.storage.getAlarm();
     if (!existing) {
-      await this.ctx.storage.setAlarm(Date.now() + COMPACTION_INTERVAL_MS);
+      // Chunk: docs/chunks/websocket_keepalive - Use heartbeat interval when WebSockets connected
+      const allSockets = this.ctx.getWebSockets();
+      const interval = allSockets.length > 0
+        ? HEARTBEAT_INTERVAL_MS
+        : COMPACTION_INTERVAL_MS;
+      await this.ctx.storage.setAlarm(Date.now() + interval);
     }
   }
 }
