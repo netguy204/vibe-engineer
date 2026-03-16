@@ -117,6 +117,8 @@ interface WsAttachment {
 export class SwarmDO implements DurableObject {
   private storage: SwarmStorage;
   private ctx: DurableObjectState;
+  // Chunk: docs/chunks/invite_path_routing_fix - Store env for KV access
+  private env: Env;
 
   // Per-channel watcher sets for blocking read wake-up
   private watchers: Map<string, Set<Watcher>> = new Map();
@@ -124,8 +126,9 @@ export class SwarmDO implements DurableObject {
   // Chunk: docs/chunks/gateway_cleartext_api - Long-poll pending polls
   private pendingPolls: Map<string, Set<PendingPoll>> = new Map();
 
-  constructor(ctx: DurableObjectState, _env: Env) {
+  constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
+    this.env = env;
     this.storage = new SwarmStorage(ctx.storage);
   }
 
@@ -218,6 +221,8 @@ export class SwarmDO implements DurableObject {
         // Chunk: docs/chunks/invite_instruction_page - Pass swarm_id for invite routing
         const swarmId = url.searchParams.get("swarm") || "";
         this.storage.putGatewayKey(body.token_hash, body.encrypted_blob, swarmId);
+        // Chunk: docs/chunks/invite_path_routing_fix - Write token→swarm KV index
+        await this.env.TOKEN_SWARM_INDEX.put(body.token_hash, swarmId);
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: jsonHeaders,
@@ -256,7 +261,12 @@ export class SwarmDO implements DurableObject {
       case "DELETE": {
         // Chunk: docs/chunks/invite_list_revoke - Bulk delete when no token_hash in path
         if (!tokenHashFromPath) {
+          // Chunk: docs/chunks/invite_path_routing_fix - Clean up KV index before bulk delete
+          const allKeys = this.storage.listGatewayKeys();
           const deletedCount = this.storage.deleteAllGatewayKeys();
+          for (const key of allKeys) {
+            await this.env.TOKEN_SWARM_INDEX.delete(key.token_hash);
+          }
           return new Response(
             JSON.stringify({ ok: true, deleted: deletedCount }),
             { status: 200, headers: jsonHeaders }
@@ -271,6 +281,8 @@ export class SwarmDO implements DurableObject {
           );
         }
 
+        // Chunk: docs/chunks/invite_path_routing_fix - Remove token→swarm KV entry
+        await this.env.TOKEN_SWARM_INDEX.delete(tokenHashFromPath);
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: jsonHeaders,
@@ -864,4 +876,6 @@ export class SwarmDO implements DurableObject {
 
 export interface Env {
   SWARM_DO: DurableObjectNamespace;
+  // Chunk: docs/chunks/invite_path_routing_fix - KV index for token→swarm resolution
+  TOKEN_SWARM_INDEX: KVNamespace;
 }

@@ -207,12 +207,46 @@ describe("Invite instruction page", () => {
     expect(resp.status).toBe(404);
   });
 
-  it("missing swarm parameter returns 400", async () => {
+  // Chunk: docs/chunks/invite_path_routing_fix - Swarm-less invite routing tests
+  it("GET /invite/{token} works without swarm query parameter", async () => {
+    const { tokenHex } = await setupGateway("no-swarm-param");
+
+    const resp = await SELF.fetch(
+      `https://test.local/invite/${tokenHex}`
+    );
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+
+    const body = await resp.text();
+    expect(body).toContain("# Swarm Invite");
+    expect(body).toContain(tokenHex);
+  });
+
+  it("invalid token without swarm parameter returns 404", async () => {
     const fakeToken = bytesToHex(nacl.randomBytes(32));
     const resp = await SELF.fetch(
       `https://test.local/invite/${fakeToken}`
     );
-    expect(resp.status).toBe(400);
+    expect(resp.status).toBe(404);
+    const body = await resp.text();
+    expect(body).toContain("Invalid or expired invite token");
+  });
+
+  it("revoked token without swarm parameter returns 404", async () => {
+    const { swarmId, tokenHex, tokenHash } = await setupGateway("revoked-no-swarm");
+
+    // Revoke the token
+    const delResp = await SELF.fetch(
+      `https://test.local/gateway/keys/${tokenHash}?swarm=${swarmId}`,
+      { method: "DELETE" }
+    );
+    expect(delResp.status).toBe(200);
+
+    // Try to access invite page without swarm param
+    const resp = await SELF.fetch(
+      `https://test.local/invite/${tokenHex}`
+    );
+    expect(resp.status).toBe(404);
   });
 
   it("non-GET method returns 405", async () => {

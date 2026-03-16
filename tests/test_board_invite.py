@@ -1,6 +1,7 @@
 # Chunk: docs/chunks/invite_cli_command - Invite CLI commands
 # Chunk: docs/chunks/invite_list_revoke - List and bulk revoke tests
-"""Tests for ve board invite and ve board revoke commands."""
+# Chunk: docs/chunks/invite_revoke_subcommand - Moved revoke under invite group
+"""Tests for ve board invite (create, list, revoke) commands."""
 
 from __future__ import annotations
 
@@ -328,12 +329,12 @@ def test_invite_list_server_error(runner):
 
 
 # ---------------------------------------------------------------------------
-# revoke command tests
+# invite revoke command tests
 # ---------------------------------------------------------------------------
 
 
 def test_revoke_happy_path(runner):
-    """ve board revoke deletes the token and confirms."""
+    """ve board invite revoke deletes the token and confirms."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -348,7 +349,7 @@ def test_revoke_happy_path(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete) as del_mock:
         result = runner.invoke(board, [
-            "revoke", token_hex,
+            "invite", "revoke", token_hex,
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -363,7 +364,7 @@ def test_revoke_happy_path(runner):
 
 
 def test_revoke_token_not_found(runner):
-    """ve board revoke with 404 reports token not found."""
+    """ve board invite revoke with 404 reports token not found."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -378,7 +379,7 @@ def test_revoke_token_not_found(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete):
         result = runner.invoke(board, [
-            "revoke", token_hex,
+            "invite", "revoke", token_hex,
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -388,7 +389,7 @@ def test_revoke_token_not_found(runner):
 
 
 def test_revoke_server_error(runner):
-    """ve board revoke reports server error on non-200/404 status."""
+    """ve board invite revoke reports server error on non-200/404 status."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -403,7 +404,7 @@ def test_revoke_server_error(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete):
         result = runner.invoke(board, [
-            "revoke", token_hex,
+            "invite", "revoke", token_hex,
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -413,12 +414,12 @@ def test_revoke_server_error(runner):
 
 
 # ---------------------------------------------------------------------------
-# revoke --all tests
+# invite revoke --all tests
 # ---------------------------------------------------------------------------
 
 
 def test_revoke_all_happy_path(runner):
-    """ve board revoke --all deletes all tokens and reports count."""
+    """ve board invite revoke --all deletes all tokens and reports count."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -433,7 +434,7 @@ def test_revoke_all_happy_path(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete) as del_mock:
         result = runner.invoke(board, [
-            "revoke", "--all",
+            "invite", "revoke", "--all",
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -447,7 +448,7 @@ def test_revoke_all_happy_path(runner):
 
 
 def test_revoke_all_empty_swarm(runner):
-    """ve board revoke --all on empty swarm reports zero revoked."""
+    """ve board invite revoke --all on empty swarm reports zero revoked."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -462,7 +463,7 @@ def test_revoke_all_empty_swarm(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete):
         result = runner.invoke(board, [
-            "revoke", "--all",
+            "invite", "revoke", "--all",
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -472,7 +473,7 @@ def test_revoke_all_empty_swarm(runner):
 
 
 def test_revoke_all_server_error(runner):
-    """ve board revoke --all reports server error on non-200 status."""
+    """ve board invite revoke --all reports server error on non-200 status."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -486,7 +487,7 @@ def test_revoke_all_server_error(runner):
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete):
         result = runner.invoke(board, [
-            "revoke", "--all",
+            "invite", "revoke", "--all",
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -496,7 +497,7 @@ def test_revoke_all_server_error(runner):
 
 
 def test_revoke_neither_token_nor_all_errors(runner):
-    """ve board revoke with neither token nor --all prints error."""
+    """ve board invite revoke with neither token nor --all prints error."""
     config = BoardConfig(
         default_swarm="myswarm",
         swarms={"myswarm": SwarmConfig("ws://test:8787")},
@@ -504,7 +505,7 @@ def test_revoke_neither_token_nor_all_errors(runner):
 
     with patch("cli.board.load_board_config", return_value=config):
         result = runner.invoke(board, [
-            "revoke",
+            "invite", "revoke",
             "--swarm", "myswarm",
             "--server", "ws://test:8787",
         ])
@@ -566,11 +567,11 @@ def test_invite_revoke_round_trip(runner, stored_swarm):
     recovered_seed = bytes.fromhex(decrypt(blob, sym_key))
     assert recovered_seed == seed
 
-    # Step 2: Revoke
+    # Step 2: Revoke via invite revoke
     with patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.delete", side_effect=mock_delete):
         revoke_result = runner.invoke(board, [
-            "revoke", token_hex,
+            "invite", "revoke", token_hex,
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
         ])
@@ -582,3 +583,49 @@ def test_invite_revoke_round_trip(runner, stored_swarm):
     expected_hash = hashlib.sha256(token_bytes).hexdigest()
     delete_url = captured_delete[0]["url"]
     assert expected_hash in delete_url
+
+
+# ---------------------------------------------------------------------------
+# deprecated alias tests
+# ---------------------------------------------------------------------------
+
+
+def test_deprecated_board_revoke_warns(runner):
+    """ve board revoke (old path) still works but emits deprecation warning."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+    token_hex = "aa" * 32
+
+    def mock_delete(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.delete", side_effect=mock_delete):
+        result = runner.invoke(board, [
+            "revoke", token_hex,
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0
+    assert "deprecated" in result.output.lower()
+    assert "ve board invite revoke" in result.output
+
+
+# ---------------------------------------------------------------------------
+# invite --help test
+# ---------------------------------------------------------------------------
+
+
+def test_invite_help_shows_revoke(runner):
+    """ve board invite --help lists create, list, and revoke subcommands."""
+    result = runner.invoke(board, ["invite", "--help"])
+
+    assert result.exit_code == 0
+    assert "create" in result.output
+    assert "list" in result.output
+    assert "revoke" in result.output
