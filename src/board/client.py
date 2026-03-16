@@ -157,6 +157,7 @@ class BoardClient:
         }
 
     # Chunk: docs/chunks/websocket_keepalive - Reconnect wrapper for watch()
+    # Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset and keepalive tuning
     async def watch_with_reconnect(
         self,
         channel: str,
@@ -214,6 +215,13 @@ class BoardClient:
                 except Exception:
                     pass
                 await self.connect()
+                # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
+                # Only reset backoff, not attempt — max_retries should count total
+                # failures, not just consecutive failures since last connect().
+                # connect() succeeds (auth handshake) even when the server will
+                # immediately drop the watch, so resetting attempt here would make
+                # max_retries unreachable in degraded-server scenarios.
+                backoff = 1.0
 
     async def list_channels(self) -> list[dict]:
         """List channels in the swarm."""

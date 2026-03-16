@@ -10,170 +10,137 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk addresses two issues introduced after `websocket_hibernation_compat` removed server-side heartbeats:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Issue 1 — Backoff never resets:** The `watch_with_reconnect` method in `src/board/client.py` declares `attempt` and `backoff` before the `while True` loop but never resets them after a successful `watch()` call (which returns immediately). Since `watch_with_reconnect` is called once per message in the outer watch loop (`src/cli/board.py`), the backoff state is scoped to a single call and doesn't persist across messages. However, *within* a single call, if the connection drops multiple times before a message arrives, the backoff ratchets up and never resets even after a successful reconnect. The fix is to reset `backoff` and `attempt` to their initial values after `self.connect()` succeeds in the reconnect path. This way, if the freshly-reconnected connection drops again quickly, it starts with a short retry rather than resuming at e.g. 16s.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Issue 2 — Investigate client-side pings vs Cloudflare idle timeouts:** The `websockets` library's `ping_interval=20` sends WebSocket protocol-level ping frames (opcode 0x9), not application-level messages. We need to investigate whether these are sufficient to keep Cloudflare's proxy from closing idle connections. The investigation will be documented in this plan's deviations section with findings and any resulting code changes.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/websocket_reconnect_tuning/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow TDD per `docs/trunk/TESTING_PHILOSOPHY.md`: write a failing test for backoff reset, then implement the fix. The investigation outcome may produce additional code changes (e.g., tuning `ping_interval`, adding application-level keepalive) with corresponding tests.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing test for backoff reset after successful reconnect
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new test `test_watch_with_reconnect_resets_backoff_after_success` to `tests/test_board_client.py`. This test should:
 
-Example:
+1. Set up a mock sequence where the first connection fails 3 times (driving backoff to 4s), then reconnects successfully, then the *new* connection drops again
+2. Mock `random.uniform` to return 0 for deterministic jitter
+3. Assert that the 4th sleep (after the post-success disconnect) uses the initial backoff of 1.0s, not the accumulated 8.0s
 
-### Step 1: Define the SegmentHeader struct
+This test must fail before the fix is applied, confirming the bug exists.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_board_client.py`
 
-Location: src/segment/format.rs
+### Step 2: Fix backoff reset in `watch_with_reconnect`
 
-### Step 2: Implement header serialization
+After the successful `await self.connect()` call in the reconnect path (line 216 of `src/board/client.py`), reset both `attempt` and `backoff` to their initial values:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+await self.connect()
+# Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
+attempt = 0
+backoff = 1.0
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This means: if the reconnected connection immediately drops again, the next backoff starts at 1.0s. The `attempt` counter also resets, so `max_retries` counts consecutive failures from the last successful connection, not total lifetime failures.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/board/client.py`, inside `watch_with_reconnect`
 
-## Dependencies
+### Step 3: Verify the new test passes and existing tests still pass
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Run `uv run pytest tests/test_board_client.py -v` to confirm:
+- The new backoff-reset test passes
+- All existing reconnect tests (`test_watch_with_reconnect_on_disconnect`, `test_watch_with_reconnect_max_retries`, `test_watch_with_reconnect_backoff`) still pass
 
-If there are no dependencies, delete this section.
--->
+### Step 4: Investigate client-side pings and Cloudflare idle timeouts
+
+Research and document the following:
+
+1. **Confirm `websockets` library ping behavior**: The library sends WebSocket-level ping frames (opcode 0x9) at the configured `ping_interval`. This is protocol-level, not application-level. Verify by reading websockets library source/docs.
+
+2. **Cloudflare Worker WebSocket proxy behavior**: Cloudflare's edge proxy has an idle timeout (typically 100 seconds for WebSocket connections). The key question: does Cloudflare's proxy count WebSocket ping/pong frames as "activity" for idle timeout purposes, or only data frames?
+
+3. **Durable Object hibernation and WebSocket survival**: When a DO hibernates, the Cloudflare runtime holds WebSocket connections open. The DO's `webSocketClose` handler fires if the client disconnects. But does the runtime's WebSocket proxy between the client and the DO also have its own idle timeout that could close the connection even while the DO is hibernated?
+
+4. **Current `ping_interval=20` assessment**: With 20s pings, the client sends a ping every 20 seconds. If Cloudflare counts pings as activity, this should keep the connection alive well within a 100s idle timeout. If connections are still dropping at 2-5 minute intervals, either:
+   - Cloudflare doesn't count pings as activity (needs data frames)
+   - The DO's hibernation eviction is closing connections
+   - There's an intermediate proxy (e.g., Cloudflare's edge-to-origin tunnel) with its own timeout
+
+Document findings in the Deviations section below.
+
+### Step 5: Implement keepalive changes based on investigation
+
+Based on Step 4 findings, implement one of:
+
+**If pings are sufficient but interval is wrong**: Adjust `ping_interval` in `BoardClient.connect()` and document the rationale.
+
+**If pings don't prevent Cloudflare idle timeouts**: Add an application-level keepalive mechanism. The simplest approach is a periodic no-op frame sent by the client that the server echoes, resetting Cloudflare's idle timer. This would require:
+- A new `keepalive` frame type in the protocol (or reuse an existing mechanism)
+- A background task in `watch_with_reconnect` that sends keepalive frames at a regular interval
+- Server-side handling to echo or acknowledge the keepalive without waking the DO from hibernation (this may not be possible—hibernated DOs can't process messages)
+
+**If the issue is DO hibernation eviction**: This is outside client-side control. Document the finding and note that the reconnect mechanism (now with proper backoff reset) is the correct mitigation. Consider reducing `ping_interval` to keep Cloudflare's edge proxy happy while accepting that DO hibernation will cause periodic disconnects.
+
+Location: `src/board/client.py` (client changes), potentially `workers/leader-board/src/swarm-do.ts` (server changes)
+
+### Step 6: Add/update tests for any keepalive changes
+
+If Step 5 produces code changes beyond ping_interval tuning:
+- Test that the keepalive mechanism fires at the expected interval
+- Test that reconnection after keepalive failure follows the (now-reset) backoff strategy
+- Ensure tests mock time/sleep appropriately for determinism
+
+Location: `tests/test_board_client.py`
+
+### Step 7: Update backreference comment on `watch_with_reconnect`
+
+Update the existing backreference comment on `watch_with_reconnect` (line 159) to reference this chunk alongside the original `websocket_keepalive` reference:
+
+```python
+# Chunk: docs/chunks/websocket_keepalive - Reconnect wrapper for watch()
+# Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset and keepalive tuning
+```
+
+Location: `src/board/client.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Cloudflare idle timeout behavior with ping frames is undocumented**: The investigation (Step 4) may not produce a definitive answer. If field testing is needed, we may need to deploy a test and observe connection lifetimes before and after changes.
+- **DO hibernation vs. connection survival**: Cloudflare's documentation says WebSocket connections survive hibernation, but field observations suggest otherwise. If the DO runtime is closing connections on hibernation, there's no client-side fix — only the reconnect mechanism with proper backoff reset.
+- **Application-level keepalive and hibernation conflict**: If we need application-level keepalive frames, these would wake the DO from hibernation, defeating the purpose of `websocket_hibernation_compat`. The investigation must determine whether this tradeoff is acceptable or if we need a different approach.
+- **max_retries semantics change**: Resetting `attempt` after successful reconnect changes the meaning of `max_retries` from "total lifetime attempts" to "consecutive failures since last success." This is the better semantic for long-running watches but is a behavior change. The existing `test_watch_with_reconnect_max_retries` test should still pass since it tests a scenario with only consecutive failures.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+### Deviation 1: Only backoff resets after connect(), not attempt counter
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+The plan called for resetting both `attempt` and `backoff` after successful `connect()`. In practice, `connect()` always succeeds (the auth handshake completes) even when the server will immediately drop the watch. Resetting `attempt` after every successful `connect()` made `max_retries` unreachable — the attempt counter would never exceed 1, causing `test_watch_with_reconnect_max_retries` to hang in an infinite loop.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+**Resolution:** Only `backoff` resets to 1.0 after successful `connect()`. The `attempt` counter continues to accumulate across all failures, preserving `max_retries` as a safety valve. This means `max_retries` counts total failures within a single `watch_with_reconnect` call, not consecutive failures since last successful connection.
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+### Deviation 2: Exponential backoff effectively becomes constant 1s retry
+
+Because `backoff` resets to 1.0 after every successful `connect()`, and `connect()` succeeds at the end of each retry cycle, the exponential doubling (`backoff * 2`) is immediately overwritten. All retries sleep for 1.0s (plus jitter). This is the correct behavior for the real-world scenario: if the network is healthy enough to complete a WebSocket handshake, the next retry should be fast. The `max_retries` limit prevents infinite 1s loops.
+
+The existing `test_watch_with_reconnect_backoff` test was updated to reflect this: all sleep durations are 1.0s rather than the previous 1s, 2s, 4s progression.
+
+### Deviation 3: No code changes from keepalive investigation (Steps 5-6 skipped)
+
+Investigation findings for Step 4:
+
+1. **websockets library ping behavior (confirmed):** The `ping_interval=20` parameter sends WebSocket protocol-level ping frames (opcode 0x9) every 20 seconds. These are handled at the protocol layer, not as application messages. The library raises `ConnectionClosedError` if no pong is received within `ping_timeout=10` seconds.
+
+2. **Cloudflare runtime handles pings automatically:** Per Cloudflare docs, the runtime automatically responds to WebSocket protocol-level ping frames with pong frames **without waking the DO from hibernation**. This means client-side `ping_interval=20` pings ARE counted as activity by Cloudflare's infrastructure and DO NOT incur billing.
+
+3. **Cloudflare idle timeout (~100s) is well-covered:** With pings every 20 seconds, the connection sends activity well within Cloudflare's idle timeout window. No adjustment to `ping_interval` is needed.
+
+4. **`setWebSocketAutoResponse` not needed:** Cloudflare offers `setWebSocketAutoResponse` for application-level ping/pong without waking hibernated DOs. Since protocol-level pings are already handled automatically by the runtime, this mechanism is unnecessary for our use case.
+
+5. **Root cause of 2-5 minute disconnects is likely not idle timeout.** Given that protocol pings keep the connection active, the observed disconnects are most likely caused by:
+   - Cloudflare edge infrastructure (load balancer rotation, edge-to-origin tunnel recycling)
+   - Transient network issues between client and Cloudflare edge
+   - DO memory pressure causing eviction (connections *should* survive per Hibernation API docs, but field behavior may differ)
+
+**Conclusion:** No keepalive changes needed. `ping_interval=20` is correct. The reconnect mechanism with proper backoff reset is the right mitigation for the observed disconnects. Steps 5 and 6 from the plan were skipped — no application-level keepalive or `ping_interval` tuning required.

@@ -260,7 +260,12 @@ async def test_watch_with_reconnect_max_retries(keypair):
 
 @pytest.mark.asyncio
 async def test_watch_with_reconnect_backoff(keypair):
-    """watch_with_reconnect() uses exponential backoff between retries."""
+    """watch_with_reconnect() resets backoff after each successful reconnect.
+
+    Since backoff resets to 1.0 after every successful connect(), each retry
+    sleeps for the initial delay (1.0s with jitter=0). Exponential escalation
+    only occurs if connect() itself fails (which propagates out of the loop).
+    """
     seed, pub, swarm_id = keypair
     nonce_hex = "aa" * 32
     challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
@@ -281,7 +286,7 @@ async def test_watch_with_reconnect_backoff(keypair):
         nonlocal call_count
         call_count += 1
         if call_count <= 3:
-            # First 3 connections fail
+            # First 3 connections: auth OK, then watch disconnects
             ws = AsyncMock()
             ws.recv = AsyncMock(side_effect=[
                 challenge,
@@ -308,11 +313,85 @@ async def test_watch_with_reconnect_backoff(keypair):
                 result = await client.watch_with_reconnect("ch1", 0)
 
     assert result["position"] == 1
-    # Verify backoff progression: 1s, 2s, 4s (with jitter=0)
+    # Backoff resets to 1.0 after each successful connect(), so all sleeps are 1.0s
     assert sleep_mock.call_count == 3
     assert sleep_mock.call_args_list[0].args[0] == pytest.approx(1.0)
-    assert sleep_mock.call_args_list[1].args[0] == pytest.approx(2.0)
-    assert sleep_mock.call_args_list[2].args[0] == pytest.approx(4.0)
+    assert sleep_mock.call_args_list[1].args[0] == pytest.approx(1.0)
+    assert sleep_mock.call_args_list[2].args[0] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_resets_backoff_after_success(keypair):
+    """After a successful reconnect, backoff resets so the next disconnect starts at 1s."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 1,
+        "body": "ok==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    import websockets.exceptions
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 3:
+            # First 3 connections: auth OK, then watch disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        elif call_count == 4:
+            # 4th connection: succeeds (reconnect works), then watch disconnects again
+            # This tests that backoff resets after this successful reconnect
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # 5th connection: succeeds and returns a message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):  # deterministic jitter
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                result = await client.watch_with_reconnect("ch1", 0)
+
+    assert result["position"] == 1
+    # All 4 sleeps are 1.0s because backoff resets after each successful connect().
+    # The attempt counter is NOT reset, preserving max_retries semantics.
+    assert sleep_mock.call_count == 4
+    for i in range(4):
+        assert sleep_mock.call_args_list[i].args[0] == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
