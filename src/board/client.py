@@ -57,8 +57,9 @@ class BoardClient:
         # Chunk: docs/chunks/websocket_keepalive - Configure client-side ping for dead connection detection
         # Chunk: docs/chunks/websocket_cloudflare_diag - Increase ping_timeout from 10→30 to
         # accommodate Cloudflare DO hibernation wake latency (H3 fix)
+        # Chunk: docs/chunks/websocket_zombie_cleanup - Increase close_timeout to allow server close handshake after hibernation wake
         self._ws = await websockets.connect(
-            url, close_timeout=1, ping_interval=20, ping_timeout=30
+            url, close_timeout=10, ping_interval=20, ping_timeout=30
         )
         logger.debug(
             "WebSocket connected: url=%s ping_interval=20 ping_timeout=30",
@@ -106,7 +107,8 @@ class BoardClient:
         then closes. This does NOT use the main authenticated connection.
         """
         url = f"{self.server_url}/ws?swarm={self.swarm_id}"
-        async with websockets.connect(url, close_timeout=1) as ws:
+        # Chunk: docs/chunks/websocket_zombie_cleanup - Increase close_timeout to allow server close handshake after hibernation wake
+        async with websockets.connect(url, close_timeout=10) as ws:
             # Server sends a challenge first, but we ignore it for registration
             await ws.recv()  # discard challenge
 

@@ -380,6 +380,22 @@ describe("E2E: Full lifecycle", () => {
     watcher.close();
   });
 
+  // Chunk: docs/chunks/websocket_zombie_cleanup - Close handshake completion test
+  it("server completes close handshake when client initiates close", async () => {
+    const swarmId = "e2e-close-" + Date.now();
+    const { privKey } = await registerSwarm(swarmId);
+    const ws = await authenticateWs(swarmId, privKey);
+
+    // Client initiates close
+    ws.close(1000, "normal closure");
+
+    // The close should complete (server sends close response)
+    // If the server doesn't respond, this will hang until close_timeout
+    await new Promise<void>((resolve) => {
+      ws.addEventListener("close", () => resolve());
+    });
+  });
+
   // Chunk: docs/chunks/multichannel_watch - Multi-channel watch tests
   it("multi-channel watch: receives messages from multiple channels on one connection", async () => {
     const swarmId = "e2e-multiwatch-" + Date.now();

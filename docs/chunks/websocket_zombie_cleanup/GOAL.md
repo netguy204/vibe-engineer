@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: websocket_hibernation_compat
-code_paths: []
+code_paths:
+- workers/leader-board/src/swarm-do.ts
+- src/board/client.py
+- workers/leader-board/test/e2e.test.ts
+- tests/test_board_client.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +14,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["watchmulti_exit_on_message"]
+created_after:
+- watchmulti_exit_on_message
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

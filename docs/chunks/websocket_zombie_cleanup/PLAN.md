@@ -10,153 +10,142 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk makes four targeted changes—three server-side in the Durable Object (`swarm-do.ts`) and one client-side in the Python WebSocket client (`client.py`)—to align our implementation with the [Cloudflare WebSocket Hibernation Server example](https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/) and eliminate zombie WebSocket accumulation.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The changes are intentionally small and surgical. Each addresses a specific gap identified by comparing our DO against the reference example. No new abstractions or architectural patterns are introduced.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Server-side** (TypeScript): Add `setWebSocketAutoResponse` for application-level keepalive, complete the close handshake in `webSocketClose`, and call `getWebSockets()` in the constructor for early zombie detection.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/websocket_zombie_cleanup/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Client-side** (Python): Increase `close_timeout` from 1s to 10s to give the server time to complete the close handshake after hibernation wake.
+
+**Testing**: The E2E test suite (`workers/leader-board/test/e2e.test.ts`) already covers hibernation recovery and reconnection. We will add a test verifying the close handshake completes properly. The Python client tests (`tests/test_board_client.py`) verify `close_timeout` is passed to `websockets.connect`, so we update assertions to reflect the new value.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems are relevant to this chunk. The changes are scoped to WebSocket connection lifecycle management in the DO and Python client, which do not intersect with any documented subsystem (cluster_analysis, cross_repo_operations, friction_tracking, orchestrator, template_system, workflow_artifacts).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `setWebSocketAutoResponse` in the DO constructor
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `workers/leader-board/src/swarm-do.ts`, add the following line to the constructor (after `this.storage = new SwarmStorage(ctx.storage)`):
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```ts
+// Chunk: docs/chunks/websocket_zombie_cleanup - Application-level auto-response keeps connections active through Cloudflare edge proxy
+this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This makes the DO automatically reply `"pong"` to any client message `"ping"` **without waking from hibernation**. The Cloudflare edge proxy uses application-level activity (not just protocol pings) to determine idle connections — without this, our connections look idle to the proxy even though protocol pings are flowing, causing TCP drops.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Verify**: `WebSocketRequestResponsePair` is available in the Cloudflare Workers runtime types. If the TypeScript compiler doesn't recognize it, check the `@cloudflare/workers-types` version and add a type assertion if needed.
+
+Location: `workers/leader-board/src/swarm-do.ts`, constructor (lines 149–153)
+
+### Step 2: Add zombie socket detection in the DO constructor
+
+Add a `getWebSockets()` call in the constructor to detect and log zombie sockets on hibernation wake:
+
+```ts
+// Chunk: docs/chunks/websocket_zombie_cleanup - Detect zombie sockets on hibernation wake
+const existingSockets = this.ctx.getWebSockets();
+if (existingSockets.length > 0) {
+  console.log(`[SwarmDO] Constructor wake: found ${existingSockets.length} existing WebSocket(s)`);
+}
+```
+
+This runs when the DO wakes from hibernation and its constructor is re-invoked. By calling `getWebSockets()` early, we ensure the runtime is aware of all surviving sockets and any zombies are surfaced in logs. The actual watcher recovery happens in `wakeWatchers`, but this gives visibility into the state at wake time.
+
+Location: `workers/leader-board/src/swarm-do.ts`, constructor (after `setWebSocketAutoResponse`)
+
+### Step 3: Complete the close handshake in `webSocketClose`
+
+In the `webSocketClose` handler, add `ws.close(code, reason)` after `removeWatcher(ws)` to send the server-side close frame back to the client:
+
+```ts
+// Chunk: docs/chunks/websocket_zombie_cleanup - Complete server-side close handshake to prevent zombie accumulation
+async webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): Promise<void> {
+  this.removeWatcher(ws);
+  try {
+    ws.close(code, reason);
+  } catch {
+    // Socket may already be fully closed — safe to ignore
+  }
+}
+```
+
+Key details:
+- Rename `_code`/`_reason` parameters to `code`/`reason` since they are now used.
+- Wrap `ws.close()` in a try/catch because the socket may already be in a terminal state (the runtime calls `webSocketClose` when the client initiates close, and by the time we process it, the socket may be fully closed).
+- Without this, the client sends a close frame, waits for the server's response, times out at `close_timeout`, and drops TCP — leaving a zombie in `ctx.getWebSockets()`.
+
+Location: `workers/leader-board/src/swarm-do.ts`, `webSocketClose` (lines 623–625)
+
+### Step 4: Increase client-side `close_timeout` to 10s
+
+In `src/board/client.py`, change `close_timeout=1` to `close_timeout=10` in all `websockets.connect()` calls:
+
+1. **`connect()` method** (line 61): `close_timeout=1` → `close_timeout=10`
+2. **`register_swarm()` method** (line 109): `close_timeout=1` → `close_timeout=10`
+
+Add a backreference comment:
+```python
+# Chunk: docs/chunks/websocket_zombie_cleanup - Increase close_timeout to allow server close handshake after hibernation wake
+```
+
+The 1-second timeout was too aggressive — after hibernation, the DO needs time to wake, process the close frame, and respond. 10 seconds gives sufficient headroom.
+
+Location: `src/board/client.py`, `connect()` and `register_swarm()`
+
+### Step 5: Update Python client tests
+
+In `tests/test_board_client.py`, update any assertions that check the `close_timeout` value passed to `websockets.connect()`. Change expected value from `1` to `10`.
+
+Search the test file for `close_timeout` to find all relevant assertions.
+
+Location: `tests/test_board_client.py`
+
+### Step 6: Add E2E test for close handshake completion
+
+In `workers/leader-board/test/e2e.test.ts`, add a test that verifies the close handshake completes properly:
+
+```ts
+it("server completes close handshake when client initiates close", async () => {
+  const swarmId = "e2e-close-" + Date.now();
+  const { privKey } = await registerSwarm(swarmId);
+  const ws = await authenticateWs(swarmId, privKey);
+
+  // Client initiates close
+  ws.close(1000, "normal closure");
+
+  // The close should complete (server sends close response)
+  // If the server doesn't respond, this will hang until close_timeout
+  await new Promise<void>((resolve) => {
+    ws.addEventListener("close", () => resolve());
+  });
+});
+```
+
+This test verifies the fix from Step 3: that `webSocketClose` sends `ws.close(code, reason)` back, allowing the WebSocket handshake to complete normally rather than timing out.
+
+Location: `workers/leader-board/test/e2e.test.ts`
+
+### Step 7: Run all tests and verify
+
+1. Run TypeScript E2E tests: `cd workers/leader-board && npx vitest run`
+2. Run Python tests: `uv run pytest tests/test_board_client.py`
+3. Verify no regressions in existing hibernation recovery tests
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Parent chunk `websocket_hibernation_compat` must be ACTIVE (it is — already merged).
+- `WebSocketRequestResponsePair` must be available in the Cloudflare Workers runtime types. This is part of the standard Hibernation API and should be present in `@cloudflare/workers-types`.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`WebSocketRequestResponsePair` type availability**: If the installed `@cloudflare/workers-types` version doesn't include this type, we may need to update the package or add a type declaration. Check `package.json` for the current version.
+- **`ws.close()` in `webSocketClose` may throw**: The Cloudflare runtime may throw if the socket is already fully closed by the time our handler runs. The try/catch in Step 3 mitigates this, but we should verify the exact error behavior in the E2E test.
+- **Application-level ping/pong collision with protocol messages**: Client code sending `"ping"` as a regular message would get an auto `"pong"` response from the DO without waking it. This is unlikely to be a problem since our protocol uses JSON frames, not bare strings, but worth noting.
+- **Close timeout of 10s may be too generous for `register_swarm`**: The `register_swarm` method uses a short-lived connection for registration. 10s close timeout is fine (it's a max, not a delay), but if latency concerns arise, it could be tuned separately.
 
 ## Deviations
 

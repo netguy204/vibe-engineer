@@ -150,6 +150,15 @@ export class SwarmDO implements DurableObject {
     this.ctx = ctx;
     this.env = env;
     this.storage = new SwarmStorage(ctx.storage);
+
+    // Chunk: docs/chunks/websocket_zombie_cleanup - Application-level auto-response keeps connections active through Cloudflare edge proxy
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+
+    // Chunk: docs/chunks/websocket_zombie_cleanup - Detect zombie sockets on hibernation wake
+    const existingSockets = this.ctx.getWebSockets();
+    if (existingSockets.length > 0) {
+      console.log(`[SwarmDO] Constructor wake: found ${existingSockets.length} existing WebSocket(s)`);
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -620,8 +629,14 @@ export class SwarmDO implements DurableObject {
     }
   }
 
-  async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
+  // Chunk: docs/chunks/websocket_zombie_cleanup - Complete server-side close handshake to prevent zombie accumulation
+  async webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): Promise<void> {
     this.removeWatcher(ws);
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Socket may already be fully closed — safe to ignore
+    }
   }
 
   async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
