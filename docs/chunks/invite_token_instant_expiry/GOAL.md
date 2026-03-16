@@ -1,8 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: invite_cli_command
-code_paths: []
+code_paths:
+- workers/leader-board/src/gateway-crypto.ts
+- workers/leader-board/test/gateway-crypto.test.ts
+- workers/leader-board/test/invite-page.test.ts
 code_references: []
 narrative: null
 investigation: agent_invite_links
@@ -10,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["steward_deploy_step"]
+created_after:
+- steward_deploy_step
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

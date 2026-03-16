@@ -7,6 +7,7 @@ import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 import nacl from "tweetnacl";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { hkdf } from "@noble/hashes/hkdf.js";
 import * as ed from "@noble/ed25519";
 
 // --- Helpers (replicated from gateway-api.test.ts) ---
@@ -29,16 +30,26 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// Chunk: docs/chunks/invite_token_instant_expiry - Fixed to match Python crypto.py
 function hashTokenText(tokenHex: string): string {
-  const tokenBytes = new TextEncoder().encode(tokenHex);
+  const tokenBytes = hexToBytes(tokenHex);
   const hash = sha256(tokenBytes);
   return bytesToHex(hash);
 }
 
+function deriveTokenKeyLocal(tokenHex: string): Uint8Array {
+  const tokenBytes = hexToBytes(tokenHex);
+  const info = new TextEncoder().encode("leader-board-invite-token");
+  return hkdf(sha256, tokenBytes, new Uint8Array(0), info, 32);
+}
+
 function encryptBlobWithToken(seed: Uint8Array, tokenHex: string): string {
-  const key = hexToBytes(tokenHex);
+  const key = deriveTokenKeyLocal(tokenHex);
+  // Python encrypts seed.hex() as UTF-8, so we encrypt the hex string
+  const seedHex = bytesToHex(seed);
+  const plaintextBytes = new TextEncoder().encode(seedHex);
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-  const ciphertext = nacl.secretbox(seed, nonce, key);
+  const ciphertext = nacl.secretbox(plaintextBytes, nonce, key);
   const combined = new Uint8Array(nonce.length + ciphertext.length);
   combined.set(nonce);
   combined.set(ciphertext, nonce.length);
@@ -280,5 +291,60 @@ describe("Invite instruction page", () => {
     expect(body).toContain("## Security");
     expect(body).toContain("Keep it secret");
     expect(body).toContain("revoke");
+  });
+
+  // Chunk: docs/chunks/invite_token_instant_expiry - End-to-end cross-language test
+  it("end-to-end: Python-compatible create → fetch cycle works", async () => {
+    // Simulate the Python CLI flow with correct crypto:
+    // 1. Register a swarm
+    const swarmId = `invite-e2e-python-${Date.now()}`;
+    const { seed } = await registerSwarm(swarmId);
+
+    // 2. Generate token and compute hash/blob using Python-compatible logic
+    const tokenBytes = nacl.randomBytes(32);
+    const tokenHex = bytesToHex(tokenBytes);
+
+    // Hash raw bytes (matching Python: hashlib.sha256(token).hexdigest())
+    const tokenHash = bytesToHex(sha256(tokenBytes));
+
+    // Derive key via HKDF (matching Python: derive_token_key(token))
+    const info = new TextEncoder().encode("leader-board-invite-token");
+    const tokenKey = hkdf(sha256, tokenBytes, new Uint8Array(0), info, 32);
+
+    // Encrypt seed.hex() with HKDF-derived key (matching Python: encrypt(seed.hex(), sym_key))
+    const seedHex = bytesToHex(seed);
+    const plaintextBytes = new TextEncoder().encode(seedHex);
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+    const ciphertext = nacl.secretbox(plaintextBytes, nonce, tokenKey);
+    const combined = new Uint8Array(nonce.length + ciphertext.length);
+    combined.set(nonce);
+    combined.set(ciphertext, nonce.length);
+    const encryptedBlob = bytesToBase64(combined);
+
+    // 3. PUT the blob (simulating CLI's HTTP upload)
+    const putResp = await SELF.fetch(
+      `https://test.local/gateway/keys?swarm=${swarmId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token_hash: tokenHash,
+          encrypted_blob: encryptedBlob,
+        }),
+      }
+    );
+    expect(putResp.status).toBe(200);
+
+    // 4. GET /invite/{token} without ?swarm= param (using KV routing)
+    const inviteResp = await SELF.fetch(
+      `https://test.local/invite/${tokenHex}`
+    );
+    expect(inviteResp.status).toBe(200);
+    expect(inviteResp.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+
+    const body = await inviteResp.text();
+    expect(body).toContain("# Swarm Invite");
+    expect(body).toContain(tokenHex);
+    expect(body).toContain("curl");
   });
 });

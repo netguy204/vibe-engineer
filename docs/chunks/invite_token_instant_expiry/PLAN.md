@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,189 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Two bugs in `workers/leader-board/src/gateway-crypto.ts` cause the TypeScript
+server to be unable to look up or decrypt invite tokens created by the Python CLI.
+Both are format mismatches where the TypeScript code diverged from the Python
+`src/board/crypto.py` implementation it was supposed to replicate.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Bug 1 — Token hash mismatch (lookup failure):**
+- Python (`src/cli/board.py:431`): `hashlib.sha256(token).hexdigest()` — hashes
+  the raw 32-byte token.
+- TypeScript (`gateway-crypto.ts:60`): `new TextEncoder().encode(token)` — hashes
+  the hex string as UTF-8 (64 bytes of ASCII, not 32 bytes of raw data).
+- Result: The CLI uploads blob keyed by `SHA256(raw_bytes)`, but the server
+  looks up by `SHA256(utf8(hex_string))` → hash never matches → 404.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Bug 2 — Encryption key derivation mismatch (decryption failure):**
+- Python (`src/cli/board.py:425`): `derive_token_key(token)` uses HKDF-SHA256
+  with `info=b"leader-board-invite-token"` to derive the secretbox key.
+- TypeScript (`gateway-crypto.ts:75`): `hexToBytes(token)` uses the raw 32-byte
+  token directly as the secretbox key — no HKDF.
+- Result: Even if hash lookup were fixed, decryption would fail because the keys
+  differ.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/invite_token_instant_expiry/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Fix strategy:** Correct the TypeScript server to match the Python CLI. The
+Python side is the canonical implementation — it uses raw-byte hashing (correct
+crypto hygiene) and HKDF key derivation (domain separation). The TypeScript
+test vectors were self-generated to match the broken TypeScript code and must
+be regenerated from Python.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per docs/trunk/TESTING_PHILOSOPHY.md, we write the failing cross-language
+round-trip test first (TDD), then fix the code to make it pass.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Generate correct cross-language test vectors from Python
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write a small Python script (stored as a chunk artifact at
+`docs/chunks/invite_token_instant_expiry/generate-vectors.py`) that:
 
-Example:
+1. Uses a deterministic token (`bb` * 32) and seed (`aa` * 32)
+2. Computes `token_hash = hashlib.sha256(bytes.fromhex(token_hex)).hexdigest()`
+3. Computes `token_key = derive_token_key(bytes.fromhex(token_hex))`
+4. Encrypts the seed hex string using a fixed nonce (for deterministic output):
+   `SecretBox(token_key).encrypt(seed_hex.encode(), fixed_nonce)`
+5. Prints all values as a JSON object suitable for pasting into the TS test file
 
-### Step 1: Define the SegmentHeader struct
+Run the script and capture the output. These vectors become the source of truth.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `docs/chunks/invite_token_instant_expiry/generate-vectors.py` (chunk artifact)
 
-Location: src/segment/format.rs
+### Step 2: Write failing TypeScript tests for correct behavior
 
-### Step 2: Implement header serialization
+In `workers/leader-board/test/gateway-crypto.test.ts`:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. Add a new `describe("cross-language invite token vectors")` block with the
+   Python-generated vectors from Step 1.
+2. Add test: `hashToken` of the token hex string must equal the Python-computed
+   hash (which hashes raw bytes). This will FAIL with current code.
+3. Add test: `decryptBlob` with the Python-encrypted blob and token must recover
+   the seed. This will FAIL because decryptBlob uses raw token as key, not HKDF.
 
-### Step 3: ...
+Verify both tests fail before proceeding.
 
----
+Location: `workers/leader-board/test/gateway-crypto.test.ts`
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Fix `hashToken()` to hash raw bytes
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+In `workers/leader-board/src/gateway-crypto.ts`, change `hashToken()`:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+**Before:**
+```typescript
+export function hashToken(token: string): string {
+  const tokenBytes = new TextEncoder().encode(token);
+  // ...
+}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**After:**
+```typescript
+export function hashToken(token: string): string {
+  const tokenBytes = hexToBytes(token);
+  // ...
+}
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+This makes the function hash the same 32 raw bytes as Python's
+`hashlib.sha256(token).hexdigest()`.
 
-## Dependencies
+Location: `workers/leader-board/src/gateway-crypto.ts#hashToken`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 4: Add `deriveTokenKey()` and fix `decryptBlob()`
 
-If there are no dependencies, delete this section.
--->
+In `workers/leader-board/src/gateway-crypto.ts`:
+
+1. Add a new exported function `deriveTokenKey(token: string): Uint8Array`:
+   - `hexToBytes(token)` → 32 raw bytes
+   - HKDF-SHA256 with `salt=empty`, `info="leader-board-invite-token"`, `length=32`
+   - This mirrors Python's `derive_token_key()` in `src/board/crypto.py`
+
+2. Update `decryptBlob()` to use `deriveTokenKey(token)` instead of
+   `hexToBytes(token)` as the secretbox key:
+
+**Before:**
+```typescript
+const key = hexToBytes(token);
+```
+
+**After:**
+```typescript
+const key = deriveTokenKey(token);
+```
+
+Location: `workers/leader-board/src/gateway-crypto.ts#deriveTokenKey`, `#decryptBlob`
+
+### Step 5: Update existing test vectors in `gateway-crypto.test.ts`
+
+The existing `VECTORS` object in `gateway-crypto.test.ts` has a `token_hash_hex`
+and `encrypted_blob_b64` that were generated with the broken TypeScript logic.
+Update them with the Python-generated values from Step 1:
+
+- `token_hash_hex`: Replace with Python's `SHA256(raw_bytes).hex()`
+- `encrypted_blob_b64`: Replace with Python's HKDF-encrypted blob
+
+The `seed_hex`, `symmetric_key_hex`, and message encryption vectors are
+unaffected (they don't involve token hashing or token key derivation).
+
+Verify the cross-language tests from Step 2 now pass.
+
+Location: `workers/leader-board/test/gateway-crypto.test.ts`
+
+### Step 6: Update `invite-page.test.ts` helper functions
+
+The `invite-page.test.ts` file has its own `hashTokenText()` and
+`encryptBlobWithToken()` helpers that replicate the broken behavior:
+
+1. **`hashTokenText()`**: Currently hashes hex string as UTF-8. Change to
+   hash raw bytes via `hexToBytes()`, matching the fixed `hashToken()`.
+
+2. **`encryptBlobWithToken()`**: Currently uses raw token bytes as secretbox
+   key. Change to use HKDF-derived key, matching the fixed `decryptBlob()`.
+   Import `hkdf` from `@noble/hashes/hkdf.js` and `sha256` to replicate
+   `deriveTokenKey()` logic, or import `deriveTokenKey` from the source.
+
+After fixing helpers, all existing invite-page tests should continue to pass
+because they create and verify tokens using the same (now-corrected) functions.
+
+Location: `workers/leader-board/test/invite-page.test.ts`
+
+### Step 7: Add end-to-end cross-language integration test
+
+Add a new test in `workers/leader-board/test/invite-page.test.ts` that
+simulates the full Python CLI → server flow:
+
+1. Generate a token and compute hash/blob using **Python-compatible logic**
+   (raw-byte hash, HKDF-derived key) — not the test helpers.
+2. PUT the blob to `/gateway/keys`
+3. GET `/invite/{token_hex}` (without `?swarm=` param, using KV routing)
+4. Assert 200 and the instruction page content is returned
+
+This is the definitive end-to-end test from the success criteria: "create token
+via CLI → curl invite URL → verify instruction page is returned."
+
+Location: `workers/leader-board/test/invite-page.test.ts`
+
+### Step 8: Run all test suites and verify
+
+1. Run TypeScript tests: `cd workers/leader-board && npm test`
+   - All gateway-crypto tests pass (with updated vectors)
+   - All invite-page tests pass (with fixed helpers)
+   - New cross-language integration test passes
+2. Run Python tests: `uv run pytest tests/test_board_invite.py`
+   - All existing Python tests still pass (Python code is unchanged)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Test vector generation with fixed nonce**: NaCl secretbox normally uses
+  random nonces. The Python vector script must use a fixed nonce to produce
+  deterministic encrypted blobs. PyNaCl's `SecretBox.encrypt()` accepts an
+  explicit nonce parameter, so this is straightforward.
+- **No deployed data migration needed**: The hash and encryption mismatches
+  mean no valid tokens have ever been successfully created in production
+  (they all fail immediately). There is no existing data to migrate.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
