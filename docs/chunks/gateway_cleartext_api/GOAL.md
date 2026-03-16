@@ -14,7 +14,9 @@ code_references:
 - ref: workers/leader-board/src/gateway-crypto.ts#hashToken
   implements: "SHA-256 token hashing for key blob lookup"
 - ref: workers/leader-board/src/gateway-crypto.ts#decryptBlob
-  implements: "NaCl secretbox decryption of encrypted key blob to recover Ed25519 seed"
+  implements: "NaCl secretbox decryption of encrypted key blob (called internally by recoverSeedFromBlob)"
+- ref: workers/leader-board/src/gateway-crypto.ts#recoverSeedFromBlob
+  implements: "Decrypt blob and hex-decode to recover raw Ed25519 seed (added by gateway_message_read_fix)"
 - ref: workers/leader-board/src/gateway-crypto.ts#deriveSymmetricKey
   implements: "Ed25519→Curve25519→HKDF-SHA256 symmetric key derivation (wire-compatible with Python crypto)"
 - ref: workers/leader-board/src/gateway-crypto.ts#decryptMessage
@@ -24,7 +26,7 @@ code_references:
 - ref: workers/leader-board/src/storage.ts#SwarmStorage::readAfterBatch
   implements: "Batch message read for GET endpoint (multiple messages after cursor)"
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleGatewayAPI
-  implements: "Cleartext gateway HTTP handler (GET/POST with token resolution, key derivation, long-poll)"
+  implements: "Cleartext gateway HTTP handler (GET/POST with recoverSeedFromBlob key derivation, encrypt/decrypt error handling, long-poll)"
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::wakePendingPolls
   implements: "Long-poll notification when new messages arrive on a channel"
 - ref: workers/leader-board/src/index.ts
