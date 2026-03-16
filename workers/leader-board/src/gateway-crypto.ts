@@ -108,6 +108,18 @@ export function decryptBlob(encryptedBlobB64: string, token: string): Uint8Array
   return plaintext;
 }
 
+// Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob
+/**
+ * Recover the raw 32-byte Ed25519 seed from the encrypted blob.
+ * The blob stores seed.hex() as UTF-8 (the Python CLI encrypts the hex string),
+ * so we decode hex after decryption.
+ */
+export function recoverSeedFromBlob(encryptedBlobB64: string, token: string): Uint8Array {
+  const plaintextBytes = decryptBlob(encryptedBlobB64, token);
+  const seedHex = new TextDecoder().decode(plaintextBytes);
+  return hexToBytes(seedHex);
+}
+
 /**
  * Derive the 32-byte symmetric encryption key from an Ed25519 seed.
  *

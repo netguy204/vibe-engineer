@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: gateway_cleartext_api
-code_paths: []
+code_paths:
+- workers/leader-board/src/gateway-crypto.ts
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/test/gateway-api.test.ts
+- workers/leader-board/test/gateway-crypto.test.ts
 code_references: []
 narrative: null
 investigation: agent_invite_links
@@ -10,9 +14,10 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["invite_token_instant_expiry", "websocket_hibernation_compat"]
+created_after:
+- invite_token_instant_expiry
+- websocket_hibernation_compat
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

@@ -10,7 +10,7 @@
 import { generateChallenge, verifySignature } from "./auth";
 import {
   hashToken,
-  decryptBlob,
+  recoverSeedFromBlob,
   deriveSymmetricKey,
   decryptMessage,
   encryptMessage,
@@ -362,7 +362,8 @@ export class SwarmDO implements DurableObject {
         );
       }
 
-      const seed = decryptBlob(keyRecord.encrypted_blob, token);
+      // Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob before deriving key
+      const seed = recoverSeedFromBlob(keyRecord.encrypted_blob, token);
       symmetricKey = deriveSymmetricKey(seed);
     } catch {
       return new Response(
@@ -393,17 +394,25 @@ export class SwarmDO implements DurableObject {
         // Read messages
         const messages = this.storage.readAfterBatch(channel, cursor, limit);
 
+        // Chunk: docs/chunks/gateway_message_read_fix - Handle decryption errors
         // If messages exist, return immediately
         if (messages.length > 0) {
-          const decrypted = messages.map((msg) => ({
-            position: msg.position,
-            body: decryptMessage(msg.body, symmetricKey),
-            sent_at: msg.sent_at,
-          }));
-          return new Response(JSON.stringify({ messages: decrypted }), {
-            status: 200,
-            headers: jsonHeaders,
-          });
+          try {
+            const decrypted = messages.map((msg) => ({
+              position: msg.position,
+              body: decryptMessage(msg.body, symmetricKey),
+              sent_at: msg.sent_at,
+            }));
+            return new Response(JSON.stringify({ messages: decrypted }), {
+              status: 200,
+              headers: jsonHeaders,
+            });
+          } catch {
+            return new Response(
+              JSON.stringify({ error: "Failed to decrypt messages" }),
+              { status: 500, headers: jsonHeaders }
+            );
+          }
         }
 
         // Long-poll support
@@ -477,8 +486,17 @@ export class SwarmDO implements DurableObject {
           );
         }
 
+        // Chunk: docs/chunks/gateway_message_read_fix - Handle encryption errors
         // Encrypt and store
-        const ciphertext = encryptMessage(body.body, symmetricKey);
+        let ciphertext: string;
+        try {
+          ciphertext = encryptMessage(body.body, symmetricKey);
+        } catch {
+          return new Response(
+            JSON.stringify({ error: "Failed to encrypt message" }),
+            { status: 500, headers: jsonHeaders }
+          );
+        }
         const result = this.storage.appendMessage(channel, ciphertext);
 
         // Wake WebSocket watchers and pending polls

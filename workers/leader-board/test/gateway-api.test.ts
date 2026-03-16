@@ -40,16 +40,27 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+// Chunk: docs/chunks/gateway_message_read_fix - Hash raw token bytes, not hex string
 function hashTokenText(tokenHex: string): string {
-  const tokenBytes = new TextEncoder().encode(tokenHex);
+  const tokenBytes = hexToBytes(tokenHex);
   const hash = sha256(tokenBytes);
   return bytesToHex(hash);
 }
 
+// Chunk: docs/chunks/gateway_message_read_fix - HKDF key derivation matching production deriveTokenKey
+function deriveTokenKeyLocal(tokenHex: string): Uint8Array {
+  const tokenBytes = hexToBytes(tokenHex);
+  const info = new TextEncoder().encode("leader-board-invite-token");
+  return hkdf(sha256, tokenBytes, new Uint8Array(0), info, 32);
+}
+
+// Chunk: docs/chunks/gateway_message_read_fix - Encrypt hex-encoded seed string (matching Python CLI)
 function encryptBlobWithToken(seed: Uint8Array, tokenHex: string): string {
-  const key = hexToBytes(tokenHex);
+  const key = deriveTokenKeyLocal(tokenHex);
+  const seedHex = bytesToHex(seed);
+  const plaintextBytes = new TextEncoder().encode(seedHex);
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-  const ciphertext = nacl.secretbox(seed, nonce, key);
+  const ciphertext = nacl.secretbox(plaintextBytes, nonce, key);
   const combined = new Uint8Array(nonce.length + ciphertext.length);
   combined.set(nonce);
   combined.set(ciphertext, nonce.length);

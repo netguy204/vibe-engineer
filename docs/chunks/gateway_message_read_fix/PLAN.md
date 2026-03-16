@@ -10,170 +10,257 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Three independent bugs cause the gateway API 1101 error. All stem from the
+`invite_token_instant_expiry` chunk fixing the invite-page crypto path without
+propagating those same fixes to the gateway API test helpers, and from a
+production-code mismatch in how the decrypted blob content is interpreted.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Root cause analysis:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The Python CLI (`src/cli/board.py`) creates invite blobs as follows:
+1. `token = secrets.token_bytes(32)` — 32 random bytes
+2. `token_hash = hashlib.sha256(token).hexdigest()` — hash raw bytes
+3. `sym_key = derive_token_key(token)` — HKDF-SHA256 of raw bytes
+4. `encrypted_blob = encrypt(seed.hex(), sym_key)` — encrypts **hex-encoded seed string**
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/gateway_message_read_fix/GOAL.md)
-with references to the files that you expect to touch.
--->
+The `invite_token_instant_expiry` chunk fixed the production crypto
+(`gateway-crypto.ts`) to match steps 2–3 (raw-byte hashing, HKDF key
+derivation) and fixed the `invite-page.test.ts` helpers. But it did NOT fix
+the `gateway-api.test.ts` helpers, which still use the old broken crypto.
+Additionally, the production `handleGatewayAPI` handler doesn't account for
+the blob containing a hex-encoded seed string (step 4).
 
-## Subsystem Considerations
+**Bug 1 — Test: `hashTokenText` hashes wrong input**
+`gateway-api.test.ts` line 43–47 hashes the UTF-8 encoding of the hex string
+(`TextEncoder.encode(tokenHex)`) instead of the raw token bytes
+(`hexToBytes(tokenHex)`). This means the test stores the blob under a different
+hash than what the production `hashToken()` computes, so the server returns 401.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+**Bug 2 — Test: `encryptBlobWithToken` uses wrong key**
+`gateway-api.test.ts` line 49–57 uses `hexToBytes(tokenHex)` as the raw NaCl
+secretbox key instead of deriving via `HKDF-SHA256(token, "leader-board-invite-token")`.
+The production `decryptBlob()` now uses the HKDF-derived key, so decryption fails.
+Additionally, this helper encrypts raw seed bytes instead of the hex-encoded
+seed string that the Python CLI produces.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+**Bug 3 — Production: `handleGatewayAPI` seed format mismatch**
+In `swarm-do.ts` line 365–366, `decryptBlob()` returns the plaintext bytes from
+the blob. When the blob was created by the Python CLI, the plaintext is the
+UTF-8 encoding of `seed.hex()` (64 bytes of hex characters). But
+`deriveSymmetricKey()` is called directly on those 64 bytes instead of first
+decoding them back to the 32-byte raw seed. This produces a wrong symmetric key.
+When `decryptMessage()` (line 400) then tries to decrypt a message with this
+wrong key, it throws — and that throw is OUTSIDE the try/catch block
+(lines 355–372), causing an unhandled exception → Cloudflare error 1101.
 
-If no subsystems are relevant, delete this section.
+**Fix strategy:**
 
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
+1. Fix the test helpers to match the invite-page test helpers (already correct)
+2. Add a hex-decode step in the production handler between `decryptBlob()` and
+   `deriveSymmetricKey()`
+3. Wrap `decryptMessage` / `encryptMessage` calls in error handling
 
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Following TDD per docs/trunk/TESTING_PHILOSOPHY.md: fix the test helpers first
+(making them match the Python CLI protocol), confirm they still fail for the
+right reason (production bug 3), then fix production code.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Fix `hashTokenText` in `gateway-api.test.ts`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Replace the UTF-8 hex-string hashing with raw-byte hashing, matching the
+corrected `invite-page.test.ts` helper and production `hashToken()`.
 
-Example:
+**Change** in `workers/leader-board/test/gateway-api.test.ts`:
+```typescript
+// Before (wrong):
+function hashTokenText(tokenHex: string): string {
+  const tokenBytes = new TextEncoder().encode(tokenHex);
+  const hash = sha256(tokenBytes);
+  return bytesToHex(hash);
+}
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+// After (correct):
+function hashTokenText(tokenHex: string): string {
+  const tokenBytes = hexToBytes(tokenHex);
+  const hash = sha256(tokenBytes);
+  return bytesToHex(hash);
+}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `workers/leader-board/test/gateway-api.test.ts` lines 43–47
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Fix `encryptBlobWithToken` in `gateway-api.test.ts`
+
+Two changes:
+1. Derive the encryption key via HKDF (matching `deriveTokenKey` in production)
+   instead of using raw token bytes as the NaCl key.
+2. Encrypt `seed.hex()` as UTF-8 bytes (matching the Python CLI) instead of
+   encrypting raw seed bytes.
+
+Add a `deriveTokenKeyLocal` helper (same as in `invite-page.test.ts`):
+```typescript
+function deriveTokenKeyLocal(tokenHex: string): Uint8Array {
+  const tokenBytes = hexToBytes(tokenHex);
+  const info = new TextEncoder().encode("leader-board-invite-token");
+  return hkdf(sha256, tokenBytes, new Uint8Array(0), info, 32);
+}
+```
+
+Update `encryptBlobWithToken`:
+```typescript
+// Before (wrong):
+function encryptBlobWithToken(seed: Uint8Array, tokenHex: string): string {
+  const key = hexToBytes(tokenHex);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const ciphertext = nacl.secretbox(seed, nonce, key);
+  ...
+}
+
+// After (correct):
+function encryptBlobWithToken(seed: Uint8Array, tokenHex: string): string {
+  const key = deriveTokenKeyLocal(tokenHex);
+  const seedHex = bytesToHex(seed);
+  const plaintextBytes = new TextEncoder().encode(seedHex);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const ciphertext = nacl.secretbox(plaintextBytes, nonce, key);
+  ...
+}
+```
+
+Location: `workers/leader-board/test/gateway-api.test.ts` lines 49–57
+
+### Step 3: Run tests — confirm failures are now in production code
+
+After fixing the test helpers, run `npx vitest run test/gateway-api.test.ts` from
+`workers/leader-board/`. The test token hashing and blob encryption now match
+the production code, so the token resolution succeeds. But `deriveSymmetricKey`
+still receives hex-encoded bytes (64 bytes) instead of raw seed (32 bytes),
+producing a wrong key. Tests that POST+GET messages should fail with decryption
+errors. Tests that only check 401s (invalid/revoked token) should pass.
+
+This confirms the production bug before we fix it.
+
+### Step 4: Fix seed hex-decode in `handleGatewayAPI`
+
+In `workers/leader-board/src/swarm-do.ts`, add a hex-decode step between
+`decryptBlob` and `deriveSymmetricKey`. The blob plaintext is the UTF-8
+encoding of the hex seed string; we need to decode it back to raw 32-byte seed.
+
+Export `hexToBytes` from `gateway-crypto.ts` (currently private) so it can be
+imported by `swarm-do.ts`, OR add a new exported helper `decodeSeedFromBlob`
+that encapsulates the conversion. The cleaner approach is to keep the
+conversion inside `gateway-crypto.ts` by creating a higher-level function:
+
+```typescript
+// In gateway-crypto.ts:
+/**
+ * Recover the raw 32-byte Ed25519 seed from the encrypted blob.
+ * The blob stores seed.hex() as UTF-8, so we decode hex after decryption.
+ */
+export function recoverSeedFromBlob(encryptedBlobB64: string, token: string): Uint8Array {
+  const plaintextBytes = decryptBlob(encryptedBlobB64, token);
+  const seedHex = new TextDecoder().decode(plaintextBytes);
+  return hexToBytes(seedHex);
+}
+```
+
+Then update `handleGatewayAPI` to use `recoverSeedFromBlob` instead of calling
+`decryptBlob` + `deriveSymmetricKey` with raw blob bytes:
+
+```typescript
+// Before:
+const seed = decryptBlob(keyRecord.encrypted_blob, token);
+symmetricKey = deriveSymmetricKey(seed);
+
+// After:
+const seed = recoverSeedFromBlob(keyRecord.encrypted_blob, token);
+symmetricKey = deriveSymmetricKey(seed);
+```
+
+Location: `workers/leader-board/src/gateway-crypto.ts` (new function),
+`workers/leader-board/src/swarm-do.ts` lines 365–366
+
+### Step 5: Wrap message decryption in error handling
+
+Currently `decryptMessage()` (line 400) and `encryptMessage()` (line 481) are
+called outside the try/catch that covers token resolution. If the symmetric key
+is wrong for any reason, the throw is unhandled → 1101.
+
+Expand the existing try/catch or add a second try/catch around the GET/POST
+message operations. The appropriate response for a decryption failure is 500
+with a descriptive error, since the token was valid but the data is corrupted
+or incompatible.
+
+```typescript
+// Wrap the message decryption in GET handler:
+try {
+  const decrypted = messages.map((msg) => ({
+    position: msg.position,
+    body: decryptMessage(msg.body, symmetricKey),
+    sent_at: msg.sent_at,
+  }));
+  return new Response(JSON.stringify({ messages: decrypted }), { ... });
+} catch {
+  return new Response(
+    JSON.stringify({ error: "Failed to decrypt messages" }),
+    { status: 500, headers: jsonHeaders }
+  );
+}
+```
+
+Similarly wrap `encryptMessage` in the POST handler.
+
+Location: `workers/leader-board/src/swarm-do.ts` lines 397–407 and 480–482
+
+### Step 6: Update the gateway-crypto test vectors if needed
+
+Check `workers/leader-board/test/gateway-crypto.test.ts` to verify the
+cross-language test vectors still pass. The `decryptBlob` test uses a
+Python-generated vector whose plaintext is likely the seed hex string. The
+`deriveSymmetricKey` test passes raw seed bytes. If the existing vector test
+for the full pipeline (blob → seed → symmetric key → decrypt message) expects
+to call `deriveSymmetricKey(decryptBlob(...))` without hex-decode, it needs
+updating to use `recoverSeedFromBlob` instead.
+
+Location: `workers/leader-board/test/gateway-crypto.test.ts`
+
+### Step 7: Run full test suite and verify
+
+Run `npx vitest run` from `workers/leader-board/` to confirm:
+- All 10 previously-failing `gateway-api.test.ts` tests pass
+- All `gateway-crypto.test.ts` tests pass
+- All `invite-page.test.ts` tests still pass
+- Cross-path tests (WS writes → gateway reads, gateway writes → WS reads) pass,
+  confirming encryption compatibility
+
+### Step 8: Add backreference comments
+
+Add chunk backreference comments to modified code:
+- `recoverSeedFromBlob` in `gateway-crypto.ts`: `// Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob`
+- Error handling in `swarm-do.ts`: `// Chunk: docs/chunks/gateway_message_read_fix - Handle decryption errors`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `invite_token_instant_expiry` (ACTIVE) — provides the corrected `hashToken`,
+  `deriveTokenKey`, and `decryptBlob` implementations that this chunk's fixes
+  build on.
+- `gateway_cleartext_api` (ACTIVE) — parent chunk that implemented the gateway
+  HTTP routes being fixed.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Cross-language vector drift**: The `gateway-crypto.test.ts` test vectors
+  were generated by a Python script (`docs/chunks/gateway_cleartext_api/generate-test-vectors.py`).
+  If the vector's blob plaintext is raw seed bytes (not hex-encoded), the full
+  pipeline test will need updating. Verify the vector format in Step 6.
+- **`handleInvitePage` consistency**: The invite page handler also calls
+  `decryptBlob` (line 314 of swarm-do.ts). It doesn't call `deriveSymmetricKey`
+  (it only needs the seed to verify the token is valid and to read metadata),
+  so it's not affected by bug 3. But confirm this during implementation.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
