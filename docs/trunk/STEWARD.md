@@ -40,7 +40,19 @@ When a message arrives:
    `git push` to publish the merged work to the remote before posting the
    changelog entry.
 
-6. **Publish to changelog** — Write a concise summary of what was done and
+6. **Deploy if needed** — After pushing, check the completed chunk's
+   `code_paths` in its GOAL.md frontmatter. If any path starts with
+   `workers/`, deploy the Durable Object worker before restarting the
+   channel watch:
+   ```
+   cd workers/leader-board && npm run deploy
+   ```
+   Client and server code must stay in sync. If you restart the watch
+   after merging worker changes without deploying, the client may crash
+   on protocol mismatches (e.g., removed frame types the server still
+   sends). Deploy first, then restart the watch.
+
+7. **Publish to changelog** — Write a concise summary of what was done and
    publish it to the `vibe-engineer-changelog` channel so the requester and
    any observers can see the outcome. Publish when:
    - A chunk finishes successfully (include what changed and the branch/PR)

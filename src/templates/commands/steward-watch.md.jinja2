@@ -38,6 +38,13 @@ If `docs/trunk/STEWARD.md` does not exist, tell the operator to run
 Run `ve board watch <channel> --swarm <swarm_id>` using `run_in_background`.
 This command blocks until a message arrives on the channel.
 
+**Single watch only.** There must be exactly ONE watch per channel at any time.
+Before starting a new watch, stop any previous watch background task using
+`TaskStop`. Running multiple concurrent watches on the same channel causes
+cursor confusion — both watches consume from the same cursor position, leading
+to missed or double-processed messages. Track the current watch task ID and
+stop it explicitly before starting the next one.
+
 **Important:** Before starting the watch, note the current cursor position.
 The cursor file is at `.ve/board/cursors/<channel>.cursor` (project-local).
 Read it to get the current position N. If the file doesn't exist, the cursor
@@ -46,11 +53,15 @@ need this for the ack step.
 
 Example:
 ```
+# Stop previous watch if one exists
+# TaskStop(task_id="<previous_watch_task_id>")
+
 # Read current cursor position (may not exist yet — that's OK, treat as 0)
 cat .ve/board/cursors/<channel>.cursor 2>/dev/null || echo 0
 
 # Start watching in the background
 ve board watch <channel> --swarm <swarm_id>
+# Record the returned task ID — you'll need it to stop this watch later
 ```
 
 ### Step 3: Receive and triage
@@ -184,8 +195,11 @@ autonomously until the agent session ends.
 
 ### Error Handling
 
-- If `ve board watch` fails (e.g., network error), wait briefly and retry.
-  Do NOT ack — the message was not received.
+- If `ve board watch` fails (e.g., network error), **stop the failed task
+  first** (TaskStop), then start a new watch. Never start a retry watch
+  without stopping the previous one — even failed tasks may still be running
+  or reconnecting in the background, creating duplicate watches.
+- Do NOT ack on watch failure — the message was not received.
 - If processing fails (e.g., chunk creation error), still post a failure
   summary to the changelog, then ack. The operator can see the failure and
   resend the message if needed.
