@@ -131,6 +131,8 @@ Use these slash commands for artifact management:
 - `/steward-send` - Send a message to a project's steward
 - `/steward-changelog` - Watch a project's changelog channel
 
+- `/swarm-monitor` - Monitor all changelog channels in a swarm
+
 
 ## Creating Artifacts
 

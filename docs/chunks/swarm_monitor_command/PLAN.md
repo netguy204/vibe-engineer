@@ -10,153 +10,157 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new Jinja2 command template at `src/templates/commands/swarm-monitor.md.jinja2`
+following the exact same structural pattern as existing steward commands (e.g.,
+`steward-changelog.md.jinja2`, `steward-watch.md.jinja2`):
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- YAML frontmatter with `description`
+- `{% set source_template %}` and `{% include "partials/auto-generated-header.md.jinja2" %}`
+- Chunk backreference comment
+- `{% include "partials/common-tips.md.jinja2" %}` for Tips section
+- `{% raw %}` block wrapping the agent instructions
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The template is pure prose — no Python code changes needed. The existing
+`ve init` pipeline (via `render_to_directory` in `src/project.py#Project::_init_commands`)
+already discovers all `*.jinja2` files in `src/templates/commands/` and renders
+them to `.claude/commands/`, stripping the `.jinja2` suffix. So adding the
+template file is sufficient for `ve init` to produce `.claude/commands/swarm-monitor.md`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/swarm_monitor_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+The CLAUDE.md template (`src/templates/claude/CLAUDE.md.jinja2`) must also be
+updated to register `/swarm-monitor` as an available skill, so it appears in the
+skill listing and the agent knows to invoke it.
+
+**Testing**: Per TESTING_PHILOSOPHY.md, we don't assert on template prose. The
+meaningful behavior to test is that `ve init` renders the new template to the
+expected output path. Existing test infrastructure for `ve init` should already
+cover this via the general "commands are rendered" test pattern — verify this
+and add a targeted test only if needed.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system.
+  The new template follows all template system invariants: `.jinja2` suffix, rendered
+  through the canonical system via `ve init`, uses `{% include %}` for partials.
+  No deviations introduced.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the swarm-monitor command template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/swarm-monitor.md.jinja2` with the following structure:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
+**Frontmatter:**
+```yaml
 ---
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+description: Monitor all changelog channels in a swarm
+---
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**Header boilerplate** (same as all other command templates):
+```
+{% set source_template = "swarm-monitor.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/swarm_monitor_command - Swarm monitor slash command #}
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Tips section** with `{% include "partials/common-tips.md.jinja2" %}`.
+
+**Instructions section** wrapped in `{% raw %}...{% endraw %}`, containing
+the four-phase workflow:
+
+#### Phase 1: Discover changelog channels
+
+- Run `ve board channels` (which uses the bound swarm from `~/.ve/board.toml`
+  by default, or `--swarm <id>` if overridden by the operator)
+- Parse the output and filter for channels matching the `*-changelog` pattern
+- Display the discovered channels to the operator
+
+#### Phase 2: Show cursor vs head for each channel
+
+- For each changelog channel, read the local cursor file at
+  `.ve/board/cursors/<channel>.cursor` (treat missing as 0)
+- Compare cursor position against the `head=N` value from `ve board channels` output
+- Display a table/summary showing: channel name, cursor position, head position,
+  and unread count (head - cursor)
+- Highlight channels with unread messages
+
+#### Phase 3: Launch background watches
+
+- For each changelog channel that has unread messages OR is at head (waiting for
+  new messages), start a `ve board watch <channel>` using `run_in_background`
+- Report to the operator which channels are being watched
+
+#### Phase 4: Report incoming messages
+
+- As background watches complete (a message arrives on a channel), display the
+  message to the operator inline, including which channel it came from
+- After displaying, ack the message (`ve board ack <channel> <position>`) to
+  advance the cursor
+- Optionally re-launch a background watch on that channel to continue monitoring
+
+The instructions should also cover:
+- **Error handling**: If `ve board channels` fails, report and stop
+- **No changelog channels**: If no `*-changelog` channels are found, inform the
+  operator and stop
+- **Server URL**: Note that `--server <url>` can be added if using a non-default
+  backend
+
+Location: `src/templates/commands/swarm-monitor.md.jinja2`
+
+### Step 2: Register the skill in CLAUDE.md template
+
+Add `/swarm-monitor` to the steward commands section in
+`src/templates/claude/CLAUDE.md.jinja2`, alongside the existing steward commands:
+
+```
+- `/swarm-monitor` - Monitor all changelog channels in a swarm
+```
+
+This goes in the "### Steward" subsection of "## Available Commands".
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 3: Render and verify
+
+Run `uv run ve init` to render the new template. Verify:
+
+1. `.claude/commands/swarm-monitor.md` exists
+2. The file contains the auto-generated header
+3. The CLAUDE.md file lists the new skill
+4. The `{% raw %}` tags are not present in the rendered output (they should
+   be consumed by Jinja2)
+
+### Step 4: Verify test coverage
+
+Check existing `ve init` tests to confirm the new template is covered by the
+general rendering pipeline. The test infrastructure should already test that
+all templates in `src/templates/commands/` render to `.claude/commands/`. If
+this pattern isn't covered by existing tests, add a test that verifies
+`.claude/commands/swarm-monitor.md` is created after `ve init`.
+
+Run `uv run pytest tests/` to ensure all tests pass.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `steward_setup_bootstrap` and `steward_watch_ack_note` chunks (already ACTIVE
+  per `created_after`) — these established the `ve board` CLI, cursor management,
+  and steward command template patterns this chunk builds on
+- No new libraries or infrastructure required
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Channel naming convention**: The plan assumes `*-changelog` is the reliable
+  pattern for identifying changelog channels. This matches observed data
+  (`vibe-engineer-changelog`, `lite-edit-changelog`, etc.) but is a convention,
+  not a hard guarantee. The template should note this assumption.
+- **Many concurrent background watches**: If a swarm has many changelog channels,
+  launching many simultaneous `run_in_background` watches could be resource-heavy
+  for the agent. The template should be pragmatic about this (e.g., suggest the
+  operator can select a subset if needed).
+- **Cursor file location**: The steward-watch template references
+  `.ve/board/cursors/<channel>.cursor` while steward-changelog references
+  `.ve/cursors/<channel>.cursor`. Need to verify the correct path during
+  implementation and use the one that matches the actual `ve board watch` behavior.
 
 ## Deviations
 
