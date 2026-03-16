@@ -15,7 +15,7 @@ new_sqlite_classes = ["SwarmDO"]
 # Chunk: docs/chunks/invite_path_routing_fix - Token-to-swarm secondary index for invite routing
 [[kv_namespaces]]
 binding = "TOKEN_SWARM_INDEX"
-id = "TOKEN_SWARM_INDEX"
+id = "542efadc0c9247aab720b4844a218520"
 
 [observability]
 enabled = true
