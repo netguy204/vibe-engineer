@@ -12,6 +12,11 @@ class_name = "SwarmDO"
 tag = "v1"
 new_sqlite_classes = ["SwarmDO"]
 
+# Chunk: docs/chunks/invite_path_routing_fix - Token-to-swarm secondary index for invite routing
+[[kv_namespaces]]
+binding = "TOKEN_SWARM_INDEX"
+id = "TOKEN_SWARM_INDEX"
+
 [observability]
 [observability.logs]
 enabled = false

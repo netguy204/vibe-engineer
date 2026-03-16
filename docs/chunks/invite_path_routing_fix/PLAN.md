@@ -10,170 +10,110 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The root cause is a routing-layer mismatch: the worker entry point (`src/index.ts`) requires a `?swarm=` query parameter on every request to determine which Durable Object to route to, but `/invite/{token}` URLs by design carry only the token — no swarm ID.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix introduces a **Workers KV namespace as a secondary index** mapping `token_hash → swarm_id`. This index is maintained as a side-effect of gateway key CRUD operations (PUT writes, DELETE removes), and is read at the worker entry point to resolve invite tokens to their swarm before routing.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Why KV?** The token → swarm mapping must be available *before* the worker knows which DO to contact (since DOs are keyed by swarm ID). Workers KV is the natural Cloudflare primitive for fast, globally-distributed reads at the worker level. The mapping is written infrequently (invite creation/revocation) and read on every invite page visit — a read-heavy pattern that KV is optimized for.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/invite_path_routing_fix/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Alternatives considered:**
+- *Encode swarm_id in the URL* (`/invite/{swarm}/{token}`): Would break the established URL contract from the `agent_invite_links` investigation protocol.
+- *Registry DO*: A well-known DO storing all token→swarm mappings. Adds an extra DO hop on every invite request and couples all swarms through a single coordination point.
+- *Scan all DOs*: Not feasible — no enumeration API for DO instances.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+**Testing approach:** Following the testing philosophy, we write failing tests first for the new behavior (invite works without `?swarm=`), then implement. Existing tests that pass `?swarm=` continue to work as a backward-compatible path.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add KV namespace binding
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `TOKEN_SWARM_INDEX` KV namespace to `workers/leader-board/wrangler.toml` and update the `Env` interface in `workers/leader-board/src/swarm-do.ts` to include it.
 
-Example:
+Location: `workers/leader-board/wrangler.toml`, `workers/leader-board/src/swarm-do.ts`
 
-### Step 1: Define the SegmentHeader struct
+Changes:
+- Add `[[kv_namespaces]]` block with `binding = "TOKEN_SWARM_INDEX"` to wrangler.toml
+- Add `TOKEN_SWARM_INDEX: KVNamespace` to the `Env` interface
+- Store `env` in the `SwarmDO` constructor (currently unused, prefixed with `_env`)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Maintain KV index on gateway key CRUD
 
-Location: src/segment/format.rs
+When gateway keys are created or deleted, maintain the KV secondary index in sync.
 
-### Step 2: Implement header serialization
+Location: `workers/leader-board/src/swarm-do.ts` (handleGatewayKeys method)
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Changes in `handleGatewayKeys`:
+- **PUT**: After `this.storage.putGatewayKey(...)`, call `await this.env.TOKEN_SWARM_INDEX.put(body.token_hash, swarmId)` to write the mapping
+- **DELETE (single)**: After `this.storage.deleteGatewayKey(tokenHash)`, call `await this.env.TOKEN_SWARM_INDEX.delete(tokenHash)` to remove the mapping
+- **DELETE (bulk)**: Before `this.storage.deleteAllGatewayKeys()`, list all keys via `this.storage.listGatewayKeys()` to get their token hashes, then delete each from KV after the bulk delete
 
-### Step 3: ...
+Note: The `handleGatewayKeys` method must become `async` (it already returns `Promise<Response>` but doesn't currently `await` anything).
 
----
+### Step 3: Write failing tests for swarm-less invite routing
 
-**BACKREFERENCE COMMENTS**
+Add new test cases to `workers/leader-board/test/invite-page.test.ts` that exercise the core fix: `/invite/{token}` without `?swarm=` should work.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `workers/leader-board/test/invite-page.test.ts`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+New tests:
+- **"GET /invite/{token} works without swarm query parameter"**: Call `setupGateway(...)`, then fetch `/invite/{tokenHex}` (no `?swarm=`). Expect 200 with instruction page content.
+- **"invalid token without swarm parameter returns 404"**: Fetch `/invite/{fakeToken}` (no `?swarm=`). Expect 404 with "Invalid or expired invite token".
+- **"revoked token without swarm parameter returns 404"**: Setup gateway, revoke token, fetch `/invite/{tokenHex}` (no `?swarm=`). Expect 404.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Update the existing test **"missing swarm parameter returns 400"**: This test currently expects 400 when no swarm is provided. After the fix, an unknown token without `?swarm=` should return 404 (token not found in KV), not 400. Update the assertion accordingly.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 4: Implement invite path early-exit in the worker entry point
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Move the `/invite/{token}` route *before* the swarm-required guard in `src/index.ts`. When the path matches, hash the token, look up the swarm in KV, and route to the correct DO.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `workers/leader-board/src/index.ts`
+
+Changes:
+- Import `hashToken` from `./gateway-crypto`
+- Before the `if (!swarmId)` guard, add an early-exit block:
+  ```typescript
+  const inviteMatch = url.pathname.match(/^\/invite\/([^/]+)$/);
+  if (inviteMatch) {
+    const token = inviteMatch[1];
+    const tokenHash = hashToken(token);
+    const resolvedSwarmId = await env.TOKEN_SWARM_INDEX.get(tokenHash);
+    if (!resolvedSwarmId) {
+      return new Response("Invalid or expired invite token", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+    const id = env.SWARM_DO.idFromName(resolvedSwarmId);
+    const stub = env.SWARM_DO.get(id);
+    return stub.fetch(request);
+  }
+  ```
+- Remove the now-redundant `/invite/` match block from after the swarm guard (lines 44-47)
+
+This preserves backward compatibility: if someone passes `?swarm=` with an invite URL, the early-exit fires first and resolves via KV regardless.
+
+### Step 5: Run tests and verify
+
+Run the full test suite to confirm:
+- New tests pass (invite works without `?swarm=`)
+- Existing tests pass (gateway API, key CRUD, WebSocket, etc.)
+- The updated "missing swarm" test passes with the new expectation
+
+Command: `cd workers/leader-board && npx vitest run`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Parent chunk `invite_instruction_page` must be ACTIVE (it is — `handleInvitePage` and `renderInvitePage` already exist on the DO)
+- `gateway_token_storage` must be ACTIVE (it is — gateway key CRUD and the `swarm_id` column exist)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **KV eventual consistency**: Workers KV is eventually consistent for reads. In practice, a freshly created invite might not be resolvable for a brief window (typically seconds). This is acceptable for the invite use case — the operator creates the invite and shares the URL, and the recipient visits it later. If sub-second consistency is needed in the future, a Registry DO approach could replace KV.
+- **KV test behavior**: The `@cloudflare/vitest-pool-workers` test framework uses miniflare under the hood, where KV is backed by in-memory storage and reads are immediately consistent. Tests should pass without consistency issues.
+- **Bulk delete KV cleanup**: When `DELETE /gateway/keys` (no token_hash) bulk-deletes all keys, we need to iterate through `listGatewayKeys()` to know which KV entries to remove. This is a rare operation and the list is expected to be small.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
