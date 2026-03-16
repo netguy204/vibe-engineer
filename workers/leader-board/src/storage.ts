@@ -329,4 +329,30 @@ export class SwarmStorage {
     );
     return true;
   }
+
+  // Chunk: docs/chunks/invite_list_revoke - List all gateway keys
+  listGatewayKeys(): { token_hash: string; created_at: string }[] {
+    this.ensureSchema();
+    const rows = [
+      ...this.sql.sql.exec(
+        `SELECT token_hash, created_at FROM gateway_keys ORDER BY created_at ASC`
+      ),
+    ];
+    return rows.map((row) => ({
+      token_hash: row.token_hash as string,
+      created_at: row.created_at as string,
+    }));
+  }
+
+  // Chunk: docs/chunks/invite_list_revoke - Delete all gateway keys (bulk revocation)
+  deleteAllGatewayKeys(): number {
+    this.ensureSchema();
+    const countRows = [
+      ...this.sql.sql.exec(`SELECT COUNT(*) as cnt FROM gateway_keys`),
+    ];
+    const count = countRows[0].cnt as number;
+    if (count === 0) return 0;
+    this.sql.sql.exec(`DELETE FROM gateway_keys`);
+    return count;
+  }
 }

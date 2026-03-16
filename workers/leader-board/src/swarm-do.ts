@@ -225,11 +225,18 @@ export class SwarmDO implements DurableObject {
       }
 
       case "GET": {
+        // Chunk: docs/chunks/invite_list_revoke - List all keys when no token_hash in path
         if (!tokenHashFromPath) {
-          return new Response(
-            JSON.stringify({ error: "Missing token_hash in path" }),
-            { status: 400, headers: jsonHeaders }
-          );
+          const keys = this.storage.listGatewayKeys();
+          const keysWithHint = keys.map((k) => ({
+            token_hash: k.token_hash,
+            created_at: k.created_at,
+            hint: k.token_hash.substring(0, 8),
+          }));
+          return new Response(JSON.stringify({ keys: keysWithHint }), {
+            status: 200,
+            headers: jsonHeaders,
+          });
         }
 
         const key = this.storage.getGatewayKey(tokenHashFromPath);
@@ -247,10 +254,12 @@ export class SwarmDO implements DurableObject {
       }
 
       case "DELETE": {
+        // Chunk: docs/chunks/invite_list_revoke - Bulk delete when no token_hash in path
         if (!tokenHashFromPath) {
+          const deletedCount = this.storage.deleteAllGatewayKeys();
           return new Response(
-            JSON.stringify({ error: "Missing token_hash in path" }),
-            { status: 400, headers: jsonHeaders }
+            JSON.stringify({ ok: true, deleted: deletedCount }),
+            { status: 200, headers: jsonHeaders }
           );
         }
 

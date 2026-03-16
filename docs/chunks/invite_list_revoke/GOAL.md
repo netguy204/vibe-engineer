@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: invite_cli_command
-code_paths: []
+code_paths:
+- src/cli/board.py
+- workers/leader-board/src/storage.ts
+- workers/leader-board/src/swarm-do.ts
+- tests/test_board_invite.py
+- workers/leader-board/test/gateway-keys.test.ts
 code_references: []
 narrative: null
 investigation: agent_invite_links
@@ -10,9 +15,12 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["gateway_cleartext_api", "gateway_token_storage", "invite_cli_command", "invite_instruction_page"]
+created_after:
+- gateway_cleartext_api
+- gateway_token_storage
+- invite_cli_command
+- invite_instruction_page
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

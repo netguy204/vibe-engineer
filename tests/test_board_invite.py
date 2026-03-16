@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/invite_cli_command - Invite CLI commands
+# Chunk: docs/chunks/invite_list_revoke - List and bulk revoke tests
 """Tests for ve board invite and ve board revoke commands."""
 
 from __future__ import annotations
@@ -36,12 +37,12 @@ def stored_swarm(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# invite command tests
+# invite create command tests (formerly "invite" command, now "invite create")
 # ---------------------------------------------------------------------------
 
 
-def test_invite_happy_path(runner, stored_swarm):
-    """ve board invite generates a token, uploads encrypted blob, prints invite URL."""
+def test_invite_create_happy_path(runner, stored_swarm):
+    """ve board invite create generates a token, uploads encrypted blob, prints invite URL."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
         default_swarm=swarm_id,
@@ -60,7 +61,7 @@ def test_invite_happy_path(runner, stored_swarm):
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put", side_effect=mock_put):
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
             "--yes",
@@ -97,8 +98,8 @@ def test_invite_happy_path(runner, stored_swarm):
     assert bytes.fromhex(decrypted) == seed
 
 
-def test_invite_shows_warning(runner, stored_swarm):
-    """ve board invite displays the opt-in warning text."""
+def test_invite_create_shows_warning(runner, stored_swarm):
+    """ve board invite create displays the opt-in warning text."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
         default_swarm=swarm_id,
@@ -114,7 +115,7 @@ def test_invite_shows_warning(runner, stored_swarm):
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put", side_effect=mock_put):
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
             "--yes",
@@ -125,7 +126,7 @@ def test_invite_shows_warning(runner, stored_swarm):
     assert "cleartext gateway" in result.output
 
 
-def test_invite_abort_on_decline(runner, stored_swarm):
+def test_invite_create_abort_on_decline(runner, stored_swarm):
     """Answering 'n' to the confirmation prompt aborts without uploading."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
@@ -137,7 +138,7 @@ def test_invite_abort_on_decline(runner, stored_swarm):
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put") as mock_put:
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
         ], input="n\n")
@@ -146,7 +147,7 @@ def test_invite_abort_on_decline(runner, stored_swarm):
     mock_put.assert_not_called()
 
 
-def test_invite_yes_bypasses_confirmation(runner, stored_swarm):
+def test_invite_create_yes_bypasses_confirmation(runner, stored_swarm):
     """--yes flag bypasses the confirmation prompt."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
@@ -163,7 +164,7 @@ def test_invite_yes_bypasses_confirmation(runner, stored_swarm):
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put", side_effect=mock_put) as put_mock:
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
             "--yes",
@@ -175,17 +176,17 @@ def test_invite_yes_bypasses_confirmation(runner, stored_swarm):
     put_mock.assert_called_once()
 
 
-def test_invite_missing_swarm(runner):
-    """invite with no --swarm and no default prints error."""
+def test_invite_create_missing_swarm(runner):
+    """invite create with no --swarm and no default prints error."""
     with patch("cli.board.load_board_config", return_value=BoardConfig()):
-        result = runner.invoke(board, ["invite", "--yes"])
+        result = runner.invoke(board, ["invite", "create", "--yes"])
 
     assert result.exit_code != 0
     assert "no swarm specified" in result.output
 
 
-def test_invite_keypair_not_found(runner):
-    """invite errors when keypair not found for swarm."""
+def test_invite_create_keypair_not_found(runner):
+    """invite create errors when keypair not found for swarm."""
     config = BoardConfig(
         default_swarm="missing",
         swarms={"missing": SwarmConfig("ws://test:8787")},
@@ -194,7 +195,7 @@ def test_invite_keypair_not_found(runner):
     with patch("cli.board.load_keypair", return_value=None), \
          patch("cli.board.load_board_config", return_value=config):
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", "missing",
             "--yes",
         ])
@@ -203,8 +204,8 @@ def test_invite_keypair_not_found(runner):
     assert "not found" in result.output
 
 
-def test_invite_upload_failure(runner, stored_swarm):
-    """invite reports error when server returns 500."""
+def test_invite_create_upload_failure(runner, stored_swarm):
+    """invite create reports error when server returns 500."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
         default_swarm=swarm_id,
@@ -220,10 +221,106 @@ def test_invite_upload_failure(runner, stored_swarm):
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put", side_effect=mock_put):
         result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
             "--yes",
+        ])
+
+    assert result.exit_code != 0
+    assert "500" in result.output
+
+
+# ---------------------------------------------------------------------------
+# invite list command tests
+# ---------------------------------------------------------------------------
+
+
+def test_invite_list_no_tokens(runner):
+    """invite list with no tokens shows 'No active invite tokens.'"""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"keys": []}
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get):
+        result = runner.invoke(board, [
+            "invite", "list",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0
+    assert "No active invite tokens." in result.output
+
+
+def test_invite_list_populated(runner):
+    """invite list with tokens displays hint and creation time."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "keys": [
+                {"token_hash": "abcdef1234567890", "created_at": "2026-03-16T00:00:00Z", "hint": "abcdef12"},
+                {"token_hash": "1234567890abcdef", "created_at": "2026-03-16T01:00:00Z", "hint": "12345678"},
+            ]
+        }
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get):
+        result = runner.invoke(board, [
+            "invite", "list",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0
+    assert "abcdef12" in result.output
+    assert "12345678" in result.output
+    assert "2026-03-16T00:00:00Z" in result.output
+    assert "2026-03-16T01:00:00Z" in result.output
+
+
+def test_invite_list_missing_swarm(runner):
+    """invite list with no --swarm and no default prints error."""
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, ["invite", "list"])
+
+    assert result.exit_code != 0
+    assert "no swarm specified" in result.output
+
+
+def test_invite_list_server_error(runner):
+    """invite list reports error when server returns 500."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 500
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get):
+        result = runner.invoke(board, [
+            "invite", "list",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
         ])
 
     assert result.exit_code != 0
@@ -316,12 +413,113 @@ def test_revoke_server_error(runner):
 
 
 # ---------------------------------------------------------------------------
+# revoke --all tests
+# ---------------------------------------------------------------------------
+
+
+def test_revoke_all_happy_path(runner):
+    """ve board revoke --all deletes all tokens and reports count."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_delete(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"ok": True, "deleted": 3}
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.delete", side_effect=mock_delete) as del_mock:
+        result = runner.invoke(board, [
+            "revoke", "--all",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0
+    assert "Revoked 3 invite token(s)." in result.output
+
+    # Verify the DELETE went to /gateway/keys (no token hash in path)
+    call_url = del_mock.call_args[0][0]
+    assert call_url.endswith("/gateway/keys")
+
+
+def test_revoke_all_empty_swarm(runner):
+    """ve board revoke --all on empty swarm reports zero revoked."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_delete(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"ok": True, "deleted": 0}
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.delete", side_effect=mock_delete):
+        result = runner.invoke(board, [
+            "revoke", "--all",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0
+    assert "Revoked 0 invite token(s)." in result.output
+
+
+def test_revoke_all_server_error(runner):
+    """ve board revoke --all reports server error on non-200 status."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_delete(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 500
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.delete", side_effect=mock_delete):
+        result = runner.invoke(board, [
+            "revoke", "--all",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code != 0
+    assert "500" in result.output
+
+
+def test_revoke_neither_token_nor_all_errors(runner):
+    """ve board revoke with neither token nor --all prints error."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    with patch("cli.board.load_board_config", return_value=config):
+        result = runner.invoke(board, [
+            "revoke",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code != 0
+    assert "provide a TOKEN argument or use --all" in result.output
+
+
+# ---------------------------------------------------------------------------
 # round-trip test
 # ---------------------------------------------------------------------------
 
 
 def test_invite_revoke_round_trip(runner, stored_swarm):
-    """Round-trip: invite produces a token that can decrypt the blob, then revoke."""
+    """Round-trip: invite create produces a token that can decrypt the blob, then revoke."""
     swarm_id, seed, pub, keys_dir = stored_swarm
     config = BoardConfig(
         default_swarm=swarm_id,
@@ -343,12 +541,12 @@ def test_invite_revoke_round_trip(runner, stored_swarm):
         resp.status_code = 200
         return resp
 
-    # Step 1: Invite
+    # Step 1: Invite create
     with patch("cli.board.load_keypair", return_value=(seed, pub)), \
          patch("cli.board.load_board_config", return_value=config), \
          patch("cli.board.httpx.put", side_effect=mock_put):
         invite_result = runner.invoke(board, [
-            "invite",
+            "invite", "create",
             "--swarm", swarm_id,
             "--server", "ws://test:8787",
             "--yes",

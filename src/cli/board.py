@@ -386,11 +386,18 @@ The invite token is the sole security boundary — treat it like a password.
 
 
 # Chunk: docs/chunks/invite_cli_command
-@board.command("invite")
+# Chunk: docs/chunks/invite_list_revoke - Restructured invite from command to group
+@board.group()
+def invite():
+    """Invite management commands."""
+    pass
+
+
+@invite.command("create")
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def invite_cmd(swarm: str | None, server: str | None, yes: bool) -> None:
+def invite_create_cmd(swarm: str | None, server: str | None, yes: bool) -> None:
     """Generate an invite link for agent access to a swarm."""
     config = load_board_config()
     swarm = resolve_swarm(config, swarm)
@@ -439,18 +446,12 @@ def invite_cmd(swarm: str | None, server: str | None, yes: bool) -> None:
     click.echo(invite_url)
 
 
-# ---------------------------------------------------------------------------
-# revoke
-# ---------------------------------------------------------------------------
-
-
-# Chunk: docs/chunks/invite_cli_command
-@board.command("revoke")
-@click.argument("token")
+# Chunk: docs/chunks/invite_list_revoke - List active invite tokens
+@invite.command("list")
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
-def revoke_cmd(token: str, swarm: str | None, server: str | None) -> None:
-    """Revoke an invite token, immediately invalidating access."""
+def invite_list_cmd(swarm: str | None, server: str | None) -> None:
+    """List all active invite tokens for a swarm."""
     config = load_board_config()
     swarm = resolve_swarm(config, swarm)
     if swarm is None:
@@ -458,20 +459,81 @@ def revoke_cmd(token: str, swarm: str | None, server: str | None) -> None:
         sys.exit(1)
     server = resolve_server(config, swarm, server)
 
-    token_bytes = bytes.fromhex(token)
-    token_hash = hashlib.sha256(token_bytes).hexdigest()
-
     http_url = gateway_http_url(server)
-    response = httpx.delete(
-        f"{http_url}/gateway/keys/{token_hash}",
+    response = httpx.get(
+        f"{http_url}/gateway/keys",
         params={"swarm": swarm},
     )
 
-    if response.status_code == 200:
-        click.echo("Invite revoked successfully.")
-    elif response.status_code == 404:
-        click.echo("Error: token not found or already revoked.", err=True)
-        sys.exit(1)
-    else:
+    if response.status_code != 200:
         click.echo(f"Error: server returned {response.status_code}", err=True)
         sys.exit(1)
+
+    data = response.json()
+    keys = data.get("keys", [])
+    if not keys:
+        click.echo("No active invite tokens.")
+        return
+
+    for key in keys:
+        hint = key.get("hint", key["token_hash"][:8])
+        created = key.get("created_at", "unknown")
+        click.echo(f"{hint}  created={created}")
+
+
+# ---------------------------------------------------------------------------
+# revoke
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/invite_cli_command
+# Chunk: docs/chunks/invite_list_revoke - Added --all flag for bulk revocation
+@board.command("revoke")
+@click.argument("token", required=False, default=None)
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--all", "revoke_all", is_flag=True, help="Revoke all tokens for this swarm")
+def revoke_cmd(token: str | None, swarm: str | None, server: str | None, revoke_all: bool) -> None:
+    """Revoke an invite token, immediately invalidating access."""
+    if not revoke_all and token is None:
+        click.echo("Error: provide a TOKEN argument or use --all", err=True)
+        sys.exit(1)
+
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
+    http_url = gateway_http_url(server)
+
+    if revoke_all:
+        response = httpx.delete(
+            f"{http_url}/gateway/keys",
+            params={"swarm": swarm},
+        )
+        if response.status_code == 200:
+            data = response.json()
+            count = data.get("deleted", 0)
+            click.echo(f"Revoked {count} invite token(s).")
+        else:
+            click.echo(f"Error: server returned {response.status_code}", err=True)
+            sys.exit(1)
+    else:
+        token_bytes = bytes.fromhex(token)
+        token_hash = hashlib.sha256(token_bytes).hexdigest()
+
+        response = httpx.delete(
+            f"{http_url}/gateway/keys/{token_hash}",
+            params={"swarm": swarm},
+        )
+
+        if response.status_code == 200:
+            click.echo("Invite revoked successfully.")
+        elif response.status_code == 404:
+            click.echo("Error: token not found or already revoked.", err=True)
+            sys.exit(1)
+        else:
+            click.echo(f"Error: server returned {response.status_code}", err=True)
+            sys.exit(1)
