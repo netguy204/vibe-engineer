@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: watchmulti_exit_on_message
-code_paths: []
+code_paths:
+- src/board/client.py
+- src/cli/board.py
+- tests/test_board_client.py
+- tests/test_board_cli.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +14,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["websocket_zombie_cleanup"]
+created_after:
+- websocket_zombie_cleanup
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

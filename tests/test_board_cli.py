@@ -651,7 +651,7 @@ def test_watch_multi_command_output_format(runner, stored_swarm, tmp_path):
     encrypted_body_a = encrypt("message from alpha", sym_key)
     encrypted_body_b = encrypt("message from beta", sym_key)
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         yield {
             "channel": "ch-alpha",
             "position": 1,
@@ -695,7 +695,7 @@ def test_watch_multi_advances_cursors(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("msg", sym_key)
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         yield {
             "channel": "ch-x",
             "position": 5,
@@ -738,7 +738,7 @@ def test_watch_multi_single_connection(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("test", sym_key)
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         yield {
             "channel": "ch-1",
             "position": 1,
@@ -781,7 +781,7 @@ def test_watch_multi_count_flag_exits_after_n(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     bodies = [encrypt(f"msg{i}", sym_key) for i in range(3)]
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         for i in range(3):
             yield {
                 "channel": "ch-a",
@@ -824,7 +824,7 @@ def test_watch_multi_count_zero_streams_all(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     bodies = [encrypt(f"msg{i}", sym_key) for i in range(3)]
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         for i in range(3):
             yield {
                 "channel": "ch-a",
@@ -866,7 +866,7 @@ def test_watch_multi_default_count_one(runner, stored_swarm, tmp_path):
 
     call_kwargs = {}
 
-    async def mock_watch_multi(channels, count=1):
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
         call_kwargs["count"] = count
         yield {
             "channel": "ch-a",
@@ -896,3 +896,165 @@ def test_watch_multi_default_count_one(runner, stored_swarm, tmp_path):
     assert result.exit_code == 0
     assert call_kwargs["count"] == 1
     assert "only-one" in result.output
+
+
+# ---------------------------------------------------------------------------
+# watch-multi --no-auto-ack tests
+# Chunk: docs/chunks/watchmulti_manual_ack - CLI manual ack flag tests
+# ---------------------------------------------------------------------------
+
+
+def test_watch_multi_no_auto_ack_skips_save_cursor(runner, stored_swarm, tmp_path):
+    """With --no-auto-ack, save_cursor() is never called after message delivery."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        yield {
+            "channel": "ch-x",
+            "position": 5,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor") as mock_save, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-x",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--no-auto-ack",
+        ])
+
+    assert result.exit_code == 0
+    # save_cursor should NOT have been called
+    mock_save.assert_not_called()
+
+
+def test_watch_multi_no_auto_ack_includes_position_in_output(runner, stored_swarm, tmp_path):
+    """With --no-auto-ack, output format includes position=N."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("hello world", sym_key)
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        yield {
+            "channel": "ch-alpha",
+            "position": 42,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor"), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-alpha",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--no-auto-ack",
+        ])
+
+    assert result.exit_code == 0
+    assert "[ch-alpha] position=42 hello world" in result.output
+
+
+def test_watch_multi_default_auto_ack_saves_cursor(runner, stored_swarm, tmp_path):
+    """Without --no-auto-ack, existing behavior is preserved — save_cursor() is called
+    and output does NOT include position."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("normal msg", sym_key)
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        yield {
+            "channel": "ch-y",
+            "position": 7,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor") as mock_save, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-y",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert "[ch-y] normal msg" in result.output
+    assert "position=" not in result.output
+    # save_cursor should have been called
+    mock_save.assert_called_once_with("ch-y", 7, tmp_path)
+
+
+def test_watch_multi_no_auto_ack_passes_auto_ack_false_to_client(runner, stored_swarm, tmp_path):
+    """Verify that --no-auto-ack flag results in auto_ack=False being passed to
+    the client method."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    body = encrypt("test", sym_key)
+
+    call_kwargs = {}
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        call_kwargs["auto_ack"] = auto_ack
+        yield {
+            "channel": "ch-a",
+            "position": 1,
+            "body": body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor"), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-a",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--no-auto-ack",
+        ])
+
+    assert result.exit_code == 0
+    assert call_kwargs["auto_ack"] is False

@@ -263,7 +263,9 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
 # Chunk: docs/chunks/watchmulti_exit_on_message - --count flag for event-driven workflows
 @click.option("--count", default=1, type=int, help="Exit after N messages (0 = stream indefinitely)")
-def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool, count: int) -> None:
+# Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
+@click.option("--no-auto-ack", is_flag=True, help="Don't auto-advance cursor; include position in output for manual acking")
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool, count: int, no_auto_ack: bool) -> None:
     """Watch multiple channels on a single connection.
 
     Blocks and prints messages from any subscribed channel.
@@ -272,7 +274,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     With --count N (default 1), exits after receiving N messages. Use
     --count 0 to stream indefinitely.
 
-    Cursors are auto-advanced after each message is printed.
+    With --no-auto-ack, cursors are NOT auto-advanced and the output
+    includes position for manual acking via 've board ack'.
+    Output format: [channel-name] position=N message text
     """
     config = load_board_config()
     swarm = resolve_swarm(config, swarm)
@@ -298,16 +302,20 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
         client = BoardClient(server, swarm, seed)
         await client.connect()
         try:
+            auto_ack = not no_auto_ack
             if no_reconnect:
-                gen = client.watch_multi(channel_cursors, count=count)
+                gen = client.watch_multi(channel_cursors, count=count, auto_ack=auto_ack)
             else:
-                gen = client.watch_multi_with_reconnect(channel_cursors, count=count)
+                gen = client.watch_multi_with_reconnect(channel_cursors, count=count, auto_ack=auto_ack)
 
             async for msg in gen:
                 plaintext = decrypt(msg["body"], sym_key)
-                click.echo(f"[{msg['channel']}] {plaintext}")
-                # Auto-advance cursor
-                save_cursor(msg["channel"], msg["position"], project_root)
+                if no_auto_ack:
+                    click.echo(f"[{msg['channel']}] position={msg['position']} {plaintext}")
+                else:
+                    click.echo(f"[{msg['channel']}] {plaintext}")
+                    # Auto-advance cursor
+                    save_cursor(msg["channel"], msg["position"], project_root)
         except KeyboardInterrupt:
             pass
         finally:

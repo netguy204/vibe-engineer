@@ -10,170 +10,99 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add an `auto_ack` parameter (default `True`) to the client-layer `watch_multi()` and `watch_multi_with_reconnect()` methods. When `auto_ack=False`, the client skips re-sending the watch frame with the updated cursor after yielding a message—the cursor stays where it was, so the server will re-deliver the same message on reconnect.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+At the CLI layer, add a `--no-auto-ack` flag to `ve board watch-multi`. When set, it:
+1. Passes `auto_ack=False` to the client
+2. Skips the `save_cursor()` call after each message
+3. Includes the message position in the output so the consumer can later call `ve board ack <channel> <position>`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The existing `ve board ack` command already handles manual cursor advancement—no changes needed there.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/watchmulti_manual_ack/GOAL.md)
-with references to the files that you expect to touch.
--->
+Default behavior (auto-ack) remains unchanged, preserving backward compatibility for the swarm-monitor use case.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Following docs/trunk/TESTING_PHILOSOPHY.md, tests are written first (TDD) and focus on behavioral semantics: verifying that cursors are/aren't advanced, that output includes position when expected, and that re-delivery works after simulated crash.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write client-layer tests for `auto_ack=False`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_board_client.py`:
 
-Example:
+1. **`test_watch_multi_auto_ack_false_skips_cursor_resend`**: When `auto_ack=False`, after yielding a message the client does NOT re-send a watch frame with the updated cursor. Verify by checking that only the initial watch frames are sent (no re-sends after message delivery).
 
-### Step 1: Define the SegmentHeader struct
+2. **`test_watch_multi_auto_ack_default_resends_cursor`**: Confirm existing behavior—when `auto_ack` is not specified (defaults to `True`), the client re-sends watch frames with updated cursor after each message. This is a characterization test ensuring we don't break existing behavior.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **`test_watch_multi_reconnect_auto_ack_false_preserves_cursors`**: When `auto_ack=False` and reconnect occurs, the reconnect wrapper still updates its internal cursor tracking (so it doesn't re-deliver already-yielded messages within the same session), but the yielded messages still carry position for external acking.
 
-Location: src/segment/format.rs
+Location: `tests/test_board_client.py`
 
-### Step 2: Implement header serialization
+### Step 2: Implement client-layer `auto_ack` parameter
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Modify `BoardClient.watch_multi()` in `src/board/client.py`:
 
-### Step 3: ...
+- Add `auto_ack: bool = True` parameter
+- When `auto_ack=False`, skip the re-send of the watch frame after yielding (lines 333-341 in current code). The message is still yielded with its position.
+- The initial watch frames are always sent (they establish the subscription).
 
----
+Modify `BoardClient.watch_multi_with_reconnect()`:
 
-**BACKREFERENCE COMMENTS**
+- Add `auto_ack: bool = True` parameter
+- Pass `auto_ack` through to inner `watch_multi()` call
+- The reconnect wrapper's internal cursor tracking (`cursors[msg["channel"]] = msg["position"]`) should still update when `auto_ack=False`—this is session-level tracking for reconnect, not durable acking. On reconnect, the wrapper re-subscribes from the last position it saw, preventing duplicate delivery within the same process lifetime.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/board/client.py`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 3: Write CLI-layer tests for `--no-auto-ack`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Add tests to `tests/test_board_cli.py`:
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+1. **`test_watch_multi_no_auto_ack_skips_save_cursor`**: With `--no-auto-ack`, `save_cursor()` is never called after message delivery. Verify via mock assertion.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+2. **`test_watch_multi_no_auto_ack_includes_position_in_output`**: With `--no-auto-ack`, output format changes to `[channel] position=N message text` so the consumer knows what to ack.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+3. **`test_watch_multi_default_auto_ack_saves_cursor`**: Without `--no-auto-ack`, existing behavior is preserved—`save_cursor()` is called and output does NOT include position.
+
+4. **`test_watch_multi_no_auto_ack_passes_auto_ack_false_to_client`**: Verify that `--no-auto-ack` flag results in `auto_ack=False` being passed to the client method.
+
+Location: `tests/test_board_cli.py`
+
+### Step 4: Implement CLI `--no-auto-ack` flag
+
+Modify `watch_multi_cmd()` in `src/cli/board.py`:
+
+- Add `@click.option("--no-auto-ack", is_flag=True, help="Don't auto-advance cursor; include position in output for manual acking")`
+- Add `no_auto_ack` parameter to the function signature
+- In `_watch_multi()`:
+  - Pass `auto_ack=not no_auto_ack` to both `client.watch_multi()` and `client.watch_multi_with_reconnect()`
+  - When `no_auto_ack` is set:
+    - Change output format to `[{channel}] position={position} {plaintext}` (position included for ack)
+    - Skip the `save_cursor()` call
+  - When `no_auto_ack` is not set: preserve existing behavior exactly
+- Update the docstring to document the new flag
+- Add a backreference comment: `# Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode`
+
+Location: `src/cli/board.py`
+
+### Step 5: Run tests and verify
+
+Run the full test suite to confirm:
+- All new tests pass
+- All existing tests pass (backward compatibility)
+- `uv run pytest tests/test_board_client.py tests/test_board_cli.py -v`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Parent chunk `watchmulti_exit_on_message` must be complete (it is—status ACTIVE). Its `--count` flag and count-limited delivery are the foundation this chunk builds on.
+- The existing `ve board ack` command already handles manual cursor advancement. No changes needed.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Reconnect cursor semantics with `auto_ack=False`**: The reconnect wrapper must still track cursors internally for session-level deduplication, even when not durably acking. This is a subtle distinction—internal cursor tracking prevents the same message from being yielded twice within a process lifetime, while the consumer handles durable acking via `ve board ack`. The design ensures both properties hold.
+- **Output format change**: Adding `position=N` to output when `--no-auto-ack` is set changes the parseable format. Consumers that parse `[channel] message` will need to account for the new prefix. This is acceptable because it only activates with an explicit opt-in flag.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

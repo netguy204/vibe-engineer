@@ -246,10 +246,12 @@ class BoardClient:
 
     # Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch_multi
+    # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     async def watch_multi(
         self,
         channels: dict[str, int],
         count: int = 1,
+        auto_ack: bool = True,
     ) -> AsyncGenerator[dict, None]:
         """Watch multiple channels on a single connection.
 
@@ -266,6 +268,11 @@ class BoardClient:
             ``count > 0``, the generator yields at most *count* messages
             then returns. When ``count == 0``, it streams indefinitely
             (backwards-compatible with the original behavior).
+        auto_ack:
+            When ``True`` (default), re-sends the watch frame with the
+            updated cursor after yielding each message. When ``False``,
+            skips the re-send so the server will re-deliver the same
+            message on reconnect until the consumer manually acks.
 
         Yields dicts with keys: channel, position, body, sent_at.
         """
@@ -331,7 +338,8 @@ class BoardClient:
                 return
 
             # Re-send watch frame for this channel with updated cursor
-            if channel in active_channels:
+            # Chunk: docs/chunks/watchmulti_manual_ack - Skip re-send when auto_ack=False
+            if auto_ack and channel in active_channels:
                 frame = {
                     "type": "watch",
                     "channel": channel,
@@ -341,11 +349,13 @@ class BoardClient:
                 await self._ws.send(json.dumps(frame))
 
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited reconnect wrapper
+    # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     async def watch_multi_with_reconnect(
         self,
         channels: dict[str, int],
         max_retries: int | None = None,
         count: int = 1,
+        auto_ack: bool = True,
     ) -> AsyncGenerator[dict, None]:
         """Watch multiple channels with automatic reconnect on connection failure.
 
@@ -362,6 +372,10 @@ class BoardClient:
             Maximum total messages to yield across all reconnects. When
             ``count > 0``, the generator yields at most *count* messages
             then returns. When ``count == 0``, it streams indefinitely.
+        auto_ack:
+            When ``True`` (default), the inner ``watch_multi`` re-sends
+            watch frames with updated cursors after each message. When
+            ``False``, skips cursor advancement for manual acking.
 
         Yields dicts with keys: channel, position, body, sent_at.
         """
@@ -377,7 +391,7 @@ class BoardClient:
                 # Inner watch_multi streams indefinitely (count=0); the
                 # reconnect wrapper manages the overall message cap so that
                 # reconnects don't reset the count.
-                async for msg in self.watch_multi(cursors, count=0):
+                async for msg in self.watch_multi(cursors, count=0, auto_ack=auto_ack):
                     # Update cursor for the channel that delivered a message
                     cursors[msg["channel"]] = msg["position"]
                     # Reset backoff on successful message receipt
