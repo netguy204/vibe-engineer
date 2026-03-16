@@ -56,26 +56,41 @@ function bytesToBase64(bytes: Uint8Array): string {
  * SHA-256 hash of the token, returned as hex string.
  * Used to look up the encrypted key blob in storage.
  */
+// Chunk: docs/chunks/invite_token_instant_expiry - Hash raw token bytes, not hex string
 export function hashToken(token: string): string {
-  const tokenBytes = new TextEncoder().encode(token);
+  const tokenBytes = hexToBytes(token);
   const hash = sha256(tokenBytes);
   return bytesToHex(hash);
 }
 
+// Chunk: docs/chunks/invite_token_instant_expiry - HKDF key derivation for invite tokens
 /**
- * Decrypt the base64-encoded encrypted blob using the token as the
- * NaCl secretbox key. Returns the raw Ed25519 seed (32 bytes).
+ * Derive a 32-byte symmetric key from a hex-encoded invite token.
+ * Mirrors Python's derive_token_key() in src/board/crypto.py.
  *
- * The token is hex-encoded (64 chars = 32 bytes). It's decoded from hex
- * and used directly as the secretbox key.
+ * Uses HKDF-SHA256 with empty salt and info="leader-board-invite-token".
+ */
+export function deriveTokenKey(token: string): Uint8Array {
+  const tokenBytes = hexToBytes(token);
+  if (tokenBytes.length !== 32) {
+    throw new Error("Token must be 32 bytes (64 hex chars)");
+  }
+  const info = new TextEncoder().encode("leader-board-invite-token");
+  return hkdf(sha256, tokenBytes, new Uint8Array(0), info, 32);
+}
+
+/**
+ * Decrypt the base64-encoded encrypted blob using the token.
+ * Returns the plaintext bytes (typically the hex-encoded Ed25519 seed).
+ *
+ * The token is hex-encoded (64 chars = 32 bytes). A symmetric key is
+ * derived via HKDF-SHA256 (matching Python's derive_token_key) and used
+ * as the NaCl secretbox key.
  *
  * The blob format is: base64(nonce (24 bytes) || ciphertext)
  */
 export function decryptBlob(encryptedBlobB64: string, token: string): Uint8Array {
-  const key = hexToBytes(token);
-  if (key.length !== 32) {
-    throw new Error("Token must be 32 bytes (64 hex chars)");
-  }
+  const key = deriveTokenKey(token);
 
   const raw = base64ToBytes(encryptedBlobB64);
   if (raw.length < nacl.secretbox.nonceLength + nacl.secretbox.overheadLength) {

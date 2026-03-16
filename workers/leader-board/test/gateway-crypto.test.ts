@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
   hashToken,
   decryptBlob,
+  deriveTokenKey,
   deriveSymmetricKey,
   decryptMessage,
   encryptMessage,
@@ -26,10 +27,13 @@ const VECTORS = {
   random_nonce_ciphertext_b64:
     "mwPQCtPEY/Gkpt3ONPqTISLg5mXJWsGfOl+DJNfqmw6jv64/Pae848hxrKGboSNAm02n/4awMehV",
   token_hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  // Chunk: docs/chunks/invite_token_instant_expiry - Corrected vectors (raw-byte hash + HKDF key)
   token_hash_hex:
-    "a0fab1377f49a759b57f63318262ebe89fabfc990e8e93ceac2984561482b9d4",
+    "4ca14526b2751b640d549ce7caf8ac39438592211a0ec370064d57666a682ad6",
+  token_key_hex:
+    "ec8c9b12053980130f321ce7e7613775de59755214bb873e35b809c1865bad5a",
   encrypted_blob_b64:
-    "AgICAgICAgICAgICAgICAgICAgICAgICQCAnIB+kDWO+vd+UP6x144UXqTHoYe/fjpGoxvjFqEasGXeVOguZPLr+ID7BpUPt",
+    "AgICAgICAgICAgICAgICAgICAgICAgICop3njUFozEwpiOPNZVfB1olQjRm3/clmci/ow1PZ4lf/JB9b/s/l+Hy5iyQ6+iqj7txHdxJEel4TZSyS3KLsvw0doQO6ZrMn2NC2VgrHAbo=",
 };
 
 function hexToBytes(hex: string): Uint8Array {
@@ -44,10 +48,16 @@ function bytesToHex(bytes: Uint8Array): string {
 
 describe("Gateway crypto", () => {
   describe("hashToken", () => {
-    it("computes SHA-256 of the token string", () => {
-      // hashToken hashes the text representation of the token
+    it("computes SHA-256 of the raw token bytes (cross-language vector)", () => {
       const hash = hashToken(VECTORS.token_hex);
       expect(hash).toBe(VECTORS.token_hash_hex);
+    });
+  });
+
+  describe("deriveTokenKey", () => {
+    it("derives HKDF key matching Python derive_token_key (cross-language vector)", () => {
+      const key = deriveTokenKey(VECTORS.token_hex);
+      expect(bytesToHex(key)).toBe(VECTORS.token_key_hex);
     });
   });
 
@@ -67,9 +77,10 @@ describe("Gateway crypto", () => {
   });
 
   describe("decryptBlob", () => {
-    it("recovers the seed from an encrypted blob (cross-language vector)", () => {
-      const seed = decryptBlob(VECTORS.encrypted_blob_b64, VECTORS.token_hex);
-      expect(bytesToHex(seed)).toBe(VECTORS.seed_hex);
+    it("recovers the seed from a Python-encrypted blob (HKDF key derivation)", () => {
+      const plaintext = decryptBlob(VECTORS.encrypted_blob_b64, VECTORS.token_hex);
+      // Python encrypts seed.hex() as UTF-8 string, so plaintext is the hex string
+      expect(new TextDecoder().decode(plaintext)).toBe(VECTORS.seed_hex);
     });
 
     it("throws on wrong token", () => {
@@ -127,17 +138,40 @@ describe("Gateway crypto", () => {
 
   describe("full pipeline: token → blob → seed → symmetric key → message crypto", () => {
     it("decrypts blob, derives key, then decrypts message", () => {
-      // Recover seed from blob
-      const seed = decryptBlob(VECTORS.encrypted_blob_b64, VECTORS.token_hex);
-      expect(bytesToHex(seed)).toBe(VECTORS.seed_hex);
+      // Recover seed hex from blob (Python encrypts seed.hex() as UTF-8)
+      const plaintext = decryptBlob(VECTORS.encrypted_blob_b64, VECTORS.token_hex);
+      const seedHex = new TextDecoder().decode(plaintext);
+      expect(seedHex).toBe(VECTORS.seed_hex);
 
-      // Derive symmetric key from seed
+      // Derive symmetric key from seed bytes
+      const seed = hexToBytes(seedHex);
       const key = deriveSymmetricKey(seed);
       expect(bytesToHex(key)).toBe(VECTORS.symmetric_key_hex);
 
       // Decrypt a Python-encrypted message
-      const plaintext = decryptMessage(VECTORS.fixed_nonce_ciphertext_b64, key);
-      expect(plaintext).toBe(VECTORS.plaintext);
+      const msg = decryptMessage(VECTORS.fixed_nonce_ciphertext_b64, key);
+      expect(msg).toBe(VECTORS.plaintext);
+    });
+  });
+
+  // Chunk: docs/chunks/invite_token_instant_expiry - Cross-language invite token vectors
+  describe("cross-language invite token vectors", () => {
+    it("hashToken produces same hash as Python SHA256(raw_bytes)", () => {
+      // Python: hashlib.sha256(bytes.fromhex(token_hex)).hexdigest()
+      const hash = hashToken(VECTORS.token_hex);
+      expect(hash).toBe(VECTORS.token_hash_hex);
+    });
+
+    it("deriveTokenKey produces same key as Python derive_token_key", () => {
+      // Python: derive_token_key(bytes.fromhex(token_hex))
+      const key = deriveTokenKey(VECTORS.token_hex);
+      expect(bytesToHex(key)).toBe(VECTORS.token_key_hex);
+    });
+
+    it("decryptBlob recovers seed from Python-encrypted blob", () => {
+      // Python: SecretBox(derive_token_key(token)).encrypt(seed.hex().encode(), nonce)
+      const plaintext = decryptBlob(VECTORS.encrypted_blob_b64, VECTORS.token_hex);
+      expect(new TextDecoder().decode(plaintext)).toBe(VECTORS.seed_hex);
     });
   });
 });
