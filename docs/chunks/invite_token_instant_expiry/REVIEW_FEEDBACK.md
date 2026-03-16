@@ -1,23 +1,23 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-Core crypto fixes (hashToken raw-byte hashing, HKDF key derivation) are correct and well-tested, but two callers were not updated: gateway-api.test.ts helpers still use old crypto format (10 test failures), and swarm-do.ts passes hex-encoded seed bytes to deriveSymmetricKey which expects raw 32-byte seed.
+Core crypto fixes correct but two callers not updated: gateway-api.test.ts helpers still use broken crypto (10 test failures), and swarm-do.ts passes hex-encoded seed bytes to deriveSymmetricKey instead of raw 32-byte seed. Both issues were flagged in iteration 1 and remain unaddressed.
 
 ## Issues to Address
 
 ### Issue 1: workers/leader-board/test/gateway-api.test.ts:43-56
 
-**Concern:** hashTokenText() and encryptBlobWithToken() helpers still use old broken crypto format (TextEncoder for hashing, raw token as secretbox key, encrypting raw seed bytes instead of seed.hex()). All 10 gateway API tests fail with 401.
+**Concern:** hashTokenText() still hashes hex string as UTF-8 instead of raw bytes, and encryptBlobWithToken() uses raw token as secretbox key without HKDF and encrypts raw seed bytes instead of seed.hex(). 10 of 13 gateway-api tests fail with 401.
 
-**Suggestion:** Apply the same fix as invite-page.test.ts: use hexToBytes() in hashTokenText(), add deriveTokenKeyLocal() with HKDF, update encryptBlobWithToken() to use HKDF key and encrypt bytesToHex(seed) as UTF-8.
+**Suggestion:** Apply same pattern as invite-page.test.ts: use hexToBytes() in hashTokenText(), add deriveTokenKeyLocal() with HKDF, update encryptBlobWithToken() to use HKDF key and encrypt bytesToHex(seed) as UTF-8.
 
 ### Issue 2: workers/leader-board/src/swarm-do.ts:362-363
 
-**Concern:** decryptBlob now returns UTF-8 bytes of hex-encoded seed (64 bytes) since Python encrypts seed.hex(), but deriveSymmetricKey() expects raw 32-byte seed. This produces the wrong symmetric key, breaking all gateway message encryption/decryption.
+**Concern:** decryptBlob() now returns UTF-8 bytes of hex-encoded seed (64 bytes) but deriveSymmetricKey() receives them directly instead of raw 32-byte seed, producing wrong symmetric key and breaking all gateway message encryption/decryption.
 
 **Suggestion:** Decode hex after decryption: const plaintext = decryptBlob(...); const seed = hexToBytes(new TextDecoder().decode(plaintext)); symmetricKey = deriveSymmetricKey(seed);
 
