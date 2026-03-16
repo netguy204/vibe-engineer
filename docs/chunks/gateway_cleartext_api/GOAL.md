@@ -26,7 +26,7 @@ code_references:
 - ref: workers/leader-board/src/storage.ts#SwarmStorage::readAfterBatch
   implements: "Batch message read for GET endpoint (multiple messages after cursor)"
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleGatewayAPI
-  implements: "Cleartext gateway HTTP handler (GET/POST with recoverSeedFromBlob key derivation, encrypt/decrypt error handling, long-poll)"
+  implements: "Cleartext gateway HTTP handler (GET/POST/OPTIONS with recoverSeedFromBlob key derivation, encrypt/decrypt error handling, long-poll, CORS headers)"
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::wakePendingPolls
   implements: "Long-poll notification when new messages arrive on a channel"
 - ref: workers/leader-board/src/index.ts

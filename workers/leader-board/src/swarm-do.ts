@@ -61,11 +61,30 @@ Query parameters:
 - limit={n} — max messages to return (default: 50, max: 200)
 - wait={seconds} — long-poll: block up to N seconds for new messages (1-60)
 
+### GET Response Schema
+
+    {"messages": [{"position": 1, "body": "message text", "sent_at": "2026-03-16T12:00:00Z"}]}
+
+Fields:
+- position (number) — monotonically increasing message index within the channel
+- body (string) — the plaintext message content
+- sent_at (string) — ISO 8601 timestamp when the message was stored
+
+Note: There is no sender or author field. All messages are anonymous in the gateway API.
+
 ## Posting Messages
 
   curl -X POST '${origin}/gateway/${token}/channels/${exampleChannel}/messages?swarm=${swarmId}' \\
     -H 'Content-Type: application/json' \\
     -d '{"body": "your message here"}'
+
+### POST Response Schema
+
+    {"position": 1, "channel": "changelog"}
+
+Fields:
+- position (number) — the position assigned to the newly stored message
+- channel (string) — the channel the message was posted to
 
 ## Polling Loop
 
@@ -307,7 +326,10 @@ export class SwarmDO implements DurableObject {
     token: string
   ): Promise<Response> {
     if (request.method !== "GET") {
-      return new Response("Method not allowed", { status: 405 });
+      return new Response("Method not allowed", {
+        status: 405,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
     }
 
     // Validate token
@@ -316,7 +338,7 @@ export class SwarmDO implements DurableObject {
     if (!keyRecord) {
       return new Response("Invalid or expired invite token", {
         status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" },
       });
     }
 
@@ -329,7 +351,7 @@ export class SwarmDO implements DurableObject {
     const content = renderInvitePage(origin, token, swarmId, channels);
     return new Response(content, {
       status: 200,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" },
     });
   }
 
@@ -340,7 +362,21 @@ export class SwarmDO implements DurableObject {
     token: string,
     channel: string
   ): Promise<Response> {
-    const jsonHeaders = { "Content-Type": "application/json" };
+    // Chunk: docs/chunks/gateway_cors_and_docs - CORS headers for all gateway responses
+    const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+    const jsonHeaders = { "Content-Type": "application/json", ...corsHeaders };
+
+    // Chunk: docs/chunks/gateway_cors_and_docs - OPTIONS preflight handler (no token validation needed)
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
 
     // Validate channel name
     if (!CHANNEL_NAME_RE.test(channel)) {
@@ -525,7 +561,8 @@ export class SwarmDO implements DurableObject {
     const channelPolls = this.pendingPolls.get(channel);
     if (!channelPolls || channelPolls.size === 0) return;
 
-    const jsonHeaders = { "Content-Type": "application/json" };
+    // Chunk: docs/chunks/gateway_cors_and_docs - CORS headers on long-poll wake responses
+    const jsonHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
 
     for (const poll of channelPolls) {
       clearTimeout(poll.timer);

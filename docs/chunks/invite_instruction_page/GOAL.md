@@ -9,9 +9,9 @@ code_paths:
 - workers/leader-board/test/invite-page.test.ts
 code_references:
   - ref: workers/leader-board/src/swarm-do.ts#renderInvitePage
-    implements: "Renders plain-text instruction page with curl examples, channel list, and security info"
+    implements: "Renders plain-text instruction page with curl examples, response schemas, channel list, and security info"
   - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleInvitePage
-    implements: "Validates invite token, fetches swarm metadata/channels, returns rendered instruction page"
+    implements: "Validates invite token, fetches swarm metadata/channels, returns rendered instruction page with CORS headers"
   - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::fetch
     implements: "Route matching for /invite/{token} path"
   - ref: workers/leader-board/src/index.ts
