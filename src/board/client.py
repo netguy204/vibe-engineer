@@ -55,8 +55,14 @@ class BoardClient:
         """Open WebSocket and perform auth handshake."""
         url = f"{self.server_url}/ws?swarm={self.swarm_id}"
         # Chunk: docs/chunks/websocket_keepalive - Configure client-side ping for dead connection detection
+        # Chunk: docs/chunks/websocket_cloudflare_diag - Increase ping_timeout from 10→30 to
+        # accommodate Cloudflare DO hibernation wake latency (H3 fix)
         self._ws = await websockets.connect(
-            url, close_timeout=1, ping_interval=20, ping_timeout=10
+            url, close_timeout=1, ping_interval=20, ping_timeout=30
+        )
+        logger.debug(
+            "WebSocket connected: url=%s ping_interval=20 ping_timeout=30",
+            url,
         )
 
         # Receive challenge
@@ -89,6 +95,7 @@ class BoardClient:
     async def close(self) -> None:
         """Close the WebSocket connection."""
         if self._ws:
+            logger.debug("WebSocket closing (client-initiated)")
             await self._ws.close()
             self._ws = None
 
@@ -193,18 +200,30 @@ class BoardClient:
                 websockets.exceptions.ConnectionClosedOK,
                 ConnectionError,
                 OSError,
-            ):
+            ) as exc:
                 attempt += 1
                 if max_retries is not None and attempt > max_retries:
                     raise
+
+                # Chunk: docs/chunks/websocket_cloudflare_diag - Log close code for diagnostics
+                close_code = None
+                close_reason = None
+                if isinstance(exc, (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK)):
+                    if exc.rcvd is not None:
+                        close_code = exc.rcvd.code
+                        close_reason = exc.rcvd.reason
 
                 # Exponential backoff with jitter
                 jitter = random.uniform(0, backoff * 0.5)
                 wait_time = min(backoff + jitter, max_backoff)
                 logger.warning(
-                    "WebSocket disconnected, reconnecting in %.1fs (attempt %d)...",
+                    "WebSocket disconnected, reconnecting in %.1fs (attempt %d) "
+                    "close_code=%s close_reason=%s exc=%s",
                     wait_time,
                     attempt,
+                    close_code,
+                    close_reason,
+                    type(exc).__name__,
                 )
                 await asyncio.sleep(wait_time)
                 backoff = min(backoff * 2, max_backoff)
