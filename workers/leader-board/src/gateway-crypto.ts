@@ -11,8 +11,8 @@
  */
 
 import nacl from "tweetnacl";
-import { hkdf } from "@noble/hashes/hkdf";
-import { sha256, sha512 } from "@noble/hashes/sha2";
+import { hkdf } from "@noble/hashes/hkdf.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 
 // --- Hex / Base64 Utilities ---
 
