@@ -11,6 +11,7 @@ Run `ve init` to regenerate.
 
 
 
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -110,6 +111,63 @@ behavior:
 
 <Brief prose summary of the steward's purpose for this project.>
 
+## Behavior
+
+<Describe the steward's behavior when messages arrive. Tailor this to the
+chosen mode. For autonomous mode, use the template below as a starting point.
+For queue or custom modes, adjust accordingly.>
+```
+
+#### Autonomous mode suggested behavior section
+
+When the operator chooses `autonomous`, include a `## Behavior` section in the
+SOP that describes the full chunk-and-changelog lifecycle. Use this as the
+default content (adapt project-specific details):
+
+```markdown
+## Behavior
+
+When a message arrives:
+
+1. **Triage** — Determine whether the message is a bug report, change request,
+   question, or something else.
+
+2. **Create a FUTURE chunk** — For bug reports and change requests, create a
+   chunk (`/chunk-create`) as FUTURE. Write only the goal — do NOT plan or
+   implement. The orchestrator handles planning and implementation.
+
+3. **Commit and inject** — Commit the chunk directory (both GOAL.md and
+   PLAN.md) and inject it into the orchestrator (`ve orch inject <chunk>`).
+   Never plan or implement chunks directly in the steward context — always
+   delegate to the orchestrator. This protects the steward's context window
+   from implementation noise.
+
+4. **Monitor the orchestrator** — After injection, monitor orchestrator
+   progress (`ve orch ps`). When a requested chunk completes, publish a
+   changelog entry. When a chunk is stuck, investigate and resolve it
+   autonomously (`/orchestrator-investigate`).
+
+5. **Push completed work** — When a chunk finishes in the orchestrator, run
+   `git push` to publish the merged work to the remote before posting the
+   changelog entry.
+
+6. **Publish to changelog** — Write a concise summary of what was done and
+   publish it to the changelog channel so the requester and any observers can
+   see the outcome. Publish when:
+   - A chunk finishes successfully (include what changed)
+   - A stuck chunk is resolved (include what went wrong and how it was fixed)
+   - A question is answered
+```
+
+#### Queue mode suggested behavior section
+
+When the operator chooses `queue`, the behavior section should note that chunks
+are created but NOT injected into the orchestrator — they are left as FUTURE
+for the operator to review and schedule manually.
+
+#### Notes section
+
+```markdown
 ## Notes
 
 <Any additional context from the interview, such as server URL, special
