@@ -10,153 +10,175 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add `ve board invite` and `ve board revoke` commands to the existing `src/cli/board.py` module, following the established Click command patterns used by `send`, `watch`, `channels`, etc.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design choices:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Token-as-encryption-key scheme.** Per the investigation (`docs/investigations/agent_invite_links`), the CLI generates a random token, uses it to derive a symmetric key via HKDF, encrypts the swarm's private seed, and uploads the encrypted blob indexed by `sha256(token)`. The server never sees the plaintext key. This reuses the existing `_hkdf_sha256` primitive from `src/board/crypto.py` but with a new derivation function that takes arbitrary bytes (not an Ed25519 seed).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/invite_cli_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **New `derive_token_key` function in crypto.py.** The existing `derive_symmetric_key` is tightly coupled to Ed25519 seed → Curve25519 conversion. The invite flow needs a simpler path: `random_token_bytes → HKDF-SHA256 → 32-byte key`. A new function avoids conflating the two derivation contexts.
+
+3. **HTTP via `httpx`.** The invite/revoke commands communicate with the gateway key storage routes (PUT/GET/DELETE on `/gateway/keys`) via plain HTTP. The `httpx` library is already a project dependency (used by the orchestrator). Server URLs in `board.toml` use `ws://`/`wss://` scheme; we convert to `http://`/`https://` for these requests.
+
+4. **Opt-in warning with confirmation.** Before creating an invite, the CLI displays a warning explaining that the cleartext gateway trades E2E encryption for agent accessibility, and requires explicit confirmation (or `--yes` to bypass).
+
+5. **TDD per TESTING_PHILOSOPHY.md.** Tests are written first in `tests/test_board_invite.py` using Click's `CliRunner` and mocked HTTP responses. The round-trip test (invite → retrieve blob → decrypt → revoke → 404) verifies the core success criteria.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems are relevant. This chunk operates within the board CLI and crypto layers, which have no corresponding subsystem documentation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for invite and revoke commands
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_board_invite.py` with tests covering:
 
-Example:
+1. **`ve board invite --swarm <id>` happy path** — Mock `httpx.request` to return 200, verify:
+   - Output contains an invite URL with a token
+   - The mocked PUT was called with a JSON body containing `token_hash` and `encrypted_blob`
+   - The `token_hash` is the SHA-256 of the token extracted from the URL
+   - The `encrypted_blob` can be decrypted using the token to recover the original seed
+2. **Opt-in warning is displayed** — Verify the warning text appears and that answering "n" aborts without uploading
+3. **`--yes` flag bypasses confirmation** — Verify no prompt, upload proceeds
+4. **Missing swarm errors** — No `--swarm` and no default, or keypair not found
+5. **Upload failure** — Mock `httpx.request` returning 500, verify error message
+6. **`ve board revoke <token>` happy path** — Mock DELETE returning 200, verify success message
+7. **`ve board revoke` when token not found** — Mock DELETE returning 404, verify error message
+8. **Round-trip test** — Invite produces a token; use that token to derive `token_hash` and decrypt the `encrypted_blob` captured from the mock; then revoke
 
-### Step 1: Define the SegmentHeader struct
+Test patterns follow the existing `test_board_cli.py`:
+- Use `CliRunner` with `runner.invoke(board, [...])`
+- Use `@patch` to mock `load_keypair`, `load_board_config`, and `httpx.request`
+- Use the `stored_swarm` fixture pattern for keypair setup
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_board_invite.py`
 
-Location: src/segment/format.rs
+### Step 2: Add `derive_token_key` to crypto.py
 
-### Step 2: Implement header serialization
+Add a new function that derives a 32-byte symmetric key from arbitrary token bytes:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+```python
+def derive_token_key(token: bytes) -> bytes:
+    """Derive a 32-byte symmetric key from a random invite token.
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Uses HKDF-SHA256 with a distinct info string to prevent
+    key confusion with derive_symmetric_key (which derives from
+    Ed25519 seeds for message encryption).
+    """
+    return _hkdf_sha256(
+        ikm=token,
+        length=32,
+        salt=b"",
+        info=b"leader-board-invite-token",
+    )
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The distinct `info` parameter (`"leader-board-invite-token"` vs `"leader-board-message-encryption"`) ensures domain separation — even if the same bytes were used as both an Ed25519 seed and a token, the derived keys would differ.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add a `# Chunk: docs/chunks/invite_cli_command` backreference on the function.
+
+Location: `src/board/crypto.py`
+
+### Step 3: Add a `gateway_http_url` helper to config.py
+
+Add a utility function that converts a WebSocket server URL to its HTTP equivalent:
+
+```python
+def gateway_http_url(server_url: str) -> str:
+    """Convert a ws:// or wss:// server URL to http:// or https://."""
+    return server_url.replace("wss://", "https://").replace("ws://", "http://")
+```
+
+This is needed because `board.toml` stores `ws://`/`wss://` URLs for WebSocket connections, but the gateway key storage API uses plain HTTP.
+
+Add a `# Chunk: docs/chunks/invite_cli_command` backreference.
+
+Location: `src/board/config.py`
+
+### Step 4: Implement the `invite` command
+
+Add to `src/cli/board.py`:
+
+```python
+@board.command("invite")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def invite_cmd(swarm, server, yes):
+    """Generate an invite link for agent access to a swarm."""
+```
+
+Implementation flow:
+
+1. Resolve swarm and server from config (same pattern as `send_cmd`)
+2. Load keypair; error if not found
+3. Display the opt-in warning explaining the cleartext gateway security trade-off
+4. If not `--yes`, prompt for confirmation via `click.confirm()`; abort if declined
+5. Generate a 32-byte random token: `token = secrets.token_bytes(32)`
+6. Derive symmetric key: `sym_key = derive_token_key(token)`
+7. Encrypt the seed: `encrypted_blob = encrypt(seed.hex(), sym_key)` (encode seed as hex string for encrypt/decrypt round-trip)
+8. Compute token hash: `token_hash = hashlib.sha256(token).hexdigest()`
+9. Convert server URL to HTTP: `http_url = gateway_http_url(server)`
+10. PUT to `{http_url}/gateway/keys?swarm={swarm_id}` with JSON `{"token_hash": token_hash, "encrypted_blob": encrypted_blob}`
+11. Check response status; error on non-200
+12. Output the invite URL: `{http_url}/invite/{token.hex()}`
+
+Add `import hashlib`, `import secrets`, `import httpx` to the imports section.
+
+Add a `# Chunk: docs/chunks/invite_cli_command` backreference on the function.
+
+Location: `src/cli/board.py`
+
+### Step 5: Implement the `revoke` command
+
+Add to `src/cli/board.py`:
+
+```python
+@board.command("revoke")
+@click.argument("token")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+def revoke_cmd(token, swarm, server):
+    """Revoke an invite token, immediately invalidating access."""
+```
+
+Implementation flow:
+
+1. Resolve swarm and server from config (swarm needed to route the request to the correct DO)
+2. Convert token hex string to bytes: `token_bytes = bytes.fromhex(token)`
+3. Compute hash: `token_hash = hashlib.sha256(token_bytes).hexdigest()`
+4. Convert server URL to HTTP: `http_url = gateway_http_url(server)`
+5. DELETE `{http_url}/gateway/keys/{token_hash}?swarm={swarm_id}`
+6. If 200: print confirmation
+7. If 404: print error that the token was not found or already revoked
+8. Otherwise: print server error
+
+Add a `# Chunk: docs/chunks/invite_cli_command` backreference on the function.
+
+Location: `src/cli/board.py`
+
+### Step 6: Run tests and verify all pass
+
+Run `uv run pytest tests/test_board_invite.py -v` to confirm all new tests pass. Then run `uv run pytest tests/test_board_cli.py -v` to confirm existing board CLI tests remain green.
+
+### Step 7: Run the full test suite
+
+Run `uv run pytest tests/` to verify no regressions across the entire project.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **`gateway_token_storage` chunk (ACTIVE)** — Provides the PUT/GET/DELETE `/gateway/keys` routes on the leader-board Durable Object worker. This chunk's CLI is the client for those routes.
+- **`httpx`** — Already a project dependency (used by `src/orchestrator/client.py`). Used for HTTP requests to the gateway.
+- **`secrets`** — Python stdlib. Used for cryptographically strong token generation.
+- **`hashlib`** — Python stdlib. Used for SHA-256 hashing of tokens.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Server URL scheme conversion.** The `board.toml` stores `ws://`/`wss://` URLs. The simple string replacement (`ws://` → `http://`) works for standard URLs but could break for edge cases (e.g., a URL containing "ws://" in a path segment). This is acceptable for now since server URLs are always base URLs.
+- **Token length.** Using 32 bytes (256 bits) of randomness for the token. This is well above the minimum for preventing brute-force attacks (the hash lookup would need to match SHA-256 of a 256-bit random value). The hex representation is 64 characters, which is long but manageable in URLs.
+- **Seed encoding.** The seed (32 bytes) is encoded as a hex string before encryption because the existing `encrypt()` function takes a string. On the decryption side (the cleartext gateway chunk), the flow will be: `decrypt(blob, key)` → hex string → `bytes.fromhex()` → seed. This encoding is deterministic and lossless.
+- **No auth on gateway key routes.** As noted in the `gateway_token_storage` plan, the storage routes have no authentication yet. Anyone who knows a swarm ID could DELETE gateway keys. This is deferred — the invite URL itself is the security boundary.
 
 ## Deviations
 

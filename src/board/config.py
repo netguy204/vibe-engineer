@@ -96,6 +96,12 @@ def add_swarm(config: BoardConfig, swarm_id: str, server_url: str) -> BoardConfi
     return config
 
 
+# Chunk: docs/chunks/invite_cli_command
+def gateway_http_url(server_url: str) -> str:
+    """Convert a ws:// or wss:// server URL to http:// or https://."""
+    return server_url.replace("wss://", "https://").replace("ws://", "http://")
+
+
 def resolve_swarm(config: BoardConfig, explicit: str | None) -> str | None:
     """Return explicit swarm if provided, else default_swarm, else None."""
     if explicit is not None:

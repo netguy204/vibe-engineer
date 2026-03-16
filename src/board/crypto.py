@@ -63,6 +63,22 @@ def _hkdf_sha256(ikm: bytes, length: int, salt: bytes = b"", info: bytes = b"") 
     return okm[:length]
 
 
+# Chunk: docs/chunks/invite_cli_command
+def derive_token_key(token: bytes) -> bytes:
+    """Derive a 32-byte symmetric key from a random invite token.
+
+    Uses HKDF-SHA256 with a distinct info string to prevent
+    key confusion with derive_symmetric_key (which derives from
+    Ed25519 seeds for message encryption).
+    """
+    return _hkdf_sha256(
+        ikm=token,
+        length=32,
+        salt=b"",
+        info=b"leader-board-invite-token",
+    )
+
+
 def derive_symmetric_key(seed: bytes) -> bytes:
     """Derive the 32-byte symmetric encryption key from an Ed25519 seed.
 

@@ -15,15 +15,19 @@ Subcommands:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import secrets
 import subprocess
 import sys
 from pathlib import Path
 
 import click
+import httpx
 
 from board.client import BoardClient
 from board.config import (
     add_swarm,
+    gateway_http_url,
     load_board_config,
     resolve_server,
     resolve_swarm,
@@ -33,6 +37,7 @@ from leader_board.server import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_STORAGE_DIR
 from board.crypto import (
     derive_swarm_id,
     derive_symmetric_key,
+    derive_token_key,
     encrypt,
     decrypt,
     generate_keypair,
@@ -362,3 +367,111 @@ def scp_cmd(host: str) -> None:
 
     file_count = len(files)
     click.echo(f"Copied {file_count} file(s) to {host}:~/.ve/")
+
+
+# ---------------------------------------------------------------------------
+# invite
+# ---------------------------------------------------------------------------
+
+
+_INVITE_WARNING = """\
+WARNING: Creating an invite link enables cleartext gateway access to this swarm.
+
+The cleartext gateway trades end-to-end encryption for agent accessibility.
+Any agent with the invite URL can read and write messages in plaintext via
+the gateway, without needing the swarm's private key locally.
+
+The invite token is the sole security boundary — treat it like a password.
+"""
+
+
+# Chunk: docs/chunks/invite_cli_command
+@board.command("invite")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def invite_cmd(swarm: str | None, server: str | None, yes: bool) -> None:
+    """Generate an invite link for agent access to a swarm."""
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
+    keypair = load_keypair(swarm)
+    if keypair is None:
+        click.echo(f"Error: swarm '{swarm}' not found. Run 've board swarm create' first.", err=True)
+        sys.exit(1)
+
+    seed, _pub = keypair
+
+    # Display warning and prompt for confirmation
+    click.echo(_INVITE_WARNING)
+    if not yes:
+        if not click.confirm("Do you want to continue?"):
+            click.echo("Aborted.")
+            return
+
+    # Generate token and derive encryption key
+    token = secrets.token_bytes(32)
+    sym_key = derive_token_key(token)
+
+    # Encrypt the seed (as hex string for lossless round-trip)
+    encrypted_blob = encrypt(seed.hex(), sym_key)
+
+    # Compute token hash for server-side indexing
+    token_hash = hashlib.sha256(token).hexdigest()
+
+    # Upload to gateway
+    http_url = gateway_http_url(server)
+    response = httpx.put(
+        f"{http_url}/gateway/keys",
+        params={"swarm": swarm},
+        json={"token_hash": token_hash, "encrypted_blob": encrypted_blob},
+    )
+
+    if response.status_code != 200:
+        click.echo(f"Error: server returned {response.status_code}", err=True)
+        sys.exit(1)
+
+    invite_url = f"{http_url}/invite/{token.hex()}"
+    click.echo(invite_url)
+
+
+# ---------------------------------------------------------------------------
+# revoke
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/invite_cli_command
+@board.command("revoke")
+@click.argument("token")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+def revoke_cmd(token: str, swarm: str | None, server: str | None) -> None:
+    """Revoke an invite token, immediately invalidating access."""
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
+    token_bytes = bytes.fromhex(token)
+    token_hash = hashlib.sha256(token_bytes).hexdigest()
+
+    http_url = gateway_http_url(server)
+    response = httpx.delete(
+        f"{http_url}/gateway/keys/{token_hash}",
+        params={"swarm": swarm},
+    )
+
+    if response.status_code == 200:
+        click.echo("Invite revoked successfully.")
+    elif response.status_code == 404:
+        click.echo("Error: token not found or already revoked.", err=True)
+        sys.exit(1)
+    else:
+        click.echo(f"Error: server returned {response.status_code}", err=True)
+        sys.exit(1)
