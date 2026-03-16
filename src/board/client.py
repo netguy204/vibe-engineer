@@ -348,6 +348,7 @@ class BoardClient:
                 }
                 await self._ws.send(json.dumps(frame))
 
+    # Chunk: docs/chunks/multichannel_watch - Reconnect wrapper for multi-channel watch
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited reconnect wrapper
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     async def watch_multi_with_reconnect(

@@ -746,6 +746,7 @@ export class SwarmDO implements DurableObject {
     this.ensureAlarm();
   }
 
+  // Chunk: docs/chunks/multichannel_watch - Per-channel watch entries for hibernation
   private handleWatch(
     ws: WebSocket,
     frame: { channel: string; cursor: number }
