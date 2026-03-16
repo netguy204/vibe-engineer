@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: invite_list_revoke
-code_paths: []
+code_paths:
+- src/cli/board.py
+- tests/test_board_invite.py
 code_references: []
 narrative: null
 investigation: agent_invite_links
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: implementation
 depends_on: []
-created_after: ["invite_list_revoke"]
+created_after:
+- invite_list_revoke
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
