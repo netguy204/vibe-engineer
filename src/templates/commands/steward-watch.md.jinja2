@@ -4,6 +4,7 @@ description: Run the steward watch-respond-rewatch loop
 {% set source_template = "steward-watch.md.jinja2" %}
 {% include "partials/auto-generated-header.md.jinja2" %}
 {# Chunk: docs/chunks/leader_board_steward_skills - Steward skill templates #}
+{# Chunk: docs/chunks/steward_deploy_step - Conditional DO deploy step for DONE chunks #}
 
 ## Tips
 
@@ -122,9 +123,17 @@ that their work was completed.
 Use `/loop 5m` with a prompt that:
 
 1. Runs `ve orch ps` and checks the status of all injected chunks
-2. For **DONE** chunks — posts a changelog entry announcing the completion
-   (include the chunk name and what it accomplished), then removes the chunk
-   from the monitoring prompt
+2. For **DONE** chunks:
+   a. **Check for worker changes** — Read the completed chunk's `GOAL.md`
+      frontmatter and inspect its `code_paths` list. If any path starts with
+      `workers/`, a Durable Object deploy is needed.
+   b. **Deploy conditionally** — If worker paths were found, run
+      `cd workers/leader-board && npm run deploy` and verify the command exits
+      0. If the deploy fails, include the failure details in the changelog
+      entry but do not block — proceed to the next sub-step.
+   c. **Post a changelog entry** announcing the completion (include the chunk
+      name and what it accomplished).
+   d. **Remove the chunk** from the monitoring prompt.
 3. For **NEEDS_ATTENTION** chunks — alerts the operator or runs
    `/orchestrator-investigate` to diagnose and resolve
 4. For **RUNNING** chunks — takes no action

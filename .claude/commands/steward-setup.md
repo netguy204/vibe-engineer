@@ -12,6 +12,7 @@ Run `ve init` to regenerate.
 
 
 
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -151,7 +152,13 @@ When a message arrives:
    `git push` to publish the merged work to the remote before posting the
    changelog entry.
 
-6. **Publish to changelog** — Write a concise summary of what was done and
+6. **Deploy Durable Object worker** (conditional) — After pushing, check
+   whether the completed chunk's `code_paths` (in its GOAL.md frontmatter)
+   include files under `workers/`. If so, run
+   `cd workers/leader-board && npm run deploy` and verify it succeeds. If
+   the deploy fails, include the error in the changelog entry.
+
+7. **Publish to changelog** — Write a concise summary of what was done and
    publish it to the changelog channel so the requester and any observers can
    see the outcome. Publish when:
    - A chunk finishes successfully (include what changed)

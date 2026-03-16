@@ -1,18 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/commands/steward-watch.md.jinja2
+- src/templates/commands/steward-setup.md.jinja2
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: template_system
+  relationship: uses
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["invite_path_routing_fix", "steward_crossproject_guidance"]
+created_after:
+- invite_path_routing_fix
+- steward_crossproject_guidance
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

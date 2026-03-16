@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,107 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds a conditional deploy step to two Jinja2 skill templates. The
+work is purely template editing — no Python source code changes. Both templates
+are in `src/templates/commands/` and are rendered by `ve init` per the template
+system subsystem.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The deploy step is conditional: it only fires when the completed chunk's
+`code_paths` frontmatter includes files under `workers/`. The steward reads the
+chunk's GOAL.md to check this.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+In `steward-watch.md.jinja2`, the new step slots into the orchestrator monitor
+loop (Step 6) between "push completed work" and "publish to changelog" — when a
+chunk is detected as DONE, the steward checks whether it impacts worker code and
+deploys if so.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/steward_deploy_step/GOAL.md)
-with references to the files that you expect to touch.
--->
+In `steward-setup.md.jinja2`, the deploy step is added to the autonomous mode
+suggested behavior section between step 5 ("Push completed work") and step 6
+("Publish to changelog").
+
+Per DEC-005 (commands don't prescribe git operations), the deploy step itself is
+project-specific operational guidance inside the SOP template, not a ve command —
+this is appropriate because the steward SOP is operator-authored content that the
+template merely suggests as a starting point.
+
+**Testing**: Per TESTING_PHILOSOPHY.md, we do not assert on template prose. The
+existing template render tests (`ve init` renders without error and files are
+created) provide sufficient coverage. No new tests are needed — this is prose
+content inside `{% raw %}` blocks that does not affect rendering logic.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template
+  system. We are editing Jinja2 source templates and relying on `ve init` to
+  render them. No template system code is modified — only template content.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add conditional deploy step to steward-watch template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Edit `src/templates/commands/steward-watch.md.jinja2`. In Step 6 (the
+orchestrator monitor section), add guidance for DONE chunks: before posting the
+changelog entry, the steward should check the chunk's `code_paths` frontmatter
+for paths under `workers/`. If present, run `cd workers/leader-board && npm run
+deploy` and verify it succeeds before continuing to the changelog post.
 
-Example:
+Insert the new guidance into the numbered list item for **DONE** chunks (item 2
+in the `/loop` instructions), between the current "posts a changelog entry" and
+"removes the chunk from the monitoring prompt" actions.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/templates/commands/steward-watch.md.jinja2`, inside Step 6's
+`{% raw %}` block.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+The text should explain:
+1. Read the completed chunk's `GOAL.md` frontmatter
+2. Check if any `code_paths` entry starts with `workers/`
+3. If yes, run `cd workers/leader-board && npm run deploy`
+4. Verify the deploy command exits 0
+5. If deploy fails, include the failure in the changelog entry but don't block
+6. Proceed to the changelog post
 
-Location: src/segment/format.rs
+### Step 2: Add deploy step to steward-setup autonomous behavior section
 
-### Step 2: Implement header serialization
+Edit `src/templates/commands/steward-setup.md.jinja2`. In the "Autonomous mode
+suggested behavior section", add a new numbered step between step 5 ("Push
+completed work") and step 6 ("Publish to changelog"). Renumber step 6 → 7.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+The new step 6 should be:
 
-### Step 3: ...
+> **Deploy Durable Object worker** (conditional) — After pushing, check whether
+> the completed chunk's `code_paths` include files under `workers/`. If so, run
+> `cd workers/leader-board && npm run deploy` and verify it succeeds. If the
+> deploy fails, include the error in the changelog entry.
 
----
+Location: `src/templates/commands/steward-setup.md.jinja2`, inside the
+`{% raw %}` block, in the autonomous mode markdown code fence.
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Render and verify
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Run `uv run ve init` to re-render both templates. Then verify:
+1. The rendered `.claude/commands/steward-watch.md` contains the deploy step
+2. The rendered `.claude/commands/steward-setup.md` contains the deploy step
+3. No rendering errors occurred
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Add backreference comment to both templates
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Add a `{# Chunk: docs/chunks/steward_deploy_step #}` Jinja2 comment near the
+deploy step in each template file, so future agents can trace this content back
+to its governing chunk.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The deploy command (`cd workers/leader-board && npm run deploy`) is
+  project-specific. If the worker directory structure changes, the steward SOP
+  will need updating. This is acceptable — the SOP is operator-authored content
+  that the template merely suggests as a default.
+- The `code_paths` check relies on chunk authors correctly populating this
+  frontmatter field. If a chunk modifies worker code but doesn't list the paths,
+  the deploy won't trigger. This is a known limitation documented by the
+  conditional nature of the step.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
