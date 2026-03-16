@@ -465,7 +465,7 @@ async def test_watch_multi_sends_frames_and_yields_messages(keypair):
 
         results = []
         try:
-            async for msg in client.watch_multi({"ch-a": 2, "ch-b": 4}):
+            async for msg in client.watch_multi({"ch-a": 2, "ch-b": 4}, count=0):
                 results.append(msg)
         except websockets.exceptions.ConnectionClosedError:
             pass  # Expected termination
@@ -513,7 +513,7 @@ async def test_watch_multi_resends_watch_after_message(keypair):
 
         results = []
         try:
-            async for msg in client.watch_multi({"ch-a": 5}):
+            async for msg in client.watch_multi({"ch-a": 5}, count=0):
                 results.append(msg)
         except websockets.exceptions.ConnectionClosedError:
             pass
@@ -564,7 +564,7 @@ async def test_watch_multi_handles_per_channel_error(keypair):
 
         results = []
         try:
-            async for msg in client.watch_multi({"ch-good": 0, "ch-bad": 0}):
+            async for msg in client.watch_multi({"ch-good": 0, "ch-bad": 0}, count=0):
                 results.append(msg)
         except websockets.exceptions.ConnectionClosedError:
             pass
@@ -629,7 +629,7 @@ async def test_watch_multi_reconnect(keypair):
             await client.connect()
 
             async for msg in client.watch_multi_with_reconnect(
-                {"ch-a": 2}, max_retries=1
+                {"ch-a": 2}, max_retries=1, count=0
             ):
                 results.append(msg)
                 if len(results) >= 2:
@@ -642,3 +642,170 @@ async def test_watch_multi_reconnect(keypair):
     # Verify second connection re-watches with cursor=3 (updated after first msg)
     # The second ws is from call_count=2
     # Its send calls should include a watch frame with cursor=3
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_count_limits_messages(keypair):
+    """watch_multi(count=2) yields at most 2 messages even when 3 are available."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msgs = [
+        json.dumps({
+            "type": "message", "channel": "ch-a", "position": i,
+            "body": f"body{i}==", "sent_at": "2026-03-16T00:00:00Z",
+        })
+        for i in range(1, 4)
+    ]
+
+    mock_ws = _make_mock_ws([])
+    mock_ws.recv = AsyncMock(side_effect=[challenge, auth_ok] + msgs)
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        async for msg in client.watch_multi({"ch-a": 0}, count=2):
+            results.append(msg)
+
+    assert len(results) == 2
+    assert results[0]["position"] == 1
+    assert results[1]["position"] == 2
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_count_zero_streams_all(keypair):
+    """watch_multi(count=0) yields all available messages (indefinite mode)."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msgs = [
+        json.dumps({
+            "type": "message", "channel": "ch-a", "position": i,
+            "body": f"body{i}==", "sent_at": "2026-03-16T00:00:00Z",
+        })
+        for i in range(1, 4)
+    ]
+
+    mock_ws = _make_mock_ws([])
+    mock_ws.recv = AsyncMock(side_effect=[challenge, auth_ok] + msgs + [
+        websockets.exceptions.ConnectionClosedError(None, None),
+    ])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        try:
+            async for msg in client.watch_multi({"ch-a": 0}, count=0):
+                results.append(msg)
+        except websockets.exceptions.ConnectionClosedError:
+            pass
+
+    assert len(results) == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_count_default_one(keypair):
+    """watch_multi() without explicit count yields exactly 1 message (default)."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msgs = [
+        json.dumps({
+            "type": "message", "channel": "ch-a", "position": i,
+            "body": f"body{i}==", "sent_at": "2026-03-16T00:00:00Z",
+        })
+        for i in range(1, 4)
+    ]
+
+    mock_ws = _make_mock_ws([])
+    mock_ws.recv = AsyncMock(side_effect=[challenge, auth_ok] + msgs)
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        async for msg in client.watch_multi({"ch-a": 0}):
+            results.append(msg)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 1
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_reconnect_respects_count(keypair):
+    """watch_multi_with_reconnect(count=2) caps total across reconnects."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msg1 = json.dumps({
+        "type": "message", "channel": "ch-a", "position": 1,
+        "body": "first==", "sent_at": "2026-03-16T00:00:00Z",
+    })
+    msg2 = json.dumps({
+        "type": "message", "channel": "ch-a", "position": 2,
+        "body": "second==", "sent_at": "2026-03-16T00:01:00Z",
+    })
+    msg3 = json.dumps({
+        "type": "message", "channel": "ch-a", "position": 3,
+        "body": "third==", "sent_at": "2026-03-16T00:02:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: delivers one message then disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg1,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: delivers msg2 and msg3
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg2, msg3,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+
+            async for msg in client.watch_multi_with_reconnect(
+                {"ch-a": 0}, count=2
+            ):
+                results.append(msg)
+
+    # Should get exactly 2 messages total, even though 3 were available
+    assert len(results) == 2
+    assert results[0]["position"] == 1
+    assert results[1]["position"] == 2

@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: multichannel_watch
-code_paths: []
+code_paths:
+- src/board/client.py
+- src/cli/board.py
+- src/templates/commands/swarm-monitor.md.jinja2
+- tests/test_board_client.py
+- tests/test_board_cli.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +15,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["multichannel_watch"]
+created_after:
+- multichannel_watch
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

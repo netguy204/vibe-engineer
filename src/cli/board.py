@@ -261,11 +261,16 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 @click.option("--server", default=None, help="Server URL")
 @click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
-def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool) -> None:
+# Chunk: docs/chunks/watchmulti_exit_on_message - --count flag for event-driven workflows
+@click.option("--count", default=1, type=int, help="Exit after N messages (0 = stream indefinitely)")
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool, count: int) -> None:
     """Watch multiple channels on a single connection.
 
     Blocks and prints messages from any subscribed channel.
     Output format: [channel-name] message text
+
+    With --count N (default 1), exits after receiving N messages. Use
+    --count 0 to stream indefinitely.
 
     Cursors are auto-advanced after each message is printed.
     """
@@ -294,9 +299,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
         await client.connect()
         try:
             if no_reconnect:
-                gen = client.watch_multi(channel_cursors)
+                gen = client.watch_multi(channel_cursors, count=count)
             else:
-                gen = client.watch_multi_with_reconnect(channel_cursors)
+                gen = client.watch_multi_with_reconnect(channel_cursors, count=count)
 
             async for msg in gen:
                 plaintext = decrypt(msg["body"], sym_key)

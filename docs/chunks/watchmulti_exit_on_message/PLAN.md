@@ -1,179 +1,184 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a `--count N` option to `ve board watch-multi` that limits the number of
+messages received before exiting. The implementation threads through three
+layers:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Client layer** (`src/board/client.py`): Add a `count` parameter to both
+   `watch_multi()` and `watch_multi_with_reconnect()`. When `count > 0`, the
+   generator yields at most `count` messages then returns. When `count == 0`,
+   it streams indefinitely (current behavior, fully backwards-compatible).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **CLI layer** (`src/cli/board.py`): Add `--count` option to the
+   `watch-multi` Click command. Wire it through to the client methods. Default
+   is `1` (exit after first message), matching the event-driven agent pattern.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/watchmulti_exit_on_message/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Skill template** (`src/templates/commands/swarm-monitor.md.jinja2`):
+   Update the swarm-monitor skill to use `--count 1` with `run_in_background`,
+   replacing the indefinite stream with an event-driven re-launch loop.
 
-## Subsystem Considerations
+The `--count` default of `1` is a **behavioral change** from the current
+indefinite streaming default, but this is intentional: the GOAL specifies
+default 1, and current callers (swarm-monitor) will be updated in the same
+chunk. No external consumers depend on the default being "indefinite".
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+TDD approach per TESTING_PHILOSOPHY.md: write failing tests for count-limited
+behavior first, then implement the feature.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing client tests for count-limited watch_multi
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `tests/test_board_client.py`
 
-Example:
+Add tests:
+- **`test_watch_multi_count_limits_messages`**: Set up a mock WebSocket that
+  would deliver 3 messages. Call `watch_multi(channels, count=2)`. Assert only
+  2 messages are yielded and the generator returns cleanly.
+- **`test_watch_multi_count_zero_streams_all`**: Confirm `count=0` yields all
+  available messages (backwards-compatible behavior).
+- **`test_watch_multi_count_default_one`**: Confirm that calling `watch_multi`
+  without explicit count yields exactly 1 message (the new default).
 
-### Step 1: Define the SegmentHeader struct
+Follow the existing test patterns: mock `self._ws.recv()` to return
+pre-built JSON frames, mock `self._ws.send()` to capture outbound frames.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Implement count parameter in watch_multi
 
-Location: src/segment/format.rs
+Location: `src/board/client.py` — `BoardClient.watch_multi()`
 
-### Step 2: Implement header serialization
+Add `count: int = 1` parameter. Track a `delivered` counter. After yielding
+a message and re-sending the watch frame, increment `delivered`. If
+`count > 0 and delivered >= count`, return from the generator.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+The `while active_channels:` loop gains an additional exit condition:
+```python
+delivered += 1
+if count > 0 and delivered >= count:
+    return
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add chunk backreference comment above the method.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Propagate count through watch_multi_with_reconnect
 
-## Dependencies
+Location: `src/board/client.py` — `BoardClient.watch_multi_with_reconnect()`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Add `count: int = 1` parameter. Track total messages delivered across
+reconnects. Pass `count=0` to the inner `watch_multi()` call (the reconnect
+wrapper manages its own counting to handle reconnects correctly). After
+yielding each message, increment the wrapper's counter and return when the
+limit is reached.
 
-If there are no dependencies, delete this section.
--->
+This ensures that if a reconnect happens mid-stream with `--count 5`, the
+total across reconnects still caps at 5.
+
+Add a test: **`test_watch_multi_reconnect_respects_count`** — disconnects
+after 1 message, reconnects, delivers 1 more, total count=2 should stop.
+
+### Step 4: Write failing CLI tests for --count flag
+
+Location: `tests/test_board_cli.py`
+
+Add tests:
+- **`test_watch_multi_count_flag_exits_after_n`**: Invoke with `--count 2`,
+  mock yields 3 messages, assert only 2 appear in output and exit code is 0.
+- **`test_watch_multi_count_zero_streams_all`**: Invoke with `--count 0`,
+  mock yields 3 messages (then generator returns), assert all 3 in output.
+- **`test_watch_multi_default_count_one`**: Invoke without `--count`, mock
+  yields 2 messages, assert only 1 appears in output (verifying default=1).
+
+Follow existing test patterns: patch `BoardClient`, use `mock_watch_multi`
+async generators, use `runner.invoke()`.
+
+### Step 5: Add --count option to watch-multi CLI command
+
+Location: `src/cli/board.py` — `watch_multi_cmd()`
+
+Add Click option:
+```python
+@click.option("--count", default=1, type=int,
+              help="Exit after N messages (0 = stream indefinitely)")
+```
+
+Pass `count` to `client.watch_multi()` or
+`client.watch_multi_with_reconnect()`. The existing `async for msg in gen:`
+loop doesn't need to change — the generator itself handles the limit.
+
+Update the docstring to mention the `--count` behavior.
+
+### Step 6: Update swarm-monitor skill template
+
+Location: `src/templates/commands/swarm-monitor.md.jinja2`
+
+Update Phase 3 to use `--count 1`:
+```
+ve board watch-multi <channel1> <channel2> ... --count 1 --swarm <swarm_id>
+```
+
+Update Phase 4 to describe the event-driven loop pattern:
+1. Launch `watch-multi --count 1` with `run_in_background`
+2. Agent gets notified when the command exits (one message received)
+3. Process and display the message
+4. Re-launch `watch-multi --count 1` with `run_in_background`
+5. Repeat until operator stops the session
+
+Remove language about "periodically check the background task output" and
+"the monitoring continues until the operator stops the session or the
+background task exits unexpectedly" — the new pattern is deterministic
+exit-on-message, not indefinite streaming.
+
+Update Key Concepts to explain the `--count` flag and the re-launch pattern.
+
+### Step 7: Run tests and verify
+
+Run `uv run pytest tests/test_board_client.py tests/test_board_cli.py -v` to
+confirm all new and existing tests pass. The existing watch-multi tests
+should continue passing since the mock generators only yield finite messages
+(which will be consumed before any count limit applies, or the count limit
+will match the existing behavior).
+
+### Step 8: Update GOAL.md code_paths
+
+Location: `docs/chunks/watchmulti_exit_on_message/GOAL.md`
+
+Update the `code_paths` frontmatter to list:
+```yaml
+code_paths:
+  - src/board/client.py
+  - src/cli/board.py
+  - src/templates/commands/swarm-monitor.md.jinja2
+  - tests/test_board_client.py
+  - tests/test_board_cli.py
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Default change from indefinite to count=1**: The GOAL explicitly requests
+  default=1, which changes the CLI's default behavior. This is safe because
+  the only known consumer (swarm-monitor) is updated in the same chunk, and
+  the `watch-multi` command is not yet widely used (it was just introduced in
+  the parent chunk `multichannel_watch`).
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Count tracking across reconnects**: The reconnect wrapper must track total
+  delivered messages across reconnects, not per-connection. The inner
+  `watch_multi` should stream indefinitely (`count=0`) while the reconnect
+  wrapper manages the cap. This avoids the edge case where a reconnect resets
+  the count.
+
+- **Existing tests**: The mock generators in existing tests yield a finite
+  number of messages (2-3). With `count` defaulting to 1, these tests will now
+  only see 1 message. The existing tests will need their mock generators or
+  assertions updated, OR they need to pass explicit `count=0` to preserve
+  the original streaming behavior. This will be handled during Step 4/5 by
+  reviewing and adjusting existing tests as needed.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

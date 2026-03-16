@@ -66,47 +66,54 @@ Highlight any channels with unread messages (unread > 0).
 
 ### Phase 3: Launch multi-channel watch
 
-Start a single `ve board watch-multi` command with all discovered changelog
-channels. This uses one WebSocket connection for all channels instead of
-N separate connections:
+Start a single `ve board watch-multi` command with `--count 1` and all
+discovered changelog channels. This uses one WebSocket connection for all
+channels and exits after receiving one message:
 
 ```
-ve board watch-multi <channel1> <channel2> ... --swarm <swarm_id> [--server <url>]
+ve board watch-multi <channel1> <channel2> ... --count 1 --swarm <swarm_id> [--server <url>]
 ```
 
-Use `run_in_background` so the agent can continue interacting while the
-watch runs. The `watch-multi` command auto-advances cursors after each
-message is delivered and outputs messages tagged with their channel name.
+Use `run_in_background` so the agent is notified when a message arrives.
+The `watch-multi` command auto-advances cursors after each message is
+delivered and outputs messages tagged with their channel name.
 
 Report to the operator which channels are being watched.
 
-### Phase 4: Report incoming messages
+### Phase 4: Event-driven message loop
 
-Periodically check the background `watch-multi` task output. Each line
-is formatted as `[channel-name] message text`.
+When the background `watch-multi --count 1` task completes, you will be
+notified. Each line of output is formatted as `[channel-name] message text`.
 
-For each new message line:
+For each completed task:
 
-1. **Display the message** to the operator inline. Example:
+1. **Read the task output** to get the message.
+
+2. **Display the message** to the operator inline. Example:
 
    ```
    [vibe-engineer-changelog] New message:
    <message content>
    ```
 
-2. Cursors are **auto-advanced** by `watch-multi` — no manual `ve board ack`
+3. Cursors are **auto-advanced** by `watch-multi` — no manual `ve board ack`
    is needed.
 
-The monitoring continues until the operator stops the session or the
-background task exits. If the background task exits unexpectedly, re-launch
-it with `run_in_background`.
+4. **Re-launch** `watch-multi --count 1` with `run_in_background` to wait
+   for the next message.
+
+5. Repeat until the operator stops the session.
 
 ### Key Concepts
 
-- **`watch-multi`** watches all channels on a **single connection**,
-  reducing resource usage compared to N separate watch commands.
-- **`run_in_background`** is how the agent waits asynchronously for messages.
-  Do NOT poll. The `watch-multi` command blocks and streams messages.
+- **`watch-multi --count 1`** watches all channels on a **single connection**,
+  receives one message, and exits. This makes it compatible with the
+  `run_in_background` notification pattern.
+- **Event-driven loop**: Launch `--count 1` in background → get notified on
+  exit → process message → re-launch. This replaces indefinite streaming
+  with deterministic exit-on-message.
+- **`--count 0`** streams indefinitely (legacy behavior). Use `--count 1`
+  (the default) for the event-driven agent pattern.
 - **Cursor management** is automatic — `watch-multi` auto-advances cursors
   after each delivered message. No manual acking is needed.
 - **Channel naming convention**: This command assumes `*-changelog` is the
