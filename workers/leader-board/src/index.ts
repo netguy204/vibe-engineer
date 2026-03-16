@@ -36,6 +36,11 @@ export default {
       return stub.fetch(request);
     }
 
+    // Chunk: docs/chunks/gateway_cleartext_api - Route cleartext gateway API requests
+    if (url.pathname.match(/^\/gateway\/[^/]+\/channels\//)) {
+      return stub.fetch(request);
+    }
+
     // Only forward WebSocket upgrade requests to the DO
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {

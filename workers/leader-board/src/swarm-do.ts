@@ -9,6 +9,13 @@
 
 import { generateChallenge, verifySignature } from "./auth";
 import {
+  hashToken,
+  decryptBlob,
+  deriveSymmetricKey,
+  decryptMessage,
+  encryptMessage,
+} from "./gateway-crypto";
+import {
   type PostAuthClientFrame,
   type ServerFrame,
   ProtocolError,
@@ -16,10 +23,22 @@ import {
   parsePostAuthFrame,
   serializeFrame,
 } from "./protocol";
-import { SwarmStorage } from "./storage";
+import { SwarmStorage, type StoredMessage } from "./storage";
 
 const COMPACTION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const COMPACTION_MIN_AGE_DAYS = 30;
+const CHANNEL_NAME_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+const GATEWAY_MESSAGE_MAX_BYTES = 1_048_576; // 1 MB
+
+// Chunk: docs/chunks/gateway_cleartext_api - Long-poll pending poll type
+interface PendingPoll {
+  channel: string;
+  cursor: number;
+  limit: number;
+  symmetricKey: Uint8Array;
+  resolve: (response: Response) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
 
 interface Watcher {
   ws: WebSocket;
@@ -40,6 +59,9 @@ export class SwarmDO implements DurableObject {
   // Per-channel watcher sets for blocking read wake-up
   private watchers: Map<string, Set<Watcher>> = new Map();
 
+  // Chunk: docs/chunks/gateway_cleartext_api - Long-poll pending polls
+  private pendingPolls: Map<string, Set<PendingPoll>> = new Map();
+
   constructor(ctx: DurableObjectState, _env: Env) {
     this.ctx = ctx;
     this.storage = new SwarmStorage(ctx.storage);
@@ -51,6 +73,14 @@ export class SwarmDO implements DurableObject {
     // Chunk: docs/chunks/gateway_token_storage - HTTP routes for gateway key storage
     if (url.pathname.startsWith("/gateway/keys")) {
       return this.handleGatewayKeys(request, url);
+    }
+
+    // Chunk: docs/chunks/gateway_cleartext_api - Cleartext gateway HTTP handler
+    const gatewayMatch = url.pathname.match(
+      /^\/gateway\/([^/]+)\/channels\/([^/]+)\/messages$/
+    );
+    if (gatewayMatch) {
+      return this.handleGatewayAPI(request, url, gatewayMatch[1], gatewayMatch[2]);
     }
 
     // Only accept WebSocket upgrades
@@ -173,6 +203,224 @@ export class SwarmDO implements DurableObject {
           JSON.stringify({ error: "Method not allowed" }),
           { status: 405, headers: jsonHeaders }
         );
+    }
+  }
+
+  // Chunk: docs/chunks/gateway_cleartext_api - Cleartext gateway HTTP handler
+  private async handleGatewayAPI(
+    request: Request,
+    url: URL,
+    token: string,
+    channel: string
+  ): Promise<Response> {
+    const jsonHeaders = { "Content-Type": "application/json" };
+
+    // Validate channel name
+    if (!CHANNEL_NAME_RE.test(channel)) {
+      return new Response(
+        JSON.stringify({ error: `Invalid channel name: "${channel}"` }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    // Resolve token → encrypted blob → seed → symmetric key
+    let symmetricKey: Uint8Array;
+    try {
+      const tokenHash = hashToken(token);
+      const keyRecord = this.storage.getGatewayKey(tokenHash);
+      if (!keyRecord) {
+        return new Response(
+          JSON.stringify({ error: "Invalid or revoked token" }),
+          { status: 401, headers: jsonHeaders }
+        );
+      }
+
+      const seed = decryptBlob(keyRecord.encrypted_blob, token);
+      symmetricKey = deriveSymmetricKey(seed);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid or revoked token" }),
+        { status: 401, headers: jsonHeaders }
+      );
+    }
+
+    switch (request.method) {
+      case "GET": {
+        const afterParam = url.searchParams.get("after");
+        const cursor = afterParam !== null ? parseInt(afterParam, 10) : 0;
+        if (isNaN(cursor) || cursor < 0) {
+          return new Response(
+            JSON.stringify({ error: "Invalid 'after' parameter" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        const limitParam = url.searchParams.get("limit");
+        let limit = 50;
+        if (limitParam !== null) {
+          limit = parseInt(limitParam, 10);
+          if (isNaN(limit) || limit < 1) limit = 50;
+          if (limit > 200) limit = 200;
+        }
+
+        // Read messages
+        const messages = this.storage.readAfterBatch(channel, cursor, limit);
+
+        // If messages exist, return immediately
+        if (messages.length > 0) {
+          const decrypted = messages.map((msg) => ({
+            position: msg.position,
+            body: decryptMessage(msg.body, symmetricKey),
+            sent_at: msg.sent_at,
+          }));
+          return new Response(JSON.stringify({ messages: decrypted }), {
+            status: 200,
+            headers: jsonHeaders,
+          });
+        }
+
+        // Long-poll support
+        const waitParam = url.searchParams.get("wait");
+        if (waitParam !== null) {
+          let waitSeconds = parseInt(waitParam, 10);
+          if (isNaN(waitSeconds) || waitSeconds < 1) waitSeconds = 1;
+          if (waitSeconds > 60) waitSeconds = 60;
+
+          return new Promise<Response>((resolve) => {
+            const timer = setTimeout(() => {
+              // Timeout — remove poll and return empty
+              this.removePendingPoll(channel, poll);
+              resolve(
+                new Response(JSON.stringify({ messages: [] }), {
+                  status: 200,
+                  headers: jsonHeaders,
+                })
+              );
+            }, waitSeconds * 1000);
+
+            const poll: PendingPoll = {
+              channel,
+              cursor,
+              limit,
+              symmetricKey,
+              resolve,
+              timer,
+            };
+
+            let channelPolls = this.pendingPolls.get(channel);
+            if (!channelPolls) {
+              channelPolls = new Set();
+              this.pendingPolls.set(channel, channelPolls);
+            }
+            channelPolls.add(poll);
+          });
+        }
+
+        // No wait param, return empty immediately
+        return new Response(JSON.stringify({ messages: [] }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
+
+      case "POST": {
+        let body: { body?: string };
+        try {
+          body = (await request.json()) as { body?: string };
+        } catch {
+          return new Response(
+            JSON.stringify({ error: "Invalid JSON body" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        if (!body.body || typeof body.body !== "string") {
+          return new Response(
+            JSON.stringify({ error: "Missing required field: body" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        // Check body size
+        const bodyBytes = new TextEncoder().encode(body.body);
+        if (bodyBytes.length > GATEWAY_MESSAGE_MAX_BYTES) {
+          return new Response(
+            JSON.stringify({ error: "Message body too large" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        // Encrypt and store
+        const ciphertext = encryptMessage(body.body, symmetricKey);
+        const result = this.storage.appendMessage(channel, ciphertext);
+
+        // Wake WebSocket watchers and pending polls
+        this.wakeWatchers(channel, result.position);
+        this.wakePendingPolls(channel);
+
+        // Ensure compaction alarm is scheduled
+        await this.ensureAlarm();
+
+        return new Response(
+          JSON.stringify({ position: result.position, channel }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+
+      default:
+        return new Response(
+          JSON.stringify({ error: "Method not allowed" }),
+          { status: 405, headers: jsonHeaders }
+        );
+    }
+  }
+
+  // Chunk: docs/chunks/gateway_cleartext_api - Wake pending long-polls
+  private wakePendingPolls(channel: string): void {
+    const channelPolls = this.pendingPolls.get(channel);
+    if (!channelPolls || channelPolls.size === 0) return;
+
+    const jsonHeaders = { "Content-Type": "application/json" };
+
+    for (const poll of channelPolls) {
+      clearTimeout(poll.timer);
+      try {
+        const messages = this.storage.readAfterBatch(
+          poll.channel,
+          poll.cursor,
+          poll.limit
+        );
+        const decrypted = messages.map((msg) => ({
+          position: msg.position,
+          body: decryptMessage(msg.body, poll.symmetricKey),
+          sent_at: msg.sent_at,
+        }));
+        poll.resolve(
+          new Response(JSON.stringify({ messages: decrypted }), {
+            status: 200,
+            headers: jsonHeaders,
+          })
+        );
+      } catch {
+        poll.resolve(
+          new Response(JSON.stringify({ messages: [] }), {
+            status: 200,
+            headers: jsonHeaders,
+          })
+        );
+      }
+    }
+
+    this.pendingPolls.delete(channel);
+  }
+
+  private removePendingPoll(channel: string, poll: PendingPoll): void {
+    const channelPolls = this.pendingPolls.get(channel);
+    if (channelPolls) {
+      channelPolls.delete(poll);
+      if (channelPolls.size === 0) {
+        this.pendingPolls.delete(channel);
+      }
     }
   }
 

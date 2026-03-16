@@ -1,18 +1,26 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- workers/leader-board/src/gateway-crypto.ts
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/src/storage.ts
+- workers/leader-board/src/index.ts
+- workers/leader-board/test/gateway-crypto.test.ts
+- workers/leader-board/test/gateway-api.test.ts
+- workers/leader-board/package.json
 code_references: []
 narrative: null
 investigation: agent_invite_links
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["gateway_token_storage"]
-created_after: ["swarm_monitor_command"]
+depends_on:
+- gateway_token_storage
+created_after:
+- swarm_monitor_command
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

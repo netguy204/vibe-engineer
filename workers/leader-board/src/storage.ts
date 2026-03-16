@@ -166,6 +166,29 @@ export class SwarmStorage {
     };
   }
 
+  // Chunk: docs/chunks/gateway_cleartext_api - Batch read for cleartext gateway
+  readAfterBatch(channel: string, cursor: number, limit: number = 50): StoredMessage[] {
+    this.ensureSchema();
+
+    const rows = [
+      ...this.sql.sql.exec(
+        `SELECT channel, position, body, sent_at FROM messages
+         WHERE channel = ? AND position > ?
+         ORDER BY position ASC LIMIT ?`,
+        channel,
+        cursor,
+        limit
+      ),
+    ];
+
+    return rows.map((row) => ({
+      channel: row.channel as string,
+      position: row.position as number,
+      body: row.body as string,
+      sent_at: row.sent_at as string,
+    }));
+  }
+
   listChannels(): ChannelInfo[] {
     this.ensureSchema();
 
