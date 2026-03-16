@@ -8,10 +8,10 @@ code_paths:
 - src/board/config.py
 - tests/test_board_invite.py
 code_references:
-- ref: src/cli/board.py#invite_cmd
+- ref: src/cli/board.py#invite_create_cmd
   implements: "Generates invite token, encrypts swarm seed, uploads blob, outputs invite URL"
 - ref: src/cli/board.py#revoke_cmd
-  implements: "Revokes an invite token by deleting the encrypted blob from the server"
+  implements: "Revokes an invite token (or all tokens with --all) by deleting the encrypted blob from the server"
 - ref: src/board/crypto.py#derive_token_key
   implements: "HKDF-SHA256 key derivation from random invite token with domain-separated info string"
 - ref: src/board/config.py#gateway_http_url
