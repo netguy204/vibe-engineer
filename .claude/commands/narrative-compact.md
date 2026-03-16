@@ -1,3 +1,4 @@
+
 ---
 description: Consolidate multiple chunks into a narrative to reduce backreference clutter.
 ---

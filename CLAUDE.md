@@ -71,11 +71,13 @@ Accumulative ledger for pain points. **Read when**: capturing friction, or when 
 See: `docs/trunk/ARTIFACTS.md#friction-log`
 
 
+
 ### External Artifacts
 
 Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
 
 See: `docs/trunk/EXTERNAL.md`
+
 
 ## Orchestrator (`ve orch`)
 
@@ -111,12 +113,14 @@ Use these slash commands for artifact management:
 
 - `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references
+
 - `/cluster-rename` - Batch-rename chunks matching a prefix
 - `/narrative-create` - Create a new narrative for multi-chunk initiatives
 - `/narrative-compact` - Consolidate multiple chunks into a narrative
 - `/subsystem-discover` - Document an emergent architectural pattern
 - `/investigation-create` - Start a new investigation
 - `/friction-log` - Capture a friction point
+
 - `/validate-fix` - Iteratively fix validation errors until clean
 
 

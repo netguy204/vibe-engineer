@@ -106,6 +106,12 @@ steward's recovery mechanism — if the agent crashes, it will re-read from the
 last acked position on restart, automatically re-processing the unfinished
 message.
 
+**Every message must be acked.** This includes messages that don't produce
+actionable work — bootstrap/initialization messages, questions answered inline,
+no-ops, and duplicates. The ack advances the cursor past the message. Without it,
+the cursor stays in place and the next watch cycle re-delivers the same message,
+causing the steward to loop on it indefinitely.
+
 ### Step 6: Start orchestrator monitor
 
 After injecting a chunk, set up a recurring monitor using `/loop` so the
