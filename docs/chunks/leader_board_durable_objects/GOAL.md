@@ -20,11 +20,11 @@ code_paths:
 - workers/leader-board/test/e2e.test.ts
 code_references:
   - ref: workers/leader-board/src/index.ts
-    implements: "Worker entry point — routes WebSocket connections to correct SwarmDO by swarm query param"
+    implements: "Worker entry point — routes WebSocket connections to correct SwarmDO by swarm query param or invite token path"
   - ref: workers/leader-board/src/swarm-do.ts#SwarmDO
     implements: "Durable Object class per swarm — owns connection lifecycle, auth handshake, post-auth frame dispatch, watcher wake-up, and compaction alarm"
   - ref: workers/leader-board/src/swarm-do.ts#Env
-    implements: "Worker environment interface declaring SWARM_DO binding"
+    implements: "Worker environment interface declaring SWARM_DO binding and TOKEN_SWARM_INDEX KV namespace"
   - ref: workers/leader-board/src/storage.ts#SwarmStorage
     implements: "DO SQLite storage layer mirroring Python StorageAdapter — append-only log, monotonic positions, compaction with retain-most-recent"
   - ref: workers/leader-board/src/auth.ts#generateChallenge
@@ -40,7 +40,7 @@ code_references:
   - ref: workers/leader-board/src/protocol.ts#ProtocolError
     implements: "Typed error class for wire protocol violations"
   - ref: workers/leader-board/wrangler.toml
-    implements: "Cloudflare Workers deployment config — DO binding, SQLite migration, compatibility flags"
+    implements: "Cloudflare Workers deployment config — DO binding, SQLite migration, KV namespace, compatibility flags"
 narrative: leader_board
 investigation: null
 subsystems: []
