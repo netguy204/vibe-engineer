@@ -49,7 +49,7 @@ class BoardClient:
     async def connect(self) -> None:
         """Open WebSocket and perform auth handshake."""
         url = f"{self.server_url}/ws?swarm={self.swarm_id}"
-        self._ws = await websockets.connect(url)
+        self._ws = await websockets.connect(url, close_timeout=1)
 
         # Receive challenge
         challenge_raw = await self._ws.recv()
@@ -91,7 +91,7 @@ class BoardClient:
         then closes. This does NOT use the main authenticated connection.
         """
         url = f"{self.server_url}/ws?swarm={self.swarm_id}"
-        async with websockets.connect(url) as ws:
+        async with websockets.connect(url, close_timeout=1) as ws:
             # Server sends a challenge first, but we ignore it for registration
             await ws.recv()  # discard challenge
 

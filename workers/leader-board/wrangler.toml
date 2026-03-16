@@ -13,6 +13,8 @@ tag = "v1"
 new_sqlite_classes = ["SwarmDO"]
 
 [observability]
+enabled = true
+
 [observability.logs]
 enabled = false
 invocation_logs = true
