@@ -527,8 +527,37 @@ def revoke_cmd(token: str | None, swarm: str | None, server: str | None, revoke_
             click.echo(f"Error: server returned {response.status_code}", err=True)
             sys.exit(1)
     else:
-        token_bytes = bytes.fromhex(token)
-        token_hash = hashlib.sha256(token_bytes).hexdigest()
+        # Resolve token argument: could be a full raw token (32 bytes = 64 hex chars)
+        # or a hint prefix (first 8 chars of the token_hash shown by 'invite list').
+        if len(token) == 64:
+            # Full raw token — hash it to get the server-side key
+            token_bytes = bytes.fromhex(token)
+            token_hash = hashlib.sha256(token_bytes).hexdigest()
+        else:
+            # Hint prefix — look up the full token_hash from the server
+            list_response = httpx.get(
+                f"{http_url}/gateway/keys",
+                params={"swarm": swarm},
+            )
+            if list_response.status_code != 200:
+                click.echo(f"Error: server returned {list_response.status_code}", err=True)
+                sys.exit(1)
+
+            keys = list_response.json().get("keys", [])
+            matches = [
+                k for k in keys
+                if k["token_hash"].startswith(token)
+                or k.get("hint", k["token_hash"][:8]) == token
+            ]
+
+            if len(matches) == 0:
+                click.echo("Error: token not found or already revoked.", err=True)
+                sys.exit(1)
+            elif len(matches) > 1:
+                click.echo("Error: ambiguous prefix — matches multiple tokens. Provide more characters.", err=True)
+                sys.exit(1)
+
+            token_hash = matches[0]["token_hash"]
 
         response = httpx.delete(
             f"{http_url}/gateway/keys/{token_hash}",

@@ -363,6 +363,103 @@ def test_revoke_happy_path(runner):
     assert expected_hash in call_url
 
 
+def test_revoke_by_hint(runner):
+    """ve board invite revoke with a short hint prefix looks up the full token_hash."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+    full_hash = "abcdef1234567890" * 4  # 64-char token_hash
+    hint = "abcdef12"
+
+    call_log = []
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "keys": [
+                {"token_hash": full_hash, "hint": hint, "created_at": "2026-03-16T00:00:00Z"},
+            ]
+        }
+        return resp
+
+    def mock_delete(url, **kwargs):
+        call_log.append(url)
+        resp = MagicMock()
+        resp.status_code = 200
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get), \
+         patch("cli.board.httpx.delete", side_effect=mock_delete):
+        result = runner.invoke(board, [
+            "invite", "revoke", hint,
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "revoked" in result.output.lower()
+    # The DELETE should use the full token_hash, not a re-hash of the hint
+    assert full_hash in call_log[0]
+
+
+def test_revoke_by_hint_ambiguous(runner):
+    """ve board invite revoke with an ambiguous prefix reports error."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "keys": [
+                {"token_hash": "abcdef12aaaa" + "0" * 52, "hint": "abcdef12"},
+                {"token_hash": "abcdef12bbbb" + "0" * 52, "hint": "abcdef12"},
+            ]
+        }
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get):
+        result = runner.invoke(board, [
+            "invite", "revoke", "abcdef12",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code != 0
+    assert "ambiguous" in result.output.lower()
+
+
+def test_revoke_by_hint_not_found(runner):
+    """ve board invite revoke with a non-matching hint reports not found."""
+    config = BoardConfig(
+        default_swarm="myswarm",
+        swarms={"myswarm": SwarmConfig("ws://test:8787")},
+    )
+
+    def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"keys": []}
+        return resp
+
+    with patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.httpx.get", side_effect=mock_get):
+        result = runner.invoke(board, [
+            "invite", "revoke", "deadbeef",
+            "--swarm", "myswarm",
+            "--server", "ws://test:8787",
+        ])
+
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+
 def test_revoke_token_not_found(runner):
     """ve board invite revoke with 404 reports token not found."""
     config = BoardConfig(
