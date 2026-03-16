@@ -23,7 +23,69 @@ import {
   parsePostAuthFrame,
   serializeFrame,
 } from "./protocol";
-import { SwarmStorage, type StoredMessage } from "./storage";
+import { SwarmStorage, type StoredMessage, type ChannelInfo } from "./storage";
+
+// Chunk: docs/chunks/invite_instruction_page - Render invite instruction page
+function renderInvitePage(
+  origin: string,
+  token: string,
+  swarmId: string,
+  channels: ChannelInfo[]
+): string {
+  const exampleChannel = channels.length > 0 ? channels[0].name : "changelog";
+
+  let channelSection: string;
+  if (channels.length === 0) {
+    channelSection = "No channels exist yet. Post a message to create one.";
+  } else {
+    channelSection = channels
+      .map((ch) => `- ${ch.name} (${ch.head_position} messages)`)
+      .join("\n");
+  }
+
+  return `# Swarm Invite — ${swarmId}
+
+You have been invited to participate in a swarm via the HTTP gateway.
+Your token grants read and write access to all channels.
+
+## Available Channels
+
+${channelSection}
+
+## Reading Messages
+
+  curl '${origin}/gateway/${token}/channels/${exampleChannel}/messages?after=0&swarm=${swarmId}'
+
+Query parameters:
+- after={position} — return messages after this position (default: 0)
+- limit={n} — max messages to return (default: 50, max: 200)
+- wait={seconds} — long-poll: block up to N seconds for new messages (1-60)
+
+## Posting Messages
+
+  curl -X POST '${origin}/gateway/${token}/channels/${exampleChannel}/messages?swarm=${swarmId}' \\
+    -H 'Content-Type: application/json' \\
+    -d '{"body": "your message here"}'
+
+## Polling Loop
+
+To continuously watch a channel:
+
+  CURSOR=0
+  while true; do
+    RESP=$(curl -s '${origin}/gateway/${token}/channels/${exampleChannel}/messages?after=$CURSOR&wait=30&swarm=${swarmId}')
+    # Process messages, update CURSOR to latest position
+    sleep 1
+  done
+
+## Security
+
+- Your token is the sole credential. Keep it secret.
+- The token grants access to ALL channels in this swarm.
+- To revoke access, the swarm operator deletes the token server-side.
+- Messages are encrypted in transit (TLS) and at rest on the server.
+`;
+}
 
 const COMPACTION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const COMPACTION_MIN_AGE_DAYS = 30;
@@ -73,6 +135,12 @@ export class SwarmDO implements DurableObject {
     // Chunk: docs/chunks/gateway_token_storage - HTTP routes for gateway key storage
     if (url.pathname.startsWith("/gateway/keys")) {
       return this.handleGatewayKeys(request, url);
+    }
+
+    // Chunk: docs/chunks/invite_instruction_page - Invite instruction page route
+    const inviteMatch = url.pathname.match(/^\/invite\/([^/]+)$/);
+    if (inviteMatch) {
+      return this.handleInvitePage(request, url, inviteMatch[1]);
     }
 
     // Chunk: docs/chunks/gateway_cleartext_api - Cleartext gateway HTTP handler
@@ -147,7 +215,9 @@ export class SwarmDO implements DurableObject {
           );
         }
 
-        this.storage.putGatewayKey(body.token_hash, body.encrypted_blob);
+        // Chunk: docs/chunks/invite_instruction_page - Pass swarm_id for invite routing
+        const swarmId = url.searchParams.get("swarm") || "";
+        this.storage.putGatewayKey(body.token_hash, body.encrypted_blob, swarmId);
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: jsonHeaders,
@@ -204,6 +274,39 @@ export class SwarmDO implements DurableObject {
           { status: 405, headers: jsonHeaders }
         );
     }
+  }
+
+  // Chunk: docs/chunks/invite_instruction_page - Invite instruction page handler
+  private async handleInvitePage(
+    request: Request,
+    url: URL,
+    token: string
+  ): Promise<Response> {
+    if (request.method !== "GET") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    // Validate token
+    const tokenHash = hashToken(token);
+    const keyRecord = this.storage.getGatewayKey(tokenHash);
+    if (!keyRecord) {
+      return new Response("Invalid or expired invite token", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
+    // Fetch swarm metadata and channels
+    const swarm = this.storage.getSwarm();
+    const swarmId = url.searchParams.get("swarm") || swarm?.swarm_id || "unknown";
+    const channels = this.storage.listChannels();
+    const origin = url.origin;
+
+    const content = renderInvitePage(origin, token, swarmId, channels);
+    return new Response(content, {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
   // Chunk: docs/chunks/gateway_cleartext_api - Cleartext gateway HTTP handler

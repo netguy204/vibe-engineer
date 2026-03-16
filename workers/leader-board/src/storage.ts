@@ -68,6 +68,15 @@ export class SwarmStorage {
       )
     `);
 
+    // Chunk: docs/chunks/invite_instruction_page - Add swarm_id for invite token routing
+    try {
+      this.sql.sql.exec(
+        `ALTER TABLE gateway_keys ADD COLUMN swarm_id TEXT NOT NULL DEFAULT ''`
+      );
+    } catch {
+      // Column may already exist — safe to ignore
+    }
+
     this.initialized = true;
   }
 
@@ -267,25 +276,28 @@ export class SwarmStorage {
   // --- Gateway Key Operations ---
 
   // Chunk: docs/chunks/gateway_token_storage - Store encrypted key blob
-  putGatewayKey(tokenHash: string, encryptedBlob: string): void {
+  // Chunk: docs/chunks/invite_instruction_page - Added swarm_id parameter
+  putGatewayKey(tokenHash: string, encryptedBlob: string, swarmId: string = ""): void {
     this.ensureSchema();
     const now = new Date().toISOString();
     this.sql.sql.exec(
-      `INSERT OR REPLACE INTO gateway_keys (token_hash, encrypted_blob, created_at) VALUES (?, ?, ?)`,
+      `INSERT OR REPLACE INTO gateway_keys (token_hash, encrypted_blob, created_at, swarm_id) VALUES (?, ?, ?, ?)`,
       tokenHash,
       encryptedBlob,
-      now
+      now,
+      swarmId
     );
   }
 
   // Chunk: docs/chunks/gateway_token_storage - Retrieve encrypted key blob
+  // Chunk: docs/chunks/invite_instruction_page - Added swarm_id to return type
   getGatewayKey(
     tokenHash: string
-  ): { token_hash: string; encrypted_blob: string; created_at: string } | null {
+  ): { token_hash: string; encrypted_blob: string; created_at: string; swarm_id: string } | null {
     this.ensureSchema();
     const rows = [
       ...this.sql.sql.exec(
-        `SELECT token_hash, encrypted_blob, created_at FROM gateway_keys WHERE token_hash = ?`,
+        `SELECT token_hash, encrypted_blob, created_at, swarm_id FROM gateway_keys WHERE token_hash = ?`,
         tokenHash
       ),
     ];
@@ -295,6 +307,7 @@ export class SwarmStorage {
       token_hash: row.token_hash as string,
       encrypted_blob: row.encrypted_blob as string,
       created_at: row.created_at as string,
+      swarm_id: row.swarm_id as string,
     };
   }
 

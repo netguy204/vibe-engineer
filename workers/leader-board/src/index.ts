@@ -41,6 +41,11 @@ export default {
       return stub.fetch(request);
     }
 
+    // Chunk: docs/chunks/invite_instruction_page - Route invite page requests
+    if (url.pathname.match(/^\/invite\/[^/]+$/)) {
+      return stub.fetch(request);
+    }
+
     // Only forward WebSocket upgrade requests to the DO
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
