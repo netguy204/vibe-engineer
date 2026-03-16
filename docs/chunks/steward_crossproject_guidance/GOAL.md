@@ -1,8 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/claude/CLAUDE.md.jinja2
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +11,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["invite_list_revoke"]
+created_after:
+- invite_list_revoke
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

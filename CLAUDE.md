@@ -134,6 +134,23 @@ Use these slash commands for artifact management:
 - `/swarm-monitor` - Monitor all changelog channels in a swarm
 
 
+#### Cross-project messaging
+
+To send a message to another project's steward, use the channel naming convention `<target-project>-steward`, where `<target-project>` is the project whose steward you're addressing — **not** the project you're sending from.
+
+```
+ve board send <target-project>-steward "<message>" --swarm <swarm_id>
+```
+
+For example, to tell the `vibe-engineer` steward something from any project in the swarm, send to `vibe-engineer-steward`:
+
+```
+ve board send vibe-engineer-steward "Requested API change is ready" --swarm my_swarm
+```
+
+**Common mistake:** Agents often find their local `STEWARD.md`, read its `channel` field, and send to their *own* project's steward channel instead of the target project's channel. Always derive the channel name from the **target** project, not from your local steward configuration.
+
+
 ## Creating Artifacts
 
 **CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command.
