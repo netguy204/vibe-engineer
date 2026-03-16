@@ -10,153 +10,103 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The worker currently only accepts WebSocket upgrades — all non-WebSocket requests get a 426. This chunk adds three plain HTTP JSON routes to the Worker entry point (`src/index.ts`) that forward to new methods on `SwarmDO.fetch()`, and a new `gateway_keys` SQLite table managed by `SwarmStorage`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design choices:**
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Route in the Worker, handle in the DO.** The Worker entry point already routes by swarm ID. We extend its `fetch()` to dispatch `/gateway/keys` paths to the correct DO via `stub.fetch(request)` — the same pattern used for WebSocket upgrades. The DO's `fetch()` gains an HTTP branch alongside its WebSocket branch.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/gateway_token_storage/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **New table, same storage class.** `SwarmStorage` gets a `gateway_keys` table with columns `(token_hash TEXT PRIMARY KEY, encrypted_blob TEXT NOT NULL, created_at TEXT NOT NULL)`. The `swarm_id` is implicit — each DO instance *is* a swarm, so the storage is already scoped. `ensureSchema()` creates this table alongside the existing ones.
+
+3. **TDD per TESTING_PHILOSOPHY.md.** Tests are written first using the existing `@cloudflare/vitest-pool-workers` + `SELF.fetch` pattern. The round-trip test (store → retrieve → delete → 404) maps directly to the success criteria.
+
+4. **No auth on these routes (yet).** The investigation notes that the CLI (`ve board invite`) will be the caller for PUT/DELETE, and the cleartext gateway (next chunk) for GET. Authentication is deferred to those chunks — this chunk provides the raw storage primitive.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems (template_system, workflow_artifacts, orchestrator, etc.) are relevant to this chunk. This work is entirely within the Cloudflare Worker/DO layer which has no corresponding subsystem documentation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for the gateway key storage routes
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `test/gateway-keys.test.ts` with tests that exercise the full round-trip through HTTP:
 
-Example:
+1. **PUT stores a key blob** — `PUT /gateway/keys?swarm=<id>` with JSON body `{token_hash, encrypted_blob}`, expect 200 with `{ok: true}`.
+2. **GET retrieves the blob** — `GET /gateway/keys/<token_hash>?swarm=<id>`, expect 200 with `{token_hash, encrypted_blob, created_at}`.
+3. **GET returns 404 for unknown hash** — expect 404 with JSON error.
+4. **DELETE removes the blob** — `DELETE /gateway/keys/<token_hash>?swarm=<id>`, expect 200 with `{ok: true}`.
+5. **GET after DELETE returns 404** — the full revocation round-trip.
+6. **DELETE of non-existent hash returns 404** — idempotency boundary.
+7. **PUT with missing fields returns 400** — validation.
 
-### Step 1: Define the SegmentHeader struct
+Use the existing `SELF.fetch` pattern from `test/index.test.ts`. These are plain HTTP requests (no WebSocket), which is the novel part — the Worker must route them to the DO without requiring an upgrade header.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `workers/leader-board/test/gateway-keys.test.ts`
 
-Location: src/segment/format.rs
+### Step 2: Add the `gateway_keys` table to SwarmStorage
 
-### Step 2: Implement header serialization
+Extend `SwarmStorage.ensureSchema()` to create:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```sql
+CREATE TABLE IF NOT EXISTS gateway_keys (
+  token_hash TEXT PRIMARY KEY,
+  encrypted_blob TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add three new methods to `SwarmStorage`:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+- `putGatewayKey(tokenHash: string, encryptedBlob: string): void` — INSERT OR REPLACE with current timestamp.
+- `getGatewayKey(tokenHash: string): {token_hash: string, encrypted_blob: string, created_at: string} | null` — SELECT by primary key.
+- `deleteGatewayKey(tokenHash: string): boolean` — DELETE, return true if a row was actually deleted.
+
+Add a `// Chunk: docs/chunks/gateway_token_storage` backreference on each method.
+
+Location: `workers/leader-board/src/storage.ts`
+
+### Step 3: Add HTTP route handling to the Worker entry point
+
+Modify `src/index.ts` to distinguish between WebSocket upgrades and plain HTTP requests. Currently, non-WebSocket requests to a known swarm get forwarded to the DO (which returns 426). Instead:
+
+- If the URL path starts with `/gateway/keys`, forward to the DO via `stub.fetch(request)` regardless of upgrade header.
+- Otherwise, keep the existing WebSocket-only behavior.
+
+The swarm query parameter is still required for all requests (consistent with existing pattern).
+
+Location: `workers/leader-board/src/index.ts`
+
+### Step 4: Add HTTP route handling to SwarmDO.fetch()
+
+Extend `SwarmDO.fetch()` to handle non-WebSocket requests on the `/gateway/keys` path:
+
+- **PUT /gateway/keys** — Parse JSON body `{token_hash, encrypted_blob}`, validate both fields are non-empty strings, call `storage.putGatewayKey()`, return 200 JSON `{ok: true}`.
+- **GET /gateway/keys/{token_hash}** — Extract token_hash from URL path, call `storage.getGatewayKey()`, return 200 JSON with the blob or 404 JSON error.
+- **DELETE /gateway/keys/{token_hash}** — Extract token_hash from URL path, call `storage.deleteGatewayKey()`, return 200 JSON `{ok: true}` or 404 JSON error.
+
+Return 405 for unsupported methods on this path. Return JSON `Content-Type` headers on all responses.
+
+Add a `// Chunk: docs/chunks/gateway_token_storage` backreference on the HTTP handling method.
+
+Location: `workers/leader-board/src/swarm-do.ts`
+
+### Step 5: Run tests and verify all pass
+
+Run `npm test` in the worker directory. All new tests from Step 1 should now pass, and all existing tests should remain green (the WebSocket behavior is unchanged).
+
+### Step 6: Verify existing tests still pass
+
+Confirm that the WebSocket routing in `test/index.test.ts` is unaffected — specifically that `?swarm=<id>` without a `/gateway/keys` path and without an upgrade header still returns 426 (not routed to the new HTTP handler).
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No new dependencies. The existing `@cloudflare/vitest-pool-workers`, Durable Object SQLite storage, and `SELF.fetch` test pattern provide everything needed. No external libraries required — this is pure storage CRUD with no cryptography (encryption happens client-side in the `invite_cli_command` chunk).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Auth deferred.** These routes have no authentication — any caller who knows a swarm ID can PUT/GET/DELETE gateway keys. The investigation design expects the CLI and cleartext gateway chunks to layer auth. If this proves problematic, a shared-secret header could be added later without changing the storage API.
+- **SELF.fetch for non-WebSocket DO requests.** The existing test suite exclusively tests WebSocket upgrades via `SELF.fetch`. Plain HTTP requests forwarded to the DO should work identically (the DO's `fetch()` method handles both), but this is the first time it's tested — if the vitest pool-workers plugin handles non-WS DO routing differently, tests may need adjustment.
 
 ## Deviations
 

@@ -59,6 +59,15 @@ export class SwarmStorage {
         ON messages(channel, position)
     `);
 
+    // Chunk: docs/chunks/gateway_token_storage - Gateway key blob storage
+    this.sql.sql.exec(`
+      CREATE TABLE IF NOT EXISTS gateway_keys (
+        token_hash TEXT PRIMARY KEY,
+        encrypted_blob TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+
     this.initialized = true;
   }
 
@@ -230,5 +239,58 @@ export class SwarmStorage {
     ];
 
     return (beforeCount[0].cnt as number) - (afterCount[0].cnt as number);
+  }
+
+  // --- Gateway Key Operations ---
+
+  // Chunk: docs/chunks/gateway_token_storage - Store encrypted key blob
+  putGatewayKey(tokenHash: string, encryptedBlob: string): void {
+    this.ensureSchema();
+    const now = new Date().toISOString();
+    this.sql.sql.exec(
+      `INSERT OR REPLACE INTO gateway_keys (token_hash, encrypted_blob, created_at) VALUES (?, ?, ?)`,
+      tokenHash,
+      encryptedBlob,
+      now
+    );
+  }
+
+  // Chunk: docs/chunks/gateway_token_storage - Retrieve encrypted key blob
+  getGatewayKey(
+    tokenHash: string
+  ): { token_hash: string; encrypted_blob: string; created_at: string } | null {
+    this.ensureSchema();
+    const rows = [
+      ...this.sql.sql.exec(
+        `SELECT token_hash, encrypted_blob, created_at FROM gateway_keys WHERE token_hash = ?`,
+        tokenHash
+      ),
+    ];
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      token_hash: row.token_hash as string,
+      encrypted_blob: row.encrypted_blob as string,
+      created_at: row.created_at as string,
+    };
+  }
+
+  // Chunk: docs/chunks/gateway_token_storage - Delete encrypted key blob (revocation)
+  deleteGatewayKey(tokenHash: string): boolean {
+    this.ensureSchema();
+    const beforeRows = [
+      ...this.sql.sql.exec(
+        `SELECT COUNT(*) as cnt FROM gateway_keys WHERE token_hash = ?`,
+        tokenHash
+      ),
+    ];
+    const beforeCount = beforeRows[0].cnt as number;
+    if (beforeCount === 0) return false;
+
+    this.sql.sql.exec(
+      `DELETE FROM gateway_keys WHERE token_hash = ?`,
+      tokenHash
+    );
+    return true;
   }
 }

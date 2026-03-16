@@ -27,15 +27,20 @@ export default {
       );
     }
 
+    // Route to the correct Durable Object by swarm ID
+    const id = env.SWARM_DO.idFromName(swarmId);
+    const stub = env.SWARM_DO.get(id);
+
+    // Chunk: docs/chunks/gateway_token_storage - Route gateway key requests as plain HTTP
+    if (url.pathname.startsWith("/gateway/keys")) {
+      return stub.fetch(request);
+    }
+
     // Only forward WebSocket upgrade requests to the DO
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
     }
-
-    // Route to the correct Durable Object by swarm ID
-    const id = env.SWARM_DO.idFromName(swarmId);
-    const stub = env.SWARM_DO.get(id);
 
     return stub.fetch(request);
   },

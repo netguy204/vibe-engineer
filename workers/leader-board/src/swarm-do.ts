@@ -46,6 +46,13 @@ export class SwarmDO implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Chunk: docs/chunks/gateway_token_storage - HTTP routes for gateway key storage
+    if (url.pathname.startsWith("/gateway/keys")) {
+      return this.handleGatewayKeys(request, url);
+    }
+
     // Only accept WebSocket upgrades
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
@@ -67,6 +74,106 @@ export class SwarmDO implements DurableObject {
     server.send(serializeFrame(challengeFrame));
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Chunk: docs/chunks/gateway_token_storage - Gateway key CRUD handler
+  private async handleGatewayKeys(
+    request: Request,
+    url: URL
+  ): Promise<Response> {
+    const jsonHeaders = { "Content-Type": "application/json" };
+
+    // Extract token_hash from path: /gateway/keys/{token_hash}
+    const pathParts = url.pathname.split("/");
+    // pathParts: ["", "gateway", "keys", token_hash?]
+    const tokenHashFromPath = pathParts.length > 3 ? pathParts[3] : null;
+
+    switch (request.method) {
+      case "PUT": {
+        let body: { token_hash?: string; encrypted_blob?: string };
+        try {
+          body = (await request.json()) as {
+            token_hash?: string;
+            encrypted_blob?: string;
+          };
+        } catch {
+          return new Response(
+            JSON.stringify({ error: "Invalid JSON body" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        if (
+          !body.token_hash ||
+          typeof body.token_hash !== "string" ||
+          !body.encrypted_blob ||
+          typeof body.encrypted_blob !== "string"
+        ) {
+          return new Response(
+            JSON.stringify({
+              error: "Missing required fields: token_hash, encrypted_blob",
+            }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        this.storage.putGatewayKey(body.token_hash, body.encrypted_blob);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
+
+      case "GET": {
+        if (!tokenHashFromPath) {
+          return new Response(
+            JSON.stringify({ error: "Missing token_hash in path" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        const key = this.storage.getGatewayKey(tokenHashFromPath);
+        if (!key) {
+          return new Response(
+            JSON.stringify({ error: "Key not found" }),
+            { status: 404, headers: jsonHeaders }
+          );
+        }
+
+        return new Response(JSON.stringify(key), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
+
+      case "DELETE": {
+        if (!tokenHashFromPath) {
+          return new Response(
+            JSON.stringify({ error: "Missing token_hash in path" }),
+            { status: 400, headers: jsonHeaders }
+          );
+        }
+
+        const deleted = this.storage.deleteGatewayKey(tokenHashFromPath);
+        if (!deleted) {
+          return new Response(
+            JSON.stringify({ error: "Key not found" }),
+            { status: 404, headers: jsonHeaders }
+          );
+        }
+
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
+
+      default:
+        return new Response(
+          JSON.stringify({ error: "Method not allowed" }),
+          { status: 405, headers: jsonHeaders }
+        );
+    }
   }
 
   // --- Hibernation API handlers ---
