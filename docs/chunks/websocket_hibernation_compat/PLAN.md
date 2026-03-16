@@ -10,170 +10,116 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a targeted removal of the alarm-based heartbeat mechanism added by `websocket_keepalive` from the Cloudflare DO worker, plus cleanup of the application-level `PingFrame` protocol type that only existed to support it. The local Starlette server (`server.py`) also has a heartbeat loop that uses `PingFrame`—this must be removed for consistency.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The key insight: Cloudflare's runtime already handles WebSocket keepalive at the protocol level. Incoming ping frames receive automatic pong responses *without interrupting hibernation*. The client-side `ping_interval=20` / `ping_timeout=10` on the `websockets` library sends protocol-level pings that the runtime auto-responds to. No application-level ping frames are needed.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**What stays:**
+- Client-side `ping_interval`/`ping_timeout` configuration in `BoardClient.connect()` — this drives protocol-level pings
+- Client-side `watch_with_reconnect()` — safety net for transient disconnects
+- Compaction alarm logic in `alarm()` — only fires when compaction is due
+- `ensureAlarm()` — schedules compaction-only alarms
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/websocket_hibernation_compat/GOAL.md)
-with references to the files that you expect to touch.
--->
+**What goes:**
+- `HEARTBEAT_INTERVAL_MS` constant and `ensureHeartbeatAlarm()` in `swarm-do.ts`
+- Heartbeat ping-sending logic in `alarm()` and dynamic alarm interval based on WebSocket count
+- `PingFrame` interface in `protocol.ts` and its inclusion in `ServerFrame` union
+- `PingFrame` dataclass in `protocol.py`, its `ServerFrame` union membership, and serialization case
+- `_heartbeat_loop()` in `server.py` and the heartbeat task lifecycle in `websocket_handler()`
+- `HEARTBEAT_INTERVAL` constant in `server.py`
+- `_recv_data_frame()` ping-filtering method in `client.py` — callers revert to direct `recv()` + `json.loads()`
+- Test cases for ping frame filtering in `test_board_client.py`
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Testing approach follows TESTING_PHILOSOPHY.md: update existing tests that relied on `PingFrame` behavior, remove tests that only verified ping filtering (now meaningless), and keep reconnect tests untouched (that behavior is preserved).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Remove heartbeat alarm from `swarm-do.ts`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**Location:** `workers/leader-board/src/swarm-do.ts`
 
-Example:
+1. Delete `HEARTBEAT_INTERVAL_MS` constant (line 92)
+2. Delete `ensureHeartbeatAlarm()` method (lines 896-904)
+3. Remove the call to `ensureHeartbeatAlarm()` in `webSocketMessage` / WebSocket accept path (line 180) — replace with a call to `ensureAlarm()` so that the compaction alarm is still scheduled when a WebSocket connects
+4. In `alarm()`:
+   - Remove the ping-sending loop (lines 582-589) that iterates `ctx.getWebSockets()` and sends `serializeFrame({type:"ping"})`
+   - Remove the dynamic `nextInterval` logic (lines 601-606) that chooses between heartbeat and compaction interval
+   - Keep the compaction logic intact (lines 591-599)
+   - After compaction, always reschedule at `COMPACTION_INTERVAL_MS`
+5. Simplify `ensureAlarm()` (lines 906-916): remove the WebSocket-count check — always use `COMPACTION_INTERVAL_MS`
+6. Remove the `lastCompactionAt` tracking field (line 578) and the time-elapsed guard in `alarm()` (line 593) — with only compaction alarms firing at 24h intervals, there's no need to gate compaction within alarm ticks. Every alarm tick *is* a compaction tick.
+7. Update backreference comments: replace `websocket_keepalive` references with `websocket_hibernation_compat` where the logic is being changed, remove backreferences on deleted code.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Remove `PingFrame` from TypeScript protocol
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+**Location:** `workers/leader-board/src/protocol.ts`
 
-Location: src/segment/format.rs
+1. Delete the `PingFrame` interface (lines 90-92)
+2. Remove `PingFrame` from the `ServerFrame` union type (line 113)
+3. Remove the `import` of `serializeFrame` for ping in `swarm-do.ts` if it becomes unused (check — it's still used for other frame types, so the import stays)
 
-### Step 2: Implement header serialization
+### Step 3: Remove heartbeat from local Starlette server
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Location:** `src/leader_board/server.py`
 
-### Step 3: ...
+1. Delete `HEARTBEAT_INTERVAL` constant (line 58)
+2. Delete `_heartbeat_loop()` function (lines 67-74)
+3. In `websocket_handler()`:
+   - Remove `heartbeat_task = asyncio.create_task(_heartbeat_loop(ws))` (line 198)
+   - In the `finally` block (lines 296-301), remove the heartbeat task cancellation/cleanup
+4. Remove the `PingFrame` import (line 41) since nothing in server.py uses it anymore
+5. Update backreference comments.
 
----
+### Step 4: Remove `PingFrame` from Python protocol
 
-**BACKREFERENCE COMMENTS**
+**Location:** `src/leader_board/protocol.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+1. Delete the `PingFrame` dataclass (lines 137-141)
+2. Remove `PingFrame` from the `ServerFrame` union (line 161)
+3. Remove the `PingFrame` serialization case in `serialize_server_frame()` (lines 257-258)
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Remove ping filtering from Python client
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**Location:** `src/board/client.py`
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+1. Delete the `_recv_data_frame()` method (lines 121-132)
+2. Replace all call sites with inline `json.loads(await self._ws.recv())`:
+   - `send()` (line 144): `response = json.loads(await self._ws.recv())`
+   - `watch()` (line 163): `response = json.loads(await self._ws.recv())`
+   - `channels()` or similar (line 240): `response = json.loads(await self._ws.recv())`
+3. Remove the backreference comment for `_recv_data_frame`.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Update tests
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Location:** `tests/test_board_client.py`
 
-## Dependencies
+1. **Remove ping-filtering tests** (lines 176-219):
+   - Delete `test_watch_ignores_ping_frames()`
+   - Delete `test_send_ignores_ping_frames()`
+   - These tested behavior that no longer exists (application-level ping filtering)
+2. **Update test fixtures** in remaining tests: Remove any `{"type":"ping"}` frames from mock WebSocket message sequences, since the server no longer sends them
+3. **Keep all reconnect tests** untouched — `watch_with_reconnect()` behavior is preserved
+4. **Run full test suite** to verify nothing else breaks: `uv run pytest tests/`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 7: Update GOAL.md code_paths
 
-If there are no dependencies, delete this section.
--->
+**Location:** `docs/chunks/websocket_hibernation_compat/GOAL.md`
+
+Update the `code_paths` frontmatter to list all files touched:
+- `workers/leader-board/src/swarm-do.ts`
+- `workers/leader-board/src/protocol.ts`
+- `src/leader_board/server.py`
+- `src/leader_board/protocol.py`
+- `src/board/client.py`
+- `tests/test_board_client.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Local Starlette server idle disconnects**: The local server (`server.py`) doesn't benefit from Cloudflare's automatic ping/pong. Removing `_heartbeat_loop` may reintroduce idle disconnects for local development. However, the client still sends protocol-level pings via `ping_interval=20`, and the `websockets` library (used by both client and Starlette's ASGI layer) handles ping/pong at the protocol level. This should be sufficient, but warrants verification.
+- **`ensureAlarm` on WebSocket connect**: After removing `ensureHeartbeatAlarm()`, we still want to ensure *some* alarm exists when WebSockets connect (for compaction). Replacing with `ensureAlarm()` handles this — it schedules a compaction alarm if none exists.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

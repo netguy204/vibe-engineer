@@ -38,7 +38,6 @@ from leader_board.protocol import (
     ErrorFrame,
     InvalidFrameError,
     MessageFrame,
-    PingFrame,
     RegisterSwarmFrame,
     SendFrame,
     SwarmInfoFrame,
@@ -54,24 +53,11 @@ DEFAULT_STORAGE_DIR = Path.home() / ".ve" / "leader_board"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8374
 DEFAULT_COMPACTION_INTERVAL = 3600  # 1 hour
-# Chunk: docs/chunks/websocket_keepalive - WebSocket keepalive heartbeat
-HEARTBEAT_INTERVAL = 30  # seconds
 
 
 # ---------------------------------------------------------------------------
 # WebSocket connection handler
 # ---------------------------------------------------------------------------
-
-
-# Chunk: docs/chunks/websocket_keepalive - Server-side heartbeat loop
-async def _heartbeat_loop(ws: WebSocket, interval: int = HEARTBEAT_INTERVAL) -> None:
-    """Send periodic ping frames to keep the WebSocket connection alive."""
-    while True:
-        await asyncio.sleep(interval)
-        try:
-            await ws.send_text(serialize_server_frame(PingFrame()))
-        except Exception:
-            break
 
 
 async def _send_frame(ws: WebSocket, frame) -> None:
@@ -194,8 +180,6 @@ async def websocket_handler(ws: WebSocket) -> None:
 
     # Step 4: Message loop
     watch_tasks: list[asyncio.Task] = []
-    # Chunk: docs/chunks/websocket_keepalive - Spawn heartbeat after auth
-    heartbeat_task = asyncio.create_task(_heartbeat_loop(ws))
 
     try:
         while True:
@@ -293,12 +277,7 @@ async def websocket_handler(ws: WebSocket) -> None:
                     "Unexpected frame type in post-auth context",
                 )
     finally:
-        # Cancel heartbeat and any outstanding watch tasks
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except (asyncio.CancelledError, Exception):
-            pass
+        # Cancel any outstanding watch tasks
         for task in watch_tasks:
             task.cancel()
         for task in watch_tasks:

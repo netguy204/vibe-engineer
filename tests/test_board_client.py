@@ -169,57 +169,6 @@ async def test_channels_frame(keypair):
 
 
 # ---------------------------------------------------------------------------
-# Chunk: docs/chunks/websocket_keepalive - Ping frame filtering tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_watch_ignores_ping_frames(keypair):
-    """watch() skips server ping frames and returns the next message frame."""
-    seed, pub, swarm_id = keypair
-    challenge = json.dumps({"type": "challenge", "nonce": "aa" * 32})
-    auth_ok = json.dumps({"type": "auth_ok"})
-    ping1 = json.dumps({"type": "ping"})
-    ping2 = json.dumps({"type": "ping"})
-    msg = json.dumps({
-        "type": "message",
-        "channel": "ch1",
-        "position": 7,
-        "body": "data==",
-        "sent_at": "2026-03-16T00:00:00Z",
-    })
-
-    mock_ws = _make_mock_ws([challenge, auth_ok, ping1, ping2, msg])
-
-    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
-        client = BoardClient("ws://localhost:8787", swarm_id, seed)
-        await client.connect()
-        result = await client.watch("ch1", 6)
-
-    assert result["position"] == 7
-    assert result["body"] == "data=="
-
-
-@pytest.mark.asyncio
-async def test_send_ignores_ping_frames(keypair):
-    """send() skips server ping frames and returns the ack."""
-    seed, pub, swarm_id = keypair
-    challenge = json.dumps({"type": "challenge", "nonce": "aa" * 32})
-    auth_ok = json.dumps({"type": "auth_ok"})
-    ping = json.dumps({"type": "ping"})
-    ack = json.dumps({"type": "ack", "channel": "ch1", "position": 10})
-
-    mock_ws = _make_mock_ws([challenge, auth_ok, ping, ack])
-
-    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
-        client = BoardClient("ws://localhost:8787", swarm_id, seed)
-        await client.connect()
-        position = await client.send("ch1", "body==")
-
-    assert position == 10
-
-
-# ---------------------------------------------------------------------------
 # Chunk: docs/chunks/websocket_keepalive - Reconnect logic tests
 # ---------------------------------------------------------------------------
 

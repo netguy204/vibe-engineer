@@ -1,8 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: websocket_keepalive
-code_paths: []
+code_paths:
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/src/protocol.ts
+- src/leader_board/server.py
+- src/leader_board/protocol.py
+- src/board/client.py
+- tests/test_board_client.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +16,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["websocket_keepalive"]
+created_after:
+- websocket_keepalive
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

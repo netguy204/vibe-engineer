@@ -135,13 +135,6 @@ class SwarmInfoResponseFrame:
 
 
 @dataclass(frozen=True)
-class PingFrame:
-    """Server keepalive ping. Clients should ignore this frame."""
-
-    pass
-
-
-@dataclass(frozen=True)
 class ErrorFrame:
     """Error response."""
 
@@ -158,7 +151,6 @@ ServerFrame = Union[
     AckFrame,
     ChannelsListFrame,
     SwarmInfoResponseFrame,
-    PingFrame,
     ErrorFrame,
 ]
 
@@ -254,8 +246,6 @@ def serialize_server_frame(frame: ServerFrame) -> str:
             "swarm": frame.swarm,
             "created_at": frame.created_at,
         }
-    elif isinstance(frame, PingFrame):
-        obj = {"type": "ping"}
     elif isinstance(frame, ErrorFrame):
         obj: dict = {"type": "error", "code": frame.code, "message": frame.message}
         if frame.earliest_position is not None:

@@ -117,20 +117,6 @@ class BoardClient:
             if response.get("type") != "auth_ok":
                 raise BoardError("protocol_error", f"Expected auth_ok, got {response.get('type')}")
 
-    # Chunk: docs/chunks/websocket_keepalive - Filter out server ping frames
-    async def _recv_data_frame(self) -> dict:
-        """Receive the next non-ping frame from the WebSocket.
-
-        Loops on recv(), discarding any ``{"type":"ping"}`` keepalive frames
-        sent by the server, and returns the first data frame.
-        """
-        while True:
-            response_raw = await self._ws.recv()
-            response = json.loads(response_raw)
-            if response.get("type") == "ping":
-                continue
-            return response
-
     async def send(self, channel: str, body_b64: str) -> int:
         """Send a message. Returns the assigned position."""
         frame = {
@@ -141,7 +127,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response = await self._recv_data_frame()
+        response = json.loads(await self._ws.recv())
         self._check_error(response)
         if response.get("type") != "ack":
             raise BoardError("protocol_error", f"Expected ack, got {response.get('type')}")
@@ -160,7 +146,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response = await self._recv_data_frame()
+        response = json.loads(await self._ws.recv())
         self._check_error(response)
         if response.get("type") != "message":
             raise BoardError("protocol_error", f"Expected message, got {response.get('type')}")
@@ -237,7 +223,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response = await self._recv_data_frame()
+        response = json.loads(await self._ws.recv())
         self._check_error(response)
         if response.get("type") != "channels_list":
             raise BoardError("protocol_error", f"Expected channels_list, got {response.get('type')}")
