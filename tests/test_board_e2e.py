@@ -111,6 +111,7 @@ def test_send_watch_ack_cycle(e2e_env):
         instance = MockClient.return_value
         instance.connect = AsyncMock()
         instance.watch = AsyncMock(side_effect=mock_watch)
+        instance.watch_with_reconnect = AsyncMock(side_effect=mock_watch)
         instance.close = AsyncMock()
 
         result = runner.invoke(board, [
@@ -176,6 +177,7 @@ def test_watch_uses_persisted_cursor(e2e_env):
         instance = MockClient.return_value
         instance.connect = AsyncMock()
         instance.watch = AsyncMock(side_effect=mock_watch)
+        instance.watch_with_reconnect = AsyncMock(side_effect=mock_watch)
         instance.close = AsyncMock()
 
         result = runner.invoke(board, [

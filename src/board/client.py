@@ -9,12 +9,17 @@ Spec reference: docs/trunk/SPEC.md §Wire Protocol, §Authentication Flow
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import random
 from typing import Any
 
 import websockets
 
 from board.crypto import sign
+
+logger = logging.getLogger(__name__)
 
 
 class BoardError(Exception):
@@ -49,7 +54,10 @@ class BoardClient:
     async def connect(self) -> None:
         """Open WebSocket and perform auth handshake."""
         url = f"{self.server_url}/ws?swarm={self.swarm_id}"
-        self._ws = await websockets.connect(url, close_timeout=1)
+        # Chunk: docs/chunks/websocket_keepalive - Configure client-side ping for dead connection detection
+        self._ws = await websockets.connect(
+            url, close_timeout=1, ping_interval=20, ping_timeout=10
+        )
 
         # Receive challenge
         challenge_raw = await self._ws.recv()
@@ -109,6 +117,20 @@ class BoardClient:
             if response.get("type") != "auth_ok":
                 raise BoardError("protocol_error", f"Expected auth_ok, got {response.get('type')}")
 
+    # Chunk: docs/chunks/websocket_keepalive - Filter out server ping frames
+    async def _recv_data_frame(self) -> dict:
+        """Receive the next non-ping frame from the WebSocket.
+
+        Loops on recv(), discarding any ``{"type":"ping"}`` keepalive frames
+        sent by the server, and returns the first data frame.
+        """
+        while True:
+            response_raw = await self._ws.recv()
+            response = json.loads(response_raw)
+            if response.get("type") == "ping":
+                continue
+            return response
+
     async def send(self, channel: str, body_b64: str) -> int:
         """Send a message. Returns the assigned position."""
         frame = {
@@ -119,8 +141,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response_raw = await self._ws.recv()
-        response = json.loads(response_raw)
+        response = await self._recv_data_frame()
         self._check_error(response)
         if response.get("type") != "ack":
             raise BoardError("protocol_error", f"Expected ack, got {response.get('type')}")
@@ -139,8 +160,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response_raw = await self._ws.recv()
-        response = json.loads(response_raw)
+        response = await self._recv_data_frame()
         self._check_error(response)
         if response.get("type") != "message":
             raise BoardError("protocol_error", f"Expected message, got {response.get('type')}")
@@ -150,6 +170,65 @@ class BoardClient:
             "sent_at": response["sent_at"],
         }
 
+    # Chunk: docs/chunks/websocket_keepalive - Reconnect wrapper for watch()
+    async def watch_with_reconnect(
+        self,
+        channel: str,
+        cursor: int,
+        max_retries: int | None = None,
+    ) -> dict:
+        """Watch with automatic reconnect on connection failure.
+
+        On disconnect, reconnects with exponential backoff and re-sends the
+        watch frame from the same cursor position. No messages are lost because
+        the cursor tracks the last processed position.
+
+        Parameters
+        ----------
+        channel:
+            Channel to watch.
+        cursor:
+            Position to watch after.
+        max_retries:
+            Maximum reconnect attempts. ``None`` means unlimited.
+
+        Returns dict with keys: position, body, sent_at.
+        """
+        attempt = 0
+        backoff = 1.0
+        max_backoff = 30.0
+
+        while True:
+            try:
+                return await self.watch(channel, cursor)
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+                ConnectionError,
+                OSError,
+            ):
+                attempt += 1
+                if max_retries is not None and attempt > max_retries:
+                    raise
+
+                # Exponential backoff with jitter
+                jitter = random.uniform(0, backoff * 0.5)
+                wait_time = min(backoff + jitter, max_backoff)
+                logger.warning(
+                    "WebSocket disconnected, reconnecting in %.1fs (attempt %d)...",
+                    wait_time,
+                    attempt,
+                )
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * 2, max_backoff)
+
+                # Re-establish connection and re-authenticate
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                await self.connect()
+
     async def list_channels(self) -> list[dict]:
         """List channels in the swarm."""
         frame = {
@@ -158,8 +237,7 @@ class BoardClient:
         }
         await self._ws.send(json.dumps(frame))
 
-        response_raw = await self._ws.recv()
-        response = json.loads(response_raw)
+        response = await self._recv_data_frame()
         self._check_error(response)
         if response.get("type") != "channels_list":
             raise BoardError("protocol_error", f"Expected channels_list, got {response.get('type')}")

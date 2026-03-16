@@ -22,7 +22,7 @@ code_references:
   - ref: workers/leader-board/src/index.ts
     implements: "Worker entry point — routes WebSocket connections to correct SwarmDO by swarm query param or invite token path"
   - ref: workers/leader-board/src/swarm-do.ts#SwarmDO
-    implements: "Durable Object class per swarm — owns connection lifecycle, auth handshake, post-auth frame dispatch, watcher wake-up, and compaction alarm"
+    implements: "Durable Object class per swarm — owns connection lifecycle, auth handshake, post-auth frame dispatch, watcher wake-up, compaction alarm, and WebSocket keepalive heartbeats"
   - ref: workers/leader-board/src/swarm-do.ts#Env
     implements: "Worker environment interface declaring SWARM_DO binding and TOKEN_SWARM_INDEX KV namespace"
   - ref: workers/leader-board/src/storage.ts#SwarmStorage

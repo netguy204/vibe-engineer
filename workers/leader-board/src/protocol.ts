@@ -87,6 +87,10 @@ export interface SwarmInfoResponseFrame {
   created_at: string;
 }
 
+export interface PingFrame {
+  type: "ping";
+}
+
 export interface ErrorFrame {
   type: "error";
   code: string;
@@ -106,6 +110,7 @@ export type ServerFrame =
   | AckFrame
   | ChannelsListFrame
   | SwarmInfoResponseFrame
+  | PingFrame
   | ErrorFrame;
 
 // --- Parsing ---

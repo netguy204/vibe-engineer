@@ -143,11 +143,13 @@ def test_watch_command(runner, stored_swarm, tmp_path):
 
         instance = MockClient.return_value
         instance.connect = AsyncMock()
-        instance.watch = AsyncMock(return_value={
+        watch_return = {
             "position": 1,
             "body": encrypted_body,
             "sent_at": "2026-03-15T14:30:00Z",
-        })
+        }
+        instance.watch = AsyncMock(return_value=watch_return)
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
         instance.close = AsyncMock()
 
         result = runner.invoke(board, [
@@ -176,11 +178,13 @@ def test_watch_does_not_advance_cursor(runner, stored_swarm, tmp_path):
 
         instance = MockClient.return_value
         instance.connect = AsyncMock()
-        instance.watch = AsyncMock(return_value={
+        watch_return = {
             "position": 5,
             "body": encrypted_body,
             "sent_at": "2026-03-15T14:30:00Z",
-        })
+        }
+        instance.watch = AsyncMock(return_value=watch_return)
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
         instance.close = AsyncMock()
 
         result = runner.invoke(board, [
@@ -464,11 +468,13 @@ def test_watch_resolves_from_config(runner, stored_swarm, tmp_path):
 
         instance = MockClient.return_value
         instance.connect = AsyncMock()
-        instance.watch = AsyncMock(return_value={
+        watch_return = {
             "position": 1,
             "body": encrypted_body,
             "sent_at": "2026-03-15T14:30:00Z",
-        })
+        }
+        instance.watch = AsyncMock(return_value=watch_return)
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
         instance.close = AsyncMock()
 
         result = runner.invoke(board, [
