@@ -482,13 +482,14 @@ def invite_list_cmd(swarm: str | None, server: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# revoke
+# revoke (subcommand of invite)
 # ---------------------------------------------------------------------------
 
 
 # Chunk: docs/chunks/invite_cli_command
 # Chunk: docs/chunks/invite_list_revoke - Added --all flag for bulk revocation
-@board.command("revoke")
+# Chunk: docs/chunks/invite_revoke_subcommand - Moved from board to invite group
+@invite.command("revoke")
 @click.argument("token", required=False, default=None)
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
@@ -537,3 +538,21 @@ def revoke_cmd(token: str | None, swarm: str | None, server: str | None, revoke_
         else:
             click.echo(f"Error: server returned {response.status_code}", err=True)
             sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# deprecated alias: ve board revoke → ve board invite revoke
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/invite_revoke_subcommand - Deprecated alias for old location
+@board.command("revoke")
+@click.argument("token", required=False, default=None)
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--all", "revoke_all", is_flag=True, help="Revoke all tokens for this swarm")
+@click.pass_context
+def revoke_deprecated(ctx, token: str | None, swarm: str | None, server: str | None, revoke_all: bool) -> None:
+    """Revoke an invite token (deprecated — use 've board invite revoke')."""
+    click.echo("Warning: 've board revoke' is deprecated. Use 've board invite revoke' instead.", err=True)
+    ctx.invoke(revoke_cmd, token=token, swarm=swarm, server=server, revoke_all=revoke_all)
