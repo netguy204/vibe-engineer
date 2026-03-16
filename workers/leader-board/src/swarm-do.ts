@@ -127,10 +127,11 @@ interface Watcher {
 }
 
 // Chunk: docs/chunks/leader_board_hibernate_watch - WebSocket attachment schema
+// Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
 interface WsAttachment {
   state: "handshake" | "authenticated";
   nonce?: string;
-  watching?: { channel: string; cursor: number };
+  watching?: Array<{ channel: string; cursor: number }>;
 }
 
 export class SwarmDO implements DurableObject {
@@ -777,8 +778,18 @@ export class SwarmDO implements DurableObject {
     channelWatchers.add({ ws, cursor: frame.cursor });
 
     // Chunk: docs/chunks/leader_board_hibernate_watch - Persist watch state for hibernation recovery
+    // Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     const attachment = ws.deserializeAttachment() as WsAttachment;
-    attachment.watching = { channel: frame.channel, cursor: frame.cursor };
+    if (!attachment.watching) {
+      attachment.watching = [];
+    }
+    // Replace existing entry for same channel, or append new one
+    const existingIdx = attachment.watching.findIndex(w => w.channel === frame.channel);
+    if (existingIdx >= 0) {
+      attachment.watching[existingIdx].cursor = frame.cursor;
+    } else {
+      attachment.watching.push({ channel: frame.channel, cursor: frame.cursor });
+    }
     ws.serializeAttachment(attachment);
   }
 
@@ -831,9 +842,14 @@ export class SwarmDO implements DurableObject {
                 sent_at: msg.sent_at,
               };
               watcher.ws.send(serializeFrame(msgFrame));
-              // Clear watch state from attachment after delivery
+              // Chunk: docs/chunks/multichannel_watch - Remove only delivered channel's watch entry
               const att = watcher.ws.deserializeAttachment() as WsAttachment;
-              delete att.watching;
+              if (att.watching) {
+                att.watching = att.watching.filter(w => w.channel !== channel);
+                if (att.watching.length === 0) {
+                  delete att.watching;
+                }
+              }
               watcher.ws.serializeAttachment(att);
             } catch {
               // WebSocket may have closed — will be cleaned up
@@ -854,28 +870,32 @@ export class SwarmDO implements DurableObject {
 
     // 2. Hibernation recovery: scan all connected WebSockets
     // Chunk: docs/chunks/leader_board_hibernate_watch - Recover watchers after hibernation
+    // Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     const allSockets = this.ctx.getWebSockets();
     for (const ws of allSockets) {
       try {
         const attachment = ws.deserializeAttachment() as WsAttachment;
-        if (
-          attachment?.watching?.channel === channel &&
-          attachment.watching.cursor < newPosition
-        ) {
-          const msg = this.storage.readAfter(channel, attachment.watching.cursor);
-          if (msg) {
-            const msgFrame: ServerFrame = {
-              type: "message",
-              channel: msg.channel,
-              position: msg.position,
-              body: msg.body,
-              sent_at: msg.sent_at,
-            };
-            ws.send(serializeFrame(msgFrame));
-            // Clear watch state after delivery
-            delete attachment.watching;
-            ws.serializeAttachment(attachment);
-          }
+        if (!attachment?.watching || attachment.watching.length === 0) continue;
+
+        const matchIdx = attachment.watching.findIndex(
+          w => w.channel === channel && w.cursor < newPosition
+        );
+        if (matchIdx < 0) continue;
+
+        const watchEntry = attachment.watching[matchIdx];
+        const msg = this.storage.readAfter(channel, watchEntry.cursor);
+        if (msg) {
+          const msgFrame: ServerFrame = {
+            type: "message",
+            channel: msg.channel,
+            position: msg.position,
+            body: msg.body,
+            sent_at: msg.sent_at,
+          };
+          ws.send(serializeFrame(msgFrame));
+          // Remove delivered watch entry (other channels remain)
+          attachment.watching.splice(matchIdx, 1);
+          ws.serializeAttachment(attachment);
         }
       } catch {
         // WebSocket may have closed
@@ -897,9 +917,10 @@ export class SwarmDO implements DurableObject {
     }
 
     // Chunk: docs/chunks/leader_board_hibernate_watch - Clear attachment watch state
+    // Chunk: docs/chunks/multichannel_watch - Clear all channel watches on disconnect
     try {
       const attachment = ws.deserializeAttachment() as WsAttachment;
-      if (attachment?.watching) {
+      if (attachment?.watching && attachment.watching.length > 0) {
         delete attachment.watching;
         ws.serializeAttachment(attachment);
       }

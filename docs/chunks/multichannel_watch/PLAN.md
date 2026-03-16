@@ -10,170 +10,258 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The existing wire protocol already supports multi-channel watch on a single
+connection. Both the Python local server (`server.py`) and the Cloudflare DO
+(`swarm-do.ts`) handle concurrent `WatchFrame` messages per WebSocket — each
+watch frame spawns a separate blocking task (Python) or registers a separate
+per-channel watcher (DO). The `MessageFrame` already tags responses with the
+`channel` field, so no new frame types are needed.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The strategy is:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Fix the DO hibernation limitation**: `WsAttachment.watching` currently
+   stores a single `{channel, cursor}`. Change it to an array so multiple
+   pending watches survive hibernation. This is the only server-side change.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/multichannel_watch/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Add `watch_multi()` to `BoardClient`**: Send N watch frames (one per
+   channel), then enter a receive loop that yields messages as they arrive
+   from any channel. After receiving a message, re-send the watch frame for
+   that channel with the updated cursor to continue watching.
+
+3. **Add `ve board watch-multi` CLI command**: Accept multiple channels,
+   resolve per-channel cursors, and stream decrypted messages tagged with
+   channel names. This is a long-running command (blocks until Ctrl-C).
+
+4. **Update the swarm-monitor template**: Replace N background `ve board watch`
+   invocations with a single `ve board watch-multi` invocation.
+
+No new protocol frames are required. The multi-channel behavior is achieved
+entirely through the existing protocol's support for concurrent watch frames
+on a single authenticated connection (per DEC-001, the CLI remains the entry
+point; per DEC-005, no git operations are prescribed).
+
+Testing follows TDD per `docs/trunk/TESTING_PHILOSOPHY.md`:
+- Unit tests for `watch_multi()` client method
+- CLI integration tests for `ve board watch-multi`
+- Unit tests for the DO hibernation attachment change
+- Existing single-channel `watch` tests must continue to pass
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems in `docs/subsystems/` are directly relevant to this chunk.
+The leader board is not yet documented as a subsystem. The template system
+subsystem is tangentially touched (swarm-monitor template update) but this
+chunk USES it, not implements it.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Fix DO hibernation attachment for multi-channel watches
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+The `WsAttachment` interface in `workers/leader-board/src/swarm-do.ts`
+currently stores `watching?: { channel: string; cursor: number }` (singular).
+When multiple watch frames are sent on one connection, only the last one's
+state is persisted for hibernation recovery.
 
-Example:
+Changes:
+- Change `WsAttachment.watching` from a single object to an array:
+  `watching?: Array<{ channel: string; cursor: number }>`
+- Update `handleWatch()` to append to the array instead of overwriting
+- Update `wakeWatchers()` hibernation recovery path to iterate the array
+  and deliver messages for any matching channel, removing entries as they
+  are delivered
+- Update `removeWatcher()` to clear the full array
+- Update the `webSocketMessage()` hibernation recovery in the auth flow to
+  restore all watch entries, not just one
 
-### Step 1: Define the SegmentHeader struct
+Location: `workers/leader-board/src/swarm-do.ts`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Add tests for DO multi-watch hibernation
 
-Location: src/segment/format.rs
+Add test cases in `workers/leader-board/test/e2e.test.ts` that:
+- Send two watch frames on one connection for different channels
+- Send a message to each channel on a separate connection
+- Verify that both messages are received on the original connection
+- Verify that the message frames are tagged with the correct channel
 
-### Step 2: Implement header serialization
+Location: `workers/leader-board/test/e2e.test.ts`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Add `watch_multi()` to BoardClient
 
-### Step 3: ...
+Add an async generator method to `src/board/client.py`:
 
----
+```python
+async def watch_multi(
+    self,
+    channels: dict[str, int],  # {channel_name: cursor}
+) -> AsyncGenerator[dict, None]:
+    """Watch multiple channels on a single connection.
 
-**BACKREFERENCE COMMENTS**
+    Sends a watch frame for each channel, then yields messages as they
+    arrive from any channel. After yielding a message, automatically
+    re-sends the watch frame for that channel with cursor = message.position.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Yields dicts with keys: channel, position, body, sent_at.
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implementation:
+- Send one `WatchFrame` per channel (reuse existing frame format)
+- Enter a receive loop: `await self._ws.recv()`
+- On each message, yield it and re-send the watch frame for that channel
+  with `cursor=message.position` so it blocks for the next message
+- Handle errors per-channel (e.g., `channel_not_found` for one channel
+  shouldn't kill the whole watch)
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Also add `watch_multi_with_reconnect()` that wraps `watch_multi()` with
+reconnect logic similar to `watch_with_reconnect()`. On reconnect, re-send
+all watch frames with their latest known cursors.
+
+Location: `src/board/client.py`
+
+### Step 4: Add unit tests for `watch_multi()`
+
+Write tests in `tests/test_board_client.py`:
+- `test_watch_multi_sends_frames_and_yields_messages`: Mock WebSocket that
+  returns messages from two channels; verify both are yielded with correct
+  channel tags
+- `test_watch_multi_resends_watch_after_message`: Verify that after yielding
+  a message for channel A, the client re-sends a watch frame for channel A
+  with the updated cursor
+- `test_watch_multi_handles_per_channel_error`: One channel returns
+  `channel_not_found`; the other continues watching
+- `test_watch_multi_reconnect`: Simulate disconnect; verify all channels
+  are re-watched with latest cursors after reconnect
+
+Location: `tests/test_board_client.py`
+
+### Step 5: Add `ve board watch-multi` CLI command
+
+Add a new Click command in `src/cli/board.py`:
+
+```python
+@board.command("watch-multi")
+@click.argument("channels", nargs=-1, required=True)
+@click.option("--swarm", default=None)
+@click.option("--server", default=None)
+@click.option("--project-root", type=click.Path(...), default=".")
+@click.option("--no-reconnect", is_flag=True)
+def watch_multi_cmd(channels, swarm, server, project_root, no_reconnect):
+    """Watch multiple channels on a single connection.
+
+    Blocks and prints messages from any subscribed channel.
+    Output format: [channel-name] message text
+    """
+```
+
+Implementation:
+- Resolve swarm config (same pattern as `watch_cmd`)
+- Read per-channel cursors from `.ve/board/cursors/<channel>.cursor`
+- Call `client.watch_multi()` (or `watch_multi_with_reconnect()`)
+- For each yielded message: decrypt, print as `[channel] plaintext`,
+  and advance the cursor file via `ve board ack` logic (or inline cursor
+  write)
+- Run until Ctrl-C (KeyboardInterrupt)
+
+The existing `ve board watch` command remains unchanged — it continues to
+watch a single channel and exit after one message.
+
+Location: `src/cli/board.py`
+
+### Step 6: Add CLI integration tests for `watch-multi`
+
+Write tests in `tests/test_board_cli.py`:
+- `test_watch_multi_command_output_format`: Verify output includes channel
+  prefix `[channel-name]` for each message
+- `test_watch_multi_advances_cursors`: Verify that after receiving messages,
+  cursor files are updated for each channel independently
+- `test_watch_multi_single_connection`: Verify that only one `BoardClient`
+  connection is created (not N)
+
+Use the same mocking patterns as existing `test_watch_command` tests.
+
+Location: `tests/test_board_cli.py`
+
+### Step 7: Update local Python server for concurrent watch cleanup
+
+Review `src/leader_board/server.py` to confirm no changes are needed. The
+server already spawns separate `asyncio.Task` per `WatchFrame` and the
+`MessageFrame` includes the `channel` field, so multi-watch already works.
+
+Verify by running existing server tests with a multi-watch scenario:
+- Send two watch frames on one connection
+- Append a message to each channel
+- Confirm both messages are delivered on the same connection
+
+If the existing test infrastructure doesn't cover this, add a test in
+`tests/test_leader_board_server.py`.
+
+Location: `src/leader_board/server.py`, `tests/test_leader_board_server.py`
+
+### Step 8: Update swarm-monitor template
+
+Update `src/templates/commands/swarm-monitor.md.jinja2` Phase 3 and Phase 4:
+
+**Phase 3 (revised)**: Instead of launching N background `ve board watch`
+commands, instruct the agent to run a single `ve board watch-multi` command
+with all changelog channels. Use `run_in_background` for this single command.
+
+**Phase 4 (revised)**: The `watch-multi` command outputs tagged messages
+inline. The agent reads the background task output and acks each message.
+Since `watch-multi` is long-running, the agent periodically checks the
+background task output rather than waiting for completion.
+
+Note: The swarm-monitor slash command is a Jinja2 template that renders
+into `.claude/commands/swarm-monitor.md`. After editing the template, run
+`ve init` to re-render.
+
+Location: `src/templates/commands/swarm-monitor.md.jinja2`
+
+### Step 9: Re-render templates and run full test suite
+
+1. Run `uv run ve init` to re-render the swarm-monitor template
+2. Run `uv run pytest tests/` to confirm all existing tests pass
+3. Run the TypeScript tests for the CF worker:
+   `cd workers/leader-board && npm test`
+4. Verify that `ve board watch` (single channel) still works unchanged
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- `websocket_reconnect_tuning` chunk (ACTIVE) — provides the reconnect and
+  backoff patterns that `watch_multi_with_reconnect()` will mirror
+- `leader_board_hibernate_watch` chunk (ACTIVE) — provides the hibernation
+  attachment pattern being extended
 
-If there are no dependencies, delete this section.
--->
+No new external libraries are required.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **DO hibernation array size**: If a client watches many channels (50+),
+  the serialized attachment array could grow large. Cloudflare attachment
+  size limit is 2KB. Mitigation: document a reasonable upper bound (e.g.,
+  32 channels) and return an error frame if exceeded.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Message ordering across channels**: `watch_multi` yields messages in
+  the order they arrive on the WebSocket. This is not guaranteed to be
+  chronological across channels (channel A position 5 may arrive before
+  channel B position 3). This is acceptable — the channel tag lets the
+  consumer reason about per-channel ordering.
+
+- **Cursor auto-advance in watch-multi**: The GOAL says existing
+  `ve board watch` doesn't auto-advance cursors. For `watch-multi`,
+  auto-advancing may be more ergonomic since the user won't want to
+  manually ack each message in a multi-channel stream. Decision: auto-advance
+  cursors in `watch-multi` (this is a different command with different UX
+  expectations). If this feels like a significant architectural decision,
+  it can be escalated to the operator.
+
+- **CF Worker fan-out across DOs**: The GOAL mentions that channels may live
+  on different DOs (keyed by swarm). However, all channels within a swarm
+  are on the same DO (the DO is keyed by swarm ID, not by channel). So
+  multi-channel watch within a single swarm requires no worker-level fan-out.
+  Cross-swarm multi-channel watch is out of scope for this chunk.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

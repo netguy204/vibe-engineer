@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 import random
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import websockets
 
@@ -221,6 +221,152 @@ class BoardClient:
                 # connect() succeeds (auth handshake) even when the server will
                 # immediately drop the watch, so resetting attempt here would make
                 # max_retries unreachable in degraded-server scenarios.
+                backoff = 1.0
+
+    # Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
+    async def watch_multi(
+        self,
+        channels: dict[str, int],
+    ) -> AsyncGenerator[dict, None]:
+        """Watch multiple channels on a single connection.
+
+        Sends a watch frame for each channel, then yields messages as they
+        arrive from any channel. After yielding a message, automatically
+        re-sends the watch frame for that channel with cursor = message.position.
+
+        Parameters
+        ----------
+        channels:
+            Mapping of channel name to cursor position.
+
+        Yields dicts with keys: channel, position, body, sent_at.
+        """
+        # Send initial watch frames for all channels
+        for channel, cursor in channels.items():
+            frame = {
+                "type": "watch",
+                "channel": channel,
+                "swarm": self.swarm_id,
+                "cursor": cursor,
+            }
+            await self._ws.send(json.dumps(frame))
+
+        # Track active channels (channels that haven't errored)
+        active_channels = set(channels.keys())
+
+        # Receive loop: yield messages as they arrive from any channel
+        while active_channels:
+            response = json.loads(await self._ws.recv())
+
+            if response.get("type") == "error":
+                # Per-channel error: remove that channel from active set
+                error_msg = response.get("message", "")
+                # Try to extract channel name from error message
+                code = response.get("code", "")
+                if code == "channel_not_found":
+                    # Extract channel name from "Channel not found: <name>"
+                    for ch in list(active_channels):
+                        if ch in error_msg:
+                            active_channels.discard(ch)
+                            logger.warning(
+                                "Channel %r not found, removing from watch", ch
+                            )
+                            break
+                    else:
+                        # Can't determine which channel errored, log and continue
+                        logger.warning("Watch error: %s: %s", code, error_msg)
+                else:
+                    # Non-channel error — raise
+                    raise BoardError(code, error_msg)
+                continue
+
+            if response.get("type") != "message":
+                raise BoardError(
+                    "protocol_error",
+                    f"Expected message, got {response.get('type')}",
+                )
+
+            channel = response["channel"]
+            position = response["position"]
+
+            yield {
+                "channel": channel,
+                "position": position,
+                "body": response["body"],
+                "sent_at": response["sent_at"],
+            }
+
+            # Re-send watch frame for this channel with updated cursor
+            if channel in active_channels:
+                frame = {
+                    "type": "watch",
+                    "channel": channel,
+                    "swarm": self.swarm_id,
+                    "cursor": position,
+                }
+                await self._ws.send(json.dumps(frame))
+
+    async def watch_multi_with_reconnect(
+        self,
+        channels: dict[str, int],
+        max_retries: int | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Watch multiple channels with automatic reconnect on connection failure.
+
+        On disconnect, reconnects with exponential backoff and re-sends all
+        watch frames with their latest known cursors.
+
+        Parameters
+        ----------
+        channels:
+            Initial mapping of channel name to cursor position.
+        max_retries:
+            Maximum reconnect attempts. ``None`` means unlimited.
+
+        Yields dicts with keys: channel, position, body, sent_at.
+        """
+        # Track latest cursors across reconnects
+        cursors = dict(channels)
+        attempt = 0
+        backoff = 1.0
+        max_backoff = 30.0
+
+        while True:
+            try:
+                async for msg in self.watch_multi(cursors):
+                    # Update cursor for the channel that delivered a message
+                    cursors[msg["channel"]] = msg["position"]
+                    # Reset backoff on successful message receipt
+                    attempt = 0
+                    backoff = 1.0
+                    yield msg
+                # Generator exhausted (all channels errored) — stop
+                return
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+                ConnectionError,
+                OSError,
+            ):
+                attempt += 1
+                if max_retries is not None and attempt > max_retries:
+                    raise
+
+                jitter = random.uniform(0, backoff * 0.5)
+                wait_time = min(backoff + jitter, max_backoff)
+                logger.warning(
+                    "WebSocket disconnected, reconnecting in %.1fs (attempt %d)...",
+                    wait_time,
+                    attempt,
+                )
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * 2, max_backoff)
+
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                await self.connect()
                 backoff = 1.0
 
     async def list_channels(self) -> list[dict]:

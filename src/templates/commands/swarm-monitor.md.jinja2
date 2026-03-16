@@ -64,64 +64,53 @@ another-project-changelog           0     3       3
 
 Highlight any channels with unread messages (unread > 0).
 
-### Phase 3: Launch background watches
+### Phase 3: Launch multi-channel watch
 
-For each changelog channel that has **unread messages** OR is **at head**
-(cursor == head, waiting for new messages), start a background watch:
+Start a single `ve board watch-multi` command with all discovered changelog
+channels. This uses one WebSocket connection for all channels instead of
+N separate connections:
 
 ```
-ve board watch <channel> --swarm <swarm_id> [--server <url>]
+ve board watch-multi <channel1> <channel2> ... --swarm <swarm_id> [--server <url>]
 ```
 
-Use `run_in_background` for each watch so they run concurrently.
+Use `run_in_background` so the agent can continue interacting while the
+watch runs. The `watch-multi` command auto-advances cursors after each
+message is delivered and outputs messages tagged with their channel name.
 
-Before launching each watch, note the current cursor position for that
-channel (from the cursor file read in Phase 2). You'll need this for
-acking in Phase 4.
-
-Report to the operator which channels are being watched and how many
-background watches were launched.
-
-**Note:** If the swarm has many changelog channels, this will launch many
-concurrent background watches. If resource usage is a concern, the operator
-can re-run the command and select a subset of channels to monitor.
+Report to the operator which channels are being watched.
 
 ### Phase 4: Report incoming messages
 
-As background watches complete (a message arrives on a channel):
+Periodically check the background `watch-multi` task output. Each line
+is formatted as `[channel-name] message text`.
 
-1. **Display the message** to the operator inline, including which channel
-   it came from. Example:
+For each new message line:
+
+1. **Display the message** to the operator inline. Example:
 
    ```
-   [vibe-engineer-changelog] New message at position 6:
+   [vibe-engineer-changelog] New message:
    <message content>
    ```
 
-2. **Ack the message** to advance the cursor:
+2. Cursors are **auto-advanced** by `watch-multi` — no manual `ve board ack`
+   is needed.
 
-   ```
-   ve board ack <channel> <position>
-   ```
-
-   Where `<position>` is the cursor position noted before watching + 1.
-
-3. **Re-launch the watch** on that channel using `run_in_background` to
-   continue monitoring for more messages.
-
-Repeat this cycle as messages arrive. The monitoring continues until the
-operator stops the session or all watches are complete.
+The monitoring continues until the operator stops the session or the
+background task exits. If the background task exits unexpectedly, re-launch
+it with `run_in_background`.
 
 ### Key Concepts
 
+- **`watch-multi`** watches all channels on a **single connection**,
+  reducing resource usage compared to N separate watch commands.
 - **`run_in_background`** is how the agent waits asynchronously for messages.
-  Do NOT poll. Each `ve board watch` blocks until a message arrives.
-- **Cursor management** is manual — you must `ve board ack` after each
-  message to advance the cursor. Without acking, the next watch will
-  re-deliver the same message.
+  Do NOT poll. The `watch-multi` command blocks and streams messages.
+- **Cursor management** is automatic — `watch-multi` auto-advances cursors
+  after each delivered message. No manual acking is needed.
 - **Channel naming convention**: This command assumes `*-changelog` is the
   pattern for changelog channels. This matches the standard naming
   convention (e.g., `vibe-engineer-changelog`).
-- **Concurrent watches**: All channels are watched in parallel via
-  `run_in_background`. Messages from any channel are reported as they arrive.
+- **Output format**: Each line is `[channel-name] decrypted message text`.
 {% endraw %}

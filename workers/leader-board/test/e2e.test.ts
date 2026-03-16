@@ -379,4 +379,198 @@ describe("E2E: Full lifecycle", () => {
     sender.close();
     watcher.close();
   });
+
+  // Chunk: docs/chunks/multichannel_watch - Multi-channel watch tests
+  it("multi-channel watch: receives messages from multiple channels on one connection", async () => {
+    const swarmId = "e2e-multiwatch-" + Date.now();
+    const { privKey } = await registerSwarm(swarmId);
+
+    const sender = await authenticateWs(swarmId, privKey);
+    const watcher = await authenticateWs(swarmId, privKey);
+
+    // Create two channels with initial messages
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-alpha",
+        swarm: swarmId,
+        body: "YWxwaGEx",
+      })
+    );
+    const ack1 = await nextMessage(sender);
+    expect(ack1.position).toBe(1);
+
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-beta",
+        swarm: swarmId,
+        body: "YmV0YTE=",
+      })
+    );
+    const ack2 = await nextMessage(sender);
+    expect(ack2.position).toBe(1);
+
+    // Set up message collector on watcher BEFORE sending watch frames
+    // This avoids race conditions where messages arrive before nextMessage is called
+    const watcherMessages: Record<string, unknown>[] = [];
+    const watcherReady = new Promise<void>((resolve) => {
+      const handler = (e: MessageEvent) => {
+        watcherMessages.push(JSON.parse(e.data as string));
+        if (watcherMessages.length >= 2) {
+          watcher.removeEventListener("message", handler);
+          resolve();
+        }
+      };
+      watcher.addEventListener("message", handler);
+    });
+
+    // Watcher sends two watch frames on one connection for different channels
+    watcher.send(
+      JSON.stringify({ type: "watch", channel: "ch-alpha", swarm: swarmId, cursor: 1 })
+    );
+    watcher.send(
+      JSON.stringify({ type: "watch", channel: "ch-beta", swarm: swarmId, cursor: 1 })
+    );
+
+    // Sender sends a message to each channel
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-alpha",
+        swarm: swarmId,
+        body: "YWxwaGEy",
+      })
+    );
+    const ack3 = await nextMessage(sender);
+    expect(ack3.position).toBe(2);
+
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-beta",
+        swarm: swarmId,
+        body: "YmV0YTI=",
+      })
+    );
+    const ack4 = await nextMessage(sender);
+    expect(ack4.position).toBe(2);
+
+    // Wait for both messages to arrive on watcher
+    await watcherReady;
+
+    const received = watcherMessages.sort((a, b) =>
+      (a.channel as string).localeCompare(b.channel as string)
+    );
+
+    expect(received[0].type).toBe("message");
+    expect(received[0].channel).toBe("ch-alpha");
+    expect(received[0].position).toBe(2);
+    expect(received[0].body).toBe("YWxwaGEy");
+
+    expect(received[1].type).toBe("message");
+    expect(received[1].channel).toBe("ch-beta");
+    expect(received[1].position).toBe(2);
+    expect(received[1].body).toBe("YmV0YTI=");
+
+    sender.close();
+    watcher.close();
+  });
+
+  it("multi-channel watch survives hibernation", async () => {
+    const swarmId = "e2e-multiwatch-hibernate-" + Date.now();
+    const { privKey } = await registerSwarm(swarmId);
+
+    const sender = await authenticateWs(swarmId, privKey);
+    const watcher = await authenticateWs(swarmId, privKey);
+
+    // Create two channels
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-one",
+        swarm: swarmId,
+        body: "b25l",
+      })
+    );
+    await nextMessage(sender); // ack
+
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-two",
+        swarm: swarmId,
+        body: "dHdv",
+      })
+    );
+    await nextMessage(sender); // ack
+
+    // Set up message collector on watcher BEFORE sending watch frames
+    const watcherMessages: Record<string, unknown>[] = [];
+    const watcherReady = new Promise<void>((resolve) => {
+      const handler = (e: MessageEvent) => {
+        watcherMessages.push(JSON.parse(e.data as string));
+        if (watcherMessages.length >= 2) {
+          watcher.removeEventListener("message", handler);
+          resolve();
+        }
+      };
+      watcher.addEventListener("message", handler);
+    });
+
+    // Watcher watches both channels
+    watcher.send(
+      JSON.stringify({ type: "watch", channel: "ch-one", swarm: swarmId, cursor: 1 })
+    );
+    watcher.send(
+      JSON.stringify({ type: "watch", channel: "ch-two", swarm: swarmId, cursor: 1 })
+    );
+
+    // Simulate hibernation: clear in-memory watchers
+    const id = env.SWARM_DO.idFromName(swarmId);
+    const stub = env.SWARM_DO.get(id);
+    await runInDurableObject(stub, (instance) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (instance as any)._clearWatchersForTest();
+    });
+
+    // Send messages to both channels — wakeWatchers must recover from attachments
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-one",
+        swarm: swarmId,
+        body: "b25lMg==",
+      })
+    );
+    await nextMessage(sender); // ack
+
+    sender.send(
+      JSON.stringify({
+        type: "send",
+        channel: "ch-two",
+        swarm: swarmId,
+        body: "dHdvMg==",
+      })
+    );
+    await nextMessage(sender); // ack
+
+    // Wait for both messages to arrive on watcher
+    await watcherReady;
+
+    const received = watcherMessages.sort((a, b) =>
+      (a.channel as string).localeCompare(b.channel as string)
+    );
+
+    expect(received[0].type).toBe("message");
+    expect(received[0].channel).toBe("ch-one");
+    expect(received[0].position).toBe(2);
+
+    expect(received[1].type).toBe("message");
+    expect(received[1].channel).toBe("ch-two");
+    expect(received[1].position).toBe(2);
+
+    sender.close();
+    watcher.close();
+  });
 });

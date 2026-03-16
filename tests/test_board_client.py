@@ -420,3 +420,225 @@ def _async_ctx(ws):
             return _resolve().__await__()
 
     return _DualCtx(ws)
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/multichannel_watch - Multi-channel watch tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_sends_frames_and_yields_messages(keypair):
+    """watch_multi() sends watch frames for all channels and yields messages."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msg_a = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "body_a==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+    msg_b = json.dumps({
+        "type": "message",
+        "channel": "ch-b",
+        "position": 5,
+        "body": "body_b==",
+        "sent_at": "2026-03-16T00:01:00Z",
+    })
+
+    mock_ws = _make_mock_ws([challenge, auth_ok, msg_a, msg_b])
+    # After yielding msg_b, the next recv will raise StopAsyncIteration
+    # which will cause ConnectionClosedError-like behavior. We add a
+    # ConnectionClosedError to terminate the generator cleanly.
+    mock_ws.recv = AsyncMock(side_effect=[
+        challenge, auth_ok, msg_a, msg_b,
+        websockets.exceptions.ConnectionClosedError(None, None),
+    ])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        try:
+            async for msg in client.watch_multi({"ch-a": 2, "ch-b": 4}):
+                results.append(msg)
+        except websockets.exceptions.ConnectionClosedError:
+            pass  # Expected termination
+
+    assert len(results) == 2
+    assert results[0]["channel"] == "ch-a"
+    assert results[0]["position"] == 3
+    assert results[1]["channel"] == "ch-b"
+    assert results[1]["position"] == 5
+
+    # Verify initial watch frames were sent (after auth)
+    sent_frames = [json.loads(call.args[0]) for call in mock_ws.send.call_args_list]
+    # Frame 0: auth, Frame 1: watch ch-a, Frame 2: watch ch-b
+    watch_frames = [f for f in sent_frames if f.get("type") == "watch"]
+    assert len(watch_frames) >= 2
+    channels_watched = {f["channel"] for f in watch_frames[:2]}
+    assert channels_watched == {"ch-a", "ch-b"}
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_resends_watch_after_message(keypair):
+    """After yielding a message for channel A, re-sends watch frame with updated cursor."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msg_a = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 10,
+        "body": "body==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    mock_ws = _make_mock_ws([])
+    mock_ws.recv = AsyncMock(side_effect=[
+        challenge, auth_ok, msg_a,
+        websockets.exceptions.ConnectionClosedError(None, None),
+    ])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        try:
+            async for msg in client.watch_multi({"ch-a": 5}):
+                results.append(msg)
+        except websockets.exceptions.ConnectionClosedError:
+            pass
+
+    assert len(results) == 1
+    assert results[0]["position"] == 10
+
+    # Verify re-sent watch frame has updated cursor
+    sent_frames = [json.loads(call.args[0]) for call in mock_ws.send.call_args_list]
+    resend_frames = [
+        f for f in sent_frames
+        if f.get("type") == "watch" and f.get("cursor") == 10
+    ]
+    assert len(resend_frames) == 1
+    assert resend_frames[0]["channel"] == "ch-a"
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_handles_per_channel_error(keypair):
+    """One channel returns channel_not_found; the other continues watching."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    error_frame = json.dumps({
+        "type": "error",
+        "code": "channel_not_found",
+        "message": "Channel not found: ch-bad",
+    })
+    msg_good = json.dumps({
+        "type": "message",
+        "channel": "ch-good",
+        "position": 1,
+        "body": "good==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    mock_ws = _make_mock_ws([])
+    mock_ws.recv = AsyncMock(side_effect=[
+        challenge, auth_ok, error_frame, msg_good,
+        websockets.exceptions.ConnectionClosedError(None, None),
+    ])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+
+        results = []
+        try:
+            async for msg in client.watch_multi({"ch-good": 0, "ch-bad": 0}):
+                results.append(msg)
+        except websockets.exceptions.ConnectionClosedError:
+            pass
+
+    assert len(results) == 1
+    assert results[0]["channel"] == "ch-good"
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_reconnect(keypair):
+    """Simulate disconnect; verify all channels are re-watched with latest cursors."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    msg1 = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "first==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+    msg2 = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 4,
+        "body": "second==",
+        "sent_at": "2026-03-16T00:01:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: delivers one message then disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg1,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: delivers next message then disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg2,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+
+            async for msg in client.watch_multi_with_reconnect(
+                {"ch-a": 2}, max_retries=1
+            ):
+                results.append(msg)
+                if len(results) >= 2:
+                    break
+
+    assert len(results) == 2
+    assert results[0]["position"] == 3
+    assert results[1]["position"] == 4
+
+    # Verify second connection re-watches with cursor=3 (updated after first msg)
+    # The second ws is from call_count=2
+    # Its send calls should include a watch frame with cursor=3

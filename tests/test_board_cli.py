@@ -636,3 +636,132 @@ def test_scp_scp_failure(runner, tmp_path):
 
     assert result.exit_code != 0
     assert "SCP" in result.output or "failed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# watch-multi command tests
+# Chunk: docs/chunks/multichannel_watch - Multi-channel watch CLI tests
+# ---------------------------------------------------------------------------
+
+
+def test_watch_multi_command_output_format(runner, stored_swarm, tmp_path):
+    """watch-multi outputs [channel-name] prefix for each message."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body_a = encrypt("message from alpha", sym_key)
+    encrypted_body_b = encrypt("message from beta", sym_key)
+
+    async def mock_watch_multi(channels):
+        yield {
+            "channel": "ch-alpha",
+            "position": 1,
+            "body": encrypted_body_a,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+        yield {
+            "channel": "ch-beta",
+            "position": 2,
+            "body": encrypted_body_b,
+            "sent_at": "2026-03-16T00:01:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor") as mock_save, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-alpha", "ch-beta",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert "[ch-alpha] message from alpha" in result.output
+    assert "[ch-beta] message from beta" in result.output
+
+
+def test_watch_multi_advances_cursors(runner, stored_swarm, tmp_path):
+    """watch-multi auto-advances cursor files for each channel independently."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    async def mock_watch_multi(channels):
+        yield {
+            "channel": "ch-x",
+            "position": 5,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+        yield {
+            "channel": "ch-y",
+            "position": 3,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:01:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-x", "ch-y",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert load_cursor("ch-x", tmp_path) == 5
+    assert load_cursor("ch-y", tmp_path) == 3
+
+
+def test_watch_multi_single_connection(runner, stored_swarm, tmp_path):
+    """watch-multi creates only one BoardClient connection (not N)."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("test", sym_key)
+
+    async def mock_watch_multi(channels):
+        yield {
+            "channel": "ch-1",
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-1", "ch-2", "ch-3",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # Only one BoardClient was created and connected
+    MockClient.assert_called_once()
+    instance.connect.assert_called_once()

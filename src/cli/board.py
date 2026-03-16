@@ -250,6 +250,71 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 
 
 # ---------------------------------------------------------------------------
+# watch-multi
+# Chunk: docs/chunks/multichannel_watch - Multi-channel watch CLI command
+# ---------------------------------------------------------------------------
+
+
+@board.command("watch-multi")
+@click.argument("channels", nargs=-1, required=True)
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
+@click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool) -> None:
+    """Watch multiple channels on a single connection.
+
+    Blocks and prints messages from any subscribed channel.
+    Output format: [channel-name] message text
+
+    Cursors are auto-advanced after each message is printed.
+    """
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
+    keypair = load_keypair(swarm)
+    if keypair is None:
+        click.echo(f"Error: swarm '{swarm}' not found.", err=True)
+        sys.exit(1)
+
+    seed, _pub = keypair
+    sym_key = derive_symmetric_key(seed)
+
+    # Load per-channel cursors
+    channel_cursors = {}
+    for ch in channels:
+        channel_cursors[ch] = load_cursor(ch, project_root)
+
+    async def _watch_multi():
+        client = BoardClient(server, swarm, seed)
+        await client.connect()
+        try:
+            if no_reconnect:
+                gen = client.watch_multi(channel_cursors)
+            else:
+                gen = client.watch_multi_with_reconnect(channel_cursors)
+
+            async for msg in gen:
+                plaintext = decrypt(msg["body"], sym_key)
+                click.echo(f"[{msg['channel']}] {plaintext}")
+                # Auto-advance cursor
+                save_cursor(msg["channel"], msg["position"], project_root)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            await client.close()
+
+    try:
+        asyncio.run(_watch_multi())
+    except KeyboardInterrupt:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # ack
 # ---------------------------------------------------------------------------
 
