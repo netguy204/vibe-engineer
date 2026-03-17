@@ -117,3 +117,15 @@ def load_cursor(channel: str, project_root: Path) -> int:
     if not cursor_file.exists():
         return 0
     return int(cursor_file.read_text().strip())
+
+
+# Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
+def ack_and_advance(channel: str, project_root: Path) -> int:
+    """Read the current cursor and advance it by 1.
+
+    Returns the new cursor position.
+    """
+    current = load_cursor(channel, project_root)
+    new_position = current + 1
+    save_cursor(channel, new_position, project_root)
+    return new_position

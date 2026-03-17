@@ -55,11 +55,10 @@ message is the decrypted plaintext from stdout.
 After displaying the message, acknowledge it to advance the cursor:
 
 ```
-ve board ack <changelog_channel> <position>
+ve board ack <changelog_channel>
 ```
 
-The position is your previous cursor position + 1 (read the cursor file before
-watching to determine this, same as in `/steward-watch`).
+The ack command auto-increments the cursor by 1 — no position argument needed.
 
 Then ask the operator:
 - **Continue watching?** Start another `run_in_background` watch for more

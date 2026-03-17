@@ -1,179 +1,181 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The `ve board ack` command currently requires an explicit `<position>` argument.
+This is fragile — callers must track cursor state and compute the next position,
+which invites arithmetic errors and race conditions.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The change makes `position` optional in the CLI. When omitted, ack reads the
+current cursor via `load_cursor()` and writes `cursor + 1`. When provided, the
+old behavior is preserved with a deprecation warning to stderr. This is a
+backward-compatible change: existing callers that pass a position continue to
+work during the rollout period.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The storage layer (`save_cursor` / `load_cursor`) is unchanged — all the logic
+lives in the CLI command handler. A new helper `ack_and_advance()` in
+`src/board/storage.py` encapsulates the read-increment-write pattern so it can
+be reused if needed outside the CLI.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/ack_auto_increment/GOAL.md)
-with references to the files that you expect to touch.
--->
+Skill templates (`steward-watch`, `steward-changelog`) are updated to use the
+simpler no-position form, removing the cursor-tracking ceremony from Step 2 and
+simplifying Step 5. The `swarm-monitor` template uses `watch-multi` with
+auto-ack, so it doesn't need changes.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow TDD per docs/trunk/TESTING_PHILOSOPHY.md: write failing tests for
+the new no-position behavior and deprecation warning first, then implement.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for auto-increment ack
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `tests/test_board_cli.py`
 
-Example:
+Add tests before any implementation:
 
-### Step 1: Define the SegmentHeader struct
+1. **`test_ack_auto_increment`** — Invoke `ve board ack my-channel` (no
+   position) with a cursor file pre-set to 5. Assert exit code 0, output
+   contains "6", and `load_cursor()` returns 6.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. **`test_ack_auto_increment_from_zero`** — Invoke with no existing cursor
+   file. Assert cursor advances from 0 to 1.
 
-Location: src/segment/format.rs
+3. **`test_ack_with_position_deprecation_warning`** — Invoke `ve board ack
+   my-channel 42` (explicit position). Assert exit code 0, cursor is 42, and
+   stderr contains a deprecation warning mentioning the no-position form.
 
-### Step 2: Implement header serialization
+4. **`test_ack_existing_test_still_passes`** — Verify the existing
+   `test_ack_command` still passes (this is implicit but worth confirming
+   after the argument becomes optional).
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Run `uv run pytest tests/test_board_cli.py -k ack` to confirm the new tests
+fail.
 
-### Step 3: ...
+### Step 2: Add `ack_and_advance` helper to storage module
 
----
+Location: `src/board/storage.py`
 
-**BACKREFERENCE COMMENTS**
+Add a new function:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+```python
+def ack_and_advance(channel: str, project_root: Path) -> int:
+    """Read the current cursor and advance it by 1.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Returns the new cursor position.
+    """
+    current = load_cursor(channel, project_root)
+    new_position = current + 1
+    save_cursor(channel, new_position, project_root)
+    return new_position
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This is a thin composition of existing `load_cursor` and `save_cursor`. It
+keeps the atomic read-increment-write in one place.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Update the CLI `ack` command
 
-## Dependencies
+Location: `src/cli/board.py`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Change the `ack_cmd` function:
 
-If there are no dependencies, delete this section.
--->
+1. Make `position` an optional argument (default `None`):
+   ```python
+   @click.argument("position", type=int, required=False, default=None)
+   ```
+
+2. When `position is None`: call `ack_and_advance(channel, project_root)` and
+   echo the new position.
+
+3. When `position` is provided: emit a deprecation warning to stderr
+   (`click.echo(..., err=True)`), then call `save_cursor()` as before.
+
+Add a backreference comment:
+```python
+# Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
+```
+
+### Step 4: Run tests and verify
+
+Run `uv run pytest tests/test_board_cli.py -k ack` to confirm:
+- All new tests pass
+- The existing `test_ack_command` still passes (backward compat)
+
+Run the full test suite `uv run pytest tests/` to check for regressions.
+
+### Step 5: Update steward-watch skill template
+
+Location: `src/templates/commands/steward-watch.md.jinja2`
+
+**Step 2 (Start the watch):** Remove the cursor-reading ceremony. The agent no
+longer needs to note the cursor position before watching, because ack handles
+it automatically. Remove the `cat .ve/board/cursors/<channel>.cursor` example
+and the "note the current cursor position" instructions. Keep the single-watch
+constraint and TaskStop instructions.
+
+**Step 5 (Ack to advance cursor):** Simplify to:
+```
+ve board ack <channel>
+```
+Remove the reference to "N+1" and "cursor position you noted in Step 2."
+Keep the critical notes about not acking before processing is complete, and
+about acking every message.
+
+**Key Concepts section:** Update the cursor management bullet to reflect that
+ack auto-increments — callers no longer compute the position.
+
+### Step 6: Update steward-changelog skill template
+
+Location: `src/templates/commands/steward-changelog.md.jinja2`
+
+In the "Ack and optionally continue" section: change `ve board ack
+<changelog_channel> <position>` to `ve board ack <changelog_channel>`. Remove
+the instruction about reading the cursor file before watching to determine
+the position.
+
+### Step 7: Re-render templates and verify
+
+Run `uv run ve init` to re-render all templates from the updated Jinja2
+sources. Verify that the rendered `.claude/commands/steward-watch.md` and
+`.claude/commands/steward-changelog.md` reflect the simplified ack commands.
+
+### Step 8: Update code_paths in GOAL.md frontmatter
+
+Location: `docs/chunks/ack_auto_increment/GOAL.md`
+
+Set `code_paths` to:
+```yaml
+code_paths:
+- src/cli/board.py
+- src/board/storage.py
+- src/templates/commands/steward-watch.md.jinja2
+- src/templates/commands/steward-changelog.md.jinja2
+- tests/test_board_cli.py
+```
+
+### Step 9: Final validation
+
+Run the full test suite: `uv run pytest tests/`
+
+Manually verify the CLI works:
+- `uv run ve board ack --help` shows position as optional
+- The rendered command files no longer reference the position argument
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Concurrent ack calls**: If two agents ack the same channel simultaneously,
+  the read-increment-write in `ack_and_advance` is not atomic at the filesystem
+  level. This is acceptable because the steward design enforces single-consumer
+  per channel (one watch at a time). No mitigation needed.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Deprecation warning visibility**: Stderr warnings may be lost in agent
+  contexts where only stdout is captured. This is acceptable — the warning is
+  for human operators during the transition period, and the old behavior
+  continues to work correctly.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

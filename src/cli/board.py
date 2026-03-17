@@ -43,6 +43,7 @@ from board.crypto import (
     generate_keypair,
 )
 from board.storage import (
+    ack_and_advance,
     collect_board_files,
     list_swarms,
     load_cursor,
@@ -332,14 +333,28 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
 @board.command("ack")
 @click.argument("channel")
-@click.argument("position", type=int)
+@click.argument("position", type=int, required=False, default=None)
 @click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
-def ack_cmd(channel: str, position: int, project_root: Path) -> None:
-    """Advance the persisted cursor for a channel."""
-    save_cursor(channel, position, project_root)
-    click.echo(f"Cursor for '{channel}' advanced to {position}")
+def ack_cmd(channel: str, position: int | None, project_root: Path) -> None:
+    """Advance the persisted cursor for a channel.
+
+    When called without a position, auto-increments the cursor by 1.
+    When called with an explicit position (deprecated), sets the cursor directly.
+    """
+    if position is not None:
+        click.echo(
+            "Warning: passing an explicit position to 've board ack' is deprecated. "
+            "Use 've board ack <channel>' (no position) instead.",
+            err=True,
+        )
+        save_cursor(channel, position, project_root)
+        click.echo(f"Cursor for '{channel}' advanced to {position}")
+    else:
+        new_position = ack_and_advance(channel, project_root)
+        click.echo(f"Cursor for '{channel}' advanced to {new_position}")
 
 
 # ---------------------------------------------------------------------------

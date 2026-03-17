@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from board.config import BoardConfig, SwarmConfig
 from board.crypto import generate_keypair, derive_swarm_id, derive_symmetric_key, encrypt
-from board.storage import save_keypair, load_cursor
+from board.storage import save_keypair, load_cursor, save_cursor
 from cli.board import board
 
 
@@ -208,6 +208,48 @@ def test_ack_command(runner, tmp_path):
     assert result.exit_code == 0
     assert "42" in result.output
     assert load_cursor("my-channel", tmp_path) == 42
+
+
+# ---------------------------------------------------------------------------
+# ack auto-increment tests
+# Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
+# ---------------------------------------------------------------------------
+
+
+def test_ack_auto_increment(runner, tmp_path):
+    """ack without position auto-increments cursor from N to N+1."""
+    save_cursor("my-channel", 5, tmp_path)
+    result = runner.invoke(board, [
+        "ack", "my-channel",
+        "--project-root", str(tmp_path),
+    ])
+    assert result.exit_code == 0
+    assert "6" in result.output
+    assert load_cursor("my-channel", tmp_path) == 6
+
+
+def test_ack_auto_increment_from_zero(runner, tmp_path):
+    """ack without position advances cursor from 0 to 1 when no cursor file exists."""
+    result = runner.invoke(board, [
+        "ack", "my-channel",
+        "--project-root", str(tmp_path),
+    ])
+    assert result.exit_code == 0
+    assert "1" in result.output
+    assert load_cursor("my-channel", tmp_path) == 1
+
+
+def test_ack_with_position_deprecation_warning(runner, tmp_path):
+    """ack with explicit position still works but emits deprecation warning."""
+    result = runner.invoke(board, [
+        "ack", "my-channel", "42",
+        "--project-root", str(tmp_path),
+    ])
+    assert result.exit_code == 0
+    assert load_cursor("my-channel", tmp_path) == 42
+    assert "42" in result.output
+    # Deprecation warning should be on stderr (captured in output by CliRunner)
+    assert "deprecated" in result.output.lower() or "deprecated" in (result.stderr_bytes or b"").decode().lower()
 
 
 def test_channels_command(runner, stored_swarm):
