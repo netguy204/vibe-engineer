@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- workers/leader-board/src/swarm-do.ts
+- workers/leader-board/test/gateway-api.test.ts
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["watchmulti_manual_ack"]
+created_after:
+- watchmulti_manual_ack
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

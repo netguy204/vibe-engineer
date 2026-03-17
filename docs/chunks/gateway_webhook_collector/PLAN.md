@@ -1,5 +1,6 @@
 
 
+
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +11,137 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a new `/gateway/{token}/channels/{channel}/webhook` endpoint to the Cloudflare Workers Durable Object that accepts arbitrary HTTP payloads and marshals them into the existing encrypted message storage pipeline.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The strategy is to mirror the existing `POST .../messages` flow but replace the JSON body parsing with raw body capture. The raw bytes are base64-encoded and wrapped in a JSON envelope (`{"content_type": "...", "raw_body": "...", "source": "webhook"}`) before being passed to the same `encryptMessage()` → `storage.appendMessage()` path. This means the webhook endpoint produces messages that are indistinguishable from regular messages once stored — the envelope is just the plaintext content.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The implementation builds directly on:
+- The routing in `SwarmDO.fetch()` (swarm-do.ts ~line 179) — add a second regex match for `/webhook`
+- The `handleGatewayAPI()` handler (swarm-do.ts ~line 369) — either extend it or create a sibling handler
+- The encryption flow: `hashToken()` → `recoverSeedFromBlob()` → `deriveSymmetricKey()` → `encryptMessage()`
+- CORS patterns from `gateway_cors_and_docs` — identical headers on all responses
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/gateway_webhook_collector/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Following TDD per docs/trunk/TESTING_PHILOSOPHY.md: write failing tests first for each content type scenario, then implement the endpoint.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for the webhook endpoint
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `workers/leader-board/test/gateway-api.test.ts` using the existing `setupGateway()` helper. Write tests that POST to the `/webhook` path with various content types and assert on the response.
 
-Example:
+Tests to write (all should fail initially since the endpoint doesn't exist):
 
-### Step 1: Define the SegmentHeader struct
+1. **JSON webhook** — POST with `Content-Type: application/json` and a JSON body. Assert 200 response with `{position, channel}`. Then GET via the `/messages` endpoint and verify the decrypted message is a JSON envelope containing `content_type`, `raw_body` (base64-encoded), and `source: "webhook"`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. **Form-encoded webhook** — POST with `Content-Type: application/x-www-form-urlencoded` and `key=value&foo=bar`. Verify the envelope wraps the raw form data.
 
-Location: src/segment/format.rs
+3. **Plain text webhook** — POST with `Content-Type: text/plain` and a plain string. Verify envelope.
 
-### Step 2: Implement header serialization
+4. **XML webhook** — POST with `Content-Type: application/xml` and an XML string. Verify envelope.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+5. **CORS on webhook** — OPTIONS request returns 204 with correct CORS headers. POST response includes `Access-Control-Allow-Origin: *`.
 
-### Step 3: ...
+6. **Invalid token on webhook** — POST with a bad token returns 401.
 
----
+7. **Oversized payload** — POST exceeding `GATEWAY_MESSAGE_MAX_BYTES` returns 400.
 
-**BACKREFERENCE COMMENTS**
+Location: `workers/leader-board/test/gateway-api.test.ts`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 2: Add webhook route matching in SwarmDO.fetch()
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In `workers/leader-board/src/swarm-do.ts`, add a new regex match in the `fetch()` method alongside the existing `/messages` match:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```typescript
+// Chunk: docs/chunks/gateway_webhook_collector - Webhook collector route
+const webhookMatch = url.pathname.match(
+  /^\/gateway\/([^/]+)\/channels\/([^/]+)\/webhook$/
+);
+if (webhookMatch) {
+  return this.handleWebhookAPI(request, url, webhookMatch[1], webhookMatch[2]);
+}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Place this **before** the WebSocket upgrade check, adjacent to the existing `gatewayMatch` block.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `workers/leader-board/src/swarm-do.ts` (~line 184)
+
+### Step 3: Implement handleWebhookAPI handler
+
+Create a new private method `handleWebhookAPI()` in the `SwarmDO` class. The method follows the same structure as `handleGatewayAPI()` but with different body handling:
+
+```
+handleWebhookAPI(request, url, token, channel):
+  1. Set up CORS + JSON response headers (same pattern as handleGatewayAPI)
+  2. Handle OPTIONS → 204 with CORS preflight headers
+  3. Reject non-POST methods → 405
+  4. Validate channel name with CHANNEL_NAME_RE
+  5. Resolve token → symmetricKey (identical to handleGatewayAPI)
+  6. Read raw body as ArrayBuffer
+  7. Check size against GATEWAY_MESSAGE_MAX_BYTES → 400 if exceeded
+  8. Base64-encode the raw body bytes
+  9. Read Content-Type header (default to "application/octet-stream" if missing)
+  10. Build envelope JSON string:
+      {"content_type": "<header>", "raw_body": "<base64>", "source": "webhook"}
+  11. encryptMessage(envelope, symmetricKey)
+  12. storage.appendMessage(channel, ciphertext)
+  13. Wake watchers + pending polls (same as POST messages)
+  14. Ensure compaction alarm
+  15. Return 200 with {position, channel}
+```
+
+For base64 encoding, use the `btoa(String.fromCharCode(...bytes))` pattern available in the Cloudflare Workers runtime, or a helper equivalent to the existing `bytesToBase64` in gateway-crypto.ts.
+
+Add a chunk backreference comment:
+```typescript
+// Chunk: docs/chunks/gateway_webhook_collector - Generic webhook collector endpoint
+```
+
+Location: `workers/leader-board/src/swarm-do.ts`
+
+### Step 4: Extract shared token resolution logic
+
+The token-resolution block (hashToken → getGatewayKey → recoverSeedFromBlob → deriveSymmetricKey) is duplicated between `handleGatewayAPI` and `handleWebhookAPI`. Extract it into a private helper method:
+
+```typescript
+private resolveTokenKey(token: string, jsonHeaders: Record<string, string>):
+  { symmetricKey: Uint8Array } | { errorResponse: Response }
+```
+
+Update both `handleGatewayAPI` and `handleWebhookAPI` to call this helper. This keeps the code DRY without changing any behavior.
+
+Location: `workers/leader-board/src/swarm-do.ts`
+
+### Step 5: Run tests and verify all pass
+
+Run the full gateway test suite:
+```bash
+cd workers/leader-board && npx vitest run test/gateway-api.test.ts
+```
+
+Verify:
+- All new webhook tests pass
+- All existing gateway tests still pass (no regressions)
+- Each success criterion from GOAL.md is covered by at least one test
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Chunks `gateway_cleartext_api` (ACTIVE) and `gateway_cors_and_docs` (ACTIVE) must be complete — they are, providing the base endpoint and CORS infrastructure this chunk extends.
+- No new external libraries needed. Base64 encoding uses built-in Web APIs available in Cloudflare Workers runtime.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Base64 encoding of large payloads**: The envelope wraps the entire raw body as base64, which inflates size by ~33%. Combined with JSON envelope overhead, the effective max webhook payload is ~750KB to stay within the 1MB `GATEWAY_MESSAGE_MAX_BYTES` limit after encryption. The size check should be applied to the **envelope string** (post-marshaling) rather than just the raw body, to ensure the encrypted message fits within storage limits.
+- **Content-Type header fidelity**: Some proxies or CDNs may strip or modify the Content-Type header. The endpoint should default to `application/octet-stream` when the header is absent, rather than rejecting the request.
+- **Binary payloads**: The `arrayBuffer()` → base64 path handles binary payloads correctly. No text encoding assumptions should be made about the raw body.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+- Step 1: The "missing Content-Type defaults to application/octet-stream" test
+  needed adjustment. The Workers/fetch runtime auto-sets Content-Type to
+  `text/plain;charset=UTF-8` when sending a string body without an explicit
+  header. Used `new Blob([bytes])` (with no type) to truly omit the header,
+  which correctly triggers the `application/octet-stream` default.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- Step 3: Base64 encoding uses a chunked approach (8KB chunks) to avoid
+  call-stack overflow on large payloads, rather than a single
+  `String.fromCharCode(...spread)` call.
