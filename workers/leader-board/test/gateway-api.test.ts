@@ -496,6 +496,220 @@ describe("Gateway cleartext API", () => {
     expect(resp.status).toBe(400);
   });
 
+  // Chunk: docs/chunks/gateway_webhook_collector - Webhook collector endpoint tests
+
+  it("webhook: JSON payload is stored as envelope with base64 raw_body", async () => {
+    const { swarmId, tokenHex, symmetricKey } = await setupGateway("wh-json");
+    const jsonPayload = JSON.stringify({ event: "push", ref: "refs/heads/main" });
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: jsonPayload,
+      }
+    );
+    expect(resp.status).toBe(200);
+    const result = (await resp.json()) as { position: number; channel: string };
+    expect(result.position).toBe(1);
+    expect(result.channel).toBe("hooks");
+
+    // Read back via messages endpoint and verify envelope
+    const getResp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/messages?after=0&swarm=${swarmId}`
+    );
+    const body = (await getResp.json()) as {
+      messages: Array<{ position: number; body: string }>;
+    };
+    expect(body.messages).toHaveLength(1);
+    const envelope = JSON.parse(body.messages[0].body);
+    expect(envelope.content_type).toBe("application/json");
+    expect(envelope.source).toBe("webhook");
+    // Decode the base64 raw_body and verify it matches the original payload
+    const decoded = new TextDecoder().decode(base64ToBytes(envelope.raw_body));
+    expect(decoded).toBe(jsonPayload);
+  });
+
+  it("webhook: form-encoded payload is stored as envelope", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-form");
+    const formData = "key=value&foo=bar";
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData,
+      }
+    );
+    expect(resp.status).toBe(200);
+
+    const getResp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/messages?after=0&swarm=${swarmId}`
+    );
+    const body = (await getResp.json()) as {
+      messages: Array<{ body: string }>;
+    };
+    const envelope = JSON.parse(body.messages[0].body);
+    expect(envelope.content_type).toBe("application/x-www-form-urlencoded");
+    expect(envelope.source).toBe("webhook");
+    const decoded = new TextDecoder().decode(base64ToBytes(envelope.raw_body));
+    expect(decoded).toBe(formData);
+  });
+
+  it("webhook: plain text payload is stored as envelope", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-text");
+    const textPayload = "Hello, this is a plain text webhook";
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: textPayload,
+      }
+    );
+    expect(resp.status).toBe(200);
+
+    const getResp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/messages?after=0&swarm=${swarmId}`
+    );
+    const body = (await getResp.json()) as {
+      messages: Array<{ body: string }>;
+    };
+    const envelope = JSON.parse(body.messages[0].body);
+    expect(envelope.content_type).toBe("text/plain");
+    expect(envelope.source).toBe("webhook");
+    const decoded = new TextDecoder().decode(base64ToBytes(envelope.raw_body));
+    expect(decoded).toBe(textPayload);
+  });
+
+  it("webhook: XML payload is stored as envelope", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-xml");
+    const xmlPayload = '<?xml version="1.0"?><event><type>deploy</type></event>';
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/xml" },
+        body: xmlPayload,
+      }
+    );
+    expect(resp.status).toBe(200);
+
+    const getResp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/messages?after=0&swarm=${swarmId}`
+    );
+    const body = (await getResp.json()) as {
+      messages: Array<{ body: string }>;
+    };
+    const envelope = JSON.parse(body.messages[0].body);
+    expect(envelope.content_type).toBe("application/xml");
+    expect(envelope.source).toBe("webhook");
+    const decoded = new TextDecoder().decode(base64ToBytes(envelope.raw_body));
+    expect(decoded).toBe(xmlPayload);
+  });
+
+  it("webhook: OPTIONS returns 204 with CORS headers", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-cors");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      { method: "OPTIONS" }
+    );
+    expect(resp.status).toBe(204);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("OPTIONS");
+    expect(resp.headers.get("Access-Control-Allow-Headers")).toContain("Content-Type");
+  });
+
+  it("webhook: POST response includes CORS headers", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-cors-post");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "cors test",
+      }
+    );
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  it("webhook: invalid token returns 401", async () => {
+    const swarmId = `gw-wh-invalid-${Date.now()}`;
+    await registerSwarm(swarmId);
+
+    const fakeToken = bytesToHex(nacl.randomBytes(32));
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${fakeToken}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "should fail",
+      }
+    );
+    expect(resp.status).toBe(401);
+    const body = (await resp.json()) as { error: string };
+    expect(body.error).toContain("Invalid or revoked token");
+  });
+
+  it("webhook: oversized payload returns 400", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-oversize");
+
+    // Create a payload that will exceed 1MB after base64 encoding + envelope
+    const largePayload = "x".repeat(1_048_577);
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: largePayload,
+      }
+    );
+    expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { error: string };
+    expect(body.error).toContain("too large");
+  });
+
+  it("webhook: missing Content-Type defaults to application/octet-stream", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-no-ct");
+
+    // Use a Blob with no type to avoid the fetch runtime auto-setting Content-Type
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      {
+        method: "POST",
+        body: new Blob([new Uint8Array([0x00, 0x01, 0x02])]),
+      }
+    );
+    expect(resp.status).toBe(200);
+
+    const getResp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/messages?after=0&swarm=${swarmId}`
+    );
+    const body = (await getResp.json()) as {
+      messages: Array<{ body: string }>;
+    };
+    const envelope = JSON.parse(body.messages[0].body);
+    expect(envelope.content_type).toBe("application/octet-stream");
+  });
+
+  it("webhook: non-POST method returns 405", async () => {
+    const { swarmId, tokenHex } = await setupGateway("wh-method");
+
+    const resp = await SELF.fetch(
+      `https://test.local/gateway/${tokenHex}/channels/hooks/webhook?swarm=${swarmId}`,
+      { method: "GET" }
+    );
+    expect(resp.status).toBe(405);
+  });
+
   // Chunk: docs/chunks/gateway_cors_and_docs - CORS header tests
   it("OPTIONS /gateway/{token}/channels/{channel}/messages returns 204 with CORS headers", async () => {
     const { swarmId, tokenHex } = await setupGateway("options-cors");

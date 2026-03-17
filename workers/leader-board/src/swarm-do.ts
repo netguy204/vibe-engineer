@@ -183,6 +183,14 @@ export class SwarmDO implements DurableObject {
       return this.handleGatewayAPI(request, url, gatewayMatch[1], gatewayMatch[2]);
     }
 
+    // Chunk: docs/chunks/gateway_webhook_collector - Webhook collector route
+    const webhookMatch = url.pathname.match(
+      /^\/gateway\/([^/]+)\/channels\/([^/]+)\/webhook$/
+    );
+    if (webhookMatch) {
+      return this.handleWebhookAPI(request, url, webhookMatch[1], webhookMatch[2]);
+    }
+
     // Only accept WebSocket upgrades
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
@@ -365,6 +373,37 @@ export class SwarmDO implements DurableObject {
     });
   }
 
+  // Chunk: docs/chunks/gateway_webhook_collector - Shared token resolution logic
+  private resolveTokenKey(
+    token: string,
+    jsonHeaders: Record<string, string>
+  ): { symmetricKey: Uint8Array } | { errorResponse: Response } {
+    try {
+      const tokenHash = hashToken(token);
+      const keyRecord = this.storage.getGatewayKey(tokenHash);
+      if (!keyRecord) {
+        return {
+          errorResponse: new Response(
+            JSON.stringify({ error: "Invalid or revoked token" }),
+            { status: 401, headers: jsonHeaders }
+          ),
+        };
+      }
+
+      // Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob before deriving key
+      const seed = recoverSeedFromBlob(keyRecord.encrypted_blob, token);
+      const symmetricKey = deriveSymmetricKey(seed);
+      return { symmetricKey };
+    } catch {
+      return {
+        errorResponse: new Response(
+          JSON.stringify({ error: "Invalid or revoked token" }),
+          { status: 401, headers: jsonHeaders }
+        ),
+      };
+    }
+  }
+
   // Chunk: docs/chunks/gateway_cleartext_api - Cleartext gateway HTTP handler
   private async handleGatewayAPI(
     request: Request,
@@ -396,27 +435,12 @@ export class SwarmDO implements DurableObject {
       );
     }
 
-    // Resolve token → encrypted blob → seed → symmetric key
-    let symmetricKey: Uint8Array;
-    try {
-      const tokenHash = hashToken(token);
-      const keyRecord = this.storage.getGatewayKey(tokenHash);
-      if (!keyRecord) {
-        return new Response(
-          JSON.stringify({ error: "Invalid or revoked token" }),
-          { status: 401, headers: jsonHeaders }
-        );
-      }
-
-      // Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob before deriving key
-      const seed = recoverSeedFromBlob(keyRecord.encrypted_blob, token);
-      symmetricKey = deriveSymmetricKey(seed);
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "Invalid or revoked token" }),
-        { status: 401, headers: jsonHeaders }
-      );
+    // Chunk: docs/chunks/gateway_webhook_collector - Use shared token resolution
+    const keyResult = this.resolveTokenKey(token, jsonHeaders);
+    if ("errorResponse" in keyResult) {
+      return keyResult.errorResponse;
     }
+    const symmetricKey = keyResult.symmetricKey;
 
     switch (request.method) {
       case "GET": {
@@ -564,6 +588,113 @@ export class SwarmDO implements DurableObject {
           { status: 405, headers: jsonHeaders }
         );
     }
+  }
+
+  // Chunk: docs/chunks/gateway_webhook_collector - Generic webhook collector endpoint
+  private async handleWebhookAPI(
+    request: Request,
+    url: URL,
+    token: string,
+    channel: string
+  ): Promise<Response> {
+    const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+    const jsonHeaders = { "Content-Type": "application/json", ...corsHeaders };
+
+    // OPTIONS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
+
+    // Only accept POST
+    if (request.method !== "POST") {
+      return new Response(
+        JSON.stringify({ error: "Method not allowed" }),
+        { status: 405, headers: jsonHeaders }
+      );
+    }
+
+    // Validate channel name
+    if (!CHANNEL_NAME_RE.test(channel)) {
+      return new Response(
+        JSON.stringify({ error: `Invalid channel name: "${channel}"` }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    // Resolve token → symmetric key
+    const keyResult = this.resolveTokenKey(token, jsonHeaders);
+    if ("errorResponse" in keyResult) {
+      return keyResult.errorResponse;
+    }
+    const symmetricKey = keyResult.symmetricKey;
+
+    // Read raw body as ArrayBuffer
+    const rawBuffer = await request.arrayBuffer();
+    const rawBytes = new Uint8Array(rawBuffer);
+
+    // Base64-encode the raw body
+    let rawBase64 = "";
+    // Process in chunks to avoid call stack issues with large payloads
+    const CHUNK_SIZE = 8192;
+    for (let i = 0; i < rawBytes.length; i += CHUNK_SIZE) {
+      const chunk = rawBytes.subarray(i, Math.min(i + CHUNK_SIZE, rawBytes.length));
+      let binary = "";
+      for (let j = 0; j < chunk.length; j++) {
+        binary += String.fromCharCode(chunk[j]);
+      }
+      rawBase64 += binary;
+    }
+    rawBase64 = btoa(rawBase64);
+
+    // Read Content-Type header, default to application/octet-stream
+    const contentType = request.headers.get("Content-Type") || "application/octet-stream";
+
+    // Build envelope JSON string
+    const envelope = JSON.stringify({
+      content_type: contentType,
+      raw_body: rawBase64,
+      source: "webhook",
+    });
+
+    // Check envelope size against limit (post-marshaling, per PLAN.md risk note)
+    const envelopeBytes = new TextEncoder().encode(envelope);
+    if (envelopeBytes.length > GATEWAY_MESSAGE_MAX_BYTES) {
+      return new Response(
+        JSON.stringify({ error: "Webhook payload too large" }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    // Encrypt and store
+    let ciphertext: string;
+    try {
+      ciphertext = encryptMessage(envelope, symmetricKey);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Failed to encrypt message" }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+    const result = this.storage.appendMessage(channel, ciphertext);
+
+    // Wake WebSocket watchers and pending polls
+    this.wakeWatchers(channel, result.position);
+    this.wakePendingPolls(channel);
+
+    // Ensure compaction alarm is scheduled
+    await this.ensureAlarm();
+
+    return new Response(
+      JSON.stringify({ position: result.position, channel }),
+      { status: 200, headers: jsonHeaders }
+    );
   }
 
   // Chunk: docs/chunks/gateway_cleartext_api - Wake pending long-polls
