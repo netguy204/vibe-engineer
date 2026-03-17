@@ -48,6 +48,7 @@ from board.storage import (
     list_swarms,
     load_cursor,
     load_keypair,
+    resolve_board_root,
     save_cursor,
     save_keypair,
 )
@@ -205,19 +206,24 @@ def send_cmd(channel: str, body: str, swarm: str | None, server: str | None) -> 
 
 
 # Chunk: docs/chunks/websocket_keepalive - Added --no-reconnect flag
+# Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
 @board.command("watch")
 @click.argument("channel")
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
-@click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
+@click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
-def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool) -> None:
+def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool) -> None:
     """Watch a channel for the next message after the persisted cursor.
 
     Blocks until a message exists, decrypts the body, prints plaintext to
     stdout, then exits. The cursor is NOT auto-advanced — use 'ack' after
     durable processing.
     """
+    if project_root is not None and not project_root.exists():
+        raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
+    project_root = resolve_board_root(project_root)
+
     config = load_board_config()
     swarm = resolve_swarm(config, swarm)
     if swarm is None:
@@ -256,17 +262,18 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
 @board.command("watch-multi")
 @click.argument("channels", nargs=-1, required=True)
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
-@click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
+@click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
 # Chunk: docs/chunks/watchmulti_exit_on_message - --count flag for event-driven workflows
 @click.option("--count", default=1, type=int, help="Exit after N messages (0 = stream indefinitely)")
 # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
 @click.option("--no-auto-ack", is_flag=True, help="Don't auto-advance cursor; include position in output for manual acking")
-def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path, no_reconnect: bool, count: int, no_auto_ack: bool) -> None:
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, count: int, no_auto_ack: bool) -> None:
     """Watch multiple channels on a single connection.
 
     Blocks and prints messages from any subscribed channel.
@@ -279,6 +286,10 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     includes position for manual acking via 've board ack'.
     Output format: [channel-name] position=N message text
     """
+    if project_root is not None and not project_root.exists():
+        raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
+    project_root = resolve_board_root(project_root)
+
     config = load_board_config()
     swarm = resolve_swarm(config, swarm)
     if swarm is None:
@@ -334,16 +345,21 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
 
 
 # Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
+# Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
 @board.command("ack")
 @click.argument("channel")
 @click.argument("position", type=int, required=False, default=None)
-@click.option("--project-root", type=click.Path(exists=True, path_type=Path), default=".", help="Project root for cursor storage")
-def ack_cmd(channel: str, position: int | None, project_root: Path) -> None:
+@click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
+def ack_cmd(channel: str, position: int | None, project_root: Path | None) -> None:
     """Advance the persisted cursor for a channel.
 
     When called without a position, auto-increments the cursor by 1.
     When called with an explicit position (deprecated), sets the cursor directly.
     """
+    if project_root is not None and not project_root.exists():
+        raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
+    project_root = resolve_board_root(project_root)
+
     if position is not None:
         click.echo(
             "Warning: passing an explicit position to 've board ack' is deprecated. "

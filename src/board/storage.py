@@ -94,6 +94,71 @@ def collect_board_files(
 
 
 # ---------------------------------------------------------------------------
+# Project root resolution
+# Chunk: docs/chunks/board_cursor_root_resolution
+# ---------------------------------------------------------------------------
+
+
+def find_git_root(start_path: Path) -> Path | None:
+    """Walk up from start_path to find directory containing .git.
+
+    Works with both regular git repos (.git directory) and worktrees (.git file).
+
+    Args:
+        start_path: Starting path to search from.
+
+    Returns:
+        Path to the git root, or None if not found.
+    """
+    current = start_path.resolve()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    # Check root as well
+    if (current / ".git").exists():
+        return current
+    return None
+
+
+# Chunk: docs/chunks/board_cursor_root_resolution
+def resolve_board_root(explicit_root: Path | None = None) -> Path:
+    """Resolve the project root for board cursor storage.
+
+    Priority chain:
+    1. Explicit root (operator override via --project-root) — returned as-is
+    2. Walk up for .ve-task.yaml — task directory is the root
+    3. Walk up for .git — git root is the project root
+    4. Fall back to CWD (preserves DEC-002: git not assumed)
+
+    Args:
+        explicit_root: If provided, used as-is (from --project-root flag).
+
+    Returns:
+        Resolved project root path.
+    """
+    if explicit_root is not None:
+        return explicit_root
+
+    from task.config import find_task_directory
+
+    cwd = Path.cwd()
+
+    # Try task directory first
+    task_dir = find_task_directory(cwd)
+    if task_dir is not None:
+        return task_dir
+
+    # Try git root
+    git_root = find_git_root(cwd)
+    if git_root is not None:
+        return git_root
+
+    # Fall back to CWD
+    return cwd
+
+
+# ---------------------------------------------------------------------------
 # Project-local cursor storage (.ve/board/cursors/)
 # ---------------------------------------------------------------------------
 

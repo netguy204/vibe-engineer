@@ -5,9 +5,11 @@ import pytest
 from board.crypto import generate_keypair, derive_swarm_id
 from board.storage import (
     collect_board_files,
+    find_git_root,
     load_cursor,
     load_keypair,
     list_swarms,
+    resolve_board_root,
     save_cursor,
     save_keypair,
 )
@@ -118,3 +120,82 @@ def test_collect_board_files_ignores_non_key_files(tmp_path):
     files = collect_board_files(config_path=config, keys_dir=keys_dir)
     assert len(files) == 3  # board.toml + .key + .pub
     assert not any(f.name == "notes.txt" for f in files)
+
+
+# ---------------------------------------------------------------------------
+# find_git_root tests
+# Chunk: docs/chunks/board_cursor_root_resolution
+# ---------------------------------------------------------------------------
+
+
+def test_find_git_root_from_subdirectory(tmp_path):
+    """find_git_root finds .git directory from a nested subdirectory."""
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "a" / "b" / "c"
+    subdir.mkdir(parents=True)
+    assert find_git_root(subdir) == tmp_path
+
+
+def test_find_git_root_with_git_file(tmp_path):
+    """find_git_root finds .git file (worktree scenario) from a subdirectory."""
+    # In a git worktree, .git is a file, not a directory
+    (tmp_path / ".git").write_text("gitdir: /some/other/path")
+    subdir = tmp_path / "src"
+    subdir.mkdir()
+    assert find_git_root(subdir) == tmp_path
+
+
+def test_find_git_root_returns_none_when_absent(tmp_path):
+    """find_git_root returns None when no .git exists in the tree."""
+    subdir = tmp_path / "a" / "b"
+    subdir.mkdir(parents=True)
+    assert find_git_root(subdir) is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_board_root tests
+# Chunk: docs/chunks/board_cursor_root_resolution
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_board_root_explicit_root(tmp_path):
+    """resolve_board_root with explicit root returns the explicit root."""
+    explicit = tmp_path / "my-project"
+    explicit.mkdir()
+    assert resolve_board_root(explicit) == explicit
+
+
+def test_resolve_board_root_prefers_task_over_git(tmp_path, monkeypatch):
+    """resolve_board_root prefers .ve-task.yaml over .git."""
+    # Set up a directory tree with both markers at different levels
+    task_root = tmp_path / "task"
+    task_root.mkdir()
+    (task_root / ".ve-task.yaml").write_text("projects: []\n")
+
+    git_root = tmp_path
+    (git_root / ".git").mkdir()
+
+    subdir = task_root / "subdir"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+
+    assert resolve_board_root() == task_root
+
+
+def test_resolve_board_root_falls_back_to_git(tmp_path, monkeypatch):
+    """resolve_board_root falls back to .git root when no task yaml."""
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "src" / "lib"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+
+    assert resolve_board_root() == tmp_path
+
+
+def test_resolve_board_root_falls_back_to_cwd(tmp_path, monkeypatch):
+    """resolve_board_root falls back to CWD when neither marker exists."""
+    subdir = tmp_path / "somewhere"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+
+    assert resolve_board_root() == subdir

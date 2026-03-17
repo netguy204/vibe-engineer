@@ -1100,3 +1100,92 @@ def test_watch_multi_no_auto_ack_passes_auto_ack_false_to_client(runner, stored_
 
     assert result.exit_code == 0
     assert call_kwargs["auto_ack"] is False
+
+
+# ---------------------------------------------------------------------------
+# board_cursor_root_resolution: CLI integration tests
+# Chunk: docs/chunks/board_cursor_root_resolution
+# ---------------------------------------------------------------------------
+
+
+def test_ack_from_subdirectory_writes_to_project_root(runner, tmp_path, monkeypatch):
+    """ack from a subdirectory writes cursor to git root, not CWD."""
+    # Set up a git repo at tmp_path
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "src" / "deep"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+
+    result = runner.invoke(board, ["ack", "my-channel"])
+
+    assert result.exit_code == 0
+    # Cursor should be at the git root, not in the subdirectory
+    assert load_cursor("my-channel", tmp_path) == 1
+    # Should NOT exist in the subdirectory
+    assert not (subdir / ".ve" / "board" / "cursors" / "my-channel.cursor").exists()
+
+
+def test_ack_with_explicit_project_root_overrides(runner, tmp_path, monkeypatch):
+    """ack with --project-root still uses the explicit path."""
+    (tmp_path / ".git").mkdir()
+    explicit_root = tmp_path / "other-project"
+    explicit_root.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(board, [
+        "ack", "my-channel",
+        "--project-root", str(explicit_root),
+    ])
+
+    assert result.exit_code == 0
+    assert load_cursor("my-channel", explicit_root) == 1
+
+
+def test_ack_from_root_and_subdir_same_cursor(runner, tmp_path, monkeypatch):
+    """Running ack from both project root and subdirectory produces the same cursor file."""
+    (tmp_path / ".git").mkdir()
+
+    # ack from project root
+    monkeypatch.chdir(tmp_path)
+    result1 = runner.invoke(board, ["ack", "shared-channel"])
+    assert result1.exit_code == 0
+
+    # ack from subdirectory
+    subdir = tmp_path / "packages" / "core"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+    result2 = runner.invoke(board, ["ack", "shared-channel"])
+    assert result2.exit_code == 0
+
+    # Both should have written to the same cursor file at the git root
+    assert load_cursor("shared-channel", tmp_path) == 2  # incremented twice
+
+
+def test_ack_prefers_task_root_over_git_root(runner, tmp_path, monkeypatch):
+    """ack prefers .ve-task.yaml root over .git root."""
+    # git root at top level
+    (tmp_path / ".git").mkdir()
+
+    # task root inside
+    task_root = tmp_path / "my-task"
+    task_root.mkdir()
+    (task_root / ".ve-task.yaml").write_text("projects: []\n")
+
+    subdir = task_root / "project" / "src"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+
+    result = runner.invoke(board, ["ack", "task-channel"])
+    assert result.exit_code == 0
+    assert load_cursor("task-channel", task_root) == 1
+    # Should NOT be at the git root
+    assert not (tmp_path / ".ve" / "board" / "cursors" / "task-channel.cursor").exists()
+
+
+def test_ack_explicit_invalid_project_root_errors(runner, tmp_path):
+    """ack with --project-root pointing to non-existent path errors."""
+    result = runner.invoke(board, [
+        "ack", "my-channel",
+        "--project-root", str(tmp_path / "nonexistent"),
+    ])
+    assert result.exit_code != 0
