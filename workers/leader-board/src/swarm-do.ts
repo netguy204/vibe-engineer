@@ -390,6 +390,7 @@ export class SwarmDO implements DurableObject {
         };
       }
 
+      // Chunk: docs/chunks/gateway_message_read_fix - Hex-decode seed from blob before deriving key
       const seed = recoverSeedFromBlob(keyRecord.encrypted_blob, token);
       const symmetricKey = deriveSymmetricKey(seed);
       return { symmetricKey };
