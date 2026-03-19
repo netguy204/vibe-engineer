@@ -33,6 +33,8 @@ chunks:
     relationship: implements
   - chunk_id: finalize_double_commit
     relationship: implements
+  - chunk_id: orch_daemon_root_resolution
+    relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module
