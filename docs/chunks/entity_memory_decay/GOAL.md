@@ -1,18 +1,25 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/entity_decay.py
+  - src/models/entity.py
+  - src/entity_shutdown.py
+  - src/entities.py
+  - tests/test_entity_decay.py
+  - tests/test_entity_decay_integration.py
 code_references: []
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_shutdown_skill", "entity_touch_command"]
+depends_on:
+- entity_shutdown_skill
+- entity_touch_command
 created_after: []
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

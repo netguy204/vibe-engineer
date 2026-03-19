@@ -29,6 +29,7 @@ import yaml
 from frontmatter import parse_frontmatter, update_frontmatter_field
 from models.entity import (
     ENTITY_NAME_PATTERN,
+    DecayEvent,
     EntityIdentity,
     MemoryFrontmatter,
     MemoryTier,
@@ -363,6 +364,47 @@ class Entities:
             f.write(event.model_dump_json() + "\n")
 
         return event
+
+    # Chunk: docs/chunks/entity_memory_decay
+    def append_decay_events(
+        self, entity_name: str, events: list[DecayEvent]
+    ) -> None:
+        """Append decay events to the entity's decay log.
+
+        Each event is serialized as a JSON line in decay_log.jsonl,
+        providing an audit trail of what was forgotten and why.
+
+        Args:
+            entity_name: Entity name.
+            events: List of DecayEvent instances to append.
+        """
+        if not events:
+            return
+        decay_log_path = self.entity_dir(entity_name) / "decay_log.jsonl"
+        with open(decay_log_path, "a") as f:
+            for event in events:
+                f.write(event.model_dump_json() + "\n")
+
+    # Chunk: docs/chunks/entity_memory_decay
+    def read_decay_log(self, entity_name: str) -> list[DecayEvent]:
+        """Read all decay events from an entity's decay log.
+
+        Args:
+            entity_name: Entity name.
+
+        Returns:
+            List of DecayEvent instances in chronological order.
+        """
+        decay_log_path = self.entity_dir(entity_name) / "decay_log.jsonl"
+        if not decay_log_path.exists():
+            return []
+
+        events = []
+        for line in decay_log_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                events.append(DecayEvent.model_validate_json(line))
+        return events
 
     # Chunk: docs/chunks/entity_touch_command
     def read_touch_log(self, entity_name: str) -> list[TouchEvent]:

@@ -476,14 +476,14 @@ class TestRunConsolidation:
         self._setup_entity(tmp_path)
 
         result = run_consolidation("testbot", "[]", tmp_path)
-        assert result == {"journals_added": 0, "consolidated": 0, "core": 0}
+        assert result == {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     def test_returns_zeros_on_invalid_json(self, tmp_path):
         """Returns zeros when input is not valid JSON."""
         self._setup_entity(tmp_path)
 
         result = run_consolidation("testbot", "not json", tmp_path)
-        assert result == {"journals_added": 0, "consolidated": 0, "core": 0}
+        assert result == {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     @patch("entity_shutdown.anthropic")
     def test_replaces_existing_tiers(self, mock_anthropic, tmp_path):

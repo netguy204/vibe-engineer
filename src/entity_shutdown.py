@@ -20,7 +20,9 @@ from pathlib import Path
 
 import anthropic
 
+from entity_decay import apply_decay
 from models.entity import (
+    DecayConfig,
     MemoryCategory,
     MemoryFrontmatter,
     MemoryTier,
@@ -372,6 +374,7 @@ def run_consolidation(
     extracted_memories_json: str,
     project_dir: Path,
     api_key: str | None = None,
+    decay_config: DecayConfig | None = None,
 ) -> dict:
     """Run the full consolidation pipeline for an entity.
 
@@ -381,16 +384,21 @@ def run_consolidation(
     4. If too few memories and no existing tiers, skip consolidation
     5. Format consolidation prompt and call Anthropic API
     6. Parse response and write updated tier structures
-    7. Return summary
+    7. Apply decay to bound memory growth
+    8. Return summary
+
+    # Chunk: docs/chunks/entity_memory_decay — decay integration
 
     Args:
         entity_name: Name of the entity.
         extracted_memories_json: JSON string of extracted memories array.
         project_dir: Project root directory.
         api_key: Optional Anthropic API key (uses env var if None).
+        decay_config: Optional decay configuration. If None, uses default DecayConfig.
 
     Returns:
-        Summary dict: {"journals_added": N, "consolidated": M, "core": K}
+        Summary dict: {"journals_added": N, "consolidated": M, "core": K,
+                        "expired": E, "demoted": D}
     """
     from entities import Entities
 
@@ -400,7 +408,7 @@ def run_consolidation(
     parsed = parse_extracted_memories(extracted_memories_json)
 
     if not parsed:
-        return {"journals_added": 0, "consolidated": 0, "core": 0}
+        return {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     # Step 2: Write journal memories to disk
     for fm, content in parsed:
@@ -443,6 +451,8 @@ def run_consolidation(
             "journals_added": len(parsed),
             "consolidated": 0,
             "core": 0,
+            "expired": 0,
+            "demoted": 0,
         }
 
     # Step 5: Format prompt and call API
@@ -501,8 +511,65 @@ def run_consolidation(
             if f not in new_core_paths:
                 f.unlink()
 
+    # Step 8: Apply decay to bound memory growth
+    # Chunk: docs/chunks/entity_memory_decay — decay integration
+    if decay_config is None:
+        decay_config = DecayConfig()
+
+    now = datetime.now(timezone.utc)
+
+    # Collect all memories from disk for decay analysis
+    all_memories_for_decay = []
+
+    # Journal tier: check unconsolidated journals for tier-0 expiry
+    journal_dir = entities.entity_dir(entity_name) / "memories" / MemoryTier.JOURNAL.value
+    if journal_dir.exists():
+        for f in sorted(journal_dir.glob("*.md")):
+            fm, content = entities.parse_memory(f)
+            if fm:
+                all_memories_for_decay.append((fm, content, f))
+
+    # Consolidated tier: freshly written files
+    for path in new_consolidated_paths:
+        fm, content = entities.parse_memory(path)
+        if fm:
+            all_memories_for_decay.append((fm, content, path))
+
+    # Core tier: freshly written files
+    for path in new_core_paths:
+        fm, content = entities.parse_memory(path)
+        if fm:
+            all_memories_for_decay.append((fm, content, path))
+
+    decay_result = apply_decay(all_memories_for_decay, now, decay_config)
+
+    # Apply decay decisions
+    expired_count = 0
+    demoted_count = 0
+
+    # Expirations: remove files from disk
+    for fm, content, path in decay_result.expirations:
+        if path.exists():
+            path.unlink()
+        expired_count += 1
+
+    # Demotions: rewrite memory with new tier
+    for fm, content, path, new_tier in decay_result.demotions:
+        # Write to new tier directory
+        entities.write_memory(entity_name, fm, content)
+        # Remove from old location
+        if path.exists():
+            path.unlink()
+        demoted_count += 1
+
+    # Log decay events
+    if decay_result.events:
+        entities.append_decay_events(entity_name, decay_result.events)
+
     return {
         "journals_added": len(parsed),
         "consolidated": len(consolidation_result["consolidated"]),
         "core": len(consolidation_result["core"]),
+        "expired": expired_count,
+        "demoted": demoted_count,
     }

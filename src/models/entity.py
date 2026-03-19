@@ -93,3 +93,59 @@ class TouchEvent(BaseModel):
     memory_id: str = Field(description="Filename stem of the touched memory")
     memory_title: str = Field(description="Title from the memory's frontmatter")
     reason: Optional[str] = Field(default=None, description="Optional reason the memory was useful")
+
+
+# Chunk: docs/chunks/entity_memory_decay
+class DecayConfig(BaseModel):
+    """Configuration for memory decay mechanics.
+
+    Controls how aggressively memories are expired or demoted based on
+    recency and capacity pressure. All cycle thresholds are measured in
+    days since last reinforcement (each consolidation run ≈ 1 day).
+    """
+
+    tier0_expiry_cycles: int = Field(
+        default=5,
+        ge=1,
+        description="Journal memories expire after this many cycles without association",
+    )
+    tier1_decay_cycles: int = Field(
+        default=8,
+        ge=1,
+        description="Consolidated memories expire after this many cycles without reinforcement",
+    )
+    tier2_demote_cycles: int = Field(
+        default=10,
+        ge=1,
+        description="Core memories demote to tier-1 after this many cycles without reinforcement",
+    )
+    tier2_capacity: int = Field(
+        default=15,
+        ge=1,
+        description="Soft budget for core memories",
+    )
+    tier1_capacity: int = Field(
+        default=30,
+        ge=1,
+        description="Soft budget for consolidated memories",
+    )
+
+
+# Chunk: docs/chunks/entity_memory_decay
+class DecayEvent(BaseModel):
+    """Audit log entry for a decay action taken on a memory.
+
+    Appended to decay_log.jsonl after each consolidation cycle so the
+    operator can audit what was forgotten and why.
+    """
+
+    timestamp: datetime = Field(description="When the decay action occurred")
+    memory_title: str = Field(description="Title of the affected memory")
+    memory_id: str = Field(description="Filename stem of the affected memory")
+    action: str = Field(description="One of: expired, demoted, salience_reduced")
+    from_tier: str = Field(description="Tier before the action")
+    to_tier: Optional[str] = Field(
+        default=None,
+        description="Tier after the action (None for expiration)",
+    )
+    reason: str = Field(description="Human-readable explanation of why the action was taken")
