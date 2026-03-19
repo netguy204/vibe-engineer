@@ -401,8 +401,8 @@ def run_consolidation(
         decay_config: Optional decay configuration. If None, uses default DecayConfig.
 
     Returns:
-        Summary dict: {"journals_added": N, "consolidated": M, "core": K,
-                        "expired": E, "demoted": D}
+        Summary dict: {"journals_added": N, "journals_consolidated": J,
+                        "consolidated": M, "core": K, "expired": E, "demoted": D}
     """
     from entities import Entities
 
