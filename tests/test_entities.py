@@ -530,7 +530,7 @@ class TestMemoryIndex:
         )
 
         index = entities.memory_index("agent")
-        assert index["consolidated"] == ["Pattern X"]
+        assert index["consolidated"] == [{"title": "Pattern X", "category": "correction"}]
 
     def test_journal_not_in_index(self, entities):
         """Journal memories are not included in the startup index."""

@@ -198,15 +198,19 @@ class Entities:
                     index["core"].append({
                         "frontmatter": fm.model_dump(mode="json"),
                         "content": content,
+                        "memory_id": f.stem,
                     })
 
-        # Consolidated memories: titles only
+        # Consolidated memories: title + category
         consolidated_dir = memories_dir / MemoryTier.CONSOLIDATED.value
         if consolidated_dir.exists():
             for f in sorted(consolidated_dir.glob("*.md")):
                 fm, _ = self.parse_memory(f)
                 if fm:
-                    index["consolidated"].append(fm.title)
+                    index["consolidated"].append({
+                        "title": fm.title,
+                        "category": fm.category.value if fm.category else None,
+                    })
 
         return index
 
@@ -315,15 +319,16 @@ class Entities:
 
         # --- Core Memories ---
         index = self.memory_index(name)
+        core_dir = self.entity_dir(name) / "memories" / MemoryTier.CORE.value
         sections.append("## Core Memories")
         sections.append("")
         if index["core"]:
             for i, entry in enumerate(index["core"], 1):
                 fm = entry["frontmatter"]
                 content = entry["content"]
-                cm_id = f"CM{i}"
-                sections.append(f"### {cm_id}: {fm['title']}")
-                sections.append(f"*Category: {fm['category']}*")
+                memory_id = entry.get("memory_id", f"CM{i}")
+                sections.append(f"### CM{i}: {fm['title']}")
+                sections.append(f"*Category: {fm['category']} | ID: `{memory_id}`*")
                 sections.append("")
                 sections.append(content)
                 sections.append("")
@@ -340,8 +345,13 @@ class Entities:
                 "via `ve entity recall`:"
             )
             sections.append("")
-            for title in index["consolidated"]:
-                sections.append(f"- {title}")
+            for entry in index["consolidated"]:
+                title = entry["title"]
+                category = entry["category"]
+                if category:
+                    sections.append(f"- {title} ({category})")
+                else:
+                    sections.append(f"- {title}")
             sections.append("")
         else:
             sections.append("*No consolidated memories yet.*")
@@ -351,8 +361,10 @@ class Entities:
         sections.append("## Touch Protocol")
         sections.append("")
         sections.append(
-            "When you notice yourself applying a core memory (CM1, CM2, ...), "
-            "run `ve entity touch <memory_id> <reason>` to reinforce it. "
+            "When you notice yourself applying a core memory, "
+            "run `ve entity touch <memory_id> \"<reason>\"` to reinforce it. "
+            "Use the ID shown next to each core memory above (e.g., "
+            "`ve entity touch 20260319_core_memory \"applied this insight\"`). "
             "This enables retrieval-as-reinforcement — the act of noticing "
             "you used a memory strengthens it."
         )
