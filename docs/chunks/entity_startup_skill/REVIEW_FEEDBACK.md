@@ -1,19 +1,25 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-All success criteria satisfied except consolidated memory index is missing categories — only titles are shown, but GOAL specifies 'title + category'
+Core implementation is solid but two functional gaps: consolidated memory index omits categories (GOAL says "title + category"), and touch protocol is non-functional because core memory IDs (filename stems) are never exposed to the agent — only CM1/CM2 labels are shown.
 
 ## Issues to Address
 
-### Issue 1: src/entities.py:208,342-343
+### Issue 1: src/entities.py:205-209 and src/entities.py:337-345
 
-**Concern:** The GOAL's criterion 3 specifies 'Tier-1 memories are presented as a searchable index (title + category)' but memory_index() only stores fm.title for consolidated memories, and startup_payload() renders them as plain '- {title}' bullet points without category information.
+**Concern:** Consolidated memory index only renders titles, not categories. GOAL criterion 3 specifies 'title + category' and PLAN says 'A compact list of titles with categories'.
 
-**Suggestion:** In memory_index(), change consolidated entries from fm.title to a dict like {"title": fm.title, "category": fm.category}. In startup_payload(), render as '- {title} ({category})' to include the category alongside each title. Update the test_startup_payload_includes_consolidated_index test to assert category presence.
+**Suggestion:** In memory_index(), change consolidated entries from fm.title to {title, category}. In startup_payload(), render as '- Title (category)'.
+
+### Issue 2: src/entities.py:320-329 and src/templates/commands/entity-startup.md.jinja2:76-83
+
+**Concern:** Core memories are rendered as CM1, CM2, etc. but the actual memory_id (filename stem) needed by 've entity touch' is never shown. The template example 've entity touch CM3' would fail at runtime.
+
+**Suggestion:** Include the actual memory_id in each core memory rendering (e.g., as a metadata line). Fix the template Step 6 example to show a realistic memory_id.
 
 
 ---
