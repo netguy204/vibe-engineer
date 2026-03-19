@@ -18,7 +18,11 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-import anthropic
+# Chunk: docs/chunks/entity_anthropic_dependency - Guard anthropic import
+try:
+    import anthropic
+except ModuleNotFoundError:
+    anthropic = None
 
 from entity_decay import apply_decay
 from models.entity import (
@@ -456,6 +460,12 @@ def run_consolidation(
         }
 
     # Step 5: Format prompt and call API
+    if anthropic is None:
+        raise RuntimeError(
+            "The 'anthropic' package is required for memory consolidation. "
+            "Install it with: pip install anthropic"
+        )
+
     new_journals_dicts = []
     for fm, content in parsed:
         d = fm.model_dump(mode="json")

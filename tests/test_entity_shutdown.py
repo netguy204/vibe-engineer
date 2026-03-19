@@ -478,6 +478,16 @@ class TestRunConsolidation:
         result = run_consolidation("testbot", "[]", tmp_path)
         assert result == {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
+    @patch("entity_shutdown.anthropic", None)
+    def test_raises_when_anthropic_missing(self, tmp_path):
+        """RuntimeError with clear message when anthropic package is not installed."""
+        self._setup_entity(tmp_path)
+
+        with pytest.raises(RuntimeError, match="anthropic.*required"):
+            run_consolidation(
+                "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
+            )
+
     def test_returns_zeros_on_invalid_json(self, tmp_path):
         """Returns zeros when input is not valid JSON."""
         self._setup_entity(tmp_path)

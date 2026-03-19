@@ -10,153 +10,107 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The `anthropic>=0.40.0` dependency was already added to `pyproject.toml` as part
+of the `entity_shutdown_skill` chunk (commit `ec16eb5`). It is also pulled in
+transitively via `claude-agent-sdk`. The core fix is already in place.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+However, `entity_shutdown.py` uses a bare top-level `import anthropic` (line 21)
+with no graceful fallback. While the dependency is now declared, the GOAL's
+suggestion about an optional extra with a clear error message is worth
+considering. Since `anthropic` is already a transitive dependency of
+`claude-agent-sdk` (which is a core dependency), making it optional would be
+misleading — it's always installed. The correct approach is:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Keep `anthropic` as a core dependency** — it's already there and is also
+   transitive via `claude-agent-sdk`. No change needed to `pyproject.toml`.
+2. **Guard the import in `entity_shutdown.py`** — wrap the top-level import in
+   a try/except that produces a clear, actionable error message. This is
+   defensive programming: if a future refactor removes `claude-agent-sdk` or
+   changes the dependency tree, the user gets a clear message instead of a raw
+   `ModuleNotFoundError`.
+3. **Add a test** verifying the guarded import path produces the expected error
+   when `anthropic` is missing.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_anthropic_dependency/GOAL.md)
-with references to the files that you expect to touch.
--->
+This aligns with DEC-001 (uvx-based CLI utility — the tool should work
+predictably when installed via `uvx`).
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new DECISIONS.md entry is needed — this is a straightforward dependency fix,
+not an architectural choice.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Guard the `anthropic` import in `entity_shutdown.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Replace the bare `import anthropic` at line 21 with a try/except block that
+catches `ModuleNotFoundError` and raises a clear error message directing the
+user to install the `anthropic` package.
 
-Example:
+The guard should set `anthropic = None` on failure and defer the actual error
+to the point of use (`run_consolidation`), so that pure-parsing functions like
+`parse_extracted_memories` and `parse_consolidation_response` remain usable
+without the SDK.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/entity_shutdown.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Pattern:
+```python
+try:
+    import anthropic
+except ModuleNotFoundError:
+    anthropic = None
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Then at the top of `run_consolidation()`, before the API call:
+```python
+if anthropic is None:
+    raise RuntimeError(
+        "The 'anthropic' package is required for memory consolidation. "
+        "Install it with: pip install anthropic"
+    )
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Add a backreference comment
 
-## Dependencies
+Add a chunk backreference to the guarded import:
+```python
+# Chunk: docs/chunks/entity_anthropic_dependency - Guard anthropic import
+```
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/entity_shutdown.py`, above the try/except block.
 
-If there are no dependencies, delete this section.
--->
+### Step 3: Add test for missing `anthropic` error message
+
+Add a test in `tests/test_entity_shutdown.py` that patches `entity_shutdown.anthropic`
+to `None` and verifies `run_consolidation` raises `RuntimeError` with the
+expected message when the API call would be reached (i.e., with enough memories
+to trigger consolidation).
+
+This is a meaningful behavior test per TESTING_PHILOSOPHY.md: it verifies a
+user-facing error path, not a trivial property.
+
+Location: `tests/test_entity_shutdown.py`, new test in `TestRunConsolidation`.
+
+### Step 4: Verify existing tests still pass
+
+Run `uv run pytest tests/test_entity_shutdown.py tests/test_entity_shutdown_cli.py -v`
+to confirm the guarded import doesn't break existing test mocking patterns
+(which use `@patch("entity_shutdown.anthropic")`).
+
+### Step 5: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter `code_paths` to list the files touched.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Mock compatibility**: Existing tests mock `entity_shutdown.anthropic` via
+  `@patch`. The guarded import sets `anthropic` to the module or `None`. The
+  patch should still work since it replaces the module-level name. Verify in
+  Step 4.
+- **CLI error propagation**: The `shutdown` CLI command wraps
+  `run_consolidation` in a generic `except Exception` that converts to
+  `ClickException`. The `RuntimeError` from the guard will surface as
+  "Consolidation failed: The 'anthropic' package is required..." — this is
+  acceptable and readable.
 
 ## Deviations
 
