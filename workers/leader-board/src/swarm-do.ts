@@ -853,6 +853,9 @@ export class SwarmDO implements DurableObject {
       case "swarm_info":
         this.handleSwarmInfo(ws);
         break;
+      case "delete_channel":
+        this.handleDeleteChannel(ws, frame);
+        break;
     }
   }
 
@@ -965,6 +968,50 @@ export class SwarmDO implements DurableObject {
       created_at: swarm.created_at,
     };
     ws.send(serializeFrame(frame));
+  }
+
+  // Chunk: docs/chunks/board_channel_delete - Delete channel and notify watchers
+  private handleDeleteChannel(
+    ws: WebSocket,
+    frame: { channel: string }
+  ): void {
+    const deleted = this.storage.deleteChannel(frame.channel);
+    if (deleted === 0) {
+      this.sendError(ws, "channel_not_found", `Channel not found: ${frame.channel}`);
+      return;
+    }
+
+    // Send success response
+    ws.send(serializeFrame({ type: "channel_deleted", channel: frame.channel }));
+
+    // Clean up in-memory watchers for this channel
+    const channelWatchers = this.watchers.get(frame.channel);
+    if (channelWatchers) {
+      for (const watcher of channelWatchers) {
+        try {
+          this.sendError(watcher.ws, "channel_deleted", `Channel deleted: ${frame.channel}`);
+        } catch {
+          // WebSocket may already be closed
+        }
+      }
+      this.watchers.delete(frame.channel);
+    }
+
+    // Clean up pending polls for this channel
+    const channelPolls = this.pendingPolls.get(frame.channel);
+    if (channelPolls) {
+      const jsonHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+      for (const poll of channelPolls) {
+        clearTimeout(poll.timer);
+        poll.resolve(
+          new Response(
+            JSON.stringify({ error: "Channel deleted" }),
+            { status: 404, headers: jsonHeaders }
+          )
+        );
+      }
+      this.pendingPolls.delete(frame.channel);
+    }
   }
 
   // --- Watcher Management ---
