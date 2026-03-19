@@ -18,8 +18,16 @@ binding = "TOKEN_SWARM_INDEX"
 id = "542efadc0c9247aab720b4844a218520"
 
 [observability]
-enabled = true
+enabled = false
+head_sampling_rate = 1
 
 [observability.logs]
-enabled = false
+enabled = true
+head_sampling_rate = 1
+persist = true
 invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
