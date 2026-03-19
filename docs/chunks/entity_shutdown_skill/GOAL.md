@@ -1,18 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/entity_shutdown.py
+  - src/cli/entity.py
+  - src/templates/commands/entity-shutdown.md.jinja2
+  - tests/test_entity_shutdown.py
+  - tests/test_entity_shutdown_cli.py
 code_references: []
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_memory_schema"]
+depends_on:
+- entity_memory_schema
 created_after: []
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
