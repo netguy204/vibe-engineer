@@ -15,6 +15,25 @@ class GitError(Exception):
     pass
 
 
+# Chunk: docs/chunks/orch_empty_repo_handling - Empty repo detection
+def repo_has_commits(repo_dir: Path) -> bool:
+    """Check whether a git repository has any commits.
+
+    Args:
+        repo_dir: The repository directory
+
+    Returns:
+        True if the repo has at least one commit, False otherwise
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def get_current_branch(repo_dir: Path) -> str:
     """Get the current git branch name.
 
@@ -36,6 +55,11 @@ def get_current_branch(repo_dir: Path) -> str:
         text=True,
     )
     if result.returncode != 0:
+        if "unknown revision" in result.stderr or "bad default revision" in result.stderr:
+            raise GitError(
+                "Cannot determine current branch: repository has no commits. "
+                "Make an initial commit first."
+            )
         raise GitError(f"Failed to get current branch: {result.stderr}")
 
     branch = result.stdout.strip()

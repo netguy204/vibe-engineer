@@ -143,6 +143,25 @@ class TestOrchStart:
             assert result.exit_code == 1
             assert "already running" in result.output.lower()
 
+    # Chunk: docs/chunks/orch_empty_repo_handling - Empty repo detection
+    def test_start_in_empty_repo_shows_actionable_error(self, runner, tmp_path):
+        """Shows actionable error when starting in a repo with no commits."""
+        with patch("orchestrator.daemon.start_daemon") as mock_start:
+            mock_start.side_effect = DaemonError(
+                "Cannot start orchestrator: repository has no commits. "
+                "Make an initial commit first (e.g., `git commit --allow-empty -m 'Initial commit'`)."
+            )
+
+            result = runner.invoke(cli, ["orch", "start", "--project-dir", str(tmp_path)])
+
+            assert result.exit_code == 1
+            # Verify user-friendly message
+            assert "no commits" in result.output.lower()
+            assert "initial commit" in result.output.lower()
+            # Verify no stack trace or git internals
+            assert "Traceback" not in result.output
+            assert "fatal:" not in result.output
+
 
 class TestOrchStop:
     """Tests for ve orch stop command."""

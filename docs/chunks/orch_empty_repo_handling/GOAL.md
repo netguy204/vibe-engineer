@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/git_utils.py
+- src/orchestrator/daemon.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,14 @@ subsystems: []
 friction_entries: []
 bug_type: implementation
 depends_on: []
-created_after: ["entity_memory_decay", "entity_memory_schema", "entity_shutdown_skill", "entity_startup_skill", "entity_touch_command", "orch_retry_single"]
+created_after:
+- entity_memory_decay
+- entity_memory_schema
+- entity_shutdown_skill
+- entity_startup_skill
+- entity_touch_command
+- orch_retry_single
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

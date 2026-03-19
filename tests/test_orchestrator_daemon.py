@@ -20,9 +20,11 @@ TCP port testing:
 
 import os
 import socket
+import subprocess
 import pytest
 
 from orchestrator.daemon import (
+    DaemonError,
     get_pid_path,
     get_socket_path,
     get_log_path,
@@ -32,6 +34,7 @@ from orchestrator.daemon import (
     is_daemon_running,
     get_daemon_status,
     find_available_port,
+    start_daemon,
 )
 from orchestrator.client import create_client, DaemonNotRunningError
 
@@ -198,6 +201,34 @@ class TestGetDaemonStatus:
 
         status = get_daemon_status(project_dir)
         assert status.running is False
+
+
+# Chunk: docs/chunks/orch_empty_repo_handling - Empty repo detection
+class TestStartDaemonEmptyRepo:
+    """Tests for start_daemon() with empty repos (no commits)."""
+
+    def test_start_daemon_raises_on_empty_repo(self, tmp_path):
+        """start_daemon raises DaemonError for a repo with no commits."""
+        # Create a git repo with no commits
+        subprocess.run(
+            ["git", "init", str(tmp_path)], check=True, capture_output=True
+        )
+
+        with pytest.raises(DaemonError) as exc_info:
+            start_daemon(tmp_path)
+
+        msg = str(exc_info.value)
+        assert "no commits" in msg
+        assert "initial commit" in msg.lower()
+
+    def test_start_daemon_error_message_is_actionable(self, tmp_path):
+        """Error message includes a suggested command."""
+        subprocess.run(
+            ["git", "init", str(tmp_path)], check=True, capture_output=True
+        )
+
+        with pytest.raises(DaemonError, match="git commit --allow-empty"):
+            start_daemon(tmp_path)
 
 
 class TestClientWithoutDaemon:

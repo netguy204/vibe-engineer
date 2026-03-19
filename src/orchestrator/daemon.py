@@ -26,7 +26,7 @@ from typing import Optional, Tuple
 
 import uvicorn
 
-from orchestrator.git_utils import GitError, get_current_branch
+from orchestrator.git_utils import GitError, get_current_branch, repo_has_commits
 from orchestrator.models import (
     OrchestratorConfig,
     OrchestratorState,
@@ -393,6 +393,15 @@ def start_daemon(project_dir: Path, port: int = 0, host: str = "127.0.0.1") -> T
     # Detect task context to determine .ve/ location
     task_info = detect_task_context(project_dir)
     root_dir = task_info.root_dir  # Use task_dir or project_dir for .ve/
+
+    # Chunk: docs/chunks/orch_empty_repo_handling - Empty repo detection
+    # Guard against empty repos (no commits) in single-repo mode
+    if not task_info.is_task_context:
+        if not repo_has_commits(project_dir):
+            raise DaemonError(
+                "Cannot start orchestrator: repository has no commits. "
+                "Make an initial commit first (e.g., `git commit --allow-empty -m 'Initial commit'`)."
+            )
 
     # Check if already running (check at root_dir level)
     if is_daemon_running(root_dir):
