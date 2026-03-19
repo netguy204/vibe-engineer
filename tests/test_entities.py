@@ -1,8 +1,10 @@
 """Tests for Entities domain class.
 
-Tests entity creation, listing, memory write/parse, and startup index.
+Tests entity creation, listing, memory write/parse, startup index,
+find_memory, touch_memory, and read_touch_log.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -13,6 +15,7 @@ from models.entity import (
     MemoryFrontmatter,
     MemoryTier,
     MemoryValence,
+    TouchEvent,
 )
 
 
@@ -547,3 +550,208 @@ class TestMemoryIndex:
         entities.create_entity("agent")
         index = entities.memory_index("agent")
         assert index == {"core": [], "consolidated": []}
+
+
+class TestFindMemory:
+    """Tests for Entities.find_memory()."""
+
+    def test_finds_core_memory(self, entities):
+        """Finds a core memory by filename stem."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Core skill")
+        path = entities.write_memory("agent", memory, "Core content.")
+
+        result = entities.find_memory("agent", path.stem)
+        assert result is not None
+        assert result == path
+
+    def test_finds_consolidated_memory(self, entities):
+        """Finds a consolidated memory by filename stem."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="consolidated", title="Consolidated pattern")
+        path = entities.write_memory("agent", memory, "Consolidated content.")
+
+        result = entities.find_memory("agent", path.stem)
+        assert result is not None
+        assert result == path
+
+    def test_finds_journal_memory(self, entities):
+        """Finds a journal memory by filename stem."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="journal", title="Journal entry")
+        path = entities.write_memory("agent", memory, "Journal content.")
+
+        result = entities.find_memory("agent", path.stem)
+        assert result is not None
+        assert result == path
+
+    def test_returns_none_for_nonexistent(self, entities):
+        """Returns None for a nonexistent memory_id."""
+        entities.create_entity("agent")
+        assert entities.find_memory("agent", "nonexistent_memory") is None
+
+    def test_searches_core_first(self, entities, temp_project):
+        """Searches core tier first (optimization for common case)."""
+        entities.create_entity("agent")
+        # Manually create files with the same stem in core and journal
+        core_dir = temp_project / ".entities" / "agent" / "memories" / "core"
+        journal_dir = temp_project / ".entities" / "agent" / "memories" / "journal"
+
+        # Create a memory file with the same stem in both tiers
+        stem = "duplicate_memory"
+        core_path = core_dir / f"{stem}.md"
+        journal_path = journal_dir / f"{stem}.md"
+        core_path.write_text("---\ntitle: Core version\n---\n")
+        journal_path.write_text("---\ntitle: Journal version\n---\n")
+
+        result = entities.find_memory("agent", stem)
+        assert result == core_path  # Core should be found first
+
+
+class TestTouchMemory:
+    """Tests for Entities.touch_memory()."""
+
+    def test_updates_last_reinforced(self, entities):
+        """Touch updates last_reinforced on the memory file."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Touchable skill")
+        path = entities.write_memory("agent", memory, "Skill content.")
+
+        before_touch = datetime.now(timezone.utc)
+        entities.touch_memory("agent", path.stem)
+
+        parsed_fm, _ = entities.parse_memory(path)
+        assert parsed_fm is not None
+        # last_reinforced should be updated to approximately now
+        assert parsed_fm.last_reinforced >= before_touch
+
+    def test_appends_touch_event_to_log(self, entities, temp_project):
+        """Touch appends a TouchEvent to touch_log.jsonl."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Logged skill")
+        path = entities.write_memory("agent", memory, "Content.")
+
+        entities.touch_memory("agent", path.stem)
+
+        log_path = temp_project / ".entities" / "agent" / "touch_log.jsonl"
+        assert log_path.exists()
+        lines = log_path.read_text().strip().splitlines()
+        assert len(lines) == 1
+        event_data = json.loads(lines[0])
+        assert event_data["memory_id"] == path.stem
+        assert event_data["memory_title"] == "Logged skill"
+
+    def test_creates_touch_log_if_not_exists(self, entities, temp_project):
+        """Touch creates touch_log.jsonl if it doesn't exist."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="New log test")
+        path = entities.write_memory("agent", memory, "Content.")
+
+        log_path = temp_project / ".entities" / "agent" / "touch_log.jsonl"
+        assert not log_path.exists()
+
+        entities.touch_memory("agent", path.stem)
+        assert log_path.exists()
+
+    def test_appends_to_existing_touch_log(self, entities, temp_project):
+        """Touch appends to an existing touch_log.jsonl."""
+        entities.create_entity("agent")
+        mem1 = _make_memory(tier="core", title="First skill")
+        path1 = entities.write_memory("agent", mem1, "Content 1.")
+        mem2 = _make_memory(tier="core", title="Second skill")
+        path2 = entities.write_memory("agent", mem2, "Content 2.")
+
+        entities.touch_memory("agent", path1.stem)
+        entities.touch_memory("agent", path2.stem)
+
+        log_path = temp_project / ".entities" / "agent" / "touch_log.jsonl"
+        lines = log_path.read_text().strip().splitlines()
+        assert len(lines) == 2
+
+    def test_records_reason_when_provided(self, entities, temp_project):
+        """Touch records reason in the touch event."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Reason test")
+        path = entities.write_memory("agent", memory, "Content.")
+
+        entities.touch_memory("agent", path.stem, reason="applying lifecycle rule")
+
+        log_path = temp_project / ".entities" / "agent" / "touch_log.jsonl"
+        event_data = json.loads(log_path.read_text().strip())
+        assert event_data["reason"] == "applying lifecycle rule"
+
+    def test_omits_reason_when_not_provided(self, entities, temp_project):
+        """Touch omits reason when not provided."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="No reason test")
+        path = entities.write_memory("agent", memory, "Content.")
+
+        entities.touch_memory("agent", path.stem)
+
+        log_path = temp_project / ".entities" / "agent" / "touch_log.jsonl"
+        event_data = json.loads(log_path.read_text().strip())
+        assert event_data["reason"] is None
+
+    def test_raises_on_missing_entity(self, entities):
+        """Raises ValueError when entity doesn't exist."""
+        with pytest.raises(ValueError, match="does not exist"):
+            entities.touch_memory("nonexistent", "some_memory")
+
+    def test_raises_on_missing_memory(self, entities):
+        """Raises ValueError when memory_id is not found."""
+        entities.create_entity("agent")
+        with pytest.raises(ValueError, match="not found"):
+            entities.touch_memory("agent", "nonexistent_memory")
+
+    def test_touch_event_includes_memory_title(self, entities):
+        """The returned touch event includes the memory's title."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Title check skill")
+        path = entities.write_memory("agent", memory, "Content.")
+
+        event = entities.touch_memory("agent", path.stem)
+        assert event.memory_title == "Title check skill"
+        assert event.memory_id == path.stem
+
+
+class TestReadTouchLog:
+    """Tests for Entities.read_touch_log()."""
+
+    def test_reads_multiple_events_in_order(self, entities):
+        """Read touch log returns all events in chronological order."""
+        entities.create_entity("agent")
+        mem1 = _make_memory(tier="core", title="First")
+        path1 = entities.write_memory("agent", mem1, "C1.")
+        mem2 = _make_memory(tier="core", title="Second")
+        path2 = entities.write_memory("agent", mem2, "C2.")
+        mem3 = _make_memory(tier="core", title="Third")
+        path3 = entities.write_memory("agent", mem3, "C3.")
+
+        entities.touch_memory("agent", path1.stem, reason="r1")
+        entities.touch_memory("agent", path2.stem)
+        entities.touch_memory("agent", path3.stem, reason="r3")
+
+        events = entities.read_touch_log("agent")
+        assert len(events) == 3
+        assert events[0].memory_title == "First"
+        assert events[0].reason == "r1"
+        assert events[1].memory_title == "Second"
+        assert events[1].reason is None
+        assert events[2].memory_title == "Third"
+        assert events[2].reason == "r3"
+
+    def test_empty_when_no_log(self, entities):
+        """Returns empty list when no touch log exists."""
+        entities.create_entity("agent")
+        assert entities.read_touch_log("agent") == []
+
+    def test_returns_touch_event_instances(self, entities):
+        """Each returned item is a TouchEvent instance."""
+        entities.create_entity("agent")
+        memory = _make_memory(tier="core", title="Type check")
+        path = entities.write_memory("agent", memory, "Content.")
+        entities.touch_memory("agent", path.stem)
+
+        events = entities.read_touch_log("agent")
+        assert len(events) == 1
+        assert isinstance(events[0], TouchEvent)

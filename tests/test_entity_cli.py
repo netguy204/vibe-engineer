@@ -1,9 +1,10 @@
 """Tests for entity CLI commands.
 
 Tests `ve entity create`, `ve entity list`, `ve entity startup`,
-and `ve entity recall` commands.
+`ve entity recall`, and `ve entity touch` commands.
 """
 
+import json
 import pathlib
 from datetime import datetime, timezone
 
@@ -11,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 from entities import Entities
-from models.entity import MemoryFrontmatter
+from models.entity import MemoryCategory, MemoryFrontmatter, MemoryTier, MemoryValence
 from ve import cli
 
 
@@ -252,3 +253,82 @@ class TestEntityRecall:
         ])
         assert result.exit_code != 0
         assert "ghost" in result.output
+
+
+class TestEntityTouch:
+    """Tests for `ve entity touch`."""
+
+    def _setup_entity_with_core_memory(self, temp_project):
+        """Helper: create an entity with a core memory, return (entities, memory_path)."""
+        entities = Entities(temp_project)
+        entities.create_entity("mysteward")
+        memory = _make_memory(tier="core", title="Verify state before acting")
+        path = entities.write_memory("mysteward", memory, "Always check state first.")
+        return entities, path
+
+    def test_touches_core_memory(self, runner, temp_project):
+        """Touches a core memory and echoes confirmation."""
+        _, path = self._setup_entity_with_core_memory(temp_project)
+
+        result = runner.invoke(cli, [
+            "entity", "touch", "mysteward", path.stem,
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "Touched" in result.output
+        assert "Verify state before acting" in result.output
+        assert "last_reinforced updated" in result.output
+
+    def test_touch_with_reason(self, runner, temp_project):
+        """Touches a memory with a reason argument."""
+        _, path = self._setup_entity_with_core_memory(temp_project)
+
+        result = runner.invoke(cli, [
+            "entity", "touch", "mysteward", path.stem,
+            "applying lifecycle rule",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "Touched" in result.output
+
+        # Verify reason was recorded in log
+        log_path = temp_project / ".entities" / "mysteward" / "touch_log.jsonl"
+        event_data = json.loads(log_path.read_text().strip())
+        assert event_data["reason"] == "applying lifecycle rule"
+
+    def test_missing_entity_fails(self, runner, temp_project):
+        """Missing entity exits non-zero with error."""
+        result = runner.invoke(cli, [
+            "entity", "touch", "nonexistent", "some_memory",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code != 0
+        assert "does not exist" in result.output
+
+    def test_missing_memory_fails(self, runner, temp_project):
+        """Missing memory exits non-zero with error."""
+        entities = Entities(temp_project)
+        entities.create_entity("mysteward")
+
+        result = runner.invoke(cli, [
+            "entity", "touch", "mysteward", "nonexistent_memory",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
+    def test_touch_creates_log_file(self, runner, temp_project):
+        """Touch creates touch_log.jsonl with correct content."""
+        _, path = self._setup_entity_with_core_memory(temp_project)
+
+        runner.invoke(cli, [
+            "entity", "touch", "mysteward", path.stem,
+            "--project-dir", str(temp_project),
+        ])
+
+        log_path = temp_project / ".entities" / "mysteward" / "touch_log.jsonl"
+        assert log_path.exists()
+        event_data = json.loads(log_path.read_text().strip())
+        assert event_data["memory_id"] == path.stem
+        assert event_data["memory_title"] == "Verify state before acting"
+        assert "timestamp" in event_data

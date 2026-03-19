@@ -32,6 +32,7 @@ from models.entity import (
     EntityIdentity,
     MemoryFrontmatter,
     MemoryTier,
+    TouchEvent,
 )
 from template_system import render_template
 
@@ -440,3 +441,98 @@ class Entities:
             value: New value for the field.
         """
         update_frontmatter_field(file_path, field, value)
+
+    # Chunk: docs/chunks/entity_touch_command
+    def find_memory(self, entity_name: str, memory_id: str) -> Path | None:
+        """Find a memory file by its filename stem across all tiers.
+
+        Searches core → consolidated → journal (core is the expected tier
+        for touch commands, so we check it first for performance).
+
+        Args:
+            entity_name: Entity name.
+            memory_id: Filename stem (without .md extension) of the memory.
+
+        Returns:
+            Path to the memory file if found, None otherwise.
+        """
+        memories_dir = self.entity_dir(entity_name) / "memories"
+        # Search order: core first (most common for touch), then consolidated, then journal
+        for tier in [MemoryTier.CORE, MemoryTier.CONSOLIDATED, MemoryTier.JOURNAL]:
+            candidate = memories_dir / tier.value / f"{memory_id}.md"
+            if candidate.exists():
+                return candidate
+        return None
+
+    # Chunk: docs/chunks/entity_touch_command
+    def touch_memory(
+        self, entity_name: str, memory_id: str, reason: str | None = None
+    ) -> TouchEvent:
+        """Record a touch event for a memory, updating last_reinforced and appending to the touch log.
+
+        Args:
+            entity_name: Entity name.
+            memory_id: Filename stem of the memory to touch.
+            reason: Optional reason the memory was useful.
+
+        Returns:
+            The TouchEvent that was recorded.
+
+        Raises:
+            ValueError: If entity doesn't exist or memory_id is not found.
+        """
+        if not self.entity_exists(entity_name):
+            raise ValueError(f"Entity '{entity_name}' does not exist")
+
+        memory_path = self.find_memory(entity_name, memory_id)
+        if memory_path is None:
+            raise ValueError(
+                f"Memory '{memory_id}' not found for entity '{entity_name}'"
+            )
+
+        # Parse memory to get its title
+        fm, _ = self.parse_memory(memory_path)
+        if fm is None:
+            raise ValueError(
+                f"Could not parse memory file at {memory_path}"
+            )
+
+        # Update last_reinforced
+        now = datetime.now(timezone.utc)
+        self.update_memory_field(memory_path, "last_reinforced", now.isoformat())
+
+        # Create the touch event
+        event = TouchEvent(
+            timestamp=now,
+            memory_id=memory_id,
+            memory_title=fm.title,
+            reason=reason,
+        )
+
+        # Append to touch log
+        touch_log_path = self.entity_dir(entity_name) / "touch_log.jsonl"
+        with open(touch_log_path, "a") as f:
+            f.write(event.model_dump_json() + "\n")
+
+        return event
+
+    # Chunk: docs/chunks/entity_touch_command
+    def read_touch_log(self, entity_name: str) -> list[TouchEvent]:
+        """Read all touch events from an entity's touch log.
+
+        Args:
+            entity_name: Entity name.
+
+        Returns:
+            List of TouchEvent instances in chronological order.
+        """
+        touch_log_path = self.entity_dir(entity_name) / "touch_log.jsonl"
+        if not touch_log_path.exists():
+            return []
+
+        events = []
+        for line in touch_log_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                events.append(TouchEvent.model_validate_json(line))
+        return events

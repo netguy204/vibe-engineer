@@ -6,6 +6,7 @@
 import re
 from datetime import datetime
 from enum import StrEnum
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -78,3 +79,17 @@ class EntityIdentity(BaseModel):
                 "and contain only letters, digits, and underscores"
             )
         return v
+
+
+# Chunk: docs/chunks/entity_touch_command
+class TouchEvent(BaseModel):
+    """A touch event recording runtime reinforcement of a memory.
+
+    Touch events are appended to a JSONL touch log when an agent signals
+    that a memory was actively useful during its workday.
+    """
+
+    timestamp: datetime = Field(description="When the touch occurred")
+    memory_id: str = Field(description="Filename stem of the touched memory")
+    memory_title: str = Field(description="Title from the memory's frontmatter")
+    reason: Optional[str] = Field(default=None, description="Optional reason the memory was useful")
