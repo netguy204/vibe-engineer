@@ -3,12 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/orch.py
 - src/orchestrator/daemon.py
 - tests/test_orchestrator_daemon.py
 code_references:
-  - ref: src/ve.py#start
-    implements: "CLI command with --port and --host options for ve orch start"
   - ref: src/orchestrator/daemon.py#find_available_port
     implements: "Port 0 binding technique to find available TCP port"
   - ref: src/orchestrator/daemon.py#get_port_path
