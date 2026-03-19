@@ -1,0 +1,7 @@
+# Exclude experiment data derived from private conversation logs.
+# The prototype scripts are public (they illuminate methodology),
+# but their output contains domain-specific content from real interactions.
+parsed_days/
+journal/
+tiers/
+.artifact-order.json

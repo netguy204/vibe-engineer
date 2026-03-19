@@ -1,0 +1,17 @@
+{"timestamp": "2026-03-19T18:10:03Z", "memory_id": "CM4", "reason": "PR #47 merged, need to rebase onto trunk"}
+{"timestamp": "2026-03-19T18:10:03Z", "memory_id": "CM3", "reason": "verifying branch state before any operations after merge"}
+{"timestamp": "2026-03-19T18:10:12Z", "memory_id": "CM5", "reason": "about to start changelog watch, checking for existing watch processes first"}
+{"timestamp": "2026-03-19T18:10:23Z", "memory_id": "CM7", "reason": "same key maps to two different rates, need to find missing discriminator dimension"}
+{"timestamp": "2026-03-19T18:10:31Z", "memory_id": "CM2", "reason": "verifying rate_extractor is actually called for the duplicate-key case before editing"}
+{"timestamp": "2026-03-19T18:10:32Z", "memory_id": "CM1", "reason": "adding tenancy to key on rate side, must verify CUR side also produces tenancy for the join"}
+{"timestamp": "2026-03-19T18:10:41Z", "memory_id": "CM10", "reason": "running integration tests before shipping the rate fix"}
+{"timestamp": "2026-03-19T18:10:41Z", "memory_id": "CM3", "reason": "will push to feature branch and create PR, not push to main"}
+{"timestamp": "2026-03-19T18:10:50Z", "memory_id": "CM9", "reason": "operator says to remember this, persisting immediately without re-asking"}
+{"timestamp": "2026-03-19T18:10:59Z", "memory_id": "CM6", "reason": "updating documentation with new operating procedure about key dimensions"}
+{"timestamp": "2026-03-19T18:11:03Z", "memory_id": "CM8", "reason": "starting watch on response channel BEFORE sending the reload request"}
+{"timestamp": "2026-03-19T18:11:10Z", "memory_id": "CM9", "reason": "operator says small rename, just fix directly without re-asking"}
+{"timestamp": "2026-03-19T18:11:17Z", "memory_id": "CM1", "reason": "renaming column, must check both sides of the join use the same name"}
+{"timestamp": "2026-03-19T18:11:22Z", "memory_id": "CM3", "reason": "pushing to feature branch and creating new PR"}
+{"timestamp": "2026-03-19T18:11:22Z", "memory_id": "CM10", "reason": "running tests before pushing to ensure clean PR"}
+{"timestamp": "2026-03-19T18:11:33Z", "memory_id": "CM11", "reason": "small code change but semantic significance, creating a chunk to document it"}
+{"timestamp": "2026-03-19T18:11:33Z", "memory_id": "CM6", "reason": "updating documentation for the key construction change before finalizing"}
