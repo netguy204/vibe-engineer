@@ -5,6 +5,7 @@ description = "Documentation-driven development workflow tooling"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.40.0",
     "base58>=2.1.0",
     "claude-agent-sdk>=0.1.44",
     "click>=8.0",
