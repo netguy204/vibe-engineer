@@ -207,13 +207,15 @@ def send_cmd(channel: str, body: str, swarm: str | None, server: str | None) -> 
 
 # Chunk: docs/chunks/websocket_keepalive - Added --no-reconnect flag
 # Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
+# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch
 @board.command("watch")
 @click.argument("channel")
 @click.option("--swarm", default=None, help="Swarm ID")
 @click.option("--server", default=None, help="Server URL")
 @click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
-def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool) -> None:
+@click.option("--offset", type=int, default=None, help="Start reading from this position instead of the persisted cursor")
+def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, offset: int | None) -> None:
     """Watch a channel for the next message after the persisted cursor.
 
     Blocks until a message exists, decrypts the body, prints plaintext to
@@ -239,6 +241,8 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
     seed, _pub = keypair
     sym_key = derive_symmetric_key(seed)
     cursor = load_cursor(channel, project_root)
+    if offset is not None:
+        cursor = offset
 
     async def _watch():
         client = BoardClient(server, swarm, seed)
@@ -263,6 +267,7 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 
 
 # Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
+# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch-multi
 @board.command("watch-multi")
 @click.argument("channels", nargs=-1, required=True)
 @click.option("--swarm", default=None, help="Swarm ID")
@@ -273,7 +278,8 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 @click.option("--count", default=1, type=int, help="Exit after N messages (0 = stream indefinitely)")
 # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
 @click.option("--no-auto-ack", is_flag=True, help="Don't auto-advance cursor; include position in output for manual acking")
-def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, count: int, no_auto_ack: bool) -> None:
+@click.option("--offset", type=int, default=None, help="Start reading from this position instead of the persisted cursor")
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, count: int, no_auto_ack: bool, offset: int | None) -> None:
     """Watch multiple channels on a single connection.
 
     Blocks and prints messages from any subscribed channel.
@@ -309,6 +315,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     channel_cursors = {}
     for ch in channels:
         channel_cursors[ch] = load_cursor(ch, project_root)
+
+    if offset is not None:
+        channel_cursors = {ch: offset for ch in channels}
 
     async def _watch_multi():
         client = BoardClient(server, swarm, seed)

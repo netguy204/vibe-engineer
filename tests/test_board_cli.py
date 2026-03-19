@@ -1189,3 +1189,162 @@ def test_ack_explicit_invalid_project_root_errors(runner, tmp_path):
         "--project-root", str(tmp_path / "nonexistent"),
     ])
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# board_watch_offset: --offset flag tests
+# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch
+# ---------------------------------------------------------------------------
+
+
+def test_watch_with_offset_overrides_cursor(runner, stored_swarm, tmp_path):
+    """watch --offset N passes N as cursor instead of the persisted value."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("offset message", sym_key)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0) as mock_load, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 6,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "5",
+        ])
+
+    assert result.exit_code == 0
+    # The cursor passed to watch_with_reconnect should be 5 (offset), not 0 (persisted)
+    instance.watch_with_reconnect.assert_called_once_with("test-channel", 5)
+
+
+def test_watch_with_offset_does_not_modify_cursor(runner, stored_swarm, tmp_path):
+    """watch --offset N does not alter the persisted cursor file."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 10,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(project_root),
+            "--offset", "5",
+        ])
+
+    assert result.exit_code == 0
+    # Cursor should still be 0 (not modified by --offset)
+    assert load_cursor("test-channel", project_root) == 0
+
+
+def test_watch_multi_with_offset_overrides_cursors(runner, stored_swarm, tmp_path):
+    """watch-multi --offset N overrides all per-channel cursors with N."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("multi msg", sym_key)
+
+    call_kwargs = {}
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        call_kwargs["channels"] = dict(channels)
+        yield {
+            "channel": "ch1",
+            "position": 4,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+
+    # load_cursor returns different values per channel
+    cursor_values = {"ch1": 10, "ch2": 20}
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", side_effect=lambda ch, root: cursor_values.get(ch, 0)), \
+         patch("cli.board.save_cursor"), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch1", "ch2",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "3",
+            "--count", "1",
+        ])
+
+    assert result.exit_code == 0
+    # Both channels should have cursor=3 (offset), not 10/20 (persisted)
+    assert call_kwargs["channels"] == {"ch1": 3, "ch2": 3}
+
+
+def test_watch_multi_with_offset_does_not_prevent_auto_ack(runner, stored_swarm, tmp_path):
+    """watch-multi --offset still auto-acks (saves cursor) for received messages."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("ack test", sym_key)
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        yield {
+            "channel": "ch1",
+            "position": 7,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor") as mock_save, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch1",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "0",
+        ])
+
+    assert result.exit_code == 0
+    # save_cursor should still be called for the received message (auto-ack)
+    mock_save.assert_called_once_with("ch1", 7, tmp_path)
