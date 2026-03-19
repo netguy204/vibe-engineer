@@ -28,6 +28,18 @@ from orchestrator.dependencies import (
 )
 
 
+# Chunk: docs/chunks/orch_daemon_root_resolution - Orch CLI root resolution
+def resolve_orch_project_dir(explicit_dir: pathlib.Path | None) -> pathlib.Path:
+    """Resolve the project directory for orchestrator commands.
+
+    When --project-dir is not provided (None), walks up from CWD to find
+    the project root using the same chain as board commands:
+    .ve-task.yaml → .git → CWD fallback.
+    """
+    from board.storage import resolve_project_root
+    return resolve_project_root(explicit_dir)
+
+
 # Chunk: docs/chunks/orch_client_context - Orchestrator client context manager
 @contextmanager
 def orch_client(project_dir):
@@ -69,9 +81,10 @@ def orch():
 @orch.command()
 @click.option("--port", type=int, default=0, help="TCP port for dashboard (0 = auto-select)")
 @click.option("--host", type=str, default="127.0.0.1", help="Host to bind TCP server to")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def start(port, host, project_dir):
     """Start the orchestrator daemon."""
+    project_dir = resolve_orch_project_dir(project_dir)
     from orchestrator.daemon import start_daemon, DaemonError
 
     try:
@@ -84,9 +97,10 @@ def start(port, host, project_dir):
 
 
 @orch.command()
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def stop(project_dir):
     """Stop the orchestrator daemon."""
+    project_dir = resolve_orch_project_dir(project_dir)
     from orchestrator.daemon import stop_daemon, DaemonError
 
     try:
@@ -102,9 +116,10 @@ def stop(project_dir):
 
 @orch.command("status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_status(json_output, project_dir):
     """Show orchestrator daemon status."""
+    project_dir = resolve_orch_project_dir(project_dir)
     from orchestrator.daemon import get_daemon_status
     import json
 
@@ -136,9 +151,10 @@ def orch_status(json_output, project_dir):
 
 @orch.command("url")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_url(json_output, project_dir):
     """Print the orchestrator dashboard URL."""
+    project_dir = resolve_orch_project_dir(project_dir)
     from orchestrator.daemon import is_daemon_running, get_daemon_url
     import json
 
@@ -164,9 +180,10 @@ def orch_url(json_output, project_dir):
 @orch.command("ps")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_ps(status_filter, json_output, project_dir):
     """List all work units (alias for work-unit list)."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -218,9 +235,10 @@ def work_unit():
 @click.option("--status", "init_status", default="READY", help="Initial status")
 @click.option("--blocked-by", multiple=True, help="Chunks this is blocked by")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project_dir):
     """Create a new work unit for a chunk."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -241,9 +259,10 @@ def work_unit_create(chunk, phase, init_status, blocked_by, json_output, project
 @click.argument("chunk")
 @click.argument("new_status", required=False, default=None)
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_status(chunk, new_status, json_output, project_dir):
     """Show or update work unit status."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -267,9 +286,10 @@ def work_unit_status(chunk, new_status, json_output, project_dir):
 @work_unit.command("show")
 @click.argument("chunk")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_show(chunk, json_output, project_dir):
     """Show detailed work unit information including attention reason."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     with orch_client(project_dir) as client:
@@ -297,9 +317,10 @@ def work_unit_show(chunk, json_output, project_dir):
 @work_unit.command("list")
 @click.option("--status", "status_filter", type=str, help="Filter by status")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_list(status_filter, json_output, project_dir):
     """List all work units."""
+    project_dir = resolve_orch_project_dir(project_dir)
     # Delegate to orch ps
     from click import Context
     ctx = click.get_current_context()
@@ -311,13 +332,14 @@ def work_unit_list(status_filter, json_output, project_dir):
 @click.argument("chunk")
 @click.option("--force", is_flag=True, help="Force delete even if branch has unmerged commits")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_delete(chunk, force, json_output, project_dir):
     """Delete a work unit.
 
     By default, refuses to delete if the branch has unmerged commits.
     Use --force to delete anyway (WARNING: may cause data loss).
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     # Normalize chunk path
@@ -341,7 +363,7 @@ def work_unit_delete(chunk, force, json_output, project_dir):
 @click.option("--retain", is_flag=True, help="Retain worktree after completion for debugging")
 # Chunk: docs/chunks/orch_scheduling - ve orch inject CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
     """Inject one or more chunks into the orchestrator work pool.
 
@@ -355,6 +377,7 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
     Use --retain to preserve the worktree after completion for debugging.
     Retained worktrees can be cleaned up with `ve orch prune`.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     # Strip artifact path prefixes from all chunks
@@ -427,9 +450,10 @@ def orch_inject(chunks, phase, priority, retain, json_output, project_dir):
 @orch.command("queue")
 # Chunk: docs/chunks/orch_scheduling - ve orch queue CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_queue(json_output, project_dir):
     """Show ready queue ordered by priority."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -455,9 +479,10 @@ def orch_queue(json_output, project_dir):
 @click.argument("priority", type=int)
 # Chunk: docs/chunks/orch_scheduling - ve orch prioritize CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_prioritize(chunk, priority, json_output, project_dir):
     """Set priority for a work unit."""
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -480,12 +505,13 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
 @click.option("--worktree-threshold", type=int, help="Warning threshold for retained worktrees (default: 10)")
 # Chunk: docs/chunks/orch_scheduling - ve orch config CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, project_dir):
     """Get or set orchestrator configuration.
 
     If no options are provided, shows current configuration.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -518,7 +544,7 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
 # Chunk: docs/chunks/orch_attention_queue - ve orch attention CLI command showing attention queue
 @orch.command("attention")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_attention(json_output, project_dir):
     """Show attention queue of work units needing operator input.
 
@@ -526,6 +552,7 @@ def orch_attention(json_output, project_dir):
     - Higher blocked count = higher priority (unblocks more work)
     - Older items surface first among equal priority
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -582,13 +609,14 @@ def orch_attention(json_output, project_dir):
 @click.argument("chunk")
 @click.argument("answer")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_answer(chunk, answer, json_output, project_dir):
     """Answer a question from a NEEDS_ATTENTION work unit.
 
     Submits the answer and transitions the work unit to READY,
     allowing the scheduler to resume the agent with the answer injected.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -604,7 +632,7 @@ def orch_answer(chunk, answer, json_output, project_dir):
 @work_unit.command("retry")
 @click.argument("chunk")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def work_unit_retry(chunk, json_output, project_dir):
     """Retry a NEEDS_ATTENTION work unit with proper state reset.
 
@@ -618,6 +646,7 @@ def work_unit_retry(chunk, json_output, project_dir):
 
     Only works on work units in NEEDS_ATTENTION status.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     # Normalize chunk path
@@ -636,7 +665,7 @@ def work_unit_retry(chunk, json_output, project_dir):
 @orch.command("retry-all")
 @click.option("--phase", type=str, help="Only retry chunks at this phase (e.g., REVIEW)")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_retry_all(phase, json_output, project_dir):
     """Retry all NEEDS_ATTENTION work units with proper state reset.
 
@@ -646,6 +675,7 @@ def orch_retry_all(phase, json_output, project_dir):
     Use --phase to filter to a specific phase (e.g., --phase REVIEW to only
     retry chunks stuck during review).
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -674,7 +704,7 @@ def orch_retry_all(phase, json_output, project_dir):
 @click.argument("chunk", required=False)
 @click.option("--unresolved", is_flag=True, help="Show only ASK_OPERATOR verdicts")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_conflicts(chunk, unresolved, json_output, project_dir):
     """Show conflict analyses for chunks.
 
@@ -683,6 +713,7 @@ def orch_conflicts(chunk, unresolved, json_output, project_dir):
 
     Use --unresolved to filter to only ASK_OPERATOR verdicts that need resolution.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     with orch_client(project_dir) as client:
@@ -733,7 +764,7 @@ def orch_conflicts(chunk, unresolved, json_output, project_dir):
 @click.option("--with", "other_chunk", required=True, help="The other chunk in the conflict")
 @click.argument("verdict", type=click.Choice(["parallelize", "serialize"]))
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
     """Resolve an ASK_OPERATOR conflict between two chunks.
 
@@ -743,6 +774,7 @@ def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
     Example:
         ve orch resolve my_chunk --with other_chunk serialize
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     # Normalize chunk path
@@ -765,13 +797,14 @@ def orch_resolve(chunk, other_chunk, verdict, json_output, project_dir):
 @click.argument("chunk_a")
 @click.argument("chunk_b")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
     """Analyze potential conflict between two chunks.
 
     Triggers the conflict oracle to analyze whether CHUNK_A and CHUNK_B
     can be safely parallelized or require serialization.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json
 
     # Normalize chunk paths
@@ -804,7 +837,7 @@ def orch_analyze(chunk_a, chunk_b, json_output, project_dir):
 @orch.command("tail")
 @click.argument("chunk")
 @click.option("-f", "--follow", is_flag=True, help="Follow log output in real-time")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 # Chunk: docs/chunks/cli_decompose - Refactored to use log_streaming module
 def orch_tail(chunk, follow, project_dir):
     """Stream log output for an orchestrator work unit.
@@ -814,6 +847,7 @@ def orch_tail(chunk, follow, project_dir):
 
     Use -f to follow the log in real-time as the agent works.
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import time
     from orchestrator.log_parser import (
         parse_log_file,
@@ -937,7 +971,7 @@ def worktree():
 @worktree.command("list")
 @click.option("--status", "status_filter", default=None, help="Filter by status (active, completed, retained, orphaned)")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 # Chunk: docs/chunks/orch_worktree_retain - CLI command to list worktrees with status
 def worktree_list(status_filter, json_output, project_dir):
     """List all worktrees with their status.
@@ -952,6 +986,7 @@ def worktree_list(status_filter, json_output, project_dir):
         ve orch worktree list               # List all worktrees
         ve orch worktree list --status retained  # Only show retained worktrees
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     with orch_client(project_dir) as client:
@@ -984,7 +1019,7 @@ def worktree_list(status_filter, json_output, project_dir):
 @click.argument("chunk")
 @click.option("--keep-branch", is_flag=True, help="Keep the git branch after removing worktree")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 # Chunk: docs/chunks/orch_worktree_retain - CLI command to remove worktree without merging
 def worktree_remove(chunk, keep_branch, json_output, project_dir):
     """Remove a worktree without merging.
@@ -999,6 +1034,7 @@ def worktree_remove(chunk, keep_branch, json_output, project_dir):
         ve orch worktree remove my_chunk         # Remove worktree and branch
         ve orch worktree remove my_chunk --keep-branch  # Keep the branch
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     # Normalize chunk path
@@ -1026,7 +1062,7 @@ def worktree_remove(chunk, keep_branch, json_output, project_dir):
 @worktree.command("prune")
 @click.option("--dry-run", is_flag=True, help="Show what would be pruned without doing it")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 # Chunk: docs/chunks/orch_worktree_retain - CLI command to prune all retained worktrees
 def worktree_prune(dry_run, json_output, project_dir):
     """Prune all retained worktrees.
@@ -1040,6 +1076,7 @@ def worktree_prune(dry_run, json_output, project_dir):
         ve orch worktree prune            # Prune all retained worktrees
         ve orch worktree prune --dry-run  # Show what would be pruned
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     with orch_client(project_dir) as client:
@@ -1078,7 +1115,7 @@ def worktree_prune(dry_run, json_output, project_dir):
 @click.option("--all", "prune_all", is_flag=True, help="Prune all retained worktrees")
 @click.option("--dry-run", is_flag=True, help="Show what would be pruned without doing it")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
-@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
 def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
     """Clean up retained worktrees from completed work units.
 
@@ -1099,6 +1136,7 @@ def orch_prune(chunk, prune_all, dry_run, json_output, project_dir):
         ve orch prune --all           # Prune all retained worktrees
         ve orch prune --all --dry-run # Show what would be pruned
     """
+    project_dir = resolve_orch_project_dir(project_dir)
     import json as json_module
 
     if not chunk and not prune_all:

@@ -121,18 +121,18 @@ def find_git_root(start_path: Path) -> Path | None:
     return None
 
 
-# Chunk: docs/chunks/board_cursor_root_resolution
-def resolve_board_root(explicit_root: Path | None = None) -> Path:
-    """Resolve the project root for board cursor storage.
+# Chunk: docs/chunks/orch_daemon_root_resolution - Shared project root resolution
+def resolve_project_root(explicit_root: Path | None = None) -> Path:
+    """Resolve the project root for daemon/state file lookup.
 
     Priority chain:
-    1. Explicit root (operator override via --project-root) — returned as-is
+    1. Explicit root (operator override) — returned as-is
     2. Walk up for .ve-task.yaml — task directory is the root
     3. Walk up for .git — git root is the project root
     4. Fall back to CWD (preserves DEC-002: git not assumed)
 
     Args:
-        explicit_root: If provided, used as-is (from --project-root flag).
+        explicit_root: If provided, used as-is.
 
     Returns:
         Resolved project root path.
@@ -156,6 +156,16 @@ def resolve_board_root(explicit_root: Path | None = None) -> Path:
 
     # Fall back to CWD
     return cwd
+
+
+# Chunk: docs/chunks/board_cursor_root_resolution
+def resolve_board_root(explicit_root: Path | None = None) -> Path:
+    """Resolve the project root for board cursor storage.
+
+    Delegates to resolve_project_root — see its docstring for the
+    full priority chain.
+    """
+    return resolve_project_root(explicit_root)
 
 
 # ---------------------------------------------------------------------------
