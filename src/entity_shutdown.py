@@ -411,12 +411,23 @@ def run_consolidation(
     # Step 1: Parse extracted memories
     parsed = parse_extracted_memories(extracted_memories_json)
 
-    if not parsed:
-        return {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
-
-    # Step 2: Write journal memories to disk
+    # Step 2: Write new journal memories to disk
     for fm, content in parsed:
         entities.write_memory(entity_name, fm, content)
+
+    # Chunk: docs/chunks/entity_consolidate_existing - Read existing journals from disk
+    # Step 2b: Read ALL journal entries from disk (includes just-written + pre-existing)
+    journal_dir = entities.entity_dir(entity_name) / "memories" / MemoryTier.JOURNAL.value
+    existing_journal_entries = []
+    journal_file_map = {}  # title -> path, for cleanup later
+    if journal_dir.exists():
+        for f in sorted(journal_dir.glob("*.md")):
+            fm, content = entities.parse_memory(f)
+            if fm:
+                d = fm.model_dump(mode="json")
+                d["content"] = content
+                existing_journal_entries.append(d)
+                journal_file_map[fm.title] = f
 
     # Step 3: Load existing consolidated and core memories
     existing_consolidated_mems = []
@@ -445,14 +456,25 @@ def run_consolidation(
                 d["content"] = content
                 existing_core_mems.append(d)
 
-    # Step 4: Skip consolidation if too few memories and no existing tiers
+    # Step 4: Skip consolidation if no journals on disk and no existing tiers
+    if not existing_journal_entries and not existing_consolidated_mems and not existing_core_mems:
+        return {
+            "journals_added": len(parsed),
+            "journals_consolidated": 0,
+            "consolidated": 0,
+            "core": 0,
+            "expired": 0,
+            "demoted": 0,
+        }
+
     if (
         not existing_consolidated_mems
         and not existing_core_mems
-        and len(parsed) < 3
+        and len(existing_journal_entries) < 3
     ):
         return {
             "journals_added": len(parsed),
+            "journals_consolidated": len(existing_journal_entries),
             "consolidated": 0,
             "core": 0,
             "expired": 0,
@@ -466,14 +488,9 @@ def run_consolidation(
             "Install it with: pip install anthropic"
         )
 
-    new_journals_dicts = []
-    for fm, content in parsed:
-        d = fm.model_dump(mode="json")
-        d["content"] = content
-        new_journals_dicts.append(d)
-
+    # Use all journal entries from disk (existing + just-written) for consolidation
     prompt = format_consolidation_prompt(
-        new_journals=new_journals_dicts,
+        new_journals=existing_journal_entries,
         existing_consolidated=existing_consolidated_mems,
         existing_core=existing_core_mems,
     )
@@ -521,6 +538,13 @@ def run_consolidation(
             if f not in new_core_paths:
                 f.unlink()
 
+    # Chunk: docs/chunks/entity_consolidate_existing - Remove consolidated journal files
+    # Journal files that were consolidated (not in unconsolidated list) are deleted
+    unconsolidated_titles = set(consolidation_result["unconsolidated"])
+    for title, path in journal_file_map.items():
+        if title not in unconsolidated_titles and path.exists():
+            path.unlink()
+
     # Step 8: Apply decay to bound memory growth
     # Chunk: docs/chunks/entity_memory_decay — decay integration
     if decay_config is None:
@@ -532,7 +556,6 @@ def run_consolidation(
     all_memories_for_decay = []
 
     # Journal tier: check unconsolidated journals for tier-0 expiry
-    journal_dir = entities.entity_dir(entity_name) / "memories" / MemoryTier.JOURNAL.value
     if journal_dir.exists():
         for f in sorted(journal_dir.glob("*.md")):
             fm, content = entities.parse_memory(f)
@@ -578,6 +601,7 @@ def run_consolidation(
 
     return {
         "journals_added": len(parsed),
+        "journals_consolidated": len(existing_journal_entries),
         "consolidated": len(consolidation_result["consolidated"]),
         "core": len(consolidation_result["core"]),
         "expired": expired_count,
