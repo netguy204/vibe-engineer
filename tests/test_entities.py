@@ -332,6 +332,174 @@ class TestListMemories:
         assert core_memories[0].title == "K1"
 
 
+class TestStartupPayload:
+    """Tests for Entities.startup_payload()."""
+
+    def test_startup_payload_includes_identity(self, entities):
+        """Payload contains entity name and role."""
+        entities.create_entity("mysteward", role="Project steward")
+        payload = entities.startup_payload("mysteward")
+        assert "mysteward" in payload
+        assert "Project steward" in payload
+
+    def test_startup_payload_includes_identity_body(self, entities):
+        """Payload contains the full body text from identity.md."""
+        entities.create_entity("mysteward", role="Project steward")
+        payload = entities.startup_payload("mysteward")
+        assert "Startup Instructions" in payload
+
+    def test_startup_payload_includes_core_memories(self, entities):
+        """Each core memory title and content appears in output."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Always verify first", salience=5),
+            "Check state before acting on assumptions.",
+        )
+        payload = entities.startup_payload("agent")
+        assert "Always verify first" in payload
+        assert "Check state before acting on assumptions." in payload
+
+    def test_startup_payload_core_memories_numbered(self, entities):
+        """Core memories are numbered CM1, CM2, etc."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="First skill", salience=5),
+            "Content A.",
+        )
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Second skill", salience=4),
+            "Content B.",
+        )
+        payload = entities.startup_payload("agent")
+        assert "CM1:" in payload
+        assert "CM2:" in payload
+
+    def test_startup_payload_includes_consolidated_index(self, entities):
+        """Consolidated titles appear as an index."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="consolidated", title="Pattern X"),
+            "Details about pattern X.",
+        )
+        payload = entities.startup_payload("agent")
+        assert "Consolidated Memory Index" in payload
+        assert "- Pattern X" in payload
+
+    def test_startup_payload_includes_touch_protocol(self, entities):
+        """Text includes ve entity touch instruction."""
+        entities.create_entity("agent")
+        payload = entities.startup_payload("agent")
+        assert "ve entity touch" in payload
+
+    def test_startup_payload_excludes_journal(self, entities):
+        """Journal memories do not appear in the startup payload."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="journal", title="Daily note secret"),
+            "Should not appear.",
+        )
+        payload = entities.startup_payload("agent")
+        assert "Daily note secret" not in payload
+        assert "Should not appear" not in payload
+
+    def test_startup_payload_empty_memories(self, entities):
+        """Entity with no memories still produces valid payload."""
+        entities.create_entity("agent")
+        payload = entities.startup_payload("agent")
+        assert "agent" in payload
+        assert "Core Memories" in payload
+        assert "Touch Protocol" in payload
+        assert "No core memories yet" in payload
+
+    def test_startup_payload_nonexistent_entity(self, entities):
+        """Raises ValueError for nonexistent entity."""
+        with pytest.raises(ValueError, match="does not exist"):
+            entities.startup_payload("ghost")
+
+
+class TestRecallMemory:
+    """Tests for Entities.recall_memory()."""
+
+    def test_recall_finds_by_exact_title(self, entities):
+        """Exact title match returns the memory."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Verify state before acting"),
+            "Always check.",
+        )
+        results = entities.recall_memory("agent", "Verify state before acting")
+        assert len(results) == 1
+        assert results[0]["frontmatter"]["title"] == "Verify state before acting"
+
+    def test_recall_finds_by_substring(self, entities):
+        """Partial title match works."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="consolidated", title="Template system requires source editing"),
+            "Edit templates not rendered files.",
+        )
+        results = entities.recall_memory("agent", "Template system")
+        assert len(results) == 1
+        assert "Template system" in results[0]["frontmatter"]["title"]
+
+    def test_recall_case_insensitive(self, entities):
+        """Case-insensitive matching."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Always Verify First"),
+            "Check things.",
+        )
+        results = entities.recall_memory("agent", "always verify")
+        assert len(results) == 1
+
+    def test_recall_returns_content(self, entities):
+        """Returned dict includes full content body."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Some Skill"),
+            "The full body of the memory.",
+        )
+        results = entities.recall_memory("agent", "Some Skill")
+        assert results[0]["content"] == "The full body of the memory."
+        assert results[0]["tier"] == "core"
+
+    def test_recall_no_match_returns_empty(self, entities):
+        """No match returns empty list."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Existing memory"),
+            "Content.",
+        )
+        results = entities.recall_memory("agent", "nonexistent query")
+        assert results == []
+
+    def test_recall_excludes_journal(self, entities):
+        """Journal memories are not searchable."""
+        entities.create_entity("agent")
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="journal", title="Secret journal entry"),
+            "Hidden.",
+        )
+        results = entities.recall_memory("agent", "Secret journal")
+        assert results == []
+
+    def test_recall_nonexistent_entity(self, entities):
+        """Raises ValueError for nonexistent entity."""
+        with pytest.raises(ValueError, match="does not exist"):
+            entities.recall_memory("ghost", "anything")
+
+
 class TestMemoryIndex:
     """Tests for Entities.memory_index()."""
 
