@@ -12,6 +12,7 @@ from board.storage import (
     read_watch_pid,
     remove_watch_pid,
     resolve_board_root,
+    resolve_project_root,
     save_cursor,
     save_keypair,
     watch_pid_path,
@@ -203,6 +204,65 @@ def test_resolve_board_root_falls_back_to_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(subdir)
 
     assert resolve_board_root() == subdir
+
+
+# ---------------------------------------------------------------------------
+# resolve_project_root tests
+# Chunk: docs/chunks/orch_daemon_root_resolution
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_project_root_explicit_root(tmp_path):
+    """resolve_project_root with explicit root returns the explicit root."""
+    explicit = tmp_path / "my-project"
+    explicit.mkdir()
+    assert resolve_project_root(explicit) == explicit
+
+
+def test_resolve_project_root_prefers_task_over_git(tmp_path, monkeypatch):
+    """resolve_project_root prefers .ve-task.yaml over .git."""
+    task_root = tmp_path / "task"
+    task_root.mkdir()
+    (task_root / ".ve-task.yaml").write_text("projects: []\n")
+
+    git_root = tmp_path
+    (git_root / ".git").mkdir()
+
+    subdir = task_root / "subdir"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+
+    assert resolve_project_root() == task_root
+
+
+def test_resolve_project_root_falls_back_to_git(tmp_path, monkeypatch):
+    """resolve_project_root falls back to .git root when no task yaml."""
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "src" / "lib"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+
+    assert resolve_project_root() == tmp_path
+
+
+def test_resolve_project_root_falls_back_to_cwd(tmp_path, monkeypatch):
+    """resolve_project_root falls back to CWD when neither marker exists."""
+    subdir = tmp_path / "somewhere"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+
+    assert resolve_project_root() == subdir
+
+
+def test_resolve_board_root_delegates_to_resolve_project_root(tmp_path, monkeypatch):
+    """resolve_board_root delegates to resolve_project_root."""
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "deep"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+
+    # Both should return the same result
+    assert resolve_board_root() == resolve_project_root()
 
 
 # ---------------------------------------------------------------------------
