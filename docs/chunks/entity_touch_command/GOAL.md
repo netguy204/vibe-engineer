@@ -1,18 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/models/entity.py
+  - src/entities.py
+  - src/cli/entity.py
+  - tests/test_entities.py
+  - tests/test_entity_cli.py
 code_references: []
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_memory_schema"]
+depends_on:
+- entity_memory_schema
 created_after: []
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

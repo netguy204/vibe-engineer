@@ -60,3 +60,28 @@ def list_entities(project_dir: pathlib.Path) -> None:
             click.echo(f"  {name}  ({identity.role})")
         else:
             click.echo(f"  {name}")
+
+
+# Chunk: docs/chunks/entity_touch_command
+@entity.command("touch")
+@click.argument("name")
+@click.argument("memory_id")
+@click.argument("reason", required=False, default=None)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=".",
+)
+def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Path) -> None:
+    """Touch a memory to record runtime reinforcement.
+
+    NAME is the entity identifier.
+    MEMORY_ID is the filename stem (without .md) of the memory to touch.
+    REASON is an optional description of why the memory was useful.
+    """
+    entities = Entities(project_dir)
+    try:
+        event = entities.touch_memory(name, memory_id, reason)
+        click.echo(f"Touched '{event.memory_title}' (last_reinforced updated)")
+    except ValueError as e:
+        raise click.ClickException(str(e))

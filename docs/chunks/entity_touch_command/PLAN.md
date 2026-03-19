@@ -10,170 +10,159 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Build the `ve entity touch <entity_name> <memory_id> [reason]` CLI command following the established patterns from `entity_memory_schema`: Click command in `src/cli/entity.py`, domain logic in `src/entities.py`, with a model for touch events in `src/models/entity.py`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The touch command does two things:
+1. **Updates `last_reinforced`** on the target memory file via the existing `Entities.update_memory_field()` method
+2. **Appends a touch event** to `.entities/<name>/touch_log.jsonl` — a JSONL file where each line is a JSON object with `timestamp`, `memory_id`, `memory_title`, and optional `reason`
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+This follows the investigation's H6 prototype format (see `docs/investigations/agent_memory_consolidation/prototypes/touch_log.jsonl`). The touch log is a session-level append-only file that the shutdown skill reads to identify which memories were actively used.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_touch_command/GOAL.md)
-with references to the files that you expect to touch.
--->
+Memory lookup strategy: The command accepts a `memory_id` which is the filename stem (without `.md`) of the memory file. Since touch is primarily for core memories (tier 2), we search core first, then consolidated, then journal. This keeps the common case fast. The `Entities` class gets a new `find_memory()` method that resolves a memory_id to its file path.
 
-## Subsystem Considerations
+Testing follows TDD per `docs/trunk/TESTING_PHILOSOPHY.md`:
+- Unit tests for `Entities.touch_memory()` and `Entities.find_memory()` in `tests/test_entities.py`
+- CLI integration tests for `ve entity touch` in `tests/test_entity_cli.py`
+- Tests cover: happy path, missing entity, missing memory, touch log creation, reason omission
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per DEC-001, all functionality is accessible via the CLI. Per DEC-008, the touch event model uses Pydantic.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add TouchEvent model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `TouchEvent` Pydantic model to `src/models/entity.py` with fields:
+- `timestamp`: `datetime` — when the touch occurred
+- `memory_id`: `str` — filename stem of the touched memory
+- `memory_title`: `str` — title from the memory's frontmatter (for human readability in the log)
+- `reason`: `str | None` — optional reason the memory was useful
 
-Example:
+This model handles serialization to JSON for the JSONL touch log.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/models/entity.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write failing tests for find_memory
 
-Location: src/segment/format.rs
+Write tests in `tests/test_entities.py` for a new `Entities.find_memory()` method:
+- Finds a core memory by filename stem
+- Finds a consolidated memory by filename stem
+- Finds a journal memory by filename stem
+- Returns `None` for a nonexistent memory_id
+- Searches core tier first (optimization for the common case)
 
-### Step 2: Implement header serialization
+Location: `tests/test_entities.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Implement find_memory
 
-### Step 3: ...
+Add `Entities.find_memory(entity_name: str, memory_id: str) -> Path | None` to `src/entities.py`.
+
+The method searches across all three tier directories for a file whose stem matches `memory_id`. Search order: core → consolidated → journal (core is the expected tier for touch commands). Returns the full path if found, `None` otherwise.
+
+Location: `src/entities.py`
+
+### Step 4: Write failing tests for touch_memory
+
+Write tests in `tests/test_entities.py` for a new `Entities.touch_memory()` method:
+- Updates `last_reinforced` on the memory file
+- Appends a TouchEvent to `.entities/<name>/touch_log.jsonl`
+- Creates touch_log.jsonl if it doesn't exist
+- Appends to existing touch_log.jsonl
+- Records reason when provided, omits when not
+- Raises `ValueError` when entity doesn't exist
+- Raises `ValueError` when memory_id is not found
+- The touch log entry includes the memory's title (for readability)
+
+Location: `tests/test_entities.py`
+
+### Step 5: Implement touch_memory
+
+Add `Entities.touch_memory(entity_name: str, memory_id: str, reason: str | None = None) -> TouchEvent` to `src/entities.py`.
+
+Implementation:
+1. Validate entity exists
+2. Call `find_memory()` to locate the memory file
+3. Parse the memory to get its frontmatter (for the title)
+4. Update `last_reinforced` to `datetime.now(timezone.utc)` via `update_memory_field()`
+5. Create a `TouchEvent` with timestamp, memory_id, memory_title, reason
+6. Append the event as a JSON line to `.entities/<entity_name>/touch_log.jsonl`
+7. Return the `TouchEvent`
+
+The JSONL append is a simple file open in append mode — no locking needed since only one agent runs at a time.
+
+Location: `src/entities.py`
+
+### Step 6: Write failing CLI tests for ve entity touch
+
+Write tests in `tests/test_entity_cli.py` for the `ve entity touch` command:
+- Happy path: touches a core memory and echoes confirmation
+- With reason: `ve entity touch mysteward <mem_id> "applying lifecycle rule"`
+- Missing entity: exits non-zero with error
+- Missing memory: exits non-zero with error
+- Touch log file is created with correct content
+
+Location: `tests/test_entity_cli.py`
+
+### Step 7: Implement ve entity touch CLI command
+
+Add a `touch` command to the entity group in `src/cli/entity.py`:
+
+```python
+@entity.command("touch")
+@click.argument("name")
+@click.argument("memory_id")
+@click.argument("reason", required=False, default=None)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def touch(name, memory_id, reason, project_dir):
+```
+
+The command:
+1. Instantiates `Entities(project_dir)`
+2. Calls `entities.touch_memory(name, memory_id, reason)`
+3. Echoes `"Touched '{memory_title}' (last_reinforced updated)"`
+4. On `ValueError`, raises `click.ClickException`
+
+Location: `src/cli/entity.py`
+
+### Step 8: Add read_touch_log method
+
+Add `Entities.read_touch_log(entity_name: str) -> list[TouchEvent]` to support the shutdown skill reading which memories were used during a session.
+
+Write a test that creates an entity, touches multiple memories, then reads the log and verifies all events are returned in order.
+
+Location: `src/entities.py`, `tests/test_entities.py`
+
+### Step 9: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter `code_paths` with the files created/modified:
+- `src/models/entity.py`
+- `src/entities.py`
+- `src/cli/entity.py`
+- `tests/test_entities.py`
+- `tests/test_entity_cli.py`
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add chunk backreference `# Chunk: docs/chunks/entity_touch_command` to:
+- The `touch` CLI command in `src/cli/entity.py`
+- The `touch_memory`, `find_memory`, and `read_touch_log` methods in `src/entities.py`
+- The `TouchEvent` model in `src/models/entity.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **entity_memory_schema** (ACTIVE): Provides `Entities` class, `MemoryFrontmatter` model, `update_memory_field()`, memory directory structure, and CLI command group. All of these are used directly.
+- No new external libraries required — uses `json` stdlib for JSONL, existing `pydantic` for the model.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Memory ID ambiguity**: Memory filenames are auto-generated as `{timestamp}_{slug}.md`, which makes them long and hard to type. The touch command uses the full filename stem. In practice, agents will copy-paste from the startup memory index. If this proves unwieldy, a future chunk could add short aliases or sequential IDs — but that's out of scope here.
+- **Touch log growth**: The touch log is append-only within a session. The shutdown skill is responsible for reading and clearing it. If no shutdown skill runs, the log grows indefinitely. This is acceptable for the MVP — the file is tiny (one JSON line per touch).
+- **Concurrent touches**: No file locking on the JSONL append. This is safe because only one agent process writes at a time per the entity model. If concurrent agents ever share an entity, this would need revisiting.
+- **Performance**: The < 100ms target should be easily met — the operation is one frontmatter field update + one JSONL line append, both against local filesystem.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
