@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import secrets
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -48,9 +50,12 @@ from board.storage import (
     list_swarms,
     load_cursor,
     load_keypair,
+    read_watch_pid,
+    remove_watch_pid,
     resolve_board_root,
     save_cursor,
     save_keypair,
+    write_watch_pid,
 )
 
 
@@ -244,6 +249,20 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
     if offset is not None:
         cursor = offset
 
+    # Chunk: docs/chunks/board_watch_safety — kill previous watch on same channel
+    existing_pid = read_watch_pid(channel, project_root)
+    if existing_pid is not None:
+        try:
+            os.kill(existing_pid, 0)  # Check if process is alive
+            os.kill(existing_pid, signal.SIGTERM)
+            click.echo(f"Killed existing watch process {existing_pid} on channel '{channel}'", err=True)
+        except OSError:
+            # Process is dead — clean up stale PID file
+            pass
+        remove_watch_pid(channel, project_root)
+
+    write_watch_pid(channel, os.getpid(), project_root)
+
     async def _watch():
         client = BoardClient(server, swarm, seed)
         await client.connect()
@@ -257,7 +276,10 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
         finally:
             await client.close()
 
-    asyncio.run(_watch())
+    try:
+        asyncio.run(_watch())
+    finally:
+        remove_watch_pid(channel, project_root)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +333,22 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     seed, _pub = keypair
     sym_key = derive_symmetric_key(seed)
 
+    # Chunk: docs/chunks/board_watch_safety — kill previous watch on each channel
+    for ch in channels:
+        existing_pid = read_watch_pid(ch, project_root)
+        if existing_pid is not None:
+            try:
+                os.kill(existing_pid, 0)
+                os.kill(existing_pid, signal.SIGTERM)
+                click.echo(f"Killed existing watch process {existing_pid} on channel '{ch}'", err=True)
+            except OSError:
+                pass
+            remove_watch_pid(ch, project_root)
+
+    current_pid = os.getpid()
+    for ch in channels:
+        write_watch_pid(ch, current_pid, project_root)
+
     # Load per-channel cursors
     channel_cursors = {}
     for ch in channels:
@@ -346,6 +384,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
         asyncio.run(_watch_multi())
     except KeyboardInterrupt:
         pass
+    finally:
+        for ch in channels:
+            remove_watch_pid(ch, project_root)
 
 
 # ---------------------------------------------------------------------------

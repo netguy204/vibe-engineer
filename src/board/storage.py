@@ -184,6 +184,50 @@ def load_cursor(channel: str, project_root: Path) -> int:
     return int(cursor_file.read_text().strip())
 
 
+# ---------------------------------------------------------------------------
+# Watch PID file management (.ve/board/cursors/{channel}.watch.pid)
+# Chunk: docs/chunks/board_watch_safety
+# ---------------------------------------------------------------------------
+
+
+def watch_pid_path(channel: str, project_root: Path) -> Path:
+    """Return the path to the PID file for a channel watch process.
+
+    File: {project_root}/.ve/board/cursors/{channel}.watch.pid
+    """
+    return project_root / ".ve" / "board" / "cursors" / f"{channel}.watch.pid"
+
+
+def read_watch_pid(channel: str, project_root: Path) -> int | None:
+    """Read the PID from the watch PID file for a channel.
+
+    Returns None if the file is missing or contains unparseable content.
+    """
+    pid_file = watch_pid_path(channel, project_root)
+    if not pid_file.exists():
+        return None
+    try:
+        return int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def write_watch_pid(channel: str, pid: int, project_root: Path) -> None:
+    """Write the current process PID to the watch PID file for a channel."""
+    pid_file = watch_pid_path(channel, project_root)
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(pid))
+
+
+def remove_watch_pid(channel: str, project_root: Path) -> None:
+    """Remove the watch PID file for a channel. No-op if already gone."""
+    pid_file = watch_pid_path(channel, project_root)
+    try:
+        pid_file.unlink()
+    except FileNotFoundError:
+        pass
+
+
 # Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
 def ack_and_advance(channel: str, project_root: Path) -> int:
     """Read the current cursor and advance it by 1.
