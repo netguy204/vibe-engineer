@@ -1,18 +1,25 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/commands/orchestrator-monitor.md.jinja2
+- src/templates/commands/steward-watch.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: orchestrator
+  relationship: uses
+- subsystem_id: template_system
+  relationship: uses
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_cursor_root_resolution"]
+created_after:
+- board_cursor_root_resolution
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

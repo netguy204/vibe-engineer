@@ -1,179 +1,171 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new Jinja2 template `src/templates/commands/orchestrator-monitor.md.jinja2`
+that defines the `/orchestrator-monitor` slash command skill. This skill is a
+prompt-only artifact (no Python code) — it instructs the agent how to poll
+orchestrator status for injected chunks, handle each status, and manage the
+`/loop` lifecycle.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The skill follows the established template pattern (DEC-001 via `ve init`
+rendering): a Jinja2 source template with YAML frontmatter `description`, the
+auto-generated header partial, and common tips partial. The rendered output
+lands in `.claude/commands/orchestrator-monitor.md`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+After creating the skill, update `/steward-watch` (Step 6) to delegate to
+`/orchestrator-monitor` instead of constructing inline loop logic. Also
+register the new command in the CLAUDE.md template's orchestrator commands line.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orchestrator_monitor_skill/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Testing approach**: This chunk produces only template files (prompt text),
+not Python code with behavior. Per TESTING_PHILOSOPHY.md, template content is
+not asserted on — we verify templates render without error and files are
+created. The existing `ve init` rendering test suite covers this. No new tests
+are needed for prompt-only slash commands, as there is no computation,
+validation, or side effect to test beyond what the template system already
+verifies.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the
+  orchestrator subsystem — the skill instructs agents to call `ve orch ps`,
+  `ve orch work-unit show`, and `ve orch work-unit status` commands. No
+  orchestrator code is modified.
+- **docs/subsystems/template_system** (DOCUMENTED): This chunk USES the
+  template system to create a new Jinja2 command template following the
+  established rendering pattern (`ve init` → `.claude/commands/`).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the orchestrator-monitor command template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/orchestrator-monitor.md.jinja2` with:
 
-Example:
+- YAML frontmatter with `description: "Monitor injected chunks through the orchestrator lifecycle to completion."`
+- Standard Jinja2 header: `{% set source_template = "orchestrator-monitor.md.jinja2" %}` + `{% include "partials/auto-generated-header.md.jinja2" %}`
+- Tips section with `{% include "partials/common-tips.md.jinja2" %}`
+- `$ARGUMENTS` used for chunk names and flags
 
-### Step 1: Define the SegmentHeader struct
+**Instructions body** covering these sections:
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+**Argument parsing:**
+- Parse `$ARGUMENTS` for chunk name(s) and optional flags `--changelog-channel <channel>` and `--swarm <swarm_id>`
+- If no chunk names provided, run `ve orch ps` to show current work units and ask operator which to monitor
 
-Location: src/segment/format.rs
+**Immediate first check (Step 1 in skill):**
+- Run `ve orch ps --json` and filter for the monitored chunks
+- For each chunk, execute the status handler logic (same as the loop body below)
+- This ensures the agent doesn't wait 3 minutes for the first status update
 
-### Step 2: Implement header serialization
+**Loop setup (Step 2 in skill):**
+- Set up a `/loop 3m` with a prompt that polls `ve orch ps --json` for the monitored chunks
+- The prompt should include the chunk names, changelog channel, and swarm ID so the loop body is self-contained
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Status handler logic** (used by both immediate check and loop body):
 
-### Step 3: ...
+- **RUNNING / BLOCKED / READY**: No action. Report status if first check.
+- **NEEDS_ATTENTION**:
+  1. Run `ve orch work-unit show <chunk>` to get `attention_reason`
+  2. Inspect the worktree branch: `git log --oneline orch/<chunk> ^main` and `git diff --stat main..orch/<chunk>`
+  3. Decision tree:
+     - If attention_reason indicates merge failure and branch has commits: attempt manual merge (`git merge orch/<chunk> --no-edit`), resolve conflicts if any, then `ve orch work-unit status <chunk> DONE`
+     - If attention_reason indicates agent failure: reset to READY for retry (`ve orch work-unit status <chunk> READY`)
+     - If unclear or complex: escalate to operator (post to changelog or alert)
+- **DONE**:
+  1. Check if branch needs pushing: `git log --oneline @{u}..HEAD` (if upstream tracking exists)
+  2. Read chunk's GOAL.md `code_paths` — if any path starts with `workers/`, run deploy (`cd workers/leader-board && npm run deploy`)
+  3. Post changelog entry if `--changelog-channel` and `--swarm` were provided: `ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`
+  4. Remove chunk from the monitored set
+- **FAILED**: Post failure summary to changelog (if channel provided), remove from monitored set
 
----
+**Loop lifecycle management:**
+- When all monitored chunks reach terminal state (DONE or FAILED), cancel the loop via `CronDelete`
+- Wrap the entire Instructions section in `{% raw %}...{% endraw %}` to prevent Jinja2 from interpreting the agent-facing template syntax
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+**Backreference comment** at template top:
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+{# Chunk: docs/chunks/orchestrator_monitor_skill - Orchestrator monitor slash command #}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/templates/commands/orchestrator-monitor.md.jinja2`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Update steward-watch to reference /orchestrator-monitor
 
-## Dependencies
+Edit `src/templates/commands/steward-watch.md.jinja2`, replacing Step 6's
+inline loop construction with a delegation to the new skill.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Replace the current Step 6 body (which explains how to manually construct a
+`/loop` prompt with inline orchestrator polling logic) with:
 
-If there are no dependencies, delete this section.
--->
+```
+After injecting a chunk, run `/orchestrator-monitor <chunk_name>
+--changelog-channel <changelog_channel> --swarm <swarm_id>` to set up
+recurring orchestrator monitoring. This runs concurrently with the channel
+watch — the monitor polls orchestrator status while the watch blocks on
+inbound messages.
+
+When multiple chunks are injected during the session, pass all chunk names
+to a single `/orchestrator-monitor` invocation. The skill handles loop
+lifecycle management (creation, update, and cancellation).
+```
+
+Add a backreference comment for this chunk near the existing chunk comments at
+the top of the template.
+
+Location: `src/templates/commands/steward-watch.md.jinja2`
+
+### Step 3: Register in CLAUDE.md template
+
+Edit `src/templates/claude/CLAUDE.md.jinja2` line 95 to add
+`/orchestrator-monitor` to the orchestrator commands list:
+
+Change:
+```
+Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`
+```
+To:
+```
+Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+```
+
+Add a backreference comment for this chunk.
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 4: Render and verify
+
+Run `uv run ve init` to render all templates and verify:
+1. `.claude/commands/orchestrator-monitor.md` is created
+2. `.claude/commands/steward-watch.md` reflects the updated Step 6
+3. `CLAUDE.md` lists `/orchestrator-monitor` in the orchestrator commands
+
+### Step 5: Run existing tests
+
+Run `uv run pytest tests/` to verify no regressions. The template rendering
+tests should pass with the new template included. No new test files are needed
+since this chunk produces only prompt text, not testable Python behavior.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Deploy step is project-specific**: The DONE handler includes a conditional
+  deploy step (`cd workers/leader-board && npm run deploy`) inherited from
+  steward-watch. This is specific to projects using Durable Object workers.
+  The skill should frame this as conditional: "if code_paths include workers/,
+  run the project's deploy command." The exact deploy command may vary by
+  project — the skill should instruct the agent to check the project's README
+  or deploy configuration rather than hardcoding a specific command.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Loop prompt length**: The `/loop` prompt must be self-contained (include
+  chunk names, channel, swarm). If many chunks are monitored simultaneously,
+  the prompt could become long. This is acceptable since chunk names are short
+  strings and the prompt is agent-consumed, not human-read.
+
+- **CronCreate/CronDelete availability**: The skill assumes the agent has
+  access to `CronCreate` and `CronDelete` tools (provided by the `/loop`
+  skill). This is true in Claude Code environments with the loop skill
+  registered.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->

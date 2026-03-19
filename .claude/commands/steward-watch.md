@@ -12,6 +12,7 @@ Run `ve init` to regenerate.
 
 
 
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -124,44 +125,15 @@ causing the steward to loop on it indefinitely.
 
 ### Step 6: Start orchestrator monitor
 
-After injecting a chunk, set up a recurring monitor using `/loop` so the
-steward can track orchestrator progress **concurrently** with the blocking
-channel watch. This is critical — without it, the requester never learns
-that their work was completed.
+After injecting a chunk, run `/orchestrator-monitor <chunk_name>
+--changelog-channel <changelog_channel> --swarm <swarm_id>` to set up
+recurring orchestrator monitoring. This runs concurrently with the channel
+watch — the monitor polls orchestrator status while the watch blocks on
+inbound messages.
 
-Use `/loop 5m` with a prompt that:
-
-1. Runs `ve orch ps` and checks the status of all injected chunks
-2. For **DONE** chunks:
-   a. **Check for worker changes** — Read the completed chunk's `GOAL.md`
-      frontmatter and inspect its `code_paths` list. If any path starts with
-      `workers/`, a Durable Object deploy is needed.
-   b. **Deploy conditionally** — If worker paths were found, run
-      `cd workers/leader-board && npm run deploy` and verify the command exits
-      0. If the deploy fails, include the failure details in the changelog
-      entry but do not block — proceed to the next sub-step.
-   c. **Post a changelog entry** announcing the completion (include the chunk
-      name and what it accomplished).
-   d. **Remove the chunk** from the monitoring prompt.
-3. For **NEEDS_ATTENTION** chunks — alerts the operator or runs
-   `/orchestrator-investigate` to diagnose and resolve
-4. For **RUNNING** chunks — takes no action
-5. For **FAILED** chunks — posts a failure summary to the changelog
-
-Example `/loop` prompt:
-```
-/loop 5m Check orchestrator status for injected chunks: run `ve orch ps`
-and look for `<chunk_name>`. If DONE, post a changelog entry via
-`ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`.
-If NEEDS_ATTENTION, alert me. If RUNNING, no action needed.
-```
-
-When new chunks are injected during the session, cancel the existing loop
-(CronDelete) and create a new one that monitors all active chunks.
-
-The steward is the bridge between the orchestrator's async execution and
-the human-visible changelog. The `/loop` pattern lets it monitor without
-blocking on the channel watch.
+When multiple chunks are injected during the session, pass all chunk names
+to a single `/orchestrator-monitor` invocation. The skill handles loop
+lifecycle management (creation, update, and cancellation).
 
 ### Step 7: Re-read SOP and rewatch
 
