@@ -1,179 +1,154 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add channel deletion across the full stack: storage → WebSocket protocol → SwarmDO handler → Python client → CLI command → tests.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The pattern follows existing operations like `channels` and `send`: define a new frame type in the protocol, add a storage method, wire up the handler in SwarmDO, expose it via `BoardClient`, and surface it through a `ve board channel-delete` CLI command.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Channel deletion removes **all messages** for a channel. Since channels are implicit (they exist by virtue of having messages), deleting all messages effectively removes the channel. The storage method will also need to clean up any in-memory watchers for the deleted channel.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/board_channel_delete/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow docs/trunk/TESTING_PHILOSOPHY.md: goal-driven tests tied to success criteria, semantic assertions over structural, and focus on boundary conditions (missing channel, empty channel, active watchers).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `deleteChannel()` to SwarmStorage
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `workers/leader-board/src/storage.ts`
 
-Example:
+Add a new method to `SwarmStorage`:
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```typescript
+deleteChannel(channel: string): number
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+- Execute `DELETE FROM messages WHERE channel = ?`
+- Return the count of deleted rows (use before/after COUNT pattern like `compact()`)
+- If count is 0, the caller can infer the channel didn't exist
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+This mirrors the deletion pattern already used in `compact()` but without the time/position guards — it deletes everything for the channel unconditionally.
 
-## Dependencies
+### Step 2: Add `DeleteChannelFrame` to the wire protocol
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `workers/leader-board/src/protocol.ts`
 
-If there are no dependencies, delete this section.
--->
+1. Add a new client frame interface:
+   ```typescript
+   export interface DeleteChannelFrame {
+     type: "delete_channel";
+     channel: string;
+     swarm: string;
+   }
+   ```
+
+2. Add a new server response frame:
+   ```typescript
+   export interface ChannelDeletedFrame {
+     type: "channel_deleted";
+     channel: string;
+   }
+   ```
+
+3. Add `DeleteChannelFrame` to the `PostAuthClientFrame` union type
+4. Add `ChannelDeletedFrame` to the `ServerFrame` union type
+5. Add a `"delete_channel"` case to `parsePostAuthFrame()` that validates the channel name and extracts the swarm field
+
+### Step 3: Add `handleDeleteChannel()` to SwarmDO
+
+Location: `workers/leader-board/src/swarm-do.ts`
+
+1. Add a `"delete_channel"` case to the `handlePostAuth()` switch statement
+2. Implement `handleDeleteChannel(ws, frame)`:
+   - Call `this.storage.deleteChannel(frame.channel)`
+   - If 0 rows deleted, send an error frame with code `"channel_not_found"`
+   - If rows deleted, send a `channel_deleted` response frame
+   - Clean up in-memory watchers: remove the channel's entry from `this.watchers` Map and close/notify any active watchers on that channel (send them an error frame with code `"channel_deleted"` so they know to stop)
+
+### Step 4: Add `delete_channel()` to Python BoardClient
+
+Location: `src/board/client.py`
+
+Add an async method:
+
+```python
+async def delete_channel(self, channel: str) -> None:
+```
+
+- Send a `{"type": "delete_channel", "channel": channel, "swarm": self.swarm_id}` frame
+- Await the response
+- If response type is `"channel_deleted"`, return successfully
+- If response type is `"error"` with code `"channel_not_found"`, raise `BoardError("channel_not_found", ...)`
+- If unexpected response, raise `BoardError("protocol_error", ...)`
+
+### Step 5: Add `ve board channel-delete` CLI command
+
+Location: `src/cli/board.py`
+
+Add a new Click command following the pattern of `channels_cmd`:
+
+```python
+@board.command("channel-delete")
+@click.argument("channel")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def channel_delete_cmd(channel, swarm, server, yes):
+    """Delete a channel and all its messages."""
+```
+
+Behavior:
+- Resolve swarm/server/keypair using existing helpers (`load_board_config`, `resolve_swarm`, `load_keypair`)
+- Unless `--yes` is provided, prompt with `click.confirm(f"Delete channel '{channel}' and all its messages?", abort=True)`
+- Create a `BoardClient`, connect, call `delete_channel(channel)`
+- On success: `click.echo(f"Deleted channel '{channel}'")`
+- On `BoardError` with `channel_not_found`: print error message and `sys.exit(1)`
+- Always close the client in a finally block
+
+### Step 6: Write backend tests
+
+Location: `workers/leader-board/test/swarm-do.test.ts`
+
+Add tests covering:
+
+1. **Successful deletion**: Send messages to a channel, send `delete_channel` frame, verify `channel_deleted` response. Then send `channels` frame and verify the deleted channel is absent from the list.
+2. **404 on non-existent channel**: Send `delete_channel` for a channel that has never received messages, verify error response with code `channel_not_found`.
+3. **Channel no longer listed after deletion**: Send messages to two channels, delete one, list channels, verify only the surviving channel appears.
+4. **Watchers notified on deletion** (if feasible in test harness): Set up a watcher on a channel, delete the channel, verify the watcher receives an error notification.
+
+### Step 7: Write CLI tests
+
+Location: `tests/test_board_cli.py`
+
+Add tests covering:
+
+1. **Successful delete with --yes**: Mock `BoardClient.delete_channel`, invoke with `--yes`, verify exit code 0 and success message.
+2. **Confirmation prompt (abort)**: Invoke without `--yes`, provide "n" input, verify `delete_channel` was not called.
+3. **Channel not found**: Mock `BoardClient.delete_channel` to raise `BoardError("channel_not_found", ...)`, verify non-zero exit and error message.
+
+Follow existing test patterns: use `runner.invoke()`, mock `BoardClient` and config helpers.
+
+### Step 8: Update GOAL.md code_paths
+
+Update `docs/chunks/board_channel_delete/GOAL.md` frontmatter `code_paths` with all files touched:
+
+- `workers/leader-board/src/storage.ts`
+- `workers/leader-board/src/protocol.ts`
+- `workers/leader-board/src/swarm-do.ts`
+- `src/board/client.py`
+- `src/cli/board.py`
+- `workers/leader-board/test/swarm-do.test.ts`
+- `tests/test_board_cli.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Active watchers during deletion**: When a channel is deleted while watchers are active, those watchers need to be notified cleanly. The plan sends them an error frame — but if watchers are hibernated (DO Hibernation API), we need to ensure they're woken and cleaned up. The `webSocketClose` handler on hibernated sockets should handle this gracefully, but verify during implementation.
+- **Gateway HTTP API**: The goal mentions `DELETE /channels/{channel}` as a REST endpoint, but the existing pattern for channel operations is WebSocket-only (the gateway HTTP API is token-authenticated and scoped to individual channels). The WebSocket approach is more consistent with the existing architecture. If REST is needed later, it can be added as a gateway route. This plan implements channel deletion via the WebSocket protocol only.
+- **Race condition**: A message sent to a channel concurrently with deletion could recreate the channel. This is acceptable — the delete is a best-effort cleanup tool, not a permanent ban on the channel name.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

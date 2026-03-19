@@ -273,6 +273,25 @@ export class SwarmStorage {
     return (beforeCount[0].cnt as number) - (afterCount[0].cnt as number);
   }
 
+  // --- Channel Operations ---
+
+  // Chunk: docs/chunks/board_channel_delete - Delete all messages for a channel
+  deleteChannel(channel: string): number {
+    this.ensureSchema();
+
+    const beforeCount = [
+      ...this.sql.sql.exec(
+        `SELECT COUNT(*) as cnt FROM messages WHERE channel = ?`,
+        channel
+      ),
+    ];
+    const count = beforeCount[0].cnt as number;
+    if (count === 0) return 0;
+
+    this.sql.sql.exec(`DELETE FROM messages WHERE channel = ?`, channel);
+    return count;
+  }
+
   // --- Gateway Key Operations ---
 
   // Chunk: docs/chunks/gateway_token_storage - Store encrypted key blob

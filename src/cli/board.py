@@ -464,6 +464,55 @@ def channels_cmd(swarm: str | None, server: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# channel-delete
+# Chunk: docs/chunks/board_channel_delete - Delete a channel and all its messages
+# ---------------------------------------------------------------------------
+
+
+@board.command("channel-delete")
+@click.argument("channel")
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def channel_delete_cmd(channel: str, swarm: str | None, server: str | None, yes: bool) -> None:
+    """Delete a channel and all its messages."""
+    config = load_board_config()
+    swarm = resolve_swarm(config, swarm)
+    if swarm is None:
+        click.echo("Error: no swarm specified and no default_swarm in ~/.ve/board.toml", err=True)
+        sys.exit(1)
+    server = resolve_server(config, swarm, server)
+
+    keypair = load_keypair(swarm)
+    if keypair is None:
+        click.echo(f"Error: swarm '{swarm}' not found.", err=True)
+        sys.exit(1)
+
+    seed, _pub = keypair
+
+    if not yes:
+        click.confirm(f"Delete channel '{channel}' and all its messages?", abort=True)
+
+    from board.client import BoardError
+
+    async def _delete():
+        client = BoardClient(server, swarm, seed)
+        await client.connect()
+        try:
+            await client.delete_channel(channel)
+            click.echo(f"Deleted channel '{channel}'")
+        except BoardError as exc:
+            if exc.code == "channel_not_found":
+                click.echo(f"Error: channel '{channel}' not found.", err=True)
+                sys.exit(1)
+            raise
+        finally:
+            await client.close()
+
+    asyncio.run(_delete())
+
+
+# ---------------------------------------------------------------------------
 # scp
 # ---------------------------------------------------------------------------
 

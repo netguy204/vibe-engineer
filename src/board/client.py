@@ -431,6 +431,28 @@ class BoardClient:
                 await self.connect()
                 backoff = 1.0
 
+    # Chunk: docs/chunks/board_channel_delete - Delete a channel and all its messages
+    async def delete_channel(self, channel: str) -> None:
+        """Delete a channel and all its messages.
+
+        Raises BoardError with code 'channel_not_found' if the channel
+        does not exist.
+        """
+        frame = {
+            "type": "delete_channel",
+            "channel": channel,
+            "swarm": self.swarm_id,
+        }
+        await self._ws.send(json.dumps(frame))
+
+        response = json.loads(await self._ws.recv())
+        self._check_error(response)
+        if response.get("type") != "channel_deleted":
+            raise BoardError(
+                "protocol_error",
+                f"Expected channel_deleted, got {response.get('type')}",
+            )
+
     async def list_channels(self) -> list[dict]:
         """List channels in the swarm."""
         frame = {

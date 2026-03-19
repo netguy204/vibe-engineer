@@ -60,6 +60,13 @@ export interface SwarmInfoFrame {
   swarm: string;
 }
 
+// Chunk: docs/chunks/board_channel_delete - Channel deletion frames
+export interface DeleteChannelFrame {
+  type: "delete_channel";
+  channel: string;
+  swarm: string;
+}
+
 // --- Server → Client Frames ---
 
 export interface MessageFrame {
@@ -87,6 +94,12 @@ export interface SwarmInfoResponseFrame {
   created_at: string;
 }
 
+// Chunk: docs/chunks/board_channel_delete - Channel deletion response
+export interface ChannelDeletedFrame {
+  type: "channel_deleted";
+  channel: string;
+}
+
 export interface ErrorFrame {
   type: "error";
   code: string;
@@ -97,7 +110,7 @@ export interface ErrorFrame {
 // --- Discriminated Unions ---
 
 export type HandshakeClientFrame = AuthFrame | RegisterSwarmFrame;
-export type PostAuthClientFrame = WatchFrame | SendFrame | ChannelsFrame | SwarmInfoFrame;
+export type PostAuthClientFrame = WatchFrame | SendFrame | ChannelsFrame | SwarmInfoFrame | DeleteChannelFrame;
 export type ClientFrame = HandshakeClientFrame | PostAuthClientFrame;
 export type ServerFrame =
   | ChallengeFrame
@@ -106,6 +119,7 @@ export type ServerFrame =
   | AckFrame
   | ChannelsListFrame
   | SwarmInfoResponseFrame
+  | ChannelDeletedFrame
   | ErrorFrame;
 
 // --- Parsing ---
@@ -234,6 +248,15 @@ export function parsePostAuthFrame(raw: string): PostAuthClientFrame {
         type: "swarm_info",
         swarm: requireString(obj, "swarm"),
       };
+    case "delete_channel": {
+      const channel = requireString(obj, "channel");
+      validateChannelName(channel);
+      return {
+        type: "delete_channel",
+        channel,
+        swarm: requireString(obj, "swarm"),
+      };
+    }
     default:
       throw new ProtocolError(`Unknown frame type: ${String(type)}`);
   }
