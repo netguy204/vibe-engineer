@@ -1,19 +1,19 @@
 # Review Feedback
 
-**Iteration:** 1
+**Iteration:** 2
 **Decision:** FEEDBACK
 
 ## Summary
 
-All success criteria for the orchestrator-monitor skill are satisfied, but the implementation includes out-of-scope changes that revert the board_watch_safety chunk (ACTIVE→FUTURE, deleted code, tests, and review decision).
+All 7 success criteria for the orchestrator-monitor skill are satisfied. However, the implementation includes out-of-scope changes that revert the board_channel_delete chunk (ACTIVE→FUTURE, deleted code in Python client/CLI/TypeScript workers, deleted tests, deleted review decision). This is the same class of issue flagged in iteration 1 (which reverted board_watch_safety — that was fixed, but this new reversion appeared).
 
 ## Issues to Address
 
-### Issue 1: src/board/storage.py, src/cli/board.py, tests/test_board_cli.py, tests/test_board_storage.py, docs/chunks/board_watch_safety/GOAL.md, docs/reviewers/baseline/decisions/board_watch_safety_1.md
+### Issue 1: docs/chunks/board_channel_delete/, src/board/client.py, src/cli/board.py, tests/test_board_cli.py, workers/leader-board/
 
-**Concern:** The implementation reverts the entire board_watch_safety chunk which was ACTIVE on main. This includes deleting PID file management functions from storage.py, kill-previous-watch logic from board.py, ~270 lines of tests, the chunk's review decision, and resetting the chunk status from ACTIVE to FUTURE. The steward-watch template also lost the 'OS-level safety net' paragraph and 'Watch Safety SOP' section which belonged to that chunk.
+**Concern:** The implementation reverts the entire board_channel_delete chunk which was ACTIVE on main. Its GOAL.md is reset from ACTIVE to FUTURE, all code_paths/code_references removed, review decision deleted, and all implementation code removed from Python client, CLI, TypeScript workers, and tests. This chunk should only touch template files.
 
-**Suggestion:** Revert all changes to files owned by board_watch_safety. This chunk's scope is: (1) create orchestrator-monitor.md.jinja2, (2) update steward-watch Step 6 only to delegate to /orchestrator-monitor, (3) register in CLAUDE.md. Keep only those three template file changes and remove all board storage/CLI/test deletions and board_watch_safety chunk/decision reversions.
+**Suggestion:** Revert all changes to files not owned by this chunk. Only these files should be modified: (1) src/templates/commands/orchestrator-monitor.md.jinja2 (new), (2) src/templates/commands/steward-watch.md.jinja2 (Step 6 update), (3) src/templates/claude/CLAUDE.md.jinja2 (command registration), and their rendered outputs.
 
 
 ---
