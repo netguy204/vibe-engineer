@@ -1189,3 +1189,85 @@ def test_ack_explicit_invalid_project_root_errors(runner, tmp_path):
         "--project-root", str(tmp_path / "nonexistent"),
     ])
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# channel-delete
+# Chunk: docs/chunks/board_channel_delete - Channel deletion CLI tests
+# ---------------------------------------------------------------------------
+
+
+def test_channel_delete_success(runner, stored_swarm):
+    """channel-delete with --yes deletes the channel and prints success."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.delete_channel = AsyncMock()
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "channel-delete", "stale-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--yes",
+        ])
+
+    assert result.exit_code == 0
+    assert "Deleted channel 'stale-channel'" in result.output
+    instance.delete_channel.assert_called_once_with("stale-channel")
+
+
+def test_channel_delete_abort_without_yes(runner, stored_swarm):
+    """channel-delete without --yes prompts and aborts on 'n'."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.delete_channel = AsyncMock()
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "channel-delete", "stale-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+        ], input="n\n")
+
+    assert result.exit_code != 0
+    instance.delete_channel.assert_not_called()
+
+
+def test_channel_delete_not_found(runner, stored_swarm):
+    """channel-delete reports error when channel doesn't exist."""
+    from board.client import BoardError
+
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.delete_channel = AsyncMock(
+            side_effect=BoardError("channel_not_found", "Channel not found: ghost")
+        )
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "channel-delete", "ghost",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--yes",
+        ])
+
+    assert result.exit_code != 0
+    assert "not found" in result.output

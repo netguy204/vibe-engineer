@@ -1,8 +1,15 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- workers/leader-board/src/storage.ts
+- workers/leader-board/src/protocol.ts
+- workers/leader-board/src/swarm-do.ts
+- src/board/client.py
+- src/cli/board.py
+- workers/leader-board/test/swarm-do.test.ts
+- tests/test_board_cli.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +17,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_cursor_root_resolution"]
+created_after:
+- board_cursor_root_resolution
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
