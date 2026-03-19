@@ -187,7 +187,7 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
         )
 
     if not memories_json.strip():
-        raise click.ClickException("Empty memories input")
+        memories_json = "[]"  # Treat truly empty input as empty array
 
     try:
         result = run_consolidation(
@@ -201,5 +201,6 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
     # Print summary
     click.echo(f"Shutdown complete for entity '{name}':")
     click.echo(f"  Journals added:  {result['journals_added']}")
+    click.echo(f"  Journals processed: {result['journals_consolidated']}")
     click.echo(f"  Consolidated:    {result['consolidated']}")
     click.echo(f"  Core:            {result['core']}")

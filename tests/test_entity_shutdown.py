@@ -407,7 +407,9 @@ class TestRunConsolidation:
 
         journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
         journal_files = list(journal_dir.glob("*.md"))
-        assert len(journal_files) == 5
+        # 5 journals written, but consolidated ones are cleaned up;
+        # only "Memory 4" is unconsolidated per the mock response
+        assert len(journal_files) == 1
         assert result["journals_added"] == 5
 
     @patch("entity_shutdown.anthropic")
@@ -476,7 +478,7 @@ class TestRunConsolidation:
         self._setup_entity(tmp_path)
 
         result = run_consolidation("testbot", "[]", tmp_path)
-        assert result == {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
+        assert result == {"journals_added": 0, "journals_consolidated": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     @patch("entity_shutdown.anthropic", None)
     def test_raises_when_anthropic_missing(self, tmp_path):
@@ -493,7 +495,7 @@ class TestRunConsolidation:
         self._setup_entity(tmp_path)
 
         result = run_consolidation("testbot", "not json", tmp_path)
-        assert result == {"journals_added": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
+        assert result == {"journals_added": 0, "journals_consolidated": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     @patch("entity_shutdown.anthropic")
     def test_replaces_existing_tiers(self, mock_anthropic, tmp_path):
@@ -678,9 +680,9 @@ class TestRunConsolidation:
         assert result["consolidated"] == 2
         assert result["core"] == 1
 
-        # Verify journals exist
+        # Verify unconsolidated journals remain (only "Minor observation" is unconsolidated)
         journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
-        assert len(list(journal_dir.glob("*.md"))) == 5
+        assert len(list(journal_dir.glob("*.md"))) == 1
 
         # Verify consolidated: old single file replaced by 2 new ones
         cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
@@ -703,3 +705,208 @@ class TestRunConsolidation:
         prompt_text = call_kwargs.kwargs["messages"][0]["content"]
         assert "Template system requires source editing" in prompt_text
         assert "Verify state before acting" in prompt_text
+
+    # -------------------------------------------------------------------
+    # Chunk: docs/chunks/entity_consolidate_existing
+    # Tests for consolidating existing journals from disk
+    # -------------------------------------------------------------------
+
+    @patch("entity_shutdown.anthropic")
+    def test_empty_input_consolidates_existing_journals(self, mock_anthropic, tmp_path):
+        """Empty input consolidates pre-existing journal files from disk."""
+        entities = self._setup_entity(tmp_path)
+
+        # Write 3 pre-existing journal memories directly to disk
+        for i in range(3):
+            fm = MemoryFrontmatter(
+                title=f"Existing journal {i}",
+                category=MemoryCategory.SKILL,
+                valence=MemoryValence.POSITIVE,
+                salience=3,
+                tier=MemoryTier.JOURNAL,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=0,
+                source_memories=[],
+            )
+            entities.write_memory("testbot", fm, f"Existing content {i}")
+
+        # Mock API response
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "Merged existing journals",
+                    "content": "Combined knowledge from existing journals.",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 4,
+                    "tier": "consolidated",
+                    "source_memories": ["Existing journal 0", "Existing journal 1"],
+                    "recurrence_count": 2,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+            "core": [],
+            "unconsolidated": ["Existing journal 2"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        result = run_consolidation(
+            "testbot", "[]", tmp_path, api_key="test-key"
+        )
+
+        # No new journals from input
+        assert result["journals_added"] == 0
+        # API was called (consolidation happened)
+        mock_client.messages.create.assert_called_once()
+        # Prompt contains existing journal titles
+        call_kwargs = mock_client.messages.create.call_args
+        prompt_text = call_kwargs.kwargs["messages"][0]["content"]
+        assert "Existing journal 0" in prompt_text
+        assert "Existing journal 1" in prompt_text
+        assert "Existing journal 2" in prompt_text
+        # Consolidation results
+        assert result["consolidated"] == 1
+        assert result["journals_consolidated"] == 3
+
+    def test_empty_input_no_existing_journals_returns_zeros(self, tmp_path):
+        """Empty input with no existing journals returns zeros (no API call)."""
+        self._setup_entity(tmp_path)
+
+        result = run_consolidation("testbot", "[]", tmp_path)
+        assert result["journals_added"] == 0
+        assert result["consolidated"] == 0
+        assert result["core"] == 0
+
+    @patch("entity_shutdown.anthropic")
+    def test_consolidated_journals_cleaned_up(self, mock_anthropic, tmp_path):
+        """Consolidated journal files are deleted; unconsolidated are preserved."""
+        entities = self._setup_entity(tmp_path)
+
+        # Write 4 pre-existing journal memories
+        for i in range(4):
+            fm = MemoryFrontmatter(
+                title=f"Journal entry {i}",
+                category=MemoryCategory.SKILL,
+                valence=MemoryValence.POSITIVE,
+                salience=3,
+                tier=MemoryTier.JOURNAL,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=0,
+                source_memories=[],
+            )
+            entities.write_memory("testbot", fm, f"Content {i}")
+
+        # Mock API: unconsolidated contains 1 journal title
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "Merged journals",
+                    "content": "Combined content.",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 4,
+                    "tier": "consolidated",
+                    "source_memories": ["Journal entry 0", "Journal entry 1", "Journal entry 2"],
+                    "recurrence_count": 3,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+            "core": [],
+            "unconsolidated": ["Journal entry 3"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        result = run_consolidation(
+            "testbot", "[]", tmp_path, api_key="test-key"
+        )
+
+        journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
+        remaining_journals = list(journal_dir.glob("*.md"))
+
+        # Only the unconsolidated journal should remain
+        assert len(remaining_journals) == 1
+        fm, content = entities.parse_memory(remaining_journals[0])
+        assert fm.title == "Journal entry 3"
+
+    @patch("entity_shutdown.anthropic")
+    def test_new_plus_existing_journals_consolidate_together(self, mock_anthropic, tmp_path):
+        """New input memories + pre-existing journals are consolidated together."""
+        entities = self._setup_entity(tmp_path)
+
+        # Write 2 pre-existing journal memories
+        for i in range(2):
+            fm = MemoryFrontmatter(
+                title=f"Pre-existing {i}",
+                category=MemoryCategory.DOMAIN,
+                valence=MemoryValence.NEUTRAL,
+                salience=3,
+                tier=MemoryTier.JOURNAL,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=0,
+                source_memories=[],
+            )
+            entities.write_memory("testbot", fm, f"Pre-existing content {i}")
+
+        # 3 new memories in input JSON
+        new_memories = json.dumps([
+            {
+                "title": f"New memory {i}",
+                "content": f"New content {i}",
+                "category": "skill",
+                "valence": "positive",
+                "salience": 3,
+            }
+            for i in range(3)
+        ])
+
+        # Mock API
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "All merged",
+                    "content": "Everything combined.",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 4,
+                    "tier": "consolidated",
+                    "source_memories": ["Pre-existing 0", "Pre-existing 1", "New memory 0"],
+                    "recurrence_count": 3,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+            "core": [],
+            "unconsolidated": ["New memory 1", "New memory 2"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        result = run_consolidation(
+            "testbot", new_memories, tmp_path, api_key="test-key"
+        )
+
+        # 3 new journal files were written from input
+        assert result["journals_added"] == 3
+        # All 5 journals (2 existing + 3 new) were available for consolidation
+        assert result["journals_consolidated"] == 5
+        # Prompt contains all 5 journal titles
+        call_kwargs = mock_client.messages.create.call_args
+        prompt_text = call_kwargs.kwargs["messages"][0]["content"]
+        assert "Pre-existing 0" in prompt_text
+        assert "Pre-existing 1" in prompt_text
+        assert "New memory 0" in prompt_text
+        assert "New memory 1" in prompt_text
+        assert "New memory 2" in prompt_text
