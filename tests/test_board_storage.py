@@ -9,9 +9,13 @@ from board.storage import (
     load_cursor,
     load_keypair,
     list_swarms,
+    read_watch_pid,
+    remove_watch_pid,
     resolve_board_root,
     save_cursor,
     save_keypair,
+    watch_pid_path,
+    write_watch_pid,
 )
 
 
@@ -199,3 +203,57 @@ def test_resolve_board_root_falls_back_to_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(subdir)
 
     assert resolve_board_root() == subdir
+
+
+# ---------------------------------------------------------------------------
+# Watch PID file tests
+# Chunk: docs/chunks/board_watch_safety
+# ---------------------------------------------------------------------------
+
+
+def test_watch_pid_path_returns_expected_path(tmp_path):
+    """watch_pid_path returns {project_root}/.ve/board/cursors/{channel}.watch.pid."""
+    result = watch_pid_path("my-channel", tmp_path)
+    assert result == tmp_path / ".ve" / "board" / "cursors" / "my-channel.watch.pid"
+
+
+def test_write_watch_pid_creates_file(tmp_path):
+    """write_watch_pid creates the PID file with correct content."""
+    write_watch_pid("test-ch", 12345, tmp_path)
+    pid_file = tmp_path / ".ve" / "board" / "cursors" / "test-ch.watch.pid"
+    assert pid_file.exists()
+    assert pid_file.read_text() == "12345"
+
+
+def test_read_watch_pid_returns_pid(tmp_path):
+    """read_watch_pid returns the PID when the file exists."""
+    write_watch_pid("test-ch", 99999, tmp_path)
+    assert read_watch_pid("test-ch", tmp_path) == 99999
+
+
+def test_read_watch_pid_returns_none_when_missing(tmp_path):
+    """read_watch_pid returns None when the file does not exist."""
+    assert read_watch_pid("nonexistent", tmp_path) is None
+
+
+def test_read_watch_pid_returns_none_on_garbage(tmp_path):
+    """read_watch_pid returns None when the file contains non-integer content."""
+    pid_file = tmp_path / ".ve" / "board" / "cursors" / "garbage.watch.pid"
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text("not-a-number")
+    assert read_watch_pid("garbage", tmp_path) is None
+
+
+def test_remove_watch_pid_deletes_file(tmp_path):
+    """remove_watch_pid deletes the PID file."""
+    write_watch_pid("test-ch", 12345, tmp_path)
+    pid_file = watch_pid_path("test-ch", tmp_path)
+    assert pid_file.exists()
+    remove_watch_pid("test-ch", tmp_path)
+    assert not pid_file.exists()
+
+
+def test_remove_watch_pid_noop_when_missing(tmp_path):
+    """remove_watch_pid is a no-op when the file does not exist."""
+    # Should not raise
+    remove_watch_pid("nonexistent", tmp_path)

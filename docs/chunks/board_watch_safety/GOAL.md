@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/board/storage.py
+- src/cli/board.py
+- src/templates/commands/steward-watch.md.jinja2
+- tests/test_board_storage.py
+- tests/test_board_cli.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +15,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_cursor_root_resolution"]
+created_after:
+- board_cursor_root_resolution
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

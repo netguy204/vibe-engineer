@@ -10,170 +10,182 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add PID-file-based process tracking to `ve board watch` so that starting a new
+watch on a channel automatically kills any existing zombie watcher on that same
+channel. The PID file lives alongside the existing cursor file at
+`{board_root}/.ve/board/cursors/{channel}.watch.pid`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The implementation reuses the `read_pid_file` / `is_process_running` pattern
+already established in `src/orchestrator/daemon.py` (DEC-008 style — extract
+shared helpers rather than duplicate). A simpler approach is appropriate here
+compared to the daemon's `flock`-held-for-lifetime pattern: the watch process
+is short-lived and non-exclusive by design (the agent is the serializer), so a
+write-on-start / kill-on-start / cleanup-on-exit PID file is sufficient.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The steward-watch command template already warns about single-watch-per-channel
+(Step 2). This chunk strengthens that with OS-level enforcement in the CLI
+itself and adds SOP guidance on ack discipline and timeout cleanup.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/board_watch_safety/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow the project's TDD philosophy (TESTING_PHILOSOPHY.md): write
+failing tests first for the PID management functions and CLI behavior, then
+implement to make them pass.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add PID file helpers to board/storage.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add three functions to `src/board/storage.py`:
 
-Example:
+- `watch_pid_path(channel: str, project_root: Path) -> Path` — returns
+  `{project_root}/.ve/board/cursors/{channel}.watch.pid`
+- `read_watch_pid(channel: str, project_root: Path) -> int | None` — reads
+  PID from file, returns None if missing or unparseable
+- `write_watch_pid(channel: str, pid: int, project_root: Path) -> None` —
+  writes PID to the file (creates cursors dir if needed)
+- `remove_watch_pid(channel: str, project_root: Path) -> None` — removes
+  the PID file (no-op if already gone)
 
-### Step 1: Define the SegmentHeader struct
+Reuse the same simple pattern as `load_cursor` / `save_cursor` — plain text
+file with an integer. Do not import from `orchestrator.daemon`; these are
+trivial 3-line functions and the board module should not depend on the
+orchestrator module.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a `# Chunk: docs/chunks/board_watch_safety` backreference above these
+functions.
 
-Location: src/segment/format.rs
+Location: `src/board/storage.py`
 
-### Step 2: Implement header serialization
+### Step 2: Write failing tests for PID helpers
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Write unit tests in `tests/test_board_storage.py` (new file) verifying:
 
-### Step 3: ...
+- `watch_pid_path` returns the expected path
+- `write_watch_pid` creates the file with correct content
+- `read_watch_pid` returns the PID when file exists
+- `read_watch_pid` returns None when file is missing
+- `read_watch_pid` returns None when file contains garbage
+- `remove_watch_pid` deletes the file
+- `remove_watch_pid` is a no-op when file is missing
 
----
+These tests use `tmp_path` and real filesystem — no mocks needed.
 
-**BACKREFERENCE COMMENTS**
+Location: `tests/test_board_storage.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Add kill-previous-watch logic to board CLI
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In `src/cli/board.py`, modify `watch_cmd` to add kill-previous-watch logic
+**before** the async `_watch()` call:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+1. Call `read_watch_pid(channel, project_root)`
+2. If a PID is returned and `os.kill(pid, 0)` confirms it's alive:
+   - Send `SIGTERM` via `os.kill(pid, signal.SIGTERM)`
+   - Print a warning: `"Killed existing watch process {pid} on channel '{channel}'"`
+3. If the PID file exists but the process is dead, clean up the stale file
+4. Write the current process PID via `write_watch_pid(channel, os.getpid(), project_root)`
+5. Wrap the `asyncio.run(_watch())` in a try/finally that calls
+   `remove_watch_pid(channel, project_root)` on exit
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+The `is_process_running` check uses `os.kill(pid, 0)` inline — a 3-line
+pattern, not worth importing from the orchestrator module.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add a `# Chunk: docs/chunks/board_watch_safety` backreference on the new
+kill-previous-watch block.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/cli/board.py`
 
-## Dependencies
+### Step 4: Write failing tests for CLI kill-previous-watch behavior
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Add tests to `tests/test_board_cli.py` verifying:
 
-If there are no dependencies, delete this section.
--->
+- **PID file created on watch start**: Mock the async watch, invoke
+  `watch_cmd`, assert PID file exists with correct content after the command
+  runs.
+- **PID file cleaned up on normal exit**: Assert PID file is removed after
+  the watch command completes.
+- **Stale PID file cleaned up**: Write a PID file with a non-existent PID,
+  invoke watch, assert no SIGTERM sent and PID file is overwritten.
+- **Running process killed**: Write a PID file, mock `os.kill` to confirm
+  the process is alive, invoke watch, assert SIGTERM was sent to the old PID.
+
+These tests mock `asyncio.run` / `BoardClient` to avoid real WebSocket
+connections (consistent with existing test patterns in `test_board_cli.py`).
+
+Location: `tests/test_board_cli.py`
+
+### Step 5: Add watch-multi PID file support
+
+Apply the same kill-previous / write-PID / cleanup pattern to the
+`watch_multi_cmd` in `src/cli/board.py`. Since watch-multi subscribes to
+multiple channels, write a PID file for **each** channel and clean up all of
+them on exit. This prevents a `watch-multi` on channels A,B from leaving
+zombies that block a subsequent `watch A`.
+
+Location: `src/cli/board.py`
+
+### Step 6: Update steward-watch command template
+
+Edit `src/templates/commands/steward-watch.md.jinja2` to add an SOP
+guidance section. The template already has the "Single watch only" callout in
+Step 2. Add the following enhancements:
+
+**In Step 2 (Start the watch)**, add a note after the existing single-watch
+warning:
+
+> **OS-level safety net.** The `ve board watch` command now automatically
+> kills any existing watch process on the same channel before starting.
+> However, you should still explicitly stop previous background tasks via
+> `TaskStop` — the PID-based kill is a fallback for zombie processes that
+> survive task termination, not a replacement for clean task lifecycle
+> management.
+
+**Add a new section "### Watch Safety SOP"** between "Key Concepts" and
+"Error Handling" covering:
+
+1. **Never ack before reading** — ack means "I processed this", not "clear
+   the queue". Acking before processing means a crash loses the message.
+2. **Multi-channel watch requires separate tasks** — if watching N channels,
+   run N separate background `ve board watch` commands (or one
+   `ve board watch-multi`). Restart each independently on failure.
+3. **Watch timeout does not kill the OS process** — when Claude Code's
+   background task times out (exit 144), the `ve board watch` OS process may
+   continue running and reconnecting. Always `TaskStop` the previous task
+   AND let the CLI's PID-based kill handle any stragglers before starting a
+   new watch.
+
+Location: `src/templates/commands/steward-watch.md.jinja2`
+
+### Step 7: Re-render templates and verify
+
+Run `uv run ve init` to re-render the steward-watch template into
+`.claude/commands/steward-watch.md`. Verify the rendered output includes the
+new SOP guidance.
+
+### Step 8: Run full test suite
+
+Run `uv run pytest tests/` to verify all existing tests still pass and new
+tests are green.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Race between kill and restart**: There's a small window between sending
+  SIGTERM and the old process actually exiting. The new watch could start
+  before the old one finishes shutting down. This is acceptable because the
+  WebSocket server handles duplicate subscriptions gracefully (last-writer-
+  wins for cursor position), and the old process will exit shortly after
+  receiving SIGTERM.
+- **PID reuse**: In theory, the OS could recycle a PID, causing us to kill an
+  unrelated process. This risk is minimal — PID reuse requires the original
+  process to have exited (so the zombie is already gone) and the PID space on
+  modern systems is large. The `os.kill(pid, 0)` check plus the fact that
+  watch PIDs are short-lived makes this practically irrelevant.
+- **watch-multi PID tracking**: Writing a PID file per channel means
+  `watch-multi` on channels A,B creates both `A.watch.pid` and `B.watch.pid`
+  pointing to the same process. This is intentional — it prevents either a
+  single-channel or multi-channel watch from overlapping on any subscribed
+  channel.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
