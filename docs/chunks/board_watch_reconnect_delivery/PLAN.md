@@ -10,170 +10,154 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The bug: after a WebSocket reconnect, `watch_with_reconnect()` and
+`watch_multi_with_reconnect()` resume listening for server-push notifications
+but do not explicitly re-poll the channel for messages that arrived during the
+disconnect window. While the server's `handleWatch` / `_handle_watch` checks
+storage for existing messages before registering a blocking watcher, the client
+code has no explicit re-poll step — it relies entirely on the server to surface
+gap messages as a side effect of the watch frame. If the server's storage check
+races with other operations, or if a non-reference server implementation doesn't
+perform this check, messages are silently missed.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix adds an explicit **reconnect-delivery step** to both reconnect wrappers
+in `src/board/client.py`. After reconnecting:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. Log that a re-poll is happening, including the cursor value(s).
+2. Re-send the watch frame with the **same cursor** that was active before the
+   disconnect (the "current offset"). This is the same logic that runs on
+   initial connection — `watch()` sends a watch frame with the cursor, and the
+   server checks for existing messages before blocking.
+3. Add a `logger.info` line after successful reconnect that makes the re-poll
+   auditable: `"Reconnected, re-polling channel=%s from cursor=%d"`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/board_watch_reconnect_delivery/GOAL.md)
-with references to the files that you expect to touch.
--->
+For `watch_multi_with_reconnect`, the same principle applies but for all
+tracked channels with their latest cursors.
 
-## Subsystem Considerations
+The key behavioral property is: **after every reconnect, the next server
+interaction must be a watch frame carrying the most-recently-known cursor**.
+The current code does loop back to `self.watch(channel, cursor)` after
+`self.connect()`, but there is no logging or test coverage to assert this
+happens. This chunk adds both.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow TDD per docs/trunk/TESTING_PHILOSOPHY.md — write failing tests
+for the disconnect-window delivery scenario first, then verify the code passes
+(and add logging if any tests surface gaps).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for disconnect-window delivery (single watch)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a new test in `tests/test_board_client.py`:
 
-Example:
+**`test_watch_with_reconnect_delivers_pending_message`**
 
-### Step 1: Define the SegmentHeader struct
+Scenario:
+- Client watches channel `ch1` at cursor 5
+- First connection: auth OK, then `recv()` raises `ConnectionClosedError`
+  (simulating disconnect)
+- Second connection: auth OK, then immediately returns a message at
+  position 6 (this message "arrived during the disconnect window")
+- Assert: the returned message has position 6, body matches
+- Assert: the watch frame sent on the second connection carries cursor=5
+  (verifying the client re-polls from its last-known cursor, not some
+  stale or advanced value)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+The key difference from the existing `test_watch_with_reconnect_on_disconnect`
+test: this test **explicitly asserts the cursor value in the re-sent watch
+frame** (by inspecting `ws.send` call args on the second connection). The
+existing test only asserts the result, not the cursor in the watch frame.
 
-Location: src/segment/format.rs
+Location: `tests/test_board_client.py`, after the existing reconnect test block.
 
-### Step 2: Implement header serialization
+### Step 2: Write failing tests for disconnect-window delivery (multi watch)
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add a new test in `tests/test_board_client.py`:
 
-### Step 3: ...
+**`test_watch_multi_reconnect_delivers_pending_messages`**
 
----
+Scenario:
+- Client watches channels `{"ch-a": 2, "ch-b": 5}`
+- First connection: auth OK, delivers message from `ch-a` at position 3,
+  then disconnects
+- During disconnect: message arrives on `ch-b` at position 6
+- Second connection: auth OK, immediately returns `ch-b` message at position 6
+- Assert: both messages are yielded in order
+- Assert: second connection's watch frames carry `ch-a` cursor=3
+  (updated after first message) and `ch-b` cursor=5 (unchanged — this is
+  the gap message's channel)
+- Assert: no duplicate delivery of the `ch-a` message
 
-**BACKREFERENCE COMMENTS**
+Location: `tests/test_board_client.py`, after Step 1's test.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Add reconnect-delivery logging
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In `src/board/client.py`, after the `await self.connect()` call in
+`watch_with_reconnect()`, add:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+```python
+logger.info(
+    "Reconnected, re-polling channel=%s from cursor=%d",
+    channel,
+    cursor,
+)
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+In `watch_multi_with_reconnect()`, after the `await self.connect()` call, add:
+
+```python
+logger.info(
+    "Reconnected, re-polling %d channel(s) from cursors=%s",
+    len(cursors),
+    cursors,
+)
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+These log lines make the reconnect-delivery behavior auditable and visible
+in steward logs. If the message is missed in the future, the log will show
+whether the re-poll happened and what cursor was used.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add a backreference comment before each log line:
+```python
+# Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
+```
 
-## Dependencies
+### Step 4: Run tests and verify
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Run `uv run pytest tests/test_board_client.py -v -k reconnect` to verify:
+- The new tests pass (the code already re-sends watch frames after reconnect;
+  the tests now assert this behavior explicitly)
+- Existing reconnect tests still pass
+- No regressions
 
-If there are no dependencies, delete this section.
--->
+If any new tests fail, investigate whether the cursor is not being preserved
+correctly through the reconnect cycle and fix accordingly.
+
+### Step 5: Update GOAL.md code_paths
+
+Update the `code_paths` field in
+`docs/chunks/board_watch_reconnect_delivery/GOAL.md` to list:
+- `src/board/client.py`
+- `tests/test_board_client.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Server-side behavior variance**: The fix is client-side (logging and
+  tests). The server's `handleWatch` / `read_after` behavior (checking storage
+  before blocking) is not changed. If the production Cloudflare DO server has
+  a race condition where `readAfter` misses a just-appended message, this
+  client-side fix won't help — that would require a separate server-side chunk.
+  The logging added here will make such a failure diagnosable.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Cursor correctness after partial delivery**: In `watch_multi_with_reconnect`,
+  the cursor for a channel is updated *before* `yield msg`. If the consumer
+  crashes between cursor update and processing, the message won't be
+  re-delivered on reconnect. This is existing behavior (at-most-once within a
+  connection), not introduced by this fix. The manual ack model
+  (`ve board ack`) provides the durability guarantee.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

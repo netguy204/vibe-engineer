@@ -228,6 +228,161 @@ async def test_watch_with_reconnect_on_disconnect(keypair):
     assert call_count == 2
 
 
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/board_watch_reconnect_delivery - Reconnect delivery tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_delivers_pending_message(keypair):
+    """After reconnect, watch re-polls from the same cursor and delivers
+    a message that arrived during the disconnect window."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    # Message that "arrived during the disconnect window" at position 6
+    pending_msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 6,
+        "body": "pending==",
+        "sent_at": "2026-03-17T00:00:00Z",
+    })
+
+    call_count = 0
+    ws_objects = []
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: auth OK, then disconnect on watch recv
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            ws_objects.append(ws)
+            return _async_ctx(ws)
+        else:
+            # Second connection: auth OK, then delivers pending message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, pending_msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            ws_objects.append(ws)
+            return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            result = await client.watch_with_reconnect("ch1", 5)
+
+    # Message from the disconnect window is delivered
+    assert result["position"] == 6
+    assert result["body"] == "pending=="
+
+    # Verify the watch frame on the second connection carries cursor=5
+    # (re-polling from the last-known cursor, not some stale or advanced value)
+    second_ws = ws_objects[1]
+    sent_frames = [json.loads(call.args[0]) for call in second_ws.send.call_args_list]
+    watch_frames = [f for f in sent_frames if f.get("type") == "watch"]
+    assert len(watch_frames) == 1
+    assert watch_frames[0]["cursor"] == 5
+    assert watch_frames[0]["channel"] == "ch1"
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_reconnect_delivers_pending_messages(keypair):
+    """After reconnect, watch_multi re-polls all channels from their latest
+    cursors and delivers messages that arrived during the disconnect window."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    # First connection delivers a message on ch-a at position 3
+    msg_a = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "msg_a==",
+        "sent_at": "2026-03-17T00:00:00Z",
+    })
+    # During disconnect, message arrives on ch-b at position 6
+    msg_b_pending = json.dumps({
+        "type": "message",
+        "channel": "ch-b",
+        "position": 6,
+        "body": "msg_b_pending==",
+        "sent_at": "2026-03-17T00:01:00Z",
+    })
+
+    call_count = 0
+    ws_objects = []
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: delivers ch-a msg, then disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg_a,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            ws_objects.append(ws)
+            return _async_ctx(ws)
+        else:
+            # Second connection: delivers pending ch-b message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok, msg_b_pending,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            ws_objects.append(ws)
+            return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+
+            async for msg in client.watch_multi_with_reconnect(
+                {"ch-a": 2, "ch-b": 5}, max_retries=1, count=0
+            ):
+                results.append(msg)
+                if len(results) >= 2:
+                    break
+
+    # Both messages delivered in order, no duplicates
+    assert len(results) == 2
+    assert results[0]["channel"] == "ch-a"
+    assert results[0]["position"] == 3
+    assert results[1]["channel"] == "ch-b"
+    assert results[1]["position"] == 6
+
+    # Verify second connection's watch frames carry correct cursors:
+    # ch-a cursor=3 (updated after first message), ch-b cursor=5 (unchanged)
+    second_ws = ws_objects[1]
+    sent_frames = [json.loads(call.args[0]) for call in second_ws.send.call_args_list]
+    watch_frames = [f for f in sent_frames if f.get("type") == "watch"]
+    cursors_by_channel = {f["channel"]: f["cursor"] for f in watch_frames}
+    assert cursors_by_channel["ch-a"] == 3  # Updated after first message
+    assert cursors_by_channel["ch-b"] == 5  # Unchanged — gap message channel
+
+
 @pytest.mark.asyncio
 async def test_watch_with_reconnect_max_retries(keypair):
     """watch_with_reconnect() raises after exhausting max_retries."""

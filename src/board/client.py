@@ -236,6 +236,12 @@ class BoardClient:
                 except Exception:
                     pass
                 await self.connect()
+                # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
+                logger.info(
+                    "Reconnected, re-polling channel=%s from cursor=%d",
+                    channel,
+                    cursor,
+                )
                 # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
                 # Only reset backoff, not attempt — max_retries should count total
                 # failures, not just consecutive failures since last connect().
@@ -429,6 +435,12 @@ class BoardClient:
                 except Exception:
                     pass
                 await self.connect()
+                # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
+                logger.info(
+                    "Reconnected, re-polling %d channel(s) from cursors=%s",
+                    len(cursors),
+                    cursors,
+                )
                 backoff = 1.0
 
     # Chunk: docs/chunks/board_channel_delete - Delete a channel and all its messages
