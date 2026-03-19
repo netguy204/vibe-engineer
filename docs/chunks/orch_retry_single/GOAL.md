@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/cli/orch.py
+- tests/test_orchestrator_retry_command.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_watch_reconnect_delivery"]
+created_after:
+- board_watch_reconnect_delivery
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

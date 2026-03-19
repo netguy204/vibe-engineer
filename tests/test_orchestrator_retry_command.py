@@ -369,3 +369,124 @@ class TestRetryAllEndpoint:
             assert data["session_id"] is None
             assert data["attention_reason"] is None
             assert data["api_retry_count"] == 0
+
+
+# Chunk: docs/chunks/orch_retry_single - CLI tests for ve orch retry <chunk>
+import json
+from unittest.mock import patch, MagicMock
+from click.testing import CliRunner
+
+from ve import cli
+from orchestrator.client import OrchestratorClientError
+
+
+@pytest.fixture
+def runner():
+    """Create a Click CLI test runner."""
+    return CliRunner()
+
+
+class TestRetryCLI:
+    """Tests for ve orch retry <chunk_name> CLI command."""
+
+    def test_successful_retry(self, runner, tmp_path):
+        """Invoke ve orch retry <chunk> against a NEEDS_ATTENTION work unit."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.retry_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "status": "READY",
+                "phase": "IMPLEMENT",
+                "session_id": None,
+                "attention_reason": None,
+                "api_retry_count": 0,
+                "next_retry_at": None,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "retry", "test_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "Retried test_chunk" in result.output
+            assert "fresh dispatch" in result.output
+            mock_client.retry_work_unit.assert_called_once_with("test_chunk")
+
+    def test_chunk_not_found(self, runner, tmp_path):
+        """Invoke with a nonexistent chunk name, assert exit code 1 and error."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.retry_work_unit.side_effect = OrchestratorClientError(
+                "Work unit 'nonexistent_chunk' not found"
+            )
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "retry", "nonexistent_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "not found" in result.output
+
+    def test_wrong_state(self, runner, tmp_path):
+        """Invoke against a READY work unit, assert exit code 1 and error."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.retry_work_unit.side_effect = OrchestratorClientError(
+                "Work unit 'ready_chunk' is in READY state, not NEEDS_ATTENTION"
+            )
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "retry", "ready_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 1
+            assert "NEEDS_ATTENTION" in result.output
+
+    def test_json_output(self, runner, tmp_path):
+        """Invoke with --json flag, assert valid JSON response."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.retry_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "status": "READY",
+                "phase": "IMPLEMENT",
+                "session_id": None,
+                "attention_reason": None,
+                "api_retry_count": 0,
+                "next_retry_at": None,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "retry", "test_chunk", "--json", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data["status"] == "READY"
+            assert data["chunk"] == "test_chunk"
+
+    def test_path_prefix_stripping(self, runner, tmp_path):
+        """Invoke with docs/chunks/test_chunk argument, assert it normalizes."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client.retry_work_unit.return_value = {
+                "chunk": "test_chunk",
+                "status": "READY",
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "retry", "docs/chunks/test_chunk", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client.retry_work_unit.assert_called_once_with("test_chunk")

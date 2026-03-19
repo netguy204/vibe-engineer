@@ -10,170 +10,88 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a top-level `ve orch retry <chunk_name>` command to the `orch` CLI group. The entire backend already exists:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- **API endpoint**: `POST /work-units/{chunk}/retry` in `src/orchestrator/api/attention.py` validates state, resets fields, transitions to READY
+- **Client method**: `client.retry_work_unit(chunk)` in `src/orchestrator/client.py`
+- **Nested command**: `ve orch work-unit retry <chunk>` in `src/cli/orch.py` (line 632)
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The work is adding a convenience alias at the `orch` group level (matching where `retry-all` lives), plus CLI-level tests. The new command follows the same pattern as `retry-all` (DEC-001: CLI utility accessible via `ve`).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_retry_single/GOAL.md)
-with references to the files that you expect to touch.
--->
+Tests follow TDD per TESTING_PHILOSOPHY.md: write failing CLI tests first, then add the command.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the orchestrator subsystem. The single-retry API and client already exist within this subsystem. This chunk adds only the CLI surface.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing CLI tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `TestRetryCLI` class to `tests/test_orchestrator_retry_command.py` that tests the `ve orch retry <chunk_name>` command via Click's `CliRunner`.
 
-Example:
+Tests to write:
+1. **Successful retry** — invoke `ve orch retry <chunk>` against a NEEDS_ATTENTION work unit, assert exit code 0 and success message
+2. **Chunk not found** — invoke with a nonexistent chunk name, assert exit code 1 and "not found" in error output
+3. **Wrong state** — invoke against a READY work unit, assert exit code 1 and "NEEDS_ATTENTION" in error output
+4. **JSON output** — invoke with `--json` flag, assert valid JSON response with `status: READY`
+5. **Path prefix stripping** — invoke with `docs/chunks/test_chunk` argument, assert it normalizes to `test_chunk`
 
-### Step 1: Define the SegmentHeader struct
+These tests need a running orchestrator API. Follow the pattern used by other CLI tests that use `CliRunner` and mock/start a test server, or use the existing API test client pattern with `TestClient` to simulate the HTTP layer.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_retry_command.py`
 
-Location: src/segment/format.rs
+### Step 2: Add `ve orch retry` command
 
-### Step 2: Implement header serialization
+Add a new command to `src/cli/orch.py` registered on the `orch` group (not the `work-unit` subgroup):
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Chunk: docs/chunks/orch_retry_single - Single work unit retry at orch level
+@orch.command("retry")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
+def orch_retry(chunk, json_output, project_dir):
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implementation mirrors `work_unit_retry` (line 632-662):
+- Call `resolve_orch_project_dir(project_dir)`
+- Normalize chunk with `strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)`
+- Open `orch_client(project_dir)` context
+- Call `client.retry_work_unit(chunk)`
+- Output JSON or human-readable success message
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Place the new command adjacent to `retry-all` (after line 699) for logical grouping.
 
-## Dependencies
+Error handling is automatic: `orch_client` catches `OrchestratorClientError` and prints to stderr with exit code 1. The API endpoint returns 404 for missing chunks and 400 for wrong state, which the client raises as `OrchestratorClientError`.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/cli/orch.py`
 
-If there are no dependencies, delete this section.
--->
+### Step 3: Update GOAL.md code_paths
+
+Update the chunk GOAL.md frontmatter `code_paths` to reflect the files touched:
+- `src/cli/orch.py`
+- `tests/test_orchestrator_retry_command.py`
+
+Location: `docs/chunks/orch_retry_single/GOAL.md`
+
+### Step 4: Run tests and verify
+
+Run the full test suite to confirm:
+- New CLI tests pass
+- Existing retry endpoint tests still pass
+- Existing retry-all tests still pass
+- No regressions in other orchestrator tests
+
+Command: `uv run pytest tests/test_orchestrator_retry_command.py -v`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The existing `work-unit retry` subcommand and the new `orch retry` command will both exist. This is intentional — `work-unit retry` is the canonical location, `orch retry` is the convenience alias. No conflict since Click groups and commands occupy different namespaces.
+- CLI tests may need to mock the orchestrator client since there's no real daemon running. Follow whatever pattern is already established in the test suite for CLI-level orchestrator tests.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

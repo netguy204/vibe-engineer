@@ -700,6 +700,35 @@ def orch_retry_all(phase, json_output, project_dir):
 
 
 
+# Chunk: docs/chunks/orch_retry_single - Single work unit retry at orch level
+@orch.command("retry")
+@click.argument("chunk")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
+def orch_retry(chunk, json_output, project_dir):
+    """Retry a single NEEDS_ATTENTION work unit.
+
+    Convenience alias for 've orch work-unit retry'. Resets the work unit
+    to READY with proper state cleanup (clears session, attention reason,
+    retry count, etc.).
+
+    Only works on work units in NEEDS_ATTENTION status.
+    """
+    project_dir = resolve_orch_project_dir(project_dir)
+    import json
+
+    # Normalize chunk path
+    chunk = strip_artifact_path_prefix(chunk, ArtifactType.CHUNK)
+
+    with orch_client(project_dir) as client:
+        result = client.retry_work_unit(chunk)
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"Retried {chunk}, work unit queued for fresh dispatch")
+
+
 @orch.command("conflicts")
 @click.argument("chunk", required=False)
 @click.option("--unresolved", is_flag=True, help="Show only ASK_OPERATOR verdicts")
