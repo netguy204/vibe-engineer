@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from board.config import BoardConfig, SwarmConfig
 from board.crypto import generate_keypair, derive_swarm_id, derive_symmetric_key, encrypt
-from board.storage import save_keypair, load_cursor, save_cursor
+from board.storage import save_keypair, load_cursor, save_cursor, read_watch_pid, watch_pid_path, write_watch_pid
 from cli.board import board
 
 
@@ -1189,3 +1189,375 @@ def test_ack_explicit_invalid_project_root_errors(runner, tmp_path):
         "--project-root", str(tmp_path / "nonexistent"),
     ])
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# board_watch_offset: --offset flag tests
+# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch
+# ---------------------------------------------------------------------------
+
+
+def test_watch_with_offset_overrides_cursor(runner, stored_swarm, tmp_path):
+    """watch --offset N passes N as cursor instead of the persisted value."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("offset message", sym_key)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0) as mock_load, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 6,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "5",
+        ])
+
+    assert result.exit_code == 0
+    # The cursor passed to watch_with_reconnect should be 5 (offset), not 0 (persisted)
+    instance.watch_with_reconnect.assert_called_once_with("test-channel", 5)
+
+
+def test_watch_with_offset_does_not_modify_cursor(runner, stored_swarm, tmp_path):
+    """watch --offset N does not alter the persisted cursor file."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 10,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-channel",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(project_root),
+            "--offset", "5",
+        ])
+
+    assert result.exit_code == 0
+    # Cursor should still be 0 (not modified by --offset)
+    assert load_cursor("test-channel", project_root) == 0
+
+
+def test_watch_multi_with_offset_overrides_cursors(runner, stored_swarm, tmp_path):
+    """watch-multi --offset N overrides all per-channel cursors with N."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("multi msg", sym_key)
+
+    call_kwargs = {}
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        call_kwargs["channels"] = dict(channels)
+        yield {
+            "channel": "ch1",
+            "position": 4,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+
+    # load_cursor returns different values per channel
+    cursor_values = {"ch1": 10, "ch2": 20}
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", side_effect=lambda ch, root: cursor_values.get(ch, 0)), \
+         patch("cli.board.save_cursor"), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch1", "ch2",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "3",
+            "--count", "1",
+        ])
+
+    assert result.exit_code == 0
+    # Both channels should have cursor=3 (offset), not 10/20 (persisted)
+    assert call_kwargs["channels"] == {"ch1": 3, "ch2": 3}
+
+
+def test_watch_multi_with_offset_does_not_prevent_auto_ack(runner, stored_swarm, tmp_path):
+    """watch-multi --offset still auto-acks (saves cursor) for received messages."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("ack test", sym_key)
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        yield {
+            "channel": "ch1",
+            "position": 7,
+            "body": encrypted_body,
+            "sent_at": "2026-03-19T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor") as mock_save, \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch1",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--offset", "0",
+        ])
+
+    assert result.exit_code == 0
+    # save_cursor should still be called for the received message (auto-ack)
+    mock_save.assert_called_once_with("ch1", 7, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Watch PID file safety tests
+# Chunk: docs/chunks/board_watch_safety
+# ---------------------------------------------------------------------------
+
+
+def test_watch_creates_pid_file(runner, stored_swarm, tmp_path):
+    """watch_cmd creates a PID file during execution."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("hello", sym_key)
+
+    pid_seen = {}
+
+    original_watch = AsyncMock(return_value={
+        "channel": "test-ch",
+        "position": 1,
+        "body": encrypted_body,
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    async def mock_watch(channel, cursor):
+        # Check that PID file exists while watch is running
+        pid_val = read_watch_pid("test-ch", tmp_path)
+        pid_seen["pid"] = pid_val
+        return await original_watch(channel, cursor)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_with_reconnect = mock_watch
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # PID file should have existed during execution
+    assert pid_seen.get("pid") is not None
+
+
+def test_watch_cleans_up_pid_on_exit(runner, stored_swarm, tmp_path):
+    """watch_cmd removes the PID file after normal exit."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("hello", sym_key)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_with_reconnect = AsyncMock(return_value={
+            "channel": "test-ch",
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        })
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # PID file should be cleaned up after exit
+    assert not watch_pid_path("test-ch", tmp_path).exists()
+
+
+def test_watch_cleans_stale_pid_file(runner, stored_swarm, tmp_path):
+    """watch_cmd cleans up a stale PID file (dead process) before starting."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("hello", sym_key)
+
+    # Write a PID file with a non-existent PID
+    write_watch_pid("test-ch", 999999999, tmp_path)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_with_reconnect = AsyncMock(return_value={
+            "channel": "test-ch",
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        })
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # No SIGTERM warning should appear (process was dead)
+    assert "Killed existing watch process" not in result.output
+
+
+def test_watch_kills_running_process(runner, stored_swarm, tmp_path):
+    """watch_cmd sends SIGTERM to an existing live watch process."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("hello", sym_key)
+
+    # Write a PID file with a "live" PID
+    write_watch_pid("test-ch", 12345, tmp_path)
+
+    kill_calls = []
+
+    def mock_os_kill(pid, sig):
+        kill_calls.append((pid, sig))
+        if pid == 12345 and sig == 0:
+            return  # Process is alive
+        if pid == 12345:
+            return  # SIGTERM accepted
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.os.kill", side_effect=mock_os_kill), \
+         patch("cli.board.os.getpid", return_value=99999), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_with_reconnect = AsyncMock(return_value={
+            "channel": "test-ch",
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        })
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # Should have sent signal 0 (check alive) and SIGTERM
+    assert (12345, 0) in kill_calls
+    import signal
+    assert (12345, signal.SIGTERM) in kill_calls
+    # Should report the kill
+    assert "Killed existing watch process 12345" in result.output
+
+
+def test_watch_multi_creates_pid_files_per_channel(runner, stored_swarm, tmp_path):
+    """watch-multi creates a PID file for each channel."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    pids_during = {}
+
+    async def mock_watch_multi(channels, count=1, auto_ack=True):
+        # Capture PID files while running
+        for ch_name in ["ch-a", "ch-b"]:
+            pids_during[ch_name] = read_watch_pid(ch_name, tmp_path)
+        yield {
+            "channel": "ch-a",
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.save_cursor"), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = mock_watch_multi
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-a", "ch-b",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    # Both channels should have had PID files during execution
+    assert pids_during["ch-a"] is not None
+    assert pids_during["ch-b"] is not None
+    # Both should point to the same PID
+    assert pids_during["ch-a"] == pids_during["ch-b"]
+    # PID files should be cleaned up after exit
+    assert not watch_pid_path("ch-a", tmp_path).exists()
+    assert not watch_pid_path("ch-b", tmp_path).exists()

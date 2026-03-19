@@ -53,6 +53,13 @@ cursor confusion — both watches consume from the same cursor position, leading
 to missed or double-processed messages. Track the current watch task ID and
 stop it explicitly before starting the next one.
 
+**OS-level safety net.** The `ve board watch` command now automatically
+kills any existing watch process on the same channel before starting.
+However, you should still explicitly stop previous background tasks via
+`TaskStop` — the PID-based kill is a fallback for zombie processes that
+survive task termination, not a replacement for clean task lifecycle
+management.
+
 Example:
 ```
 # Stop previous watch if one exists
@@ -163,6 +170,19 @@ autonomously until the agent session ends.
   re-delivered.
 - **SOP re-read** each iteration allows the operator to dynamically change
   steward behavior without restarting.
+
+### Watch Safety SOP
+
+1. **Never ack before reading** — ack means "I processed this", not "clear
+   the queue". Acking before processing means a crash loses the message.
+2. **Multi-channel watch requires separate tasks** — if watching N channels,
+   run N separate background `ve board watch` commands (or one
+   `ve board watch-multi`). Restart each independently on failure.
+3. **Watch timeout does not kill the OS process** — when Claude Code's
+   background task times out (exit 144), the `ve board watch` OS process may
+   continue running and reconnecting. Always `TaskStop` the previous task
+   AND let the CLI's PID-based kill handle any stragglers before starting a
+   new watch.
 
 ### Error Handling
 

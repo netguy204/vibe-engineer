@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,87 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a `--offset <N>` Click option to both `watch_cmd` and `watch_multi_cmd` in `src/cli/board.py`. When provided, the offset value replaces the cursor loaded from `load_cursor()` for that invocation only. The persisted cursor file is never written or modified by `--offset` — cursor persistence remains exclusively the responsibility of `ve board ack` (for `watch`) and `save_cursor` after auto-ack (for `watch-multi`).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+This is a purely CLI-layer change. The board client (`BoardClient.watch`, `BoardClient.watch_multi`) already accepts cursor positions as integer arguments — no changes needed in `src/board/client.py` or `src/board/storage.py`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+For `watch-multi`, `--offset` applies uniformly to all channels (overriding each channel's persisted cursor with the same value). Per-channel offsets are out of scope.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/board_watch_offset/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow the existing pattern in `tests/test_board_cli.py`: mock the board client and verify that the correct cursor value is passed through to the client methods.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `watch --offset`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add two tests to `tests/test_board_cli.py`:
 
-Example:
+1. **`test_watch_with_offset_overrides_cursor`** — Invoke `watch` with `--offset 5`. Patch `load_cursor` to return 0. Assert that `client.watch_with_reconnect` (or `client.watch`) is called with cursor=5, not cursor=0. This verifies the offset overrides the persisted cursor.
 
-### Step 1: Define the SegmentHeader struct
+2. **`test_watch_with_offset_does_not_modify_cursor`** — Invoke `watch` with `--offset 5` against a project root with a cursor file set to 0. After the command completes, assert `load_cursor` still returns 0. This verifies the offset is ephemeral.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Follow the existing test pattern: use `runner.invoke`, `patch("cli.board.load_keypair")`, `patch("cli.board.BoardClient")`, etc. Use `stored_swarm` fixture for encryption setup.
 
-Location: src/segment/format.rs
+Location: `tests/test_board_cli.py`
 
-### Step 2: Implement header serialization
+### Step 2: Write failing tests for `watch-multi --offset`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add two tests:
 
-### Step 3: ...
+1. **`test_watch_multi_with_offset_overrides_cursors`** — Invoke `watch-multi ch1 ch2 --offset 3`. Patch `load_cursor` to return different values per channel. Assert that `client.watch_multi` (or `watch_multi_with_reconnect`) receives `{"ch1": 3, "ch2": 3}` as the channel_cursors dict.
 
----
+2. **`test_watch_multi_with_offset_does_not_prevent_auto_ack`** — Invoke `watch-multi ch1 --offset 0` (without `--no-auto-ack`). Assert that `save_cursor` is still called for received messages. This verifies offset only affects the starting position, not the auto-ack behavior.
 
-**BACKREFERENCE COMMENTS**
+Location: `tests/test_board_cli.py`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Add `--offset` option to `watch_cmd`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In `src/cli/board.py`, add a Click option to the `watch` command:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+@click.option("--offset", type=int, default=None, help="Start reading from this position instead of the persisted cursor")
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Update the function signature to accept `offset: int | None`. After `load_cursor()`, if `offset is not None`, replace the cursor value:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+```python
+cursor = load_cursor(channel, project_root)
+if offset is not None:
+    cursor = offset
+```
 
-## Dependencies
+Add a backreference comment: `# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch`
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/cli/board.py`, `watch_cmd` function
 
-If there are no dependencies, delete this section.
--->
+### Step 4: Add `--offset` option to `watch_multi_cmd`
+
+Add the same Click option to the `watch-multi` command. After building `channel_cursors`, if `offset is not None`, override all values:
+
+```python
+channel_cursors = {}
+for ch in channels:
+    channel_cursors[ch] = load_cursor(ch, project_root)
+
+if offset is not None:
+    channel_cursors = {ch: offset for ch in channels}
+```
+
+Add a backreference comment: `# Chunk: docs/chunks/board_watch_offset - Ephemeral offset override for watch-multi`
+
+Location: `src/cli/board.py`, `watch_multi_cmd` function
+
+### Step 5: Run tests and verify
+
+Run `uv run pytest tests/test_board_cli.py -x` to verify all new tests pass and no existing tests regress.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Negative offsets**: The wire protocol uses uint64 positions starting at 1, with 0 as the "before first message" sentinel. Negative values would be invalid. Click's `type=int` allows negatives, but the server would reject them. For simplicity, we do not add client-side validation — the server's error response is sufficient. If this becomes a friction point, validation can be added later.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **watch-multi per-channel offsets**: The goal states `--offset` applies "per-channel or globally" for `watch-multi`. This plan implements global-only (same offset for all channels). Per-channel syntax (e.g., `--offset ch1=5 --offset ch2=3`) adds complexity without a clear use case. Global is sufficient for the debugging/replay scenarios described in the goal.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
