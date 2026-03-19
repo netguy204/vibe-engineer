@@ -81,6 +81,16 @@ from models.chunk import (
     parse_status_filters,
 )
 
+# Entity domain
+from models.entity import (
+    ENTITY_NAME_PATTERN,
+    EntityIdentity,
+    MemoryCategory,
+    MemoryFrontmatter,
+    MemoryTier,
+    MemoryValence,
+)
+
 __all__ = [
     # Shared utilities
     "SHA_PATTERN",
@@ -132,4 +142,11 @@ __all__ = [
     "ChunkDependent",
     "ChunkFrontmatter",
     "parse_status_filters",
+    # Entity domain
+    "ENTITY_NAME_PATTERN",
+    "MemoryTier",
+    "MemoryCategory",
+    "MemoryValence",
+    "MemoryFrontmatter",
+    "EntityIdentity",
 ]
