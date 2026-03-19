@@ -1,6 +1,7 @@
 """Tests for entity CLI commands.
 
-Tests `ve entity create`, `ve entity list`, and `ve entity touch` commands.
+Tests `ve entity create`, `ve entity list`, `ve entity startup`,
+`ve entity recall`, and `ve entity touch` commands.
 """
 
 import json
@@ -13,11 +14,6 @@ from click.testing import CliRunner
 from entities import Entities
 from models.entity import MemoryCategory, MemoryFrontmatter, MemoryTier, MemoryValence
 from ve import cli
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 def _make_memory(**overrides) -> MemoryFrontmatter:
@@ -33,6 +29,11 @@ def _make_memory(**overrides) -> MemoryFrontmatter:
     }
     defaults.update(overrides)
     return MemoryFrontmatter(**defaults)
+
+
+@pytest.fixture
+def runner():
+    return CliRunner()
 
 
 class TestEntityCreate:
@@ -153,6 +154,105 @@ class TestEntityList:
         assert result.exit_code == 0
         assert "mysteward" in result.output
         assert "Code reviewer" in result.output
+
+
+class TestEntityStartup:
+    """Tests for `ve entity startup`."""
+
+    def test_startup_outputs_payload(self, runner, temp_project):
+        """Exit code 0, output contains entity name and Core Memories section."""
+        runner.invoke(cli, [
+            "entity", "create", "mysteward",
+            "--role", "Project steward",
+            "--project-dir", str(temp_project),
+        ])
+        result = runner.invoke(cli, [
+            "entity", "startup", "mysteward",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "mysteward" in result.output
+        assert "Core Memories" in result.output
+
+    def test_startup_nonexistent_entity_fails(self, runner, temp_project):
+        """Exit code != 0, error message mentions entity name."""
+        result = runner.invoke(cli, [
+            "entity", "startup", "ghost",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code != 0
+        assert "ghost" in result.output
+
+    def test_startup_with_memories(self, runner, temp_project):
+        """Create entity with core + consolidated memories, verify output contains memory titles."""
+        runner.invoke(cli, [
+            "entity", "create", "agent",
+            "--project-dir", str(temp_project),
+        ])
+        entities = Entities(temp_project)
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Always verify first", salience=5),
+            "Check before acting.",
+        )
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="consolidated", title="Pattern recognition skill"),
+            "Recognize patterns across sessions.",
+        )
+        result = runner.invoke(cli, [
+            "entity", "startup", "agent",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "Always verify first" in result.output
+        assert "Pattern recognition skill" in result.output
+
+
+class TestEntityRecall:
+    """Tests for `ve entity recall`."""
+
+    def test_recall_outputs_matching_memory(self, runner, temp_project):
+        """Creates memory, recalls by title, output contains content."""
+        runner.invoke(cli, [
+            "entity", "create", "agent",
+            "--project-dir", str(temp_project),
+        ])
+        entities = Entities(temp_project)
+        entities.write_memory(
+            "agent",
+            _make_memory(tier="core", title="Template editing workflow"),
+            "Always edit source templates.",
+        )
+        result = runner.invoke(cli, [
+            "entity", "recall", "agent", "Template",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "Template editing workflow" in result.output
+        assert "Always edit source templates." in result.output
+
+    def test_recall_no_match(self, runner, temp_project):
+        """Outputs 'No memories matching' message."""
+        runner.invoke(cli, [
+            "entity", "create", "agent",
+            "--project-dir", str(temp_project),
+        ])
+        result = runner.invoke(cli, [
+            "entity", "recall", "agent", "nonexistent",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code == 0
+        assert "No memories matching" in result.output
+
+    def test_recall_nonexistent_entity_fails(self, runner, temp_project):
+        """Error when entity doesn't exist."""
+        result = runner.invoke(cli, [
+            "entity", "recall", "ghost", "anything",
+            "--project-dir", str(temp_project),
+        ])
+        assert result.exit_code != 0
+        assert "ghost" in result.output
 
 
 class TestEntityTouch:

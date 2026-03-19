@@ -1,6 +1,7 @@
 """Entity command group.
 
 # Chunk: docs/chunks/entity_memory_schema
+# Chunk: docs/chunks/entity_startup_skill - Startup and recall CLI commands
 # Chunk: docs/chunks/entity_shutdown_skill
 
 Commands for managing entities - long-running agent personas with persistent memory.
@@ -63,6 +64,61 @@ def list_entities(project_dir: pathlib.Path) -> None:
             click.echo(f"  {name}  ({identity.role})")
         else:
             click.echo(f"  {name}")
+
+
+@entity.command("startup")
+@click.argument("name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=".",
+)
+def startup(name: str, project_dir: pathlib.Path) -> None:
+    """Render the startup payload for a named entity.
+
+    NAME is the entity to wake up. Outputs the full startup context
+    including identity, core memories, consolidated memory index,
+    and touch protocol instructions.
+    """
+    entities = Entities(project_dir)
+    try:
+        payload = entities.startup_payload(name)
+        click.echo(payload)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
+@entity.command("recall")
+@click.argument("name")
+@click.argument("query")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=".",
+)
+def recall(name: str, query: str, project_dir: pathlib.Path) -> None:
+    """Recall memories matching a query for a named entity.
+
+    NAME is the entity to search. QUERY is a case-insensitive
+    substring to match against memory titles.
+    """
+    entities = Entities(project_dir)
+    try:
+        results = entities.recall_memory(name, query)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    if not results:
+        click.echo(f"No memories matching '{query}'")
+        return
+
+    for result in results:
+        fm = result["frontmatter"]
+        click.echo(f"## {fm['title']}")
+        click.echo(f"*Tier: {result['tier']} | Category: {fm['category']}*")
+        click.echo("")
+        click.echo(result["content"])
+        click.echo("")
 
 
 # Chunk: docs/chunks/entity_touch_command

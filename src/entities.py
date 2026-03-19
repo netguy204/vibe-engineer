@@ -279,6 +279,158 @@ class Entities:
         except Exception:
             return None, text
 
+    # Chunk: docs/chunks/entity_startup_skill - Entity startup/wake payload
+    def startup_payload(self, name: str) -> str:
+        """Assemble the complete startup text payload for a named entity.
+
+        This is the core "wake" logic — produces the context payload an agent
+        needs to resume as a named entity, including identity, core memories,
+        consolidated memory index, and the touch protocol instruction.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            Formatted text string containing all startup sections.
+
+        Raises:
+            ValueError: If the entity does not exist.
+        """
+        if not self.entity_exists(name):
+            raise ValueError(f"Entity '{name}' does not exist")
+
+        sections: list[str] = []
+
+        # --- Identity ---
+        identity = self.parse_identity(name)
+        identity_path = self.entity_dir(name) / "identity.md"
+        identity_body = self._read_body(identity_path)
+
+        sections.append(f"# Entity: {name}")
+        if identity and identity.role:
+            sections.append(f"**Role:** {identity.role}")
+        sections.append("")
+        if identity_body:
+            sections.append(identity_body)
+            sections.append("")
+
+        # --- Core Memories ---
+        index = self.memory_index(name)
+        sections.append("## Core Memories")
+        sections.append("")
+        if index["core"]:
+            for i, entry in enumerate(index["core"], 1):
+                fm = entry["frontmatter"]
+                content = entry["content"]
+                cm_id = f"CM{i}"
+                sections.append(f"### {cm_id}: {fm['title']}")
+                sections.append(f"*Category: {fm['category']}*")
+                sections.append("")
+                sections.append(content)
+                sections.append("")
+        else:
+            sections.append("*No core memories yet.*")
+            sections.append("")
+
+        # --- Consolidated Memory Index ---
+        sections.append("## Consolidated Memory Index")
+        sections.append("")
+        if index["consolidated"]:
+            sections.append(
+                "The following memories are available for on-demand retrieval "
+                "via `ve entity recall`:"
+            )
+            sections.append("")
+            for title in index["consolidated"]:
+                sections.append(f"- {title}")
+            sections.append("")
+        else:
+            sections.append("*No consolidated memories yet.*")
+            sections.append("")
+
+        # --- Touch Protocol ---
+        sections.append("## Touch Protocol")
+        sections.append("")
+        sections.append(
+            "When you notice yourself applying a core memory (CM1, CM2, ...), "
+            "run `ve entity touch <memory_id> <reason>` to reinforce it. "
+            "This enables retrieval-as-reinforcement — the act of noticing "
+            "you used a memory strengthens it."
+        )
+        sections.append("")
+
+        # --- Active State Reminders ---
+        sections.append("## Active State")
+        sections.append("")
+        sections.append(
+            "If you were previously watching channels or had pending async "
+            "operations, restart them now."
+        )
+        sections.append("")
+
+        return "\n".join(sections)
+
+    def _read_body(self, file_path: Path) -> str:
+        """Read the body content of a markdown file (after frontmatter).
+
+        Args:
+            file_path: Path to the markdown file.
+
+        Returns:
+            Body content string, or empty string if not parseable.
+        """
+        if not file_path.exists():
+            return ""
+
+        text = file_path.read_text()
+        match = re.match(r"^---\s*\n.*?\n---\s*\n(.*)$", text, re.DOTALL)
+        if not match:
+            return text.strip()
+        return match.group(1).strip()
+
+    # Chunk: docs/chunks/entity_startup_skill - Entity recall for on-demand memory retrieval
+    def recall_memory(
+        self, name: str, query: str
+    ) -> list[dict[str, Any]]:
+        """Retrieve memories by title search (case-insensitive substring match).
+
+        Searches core and consolidated memories for title matches. Journal
+        memories are excluded from recall.
+
+        Args:
+            name: Entity name.
+            query: Search string to match against memory titles.
+
+        Returns:
+            List of dicts with frontmatter, content, tier, and memory_id
+            for each matching memory.
+
+        Raises:
+            ValueError: If the entity does not exist.
+        """
+        if not self.entity_exists(name):
+            raise ValueError(f"Entity '{name}' does not exist")
+
+        results: list[dict[str, Any]] = []
+        query_lower = query.lower()
+        memories_dir = self.entity_dir(name) / "memories"
+
+        for tier in [MemoryTier.CORE, MemoryTier.CONSOLIDATED]:
+            tier_dir = memories_dir / tier.value
+            if not tier_dir.exists():
+                continue
+            for f in sorted(tier_dir.glob("*.md")):
+                fm, content = self.parse_memory(f)
+                if fm and query_lower in fm.title.lower():
+                    results.append({
+                        "frontmatter": fm.model_dump(mode="json"),
+                        "content": content,
+                        "tier": tier.value,
+                        "memory_id": f.stem,
+                    })
+
+        return results
+
     def update_memory_field(
         self, file_path: Path, field: str, value: Any
     ) -> None:
