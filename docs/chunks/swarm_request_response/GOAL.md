@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/commands/swarm-request-response.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,12 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_channel_delete", "board_watch_offset", "board_watch_safety", "orchestrator_monitor_skill"]
+created_after:
+- board_channel_delete
+- board_watch_offset
+- board_watch_safety
+- orchestrator_monitor_skill
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

@@ -133,6 +133,8 @@ Use these slash commands for artifact management:
 
 - `/swarm-monitor` - Monitor all changelog channels in a swarm
 
+- `/swarm-request-response` - Send a request and wait for the response on a channel pair
+
 
 #### Cross-project messaging
 
