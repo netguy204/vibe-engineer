@@ -139,6 +139,59 @@ class TestEntityShutdownCLI:
         assert "Journals added:  3" in result.output
 
     # -------------------------------------------------------------------
+    # Chunk: docs/chunks/entity_shutdown_silent_failure - Journal disk assertions
+    # -------------------------------------------------------------------
+
+    def test_shutdown_journals_exist_on_disk(self, tmp_path):
+        """Journal files physically exist in memories/journal/ after shutdown."""
+        self._setup_entity(tmp_path)
+        mem_file = self._make_memories_file(tmp_path, count=2)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "entity", "shutdown", "testbot",
+            "--memories-file", str(mem_file),
+            "--project-dir", str(tmp_path),
+        ])
+
+        assert result.exit_code == 0
+        journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
+        journals = list(journal_dir.glob("*.md"))
+        assert len(journals) == 2, f"Expected 2 journal files, found {len(journals)}: {journals}"
+
+    def test_shutdown_from_subdirectory_resolves_project_root(self, tmp_path, monkeypatch):
+        """Shutdown from a subdirectory without --project-dir finds the project root."""
+        # Create entity at the project root
+        self._setup_entity(tmp_path)
+        mem_file = self._make_memories_file(tmp_path, count=2)
+
+        # Create a .git directory so resolve_project_root can find the root
+        (tmp_path / ".git").mkdir()
+
+        # Create and chdir to a subdirectory
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "entity", "shutdown", "testbot",
+            "--memories-file", str(mem_file),
+            # No --project-dir: should resolve up to tmp_path via .git
+        ])
+
+        assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+        assert "Journals added:  2" in result.output
+
+        # Journals should exist at the project root, not in the subdirectory
+        journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
+        journals = list(journal_dir.glob("*.md"))
+        assert len(journals) == 2, f"Expected 2 journal files at project root, found {len(journals)}"
+
+        # No phantom .entities directory should exist in the subdirectory
+        assert not (subdir / ".entities").exists(), "Phantom .entities created in subdirectory"
+
+    # -------------------------------------------------------------------
     # Chunk: docs/chunks/entity_consolidate_existing
     # -------------------------------------------------------------------
 

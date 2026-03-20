@@ -3,6 +3,7 @@
 # Chunk: docs/chunks/entity_memory_schema
 # Chunk: docs/chunks/entity_startup_skill - Startup and recall CLI commands
 # Chunk: docs/chunks/entity_shutdown_skill
+# Chunk: docs/chunks/entity_shutdown_silent_failure - Entity CLI root resolution
 
 Commands for managing entities - long-running agent personas with persistent memory.
 """
@@ -14,6 +15,18 @@ import sys
 import click
 
 from entities import Entities
+
+
+# Chunk: docs/chunks/entity_shutdown_silent_failure - Entity CLI root resolution
+def resolve_entity_project_dir(explicit_dir: pathlib.Path | None) -> pathlib.Path:
+    """Resolve the project directory for entity commands.
+
+    When --project-dir is not provided (None), walks up from CWD to find
+    the project root using the same chain as board/orch commands:
+    .ve-task.yaml → .git → CWD fallback.
+    """
+    from board.storage import resolve_project_root
+    return resolve_project_root(explicit_dir)
 
 
 @click.group()
@@ -28,13 +41,14 @@ def entity():
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def create(name: str, role: str | None, project_dir: pathlib.Path) -> None:
     """Create a new entity with directory structure and identity file.
 
     NAME is the entity identifier (lowercase, alphanumeric + underscores).
     """
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
     try:
         entity_path = entities.create_entity(name, role=role)
@@ -47,10 +61,11 @@ def create(name: str, role: str | None, project_dir: pathlib.Path) -> None:
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def list_entities(project_dir: pathlib.Path) -> None:
     """List all entities in the current project."""
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
     names = entities.list_entities()
 
@@ -71,7 +86,7 @@ def list_entities(project_dir: pathlib.Path) -> None:
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def startup(name: str, project_dir: pathlib.Path) -> None:
     """Render the startup payload for a named entity.
@@ -80,6 +95,7 @@ def startup(name: str, project_dir: pathlib.Path) -> None:
     including identity, core memories, consolidated memory index,
     and touch protocol instructions.
     """
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
     try:
         payload = entities.startup_payload(name)
@@ -94,7 +110,7 @@ def startup(name: str, project_dir: pathlib.Path) -> None:
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def recall(name: str, query: str, project_dir: pathlib.Path) -> None:
     """Recall memories matching a query for a named entity.
@@ -102,6 +118,7 @@ def recall(name: str, query: str, project_dir: pathlib.Path) -> None:
     NAME is the entity to search. QUERY is a case-insensitive
     substring to match against memory titles.
     """
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
     try:
         results = entities.recall_memory(name, query)
@@ -129,7 +146,7 @@ def recall(name: str, query: str, project_dir: pathlib.Path) -> None:
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Path) -> None:
     """Touch a memory to record runtime reinforcement.
@@ -138,6 +155,7 @@ def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Pa
     MEMORY_ID is the filename stem (without .md) of the memory to touch.
     REASON is an optional description of why the memory was useful.
     """
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
     try:
         event = entities.touch_memory(name, memory_id, reason)
@@ -158,7 +176,7 @@ def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Pa
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, path_type=pathlib.Path),
-    default=".",
+    default=None,
 )
 def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib.Path) -> None:
     """Run the sleep cycle: consolidate extracted memories for an entity.
@@ -170,6 +188,7 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
     """
     from entity_shutdown import run_consolidation
 
+    project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
 
     # Validate entity exists
