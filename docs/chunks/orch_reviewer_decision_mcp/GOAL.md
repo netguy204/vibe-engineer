@@ -19,7 +19,7 @@ code_references:
     implements: "Session resume migrated from query() to ClaudeSDKClient"
   - ref: src/orchestrator/agent.py#create_review_decision_hook
     implements: "Hook updated to match MCP tool naming convention (mcp__orchestrator__ReviewDecision)"
-  - ref: tests/test_orchestrator_agent.py#TestMCPServerConfiguration
+  - ref: tests/test_orchestrator_agent_review.py#TestMCPServerConfiguration
     implements: "Tests for MCP server configuration during REVIEW phase"
 narrative: null
 investigation: null

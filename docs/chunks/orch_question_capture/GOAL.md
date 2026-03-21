@@ -4,11 +4,11 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/agent.py
-- tests/test_orchestrator_agent.py
+- tests/test_orchestrator_agent_stream.py
 code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "AskUserQuestion capture from AssistantMessage content blocks when PreToolUse hooks don't fire"
-  - ref: tests/test_orchestrator_agent.py#TestAskUserQuestionMessageStreamCapture
+  - ref: tests/test_orchestrator_agent_stream.py#TestAskUserQuestionMessageStreamCapture
     implements: "Unit tests verifying message stream capture of AskUserQuestion calls"
 narrative: null
 investigation: null

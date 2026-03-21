@@ -28,7 +28,7 @@ code_references:
     implements: "Schema migration adding review_nudge_count column to work_units table"
   - ref: src/templates/commands/chunk-review.md.jinja2
     implements: "Updated reviewer skill instructions requiring ReviewDecision tool usage"
-  - ref: tests/test_orchestrator_scheduler.py#TestReviewDecisionTool
+  - ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionTool
     implements: "Test class verifying tool submission, nudging, and escalation behavior"
 narrative: null
 investigation: null

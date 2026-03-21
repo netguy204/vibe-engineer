@@ -4,8 +4,8 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/agent.py
-- tests/test_orchestrator_agent.py
-- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_agent_skills.py
+- tests/test_orchestrator_scheduler_results.py
 code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Removed _is_error_result() heuristic call - SDK is_error flag is authoritative"
@@ -13,9 +13,9 @@ code_references:
   # The orchestrator scheduler now uses WorktreeManager.commit_changes() for mechanical commits
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Removed _is_error_result() heuristic call - SDK is_error flag is authoritative"
-  - ref: tests/test_orchestrator_agent.py#TestErrorDetectionRemoval
+  - ref: tests/test_orchestrator_agent_skills.py#TestErrorDetectionRemoval
     implements: "Tests verifying heuristic error detection is removed"
-  - ref: tests/test_orchestrator_scheduler.py#TestVerboseSuccessNotMisinterpreted
+  - ref: tests/test_orchestrator_scheduler_results.py#TestVerboseSuccessNotMisinterpreted
     implements: "Integration tests for verbose success summaries not triggering NEEDS_ATTENTION"
 narrative: null
 investigation: null

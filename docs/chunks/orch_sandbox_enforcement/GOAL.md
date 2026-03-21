@@ -4,7 +4,8 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/agent.py
-- tests/test_orchestrator_agent.py
+- tests/test_orchestrator_agent_callbacks.py
+- tests/test_orchestrator_agent_sandbox.py
 code_references:
   - ref: src/orchestrator/agent.py#_is_sandbox_violation
     implements: "Sandbox violation detection logic for cd and git commands"
@@ -18,13 +19,13 @@ code_references:
     implements: "Sandbox hook, git environment, and prompt hardening integration"
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Sandbox hook and git environment for resume operations"
-  - ref: tests/test_orchestrator_agent.py#TestSandboxViolationDetection
+  - ref: tests/test_orchestrator_agent_callbacks.py#TestSandboxViolationDetection
     implements: "Unit tests for _is_sandbox_violation detection logic"
-  - ref: tests/test_orchestrator_agent.py#TestMergeHooks
+  - ref: tests/test_orchestrator_agent_callbacks.py#TestMergeHooks
     implements: "Unit tests for hook configuration merging"
-  - ref: tests/test_orchestrator_agent.py#TestSandboxEnforcementHook
+  - ref: tests/test_orchestrator_agent_sandbox.py#TestSandboxEnforcementHook
     implements: "Unit tests for sandbox enforcement hook creation and behavior"
-  - ref: tests/test_orchestrator_agent.py#TestAgentRunnerSandboxIntegration
+  - ref: tests/test_orchestrator_agent_sandbox.py#TestAgentRunnerSandboxIntegration
     implements: "Integration tests for sandbox enforcement in AgentRunner methods"
 narrative: null
 investigation: null

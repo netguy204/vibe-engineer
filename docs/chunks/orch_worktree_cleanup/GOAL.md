@@ -4,13 +4,13 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
-- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_scheduler_activation.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
   implements: "Worktree cleanup logic when activate_chunk_in_worktree raises ValueError"
-- ref: tests/test_orchestrator_scheduler.py#TestChunkActivationInWorkUnit::test_run_work_unit_cleans_up_worktree_on_activation_failure
+- ref: tests/test_orchestrator_scheduler_activation.py#TestChunkActivationInWorkUnit::test_run_work_unit_cleans_up_worktree_on_activation_failure
   implements: "Test verifying worktree cleanup on activation failure"
-- ref: tests/test_orchestrator_scheduler.py#TestChunkActivationInWorkUnit::test_run_work_unit_logs_cleanup_failure_without_crashing
+- ref: tests/test_orchestrator_scheduler_activation.py#TestChunkActivationInWorkUnit::test_run_work_unit_logs_cleanup_failure_without_crashing
   implements: "Test verifying cleanup failure is logged but doesn't crash"
 narrative: arch_consolidation
 investigation: null

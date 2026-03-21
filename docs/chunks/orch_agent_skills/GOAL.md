@@ -4,14 +4,14 @@ ticket: null
 parent_chunk: null
 code_paths:
   - src/orchestrator/agent.py
-  - tests/test_orchestrator_agent.py
+  - tests/test_orchestrator_agent_runner.py
   - docs/investigations/parallel_agent_orchestration/OVERVIEW.md
 code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "setting_sources=['project'] configuration for phase execution enabling project-level skills"
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "setting_sources=['project'] configuration for session resume enabling project-level skills"
-  - ref: tests/test_orchestrator_agent.py#TestSettingSourcesConfiguration
+  - ref: tests/test_orchestrator_agent_runner.py#TestSettingSourcesConfiguration
     implements: "Test coverage verifying setting_sources configuration is passed to ClaudeAgentOptions"
   - ref: docs/investigations/parallel_agent_orchestration/OVERVIEW.md
     implements: "Documentation of SDK configuration for project-level skills under Architectural Decisions"

@@ -10,11 +10,11 @@ code_paths:
 code_references:
   - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
     implements: "Worktree creation at dispatch time (READY → RUNNING transition)"
-  - ref: tests/test_orchestrator_scheduler.py#TestDeferredWorktreeCreation
+  - ref: tests/test_orchestrator_scheduler_worktree.py#TestDeferredWorktreeCreation
     implements: "Unit tests verifying worktree is not created at inject time"
-  - ref: tests/test_orchestrator_scheduler.py#TestBlockedWorkDeferredWorktree
+  - ref: tests/test_orchestrator_scheduler_worktree.py#TestBlockedWorkDeferredWorktree
     implements: "Tests for blocked work units and deferred worktree creation"
-  - ref: tests/test_orchestrator_scheduler.py#TestDeferredWorktreeCreationIntegration
+  - ref: tests/test_orchestrator_scheduler_worktree.py#TestDeferredWorktreeCreationIntegration
     implements: "Integration tests with real git repos verifying dispatch-time worktree state"
 narrative: null
 investigation: parallel_agent_orchestration
