@@ -53,6 +53,7 @@ from orchestrator.activation import (
 )
 from orchestrator.review_parsing import (
     load_reviewer_config,
+    validate_feedback_addressed,
 )
 from orchestrator.review_routing import (
     ReviewRoutingConfig,
@@ -707,6 +708,27 @@ class Scheduler:
                     logger.info(
                         f"Agent {chunk} submitted review decision: {decision_data.decision}"
                     )
+
+            # Chunk: docs/chunks/orch_review_feedback_fidelity - Pre-review validation
+            # If entering REVIEW phase but REVIEW_FEEDBACK.md still exists from a prior
+            # cycle, the implementer didn't address the feedback. Route back to IMPLEMENT.
+            if phase == WorkUnitPhase.REVIEW:
+                if not validate_feedback_addressed(worktree_path, chunk):
+                    logger.warning(
+                        f"Chunk {chunk}: REVIEW_FEEDBACK.md still exists, "
+                        f"feedback not fully addressed. Returning to IMPLEMENT."
+                    )
+                    work_unit.phase = WorkUnitPhase.IMPLEMENT
+                    work_unit.status = WorkUnitStatus.READY
+                    work_unit.session_id = None
+                    work_unit.updated_at = datetime.now(timezone.utc)
+                    self.store.update_work_unit(work_unit)
+                    await broadcast_work_unit_update(
+                        chunk=work_unit.chunk,
+                        status=work_unit.status.value,
+                        phase=work_unit.phase.value,
+                    )
+                    return
 
             # Run the agent
             logger.info(f"Running agent for {chunk} phase {phase.value}")

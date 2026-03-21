@@ -77,6 +77,27 @@ The implementer should address the issues above before the next review cycle.
     return feedback_path
 
 
+# Chunk: docs/chunks/orch_review_feedback_fidelity - Validate that review feedback has been addressed
+def validate_feedback_addressed(
+    worktree_path: Path,
+    chunk: str,
+) -> bool:
+    """Check whether review feedback has been addressed.
+
+    The implementer signals completion by deleting REVIEW_FEEDBACK.md.
+    If the file still exists, feedback has not been fully addressed.
+
+    Args:
+        worktree_path: Path to the worktree
+        chunk: Chunk directory name
+
+    Returns:
+        True if feedback was addressed (file deleted), False otherwise
+    """
+    feedback_path = worktree_path / "docs" / "chunks" / chunk / "REVIEW_FEEDBACK.md"
+    return not feedback_path.exists()
+
+
 # Chunk: docs/chunks/orch_review_phase - Parse YAML decision block from /chunk-review skill output
 def parse_review_decision(agent_output: str) -> Optional[ReviewResult]:
     """Parse the YAML decision block from the /chunk-review skill output.

@@ -558,6 +558,25 @@ class AgentRunner:
         """
         prompt = self.get_phase_prompt(chunk, phase)
 
+        # Chunk: docs/chunks/orch_review_feedback_fidelity - Inject review feedback into implementer prompt
+        # If re-implementing after FEEDBACK, inject the review feedback content
+        # so it's the FIRST thing in the prompt, maximizing visibility
+        if phase == WorkUnitPhase.IMPLEMENT:
+            feedback_path = worktree_path / "docs" / "chunks" / chunk / "REVIEW_FEEDBACK.md"
+            if feedback_path.exists():
+                feedback_content = feedback_path.read_text()
+                feedback_header = (
+                    "## Prior Review Feedback (MUST ADDRESS)\n\n"
+                    "The following feedback was provided by the reviewer. "
+                    "You MUST address EVERY issue listed below. For each issue, either:\n"
+                    "- Fix it in the code\n"
+                    "- Defer it with a clear reason why it cannot be addressed now\n"
+                    "- Dispute it with evidence for why the current approach is correct\n\n"
+                    "Do NOT skip any items. Non-functional feedback (documentation, style, "
+                    "naming) is equally important as functional feedback.\n\n"
+                )
+                prompt = feedback_header + feedback_content + "\n\n---\n\n" + prompt
+
         # Prepend CWD reminder with sandbox rules to help agent stay isolated
         cwd_reminder = (
             f"**Working Directory:** `{worktree_path}`\n"

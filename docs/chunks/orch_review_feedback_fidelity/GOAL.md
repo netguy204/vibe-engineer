@@ -1,18 +1,29 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/agent.py
+- src/orchestrator/review_parsing.py
+- src/orchestrator/scheduler.py
+- src/templates/commands/chunk-implement.md.jinja2
+- tests/test_orchestrator_feedback_injection.py
+- tests/test_orchestrator_review_parsing.py
+- tests/test_orchestrator_review_routing.py
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: "orchestrator"
+  relationship: implements
+- subsystem_id: "template_system"
+  relationship: uses
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["entity_consolidate_existing"]
+created_after:
+- entity_consolidate_existing
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

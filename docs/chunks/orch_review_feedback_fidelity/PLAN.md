@@ -10,170 +10,180 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The root cause is a two-part gap in the orchestrator's FEEDBACK→re-IMPLEMENT cycle:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **The implementer prompt never mentions REVIEW_FEEDBACK.md.** The `chunk-implement.md.jinja2` template is silent about prior feedback. The orchestrator creates `REVIEW_FEEDBACK.md` in the chunk directory (via `create_review_feedback_file` in `src/orchestrator/review_parsing.py`), but the implementer has no instruction to read it.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **The orchestrator injects no feedback content into the prompt.** In `src/orchestrator/agent.py`, `run_phase()` only injects operator answers (the `answer` parameter for ESCALATE/question flows). When FEEDBACK routes back to IMPLEMENT, `session_id` is cleared (fresh session) and no feedback content is prepended.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_review_feedback_fidelity/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Strategy:** Fix both sides:
+
+- **Template side:** Update the `chunk-implement.md.jinja2` template to instruct the implementer to check for `REVIEW_FEEDBACK.md` and address every issue with an explicit acknowledgement (fixed / deferred with reason / disputed with evidence).
+- **Orchestrator side:** In `agent.py`, when running the IMPLEMENT phase, detect whether `REVIEW_FEEDBACK.md` exists in the chunk directory and prepend its full content to the prompt. This ensures the feedback is in the agent's context window regardless of whether it reads the file independently.
+- **Validation side:** Add a `validate_feedback_addressed` function in `review_parsing.py` that the reviewer template can call or that the orchestrator can invoke before sending to re-review. This checks that each issue from the prior REVIEW_FEEDBACK.md has an explicit acknowledgement.
+
+This follows the existing pattern where the orchestrator constructs prompts in `run_phase()` (lines 559-574 of `agent.py` already prepend CWD reminders and operator feedback) and uses the template system (DEC-001) for agent instructions.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator**: This chunk IMPLEMENTS part of the orchestrator's review→implement cycle. The scheduler decomposition is respected — changes to feedback file creation stay in `review_parsing.py`, routing stays in `review_routing.py`, and agent dispatch stays in `agent.py`.
+- **docs/subsystems/template_system**: This chunk USES the template system to update the `chunk-implement.md.jinja2` template. Per the template editing workflow in CLAUDE.md, edits go to the source template and are rendered via `ve init`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write tests for feedback injection into implementer prompt
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Write tests in `tests/test_orchestrator_agent.py` (or a new `tests/test_orchestrator_feedback_injection.py`) that verify:
 
-Example:
+- When REVIEW_FEEDBACK.md exists in the chunk directory, `run_phase()` for IMPLEMENT prepends its content to the prompt
+- When REVIEW_FEEDBACK.md does not exist (first iteration), the prompt is unchanged
+- The injected content includes a header like `## Prior Review Feedback` to clearly delineate it
 
-### Step 1: Define the SegmentHeader struct
+These tests can mock the ClaudeSDKClient and inspect the prompt string passed to it.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_orchestrator_feedback_injection.py`
 
-Location: src/segment/format.rs
+### Step 2: Inject REVIEW_FEEDBACK.md content into the implementer prompt
 
-### Step 2: Implement header serialization
+In `src/orchestrator/agent.py`, modify `run_phase()` to detect and prepend feedback content when running the IMPLEMENT phase:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+After the existing CWD reminder prepend (line 574) and before the operator answer injection (line 644), add logic:
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# If re-implementing after FEEDBACK, inject the review feedback
+if phase == WorkUnitPhase.IMPLEMENT:
+    feedback_path = worktree_path / "docs" / "chunks" / chunk / "REVIEW_FEEDBACK.md"
+    if feedback_path.exists():
+        feedback_content = feedback_path.read_text()
+        feedback_header = (
+            "## Prior Review Feedback (MUST ADDRESS)\n\n"
+            "The following feedback was provided by the reviewer. "
+            "You MUST address EVERY issue listed below. For each issue, either:\n"
+            "- Fix it in the code\n"
+            "- Defer it with a clear reason why it cannot be addressed now\n"
+            "- Dispute it with evidence for why the current approach is correct\n\n"
+            "Do NOT skip any items. Non-functional feedback (documentation, style, "
+            "naming) is equally important as functional feedback.\n\n"
+        )
+        prompt = feedback_header + feedback_content + "\n\n---\n\n" + prompt
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This ensures feedback is the FIRST thing in the prompt, maximizing visibility.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/agent.py` in the `run_phase()` method
 
-## Dependencies
+### Step 3: Write tests for the updated chunk-implement template
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Write tests verifying that the rendered `chunk-implement.md` template includes instructions about checking for and addressing `REVIEW_FEEDBACK.md`. This is a template content test, so keep it lightweight — just verify the key instructional phrases are present.
 
-If there are no dependencies, delete this section.
--->
+Location: `tests/test_orchestrator_feedback_injection.py` (or alongside existing template tests)
+
+### Step 4: Update the chunk-implement template to reference REVIEW_FEEDBACK.md
+
+Modify `src/templates/commands/chunk-implement.md.jinja2` to add a step between the current steps 1 and 2:
+
+```markdown
+2. Check if <chunk directory>/REVIEW_FEEDBACK.md exists. If it does:
+   - This is a re-implementation cycle after reviewer feedback
+   - Read the file carefully — it contains specific issues from the reviewer
+   - You MUST address EVERY issue listed. For each issue:
+     - **Fix** it in the code, OR
+     - **Defer** it with a documented reason (add to PLAN.md Deviations), OR
+     - **Dispute** it with evidence for why the current approach is correct
+   - Non-functional feedback (documentation, style, naming conventions) is
+     equally important as functional feedback — do not skip these
+   - After addressing all issues, delete the REVIEW_FEEDBACK.md file to
+     signal completion
+```
+
+Then renumber subsequent steps (current step 2 becomes step 3, etc.).
+
+Run `ve init` to re-render the template.
+
+Location: `src/templates/commands/chunk-implement.md.jinja2`
+
+### Step 5: Write tests for feedback acknowledgement validation
+
+Write tests for a new `validate_feedback_addressed` function that:
+
+- Given a REVIEW_FEEDBACK.md with N issues and the current worktree state, checks whether the file has been deleted (indicating the implementer addressed everything)
+- Returns a list of unaddressed issues if the file still exists
+- Returns empty list if the file is gone (all addressed)
+
+This is intentionally simple — the validation is "did the implementer delete the file?" rather than parsing acknowledgements. Deleting the file is the implementer's signal that they've addressed everything; the reviewer will verify correctness on re-review.
+
+Location: `tests/test_orchestrator_review_parsing.py`
+
+### Step 6: Implement feedback acknowledgement validation
+
+Add `validate_feedback_addressed()` to `src/orchestrator/review_parsing.py`:
+
+```python
+def validate_feedback_addressed(
+    worktree_path: Path,
+    chunk: str,
+) -> bool:
+    """Check whether review feedback has been addressed.
+
+    The implementer signals completion by deleting REVIEW_FEEDBACK.md.
+    If the file still exists, feedback has not been fully addressed.
+
+    Returns:
+        True if feedback was addressed (file deleted), False otherwise
+    """
+    feedback_path = worktree_path / "docs" / "chunks" / chunk / "REVIEW_FEEDBACK.md"
+    return not feedback_path.exists()
+```
+
+Location: `src/orchestrator/review_parsing.py`
+
+### Step 7: Write tests for pre-review validation check
+
+Write tests verifying that the review routing logic checks for unaddressed feedback before allowing the REVIEW phase to proceed. When REVIEW_FEEDBACK.md still exists at the start of the REVIEW phase, the work unit should be routed back to IMPLEMENT with a warning.
+
+Location: `tests/test_orchestrator_review_routing.py`
+
+### Step 8: Add pre-review validation in the scheduler
+
+In the scheduler's dispatch logic or in `agent.py`'s `run_phase()`, before executing a REVIEW phase, check if the prior REVIEW_FEEDBACK.md still exists. If it does, log a warning and route back to IMPLEMENT rather than wasting a review cycle:
+
+```python
+if phase == WorkUnitPhase.REVIEW:
+    if not validate_feedback_addressed(worktree_path, chunk):
+        logger.warning(
+            f"Chunk {chunk}: REVIEW_FEEDBACK.md still exists, "
+            f"feedback not fully addressed. Returning to IMPLEMENT."
+        )
+        # Route back to implement instead of running review
+```
+
+This acts as a safety net — if the implementer somehow skips addressing feedback, we catch it before the reviewer sees the same issues again.
+
+Location: `src/orchestrator/scheduler.py` (in `_dispatch_work_unit`) or `src/orchestrator/agent.py`
+
+### Step 9: Run full test suite and verify
+
+Run `uv run pytest tests/` to ensure all existing tests still pass and the new tests pass. Fix any issues.
+
+### Step 10: Update GOAL.md code_paths
+
+Update the chunk's GOAL.md frontmatter with the files touched:
+- `src/orchestrator/agent.py`
+- `src/orchestrator/review_parsing.py`
+- `src/orchestrator/scheduler.py`
+- `src/templates/commands/chunk-implement.md.jinja2`
+- `tests/test_orchestrator_feedback_injection.py`
+- `tests/test_orchestrator_review_parsing.py`
+- `tests/test_orchestrator_review_routing.py`
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Context window pressure:** Prepending REVIEW_FEEDBACK.md to the prompt adds content. For chunks with extensive feedback, this could be significant. However, feedback files are typically small (a few hundred tokens), and the benefit of guaranteed visibility outweighs the cost.
+- **File deletion as acknowledgement signal:** Using file deletion is simple but loses the audit trail. The reviewer's decision files in `docs/reviewers/baseline/decisions/` preserve the historical record, so the REVIEW_FEEDBACK.md is ephemeral by design — it's a communication channel, not a record.
+- **Template re-rendering:** After editing `chunk-implement.md.jinja2`, `ve init` must be run. The worktree may not have the rendered output yet. Implementation should run `ve init` after template changes and verify the rendered `.claude/commands/chunk-implement.md` matches expectations.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- Steps 5/7 tests (validate_feedback_addressed, pre-review validation) were added to existing test files (`test_orchestrator_review_parsing.py` and `test_orchestrator_review_routing.py`) rather than creating separate test files, as they naturally extend the existing test classes.
+- Step 8 pre-review validation was placed in `scheduler.py`'s `_dispatch_work_unit` method rather than `agent.py`, consistent with the plan's first option and the existing pattern where dispatch logic lives in the scheduler.
+- Added a step 5 to the rendered template ("verify you deleted REVIEW_FEEDBACK.md") as an additional safety reminder beyond what the plan specified.

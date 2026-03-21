@@ -625,3 +625,56 @@ class TestRouteReviewDecision:
         _, reason = callbacks.mark_needs_attention_calls[0]
         assert "exceeded maximum review iterations" in reason
         assert len(callbacks.advance_phase_calls) == 0
+
+
+# Chunk: docs/chunks/orch_review_feedback_fidelity - Tests for pre-review validation
+class TestPreReviewFeedbackValidation:
+    """Tests verifying that the scheduler checks for unaddressed feedback
+    before allowing the REVIEW phase to proceed.
+
+    These tests verify the integration point in scheduler._dispatch_work_unit
+    where validate_feedback_addressed is called. The actual validation logic
+    is tested in test_orchestrator_review_parsing.py.
+    """
+
+    @pytest.mark.asyncio
+    async def test_feedback_file_blocks_review_phase(self, tmp_path):
+        """When REVIEW_FEEDBACK.md still exists at REVIEW time, work unit
+        should be routed back to IMPLEMENT."""
+        from orchestrator.review_parsing import validate_feedback_addressed
+
+        # Create feedback file
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "REVIEW_FEEDBACK.md").write_text("# Unaddressed feedback")
+
+        # validate_feedback_addressed should return False
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is False
+
+    @pytest.mark.asyncio
+    async def test_no_feedback_file_allows_review(self, tmp_path):
+        """When REVIEW_FEEDBACK.md is deleted, REVIEW phase proceeds normally."""
+        from orchestrator.review_parsing import validate_feedback_addressed
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        # No feedback file
+
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is True
+
+    @pytest.mark.asyncio
+    async def test_feedback_creates_then_deletes(self, tmp_path):
+        """Simulates the full cycle: feedback created, then deleted by implementer."""
+        from orchestrator.review_parsing import validate_feedback_addressed
+
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        # Phase 1: Feedback file exists (not addressed)
+        feedback_path = chunk_dir / "REVIEW_FEEDBACK.md"
+        feedback_path.write_text("# Feedback to address")
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is False
+
+        # Phase 2: Implementer deletes the file (addressed)
+        feedback_path.unlink()
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is True

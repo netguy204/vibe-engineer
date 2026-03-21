@@ -12,6 +12,7 @@ from orchestrator.review_parsing import (
     create_review_feedback_file,
     parse_review_decision,
     load_reviewer_config,
+    validate_feedback_addressed,
 )
 from orchestrator.models import ReviewDecision, ReviewIssue, ReviewResult
 
@@ -246,3 +247,27 @@ loop_detection:
         config = load_reviewer_config(tmp_path)  # No reviewer specified
 
         assert config["loop_detection"]["max_iterations"] == 3
+
+
+# Chunk: docs/chunks/orch_review_feedback_fidelity - Tests for validate_feedback_addressed
+class TestValidateFeedbackAddressed:
+    """Tests for validate_feedback_addressed function."""
+
+    def test_returns_true_when_file_deleted(self, tmp_path):
+        """Returns True when REVIEW_FEEDBACK.md does not exist (feedback addressed)."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is True
+
+    def test_returns_false_when_file_exists(self, tmp_path):
+        """Returns False when REVIEW_FEEDBACK.md still exists (feedback not addressed)."""
+        chunk_dir = tmp_path / "docs" / "chunks" / "test_chunk"
+        chunk_dir.mkdir(parents=True)
+        (chunk_dir / "REVIEW_FEEDBACK.md").write_text("# Some feedback")
+
+        assert validate_feedback_addressed(tmp_path, "test_chunk") is False
+
+    def test_returns_true_when_chunk_dir_missing(self, tmp_path):
+        """Returns True when chunk directory doesn't exist (no feedback to address)."""
+        assert validate_feedback_addressed(tmp_path, "nonexistent_chunk") is True
