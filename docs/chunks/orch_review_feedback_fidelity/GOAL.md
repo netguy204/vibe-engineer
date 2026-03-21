@@ -243,20 +243,18 @@ VALIDATION:
 
 Fix the orchestrator's review→implement feedback loop so that ALL reviewer feedback items are reliably communicated to and addressed by the implementer agent.
 
-Currently, when a reviewer gives FEEDBACK with multiple issues, the implementer consistently fixes functional/code items but drops documentation/style items. This pattern was observed across multiple chunks (palette_tldraw_canvas, palette_d3_adapter, entity_startup_skill) and causes unnecessary escalations.
+**Root cause confirmed**: The orchestrator does NOT pass review feedback to the implementer at all. When a reviewer gives FEEDBACK, the orchestrator re-runs the entire implementation phase from scratch with the original implementation prompt. The implementer never sees the reviewer's specific feedback items.
 
-Investigation should determine:
-1. How the orchestrator passes FEEDBACK decisions back to the implementer phase — does the implementer receive the full structured feedback (all issues), or just a summary?
-2. Whether the review decision files (e.g., `docs/reviewers/baseline/decisions/chunk_name_N.md`) are read by the implementer on the next iteration
-3. Whether there's a context window issue where feedback is present but gets lost in a large prompt
-4. Whether the implementer's system prompt explicitly instructs it to address ALL feedback items, not just code changes
+Items that happen to be in the original plan get "fixed" by coincidence on re-implementation. Items only identified by the reviewer (deviations doc, tick marks, test labels) never get fixed because the feedback is never injected into the implementer's context. Each unnecessary full re-implementation also costs ~$0.25 in inference vs ~$0.05 for a targeted fix prompt.
 
-Fix should ensure:
-- The implementer receives and processes every feedback item from the reviewer
-- A feedback checklist mechanism where each issue must be explicitly addressed (e.g., the implementer must acknowledge each item with "fixed" or "deferred with reason")
-- Non-functional feedback (documentation, style) is treated with equal priority to functional feedback
+Fix should:
+1. When review returns FEEDBACK, read the review decision file (e.g., `docs/reviewers/baseline/decisions/chunk_name_N.md`)
+2. Extract the specific issues list
+3. Send the implementer a targeted feedback prompt (NOT the full implementation prompt) listing the specific issues to address
+4. The code already exists in the worktree — the implementer should fix, not re-implement
+5. Add a feedback checklist mechanism where each issue must be explicitly acknowledged
 
-Reported by a design steward after manually fixing two escalated chunks.
+Reported by a design steward after manually fixing multiple escalated chunks. Root cause confirmed by examining orchestrator logs.
 
 ## Success Criteria
 
