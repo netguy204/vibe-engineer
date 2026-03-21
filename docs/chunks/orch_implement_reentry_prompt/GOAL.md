@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/orchestrator/models.py
+- src/orchestrator/agent.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/review_routing.py
+- tests/test_orchestrator_reentry.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +15,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["orch_review_feedback_fidelity"]
+created_after:
+- orch_review_feedback_fidelity
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

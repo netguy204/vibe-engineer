@@ -309,8 +309,10 @@ async def _apply_review_decision(
 
     if review_result.decision == ReviewDecision.APPROVE:
         logger.info(f"Review APPROVED for {chunk}: {review_result.summary}")
-        # Reset nudge count and proceed to COMPLETE phase
+        # Reset nudge count and implement iterations, proceed to COMPLETE phase
         work_unit.review_nudge_count = 0
+        # Chunk: docs/chunks/orch_implement_reentry_prompt - Reset implement iterations on APPROVE
+        work_unit.implement_iterations = 0
         work_unit.updated_at = datetime.now(timezone.utc)
         callbacks.update_work_unit(work_unit)
         await callbacks.advance_phase(work_unit)

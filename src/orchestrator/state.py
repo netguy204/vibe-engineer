@@ -78,7 +78,7 @@ class StateStore:
         for multi-statement operations that must be atomic.
     """
 
-    CURRENT_VERSION = 15
+    CURRENT_VERSION = 16
 
     def __init__(self, db_path: Path):
         """Initialize the state store.
@@ -179,6 +179,7 @@ class StateStore:
             13: self._migrate_v13,
             14: self._migrate_v14,
             15: self._migrate_v15,
+            16: self._migrate_v16,
         }
 
         for version in range(from_version + 1, self.CURRENT_VERSION + 1):
@@ -440,6 +441,21 @@ class StateStore:
             """
         )
 
+    # Chunk: docs/chunks/orch_implement_reentry_prompt - Track implement iterations and re-entry context
+    def _migrate_v16(self) -> None:
+        """Add implement_iterations and reentry_context fields.
+
+        implement_iterations tracks the total number of IMPLEMENT phase dispatches
+        for a work unit. reentry_context stores a context string that explains why
+        the IMPLEMENT phase is being re-entered, consumed by the agent on dispatch.
+        """
+        self.connection.executescript(
+            """
+            ALTER TABLE work_units ADD COLUMN implement_iterations INTEGER DEFAULT 0;
+            ALTER TABLE work_units ADD COLUMN reentry_context TEXT;
+            """
+        )
+
     def _record_migration(self, version: int) -> None:
         """Record a completed migration."""
         now = datetime.now(timezone.utc).isoformat()
@@ -482,9 +498,10 @@ class StateStore:
                          completion_retries, attention_reason, displaced_chunk, pending_answer,
                          conflict_verdicts, conflict_override, explicit_deps, review_iterations,
                          review_nudge_count, retain_worktree, api_retry_count, next_retry_at,
-                         merge_conflict_retries, baseline_implementing,
+                         merge_conflict_retries, implement_iterations, reentry_context,
+                         baseline_implementing,
                          created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         work_unit.chunk,
@@ -507,6 +524,8 @@ class StateStore:
                         work_unit.api_retry_count,
                         work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                         work_unit.merge_conflict_retries,
+                        work_unit.implement_iterations,
+                        work_unit.reentry_context,
                         baseline_implementing_json,
                         work_unit.created_at.isoformat(),
                         work_unit.updated_at.isoformat(),
@@ -601,7 +620,8 @@ class StateStore:
                     conflict_verdicts = ?, conflict_override = ?, explicit_deps = ?,
                     review_iterations = ?, review_nudge_count = ?, retain_worktree = ?,
                     api_retry_count = ?, next_retry_at = ?,
-                    merge_conflict_retries = ?, baseline_implementing = ?,
+                    merge_conflict_retries = ?, implement_iterations = ?,
+                    reentry_context = ?, baseline_implementing = ?,
                     updated_at = ?
                 WHERE chunk = ?
                 """,
@@ -625,6 +645,8 @@ class StateStore:
                     work_unit.api_retry_count,
                     work_unit.next_retry_at.isoformat() if work_unit.next_retry_at else None,
                     work_unit.merge_conflict_retries,
+                    work_unit.implement_iterations,
+                    work_unit.reentry_context,
                     baseline_implementing_json,
                     work_unit.updated_at.isoformat(),
                     work_unit.chunk,
@@ -983,6 +1005,19 @@ class StateStore:
         except (IndexError, KeyError):
             merge_conflict_retries = 0
 
+        # Chunk: docs/chunks/orch_implement_reentry_prompt - Implement iteration tracking and re-entry context
+        try:
+            implement_iterations = (
+                row["implement_iterations"] if row["implement_iterations"] is not None else 0
+            )
+        except (IndexError, KeyError):
+            implement_iterations = 0
+
+        try:
+            reentry_context = row["reentry_context"]
+        except (IndexError, KeyError):
+            reentry_context = None
+
         # Chunk: docs/chunks/orch_rename_propagation - baseline_implementing for rename detection
         try:
             baseline_implementing_str = row["baseline_implementing"]
@@ -1011,6 +1046,8 @@ class StateStore:
             api_retry_count=api_retry_count,
             next_retry_at=next_retry_at,
             merge_conflict_retries=merge_conflict_retries,
+            implement_iterations=implement_iterations,
+            reentry_context=reentry_context,
             baseline_implementing=baseline_implementing,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),

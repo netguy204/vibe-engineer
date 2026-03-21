@@ -521,6 +521,7 @@ class AgentRunner:
     # Chunk: docs/chunks/orch_question_forward - Accepts question_callback and configures hook to capture questions
     # Chunk: docs/chunks/orch_reviewer_decision_mcp - Migrate to ClaudeSDKClient for hooks and MCP tools
     # Chunk: docs/chunks/orch_attention_queue - Accept and inject answer parameter when resuming sessions
+    # Chunk: docs/chunks/orch_implement_reentry_prompt - Accept reentry_context for IMPLEMENT re-entry prompt injection
     async def run_phase(
         self,
         chunk: str,
@@ -528,6 +529,7 @@ class AgentRunner:
         worktree_path: Path,
         resume_session_id: Optional[str] = None,
         answer: Optional[str] = None,
+        reentry_context: Optional[str] = None,
         log_callback: Optional[callable] = None,
         question_callback: Optional[Callable[[dict], None]] = None,
         review_decision_callback: Optional[Callable[[ReviewToolDecision], None]] = None,
@@ -545,6 +547,9 @@ class AgentRunner:
             worktree_path: Path to the worktree for this chunk
             resume_session_id: Optional session ID to resume
             answer: Optional answer to inject when resuming
+            reentry_context: Optional context string explaining why the IMPLEMENT
+                phase is being re-entered. Injected into the prompt so the implementer
+                understands what needs to be addressed.
             log_callback: Optional callback for logging messages
             question_callback: Optional callback for capturing AskUserQuestion calls.
                 When provided, configures a hook to intercept questions and suspend
@@ -576,6 +581,19 @@ class AgentRunner:
                     "naming) is equally important as functional feedback.\n\n"
                 )
                 prompt = feedback_header + feedback_content + "\n\n---\n\n" + prompt
+
+        # Chunk: docs/chunks/orch_implement_reentry_prompt - Inject re-entry context for IMPLEMENT phase
+        # This provides the implementer with context about WHY it's being re-entered,
+        # covering paths like unaddressed feedback reroute and other non-review re-entries.
+        if phase == WorkUnitPhase.IMPLEMENT and reentry_context:
+            reentry_header = (
+                "## Re-entry Context\n\n"
+                "You are re-entering the IMPLEMENT phase. Here is why:\n\n"
+                f"{reentry_context}\n\n"
+                "Address the above before doing any other work.\n\n"
+                "---\n\n"
+            )
+            prompt = reentry_header + prompt
 
         # Prepend CWD reminder with sandbox rules to help agent stay isolated
         cwd_reminder = (

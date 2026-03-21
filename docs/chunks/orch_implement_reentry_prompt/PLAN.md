@@ -1,179 +1,138 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
 
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Three coordinated changes across the orchestrator to ensure every re-entry to IMPLEMENT includes a contextual prompt, track iteration count, and enforce a hard ceiling on implement cycles.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy**: Follow the pattern established by `orch_review_feedback_fidelity` — the FEEDBACK re-entry path already injects review feedback via `agent.py`'s `run_phase()`. We extend this injection point to cover ALL re-entry paths (rebase failure, unaddressed feedback reroute, operator answer after escalate). We also add an `implement_iterations` counter to WorkUnit (per DEC-008: Pydantic models for data contracts) and enforce `max_iterations` at the orchestrator level before dispatching IMPLEMENT, not just after review decisions.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Key insight**: The existing `review_iterations` counter only increments after a REVIEW→FEEDBACK decision. But the implementer can cycle through IMPLEMENT multiple times without ever reaching review (e.g., unaddressed feedback reroute at scheduler line 721, or rebase failures cycling back to IMPLEMENT). We need a counter that increments on every IMPLEMENT dispatch, regardless of the path that got there.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_implement_reentry_prompt/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Build on**:
+- `agent.py` line 564-578: existing REVIEW_FEEDBACK.md injection pattern
+- `scheduler.py` line 712-731: unaddressed feedback reroute (currently sends back with no context)
+- `review_routing.py` line 318-362: FEEDBACK routing (already creates REVIEW_FEEDBACK.md)
+- `scheduler.py` line 1152-1232: merge conflict retry (cycles to REBASE, which may fail and re-enter IMPLEMENT)
+
+Tests follow TESTING_PHILOSOPHY.md: TDD with semantic assertions verifying prompt content for each re-entry path and iteration limit enforcement.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS new scheduling behavior (iteration tracking, re-entry prompt injection). Will follow the existing patterns for WorkUnit field additions and scheduler dispatch logic.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `implement_iterations` field to WorkUnit
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `implement_iterations: int = 0` to `WorkUnit` in `src/orchestrator/models.py`. Also add it to `model_dump_json_serializable()` for API/dashboard visibility.
 
-Example:
+This counter tracks total IMPLEMENT phase dispatches. Unlike `review_iterations` (which tracks IMPLEMENT→REVIEW cycles), this increments every time the work unit enters IMPLEMENT, regardless of the source transition.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/orchestrator/models.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write tests for re-entry prompt injection
 
-Location: src/segment/format.rs
+Before implementing, write tests that verify:
+1. When IMPLEMENT re-enters after unaddressed feedback (reroute from pre-review check), the prompt includes context explaining why ("REVIEW_FEEDBACK.md was not deleted — you must address all feedback items")
+2. When IMPLEMENT re-enters from any path, the prompt includes the re-entry reason
+3. The existing REVIEW_FEEDBACK.md injection (from `orch_review_feedback_fidelity`) continues to work unchanged
 
-### Step 2: Implement header serialization
+These tests will exercise the prompt-building logic in `agent.py`'s `run_phase()`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `tests/test_orchestrator_feedback_injection.py` (extend existing) or new test file
 
-### Step 3: ...
+### Step 3: Add re-entry context injection to `run_phase()`
 
----
+Extend `agent.py`'s `run_phase()` to accept an optional `reentry_context: Optional[str]` parameter. When provided, prepend it to the prompt with a clear header:
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+## Re-entry Context
+
+You are re-entering the IMPLEMENT phase. Here is why:
+
+{reentry_context}
+
+Address the above before doing any other work.
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This is injected AFTER the REVIEW_FEEDBACK.md content (if present) and BEFORE the CWD reminder, so the implementer sees: (1) feedback to address, (2) why it was sent back, (3) sandbox rules, (4) the implement skill.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/agent.py`
+
+### Step 4: Write tests for iteration limit enforcement
+
+Write tests verifying:
+1. Work unit with `implement_iterations >= max_iterations` is escalated to NEEDS_ATTENTION instead of dispatched
+2. `implement_iterations` increments on every IMPLEMENT dispatch
+3. The attention_reason includes the iteration count and explains the limit was hit
+4. Non-IMPLEMENT phases are not affected by the iteration counter
+
+Location: `tests/test_orchestrator_scheduler.py` or new test file
+
+### Step 5: Increment `implement_iterations` and enforce limit in scheduler
+
+In `scheduler.py`'s `_dispatch_work_unit()`, just before calling `run_phase()` for IMPLEMENT:
+
+1. Load `max_iterations` from reviewer config (reuse the existing `load_reviewer_config()` call pattern)
+2. Check `work_unit.implement_iterations >= max_iterations + 1` — if exceeded, escalate to NEEDS_ATTENTION with reason: `"Exceeded maximum implement iterations ({n}). The chunk may need operator guidance."`
+3. Increment `work_unit.implement_iterations` and persist
+
+The `+1` accounts for the initial implementation (iteration 0) — the limit applies to re-entries, so max_iterations=3 allows 1 initial + 3 re-entries = 4 total runs.
+
+Location: `src/orchestrator/scheduler.py`
+
+### Step 6: Pass `reentry_context` from scheduler to agent for each transition path
+
+Thread the `reentry_context` string through the scheduler→agent call for each re-entry path:
+
+**Path A — Unaddressed feedback reroute** (scheduler.py ~line 721):
+When pre-review validation finds REVIEW_FEEDBACK.md still exists and reroutes to IMPLEMENT, store a reentry context on the work unit: `"Previous implementation did not address review feedback. The REVIEW_FEEDBACK.md file was not deleted, indicating feedback items remain unresolved. You MUST read and address every item in REVIEW_FEEDBACK.md, then delete the file."`
+
+**Path B — Review FEEDBACK** (review_routing.py ~line 340-362):
+Already handled by `orch_review_feedback_fidelity`. The REVIEW_FEEDBACK.md file IS the context. No additional reentry_context needed since `run_phase()` already detects and injects it.
+
+**Path C — Operator answer after ESCALATE** (agent.py ~line 658-663):
+Already handled via `pending_answer` injection. No change needed.
+
+**Implementation approach**: Add a `reentry_context: Optional[str] = None` field to `WorkUnit`. The scheduler sets it at the point of transition, and `run_phase()` reads it from the work unit, injects it into the prompt, then clears it. This avoids threading the parameter through multiple call layers.
+
+Location: `src/orchestrator/models.py`, `src/orchestrator/scheduler.py`, `src/orchestrator/agent.py`
+
+### Step 7: Write integration test for full cycle
+
+Write a test that simulates a multi-cycle scenario:
+1. Work unit starts IMPLEMENT (iteration 0) → completes → REBASE → REVIEW → FEEDBACK
+2. Re-enters IMPLEMENT (iteration 1) with feedback — prompt includes feedback content
+3. Doesn't address feedback → pre-review reroutes to IMPLEMENT (iteration 2) — prompt includes "feedback not addressed" context
+4. At iteration = max_iterations + 1, escalates to NEEDS_ATTENTION
+
+This verifies the full interaction between iteration tracking, prompt injection, and limit enforcement.
+
+Location: `tests/test_orchestrator_reentry.py` (new file)
+
+### Step 8: Reset `implement_iterations` on successful REVIEW APPROVE
+
+When a review APPROVE routes the work unit to COMPLETE, reset `implement_iterations = 0`. This is defensive — the counter shouldn't matter after APPROVE — but maintains clean state.
+
+Location: `src/orchestrator/review_routing.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `orch_review_feedback_fidelity` (ACTIVE) — provides the REVIEW_FEEDBACK.md injection mechanism we extend
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Interaction with `review_iterations`**: Both counters increment on the review→feedback→implement path. `review_iterations` is used by the review routing to decide when to escalate from FEEDBACK. `implement_iterations` is used by the scheduler to enforce a global ceiling. They serve different purposes but overlap on the FEEDBACK path. The reviewer's `max_iterations` check in `_apply_review_decision` will fire first (it checks before creating the feedback file), so `implement_iterations` acts as a second safety net that also catches non-review re-entry paths.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`reentry_context` field persistence**: Adding a string field to WorkUnit means it gets serialized to SQLite. It will be `None` most of the time and only briefly set during transitions. This is acceptable — the field is small and the pattern matches `pending_answer`.
+
+- **`max_iterations + 1` semantics**: The first IMPLEMENT run is the initial implementation, not a "re-entry." If `max_iterations=3`, we allow iterations 0 (initial), 1, 2, 3 (three re-entries) = 4 total. This matches the reviewer's semantics where `max_iterations=3` means 3 review cycles are allowed.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

@@ -718,6 +718,13 @@ class Scheduler:
                         f"Chunk {chunk}: REVIEW_FEEDBACK.md still exists, "
                         f"feedback not fully addressed. Returning to IMPLEMENT."
                     )
+                    # Chunk: docs/chunks/orch_implement_reentry_prompt - Set reentry_context for unaddressed feedback reroute
+                    work_unit.reentry_context = (
+                        "Previous implementation did not address review feedback. "
+                        "The REVIEW_FEEDBACK.md file was not deleted, indicating "
+                        "feedback items remain unresolved. You MUST read and address "
+                        "every item in REVIEW_FEEDBACK.md, then delete the file."
+                    )
                     work_unit.phase = WorkUnitPhase.IMPLEMENT
                     work_unit.status = WorkUnitStatus.READY
                     work_unit.session_id = None
@@ -730,6 +737,40 @@ class Scheduler:
                     )
                     return
 
+            # Chunk: docs/chunks/orch_implement_reentry_prompt - Increment iteration counter and enforce limit
+            # Track every IMPLEMENT dispatch. The first run is iteration 0 (initial implementation).
+            # max_iterations re-entries are allowed, so the limit is max_iterations + 1 total runs.
+            reentry_context = None
+            if phase == WorkUnitPhase.IMPLEMENT:
+                # Load max_iterations from reviewer config for the iteration ceiling
+                reviewer_config = load_reviewer_config(self.project_dir)
+                max_iterations = reviewer_config["loop_detection"]["max_iterations"]
+
+                # Check if we've exceeded the iteration limit
+                if work_unit.implement_iterations > max_iterations:
+                    logger.warning(
+                        f"Chunk {chunk} exceeded maximum implement iterations "
+                        f"({work_unit.implement_iterations}/{max_iterations + 1}). "
+                        f"Escalating to NEEDS_ATTENTION."
+                    )
+                    await self._mark_needs_attention(
+                        work_unit,
+                        f"Exceeded maximum implement iterations "
+                        f"({work_unit.implement_iterations} runs, limit is "
+                        f"{max_iterations + 1}). The chunk may need operator guidance.",
+                    )
+                    return
+
+                # Capture and clear reentry_context before dispatch
+                reentry_context = work_unit.reentry_context
+                if reentry_context:
+                    work_unit.reentry_context = None
+
+                # Increment the counter
+                work_unit.implement_iterations += 1
+                work_unit.updated_at = datetime.now(timezone.utc)
+                self.store.update_work_unit(work_unit)
+
             # Run the agent
             logger.info(f"Running agent for {chunk} phase {phase.value}")
             result = await self.agent_runner.run_phase(
@@ -738,6 +779,7 @@ class Scheduler:
                 worktree_path=worktree_path,
                 resume_session_id=work_unit.session_id,
                 answer=pending_answer,
+                reentry_context=reentry_context,
                 log_callback=log_callback,
                 question_callback=question_callback,
                 review_decision_callback=review_decision_callback,
