@@ -1,8 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/board/client.py
+- workers/leader-board/src/swarm-do.ts
+- tests/test_board_client.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["orch_implement_reentry_prompt"]
+created_after:
+- orch_implement_reentry_prompt
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

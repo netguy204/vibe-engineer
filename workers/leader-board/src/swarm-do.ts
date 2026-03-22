@@ -920,12 +920,25 @@ export class SwarmDO implements DurableObject {
     }
 
     // No message yet — register as pending watcher
+    // Chunk: docs/chunks/board_watch_stale_reconnect - Deduplicate watcher entries for same WebSocket
     let channelWatchers = this.watchers.get(frame.channel);
     if (!channelWatchers) {
       channelWatchers = new Set();
       this.watchers.set(frame.channel, channelWatchers);
     }
+    // Remove any existing watcher entry for the same WebSocket before adding
+    // a new one. The Set uses object identity, so re-sending a watch frame on
+    // the same connection would otherwise create duplicate entries.
+    for (const existing of channelWatchers) {
+      if (existing.ws === ws) {
+        channelWatchers.delete(existing);
+        break;
+      }
+    }
     channelWatchers.add({ ws, cursor: frame.cursor });
+    console.log(
+      `[watch] Registered watcher channel=${frame.channel} cursor=${frame.cursor} watchers=${channelWatchers.size}`
+    );
 
     // Chunk: docs/chunks/leader_board_hibernate_watch - Persist watch state for hibernation recovery
     // Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
@@ -1016,11 +1029,13 @@ export class SwarmDO implements DurableObject {
 
   // --- Watcher Management ---
 
+  // Chunk: docs/chunks/board_watch_stale_reconnect - Track delivery success, fall through on all-fail
   private wakeWatchers(channel: string, newPosition: number): void {
     // 1. Try in-memory watchers first (fast path, no hibernation)
     const channelWatchers = this.watchers.get(channel);
     if (channelWatchers && channelWatchers.size > 0) {
       const toRemove: Watcher[] = [];
+      let delivered = false;
 
       for (const watcher of channelWatchers) {
         if (watcher.cursor < newPosition) {
@@ -1036,6 +1051,7 @@ export class SwarmDO implements DurableObject {
                 sent_at: msg.sent_at,
               };
               watcher.ws.send(serializeFrame(msgFrame));
+              delivered = true;
               // Chunk: docs/chunks/multichannel_watch - Remove only delivered channel's watch entry
               const att = watcher.ws.deserializeAttachment() as WsAttachment;
               if (att.watching) {
@@ -1059,7 +1075,13 @@ export class SwarmDO implements DurableObject {
       if (channelWatchers.size === 0) {
         this.watchers.delete(channel);
       }
-      return;
+      console.log(
+        `[wakeWatchers] channel=${channel} position=${newPosition} in_memory_count=${channelWatchers.size} delivered=${delivered}`
+      );
+      // Only skip hibernation recovery if at least one in-memory send succeeded.
+      // If all sends failed (stale/half-open sockets), fall through to scan
+      // hibernation attachments where the live client may be registered.
+      if (delivered) return;
     }
 
     // 2. Hibernation recovery: scan all connected WebSockets
@@ -1098,11 +1120,15 @@ export class SwarmDO implements DurableObject {
   }
 
   private removeWatcher(ws: WebSocket): void {
+    // Chunk: docs/chunks/board_watch_stale_reconnect - Diagnostic logging for watcher removal
     // Clear in-memory state
     for (const [channel, watchers] of this.watchers) {
       for (const watcher of watchers) {
         if (watcher.ws === ws) {
           watchers.delete(watcher);
+          console.log(
+            `[removeWatcher] Removed watcher channel=${channel} remaining=${watchers.size}`
+          );
         }
       }
       if (watchers.size === 0) {

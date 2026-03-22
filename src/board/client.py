@@ -167,17 +167,24 @@ class BoardClient:
 
     # Chunk: docs/chunks/websocket_keepalive - Reconnect wrapper for watch()
     # Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset and keepalive tuning
+    # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
     async def watch_with_reconnect(
         self,
         channel: str,
         cursor: int,
         max_retries: int | None = None,
+        stale_timeout: float = 300,
     ) -> dict:
         """Watch with automatic reconnect on connection failure.
 
         On disconnect, reconnects with exponential backoff and re-sends the
         watch frame from the same cursor position. No messages are lost because
         the cursor tracks the last processed position.
+
+        When no message arrives within ``stale_timeout`` seconds, re-sends the
+        watch frame on the existing connection to re-register as a watcher
+        (cheaper than a full reconnect). If re-registration also times out,
+        forces a full reconnect.
 
         Parameters
         ----------
@@ -187,6 +194,9 @@ class BoardClient:
             Position to watch after.
         max_retries:
             Maximum reconnect attempts. ``None`` means unlimited.
+        stale_timeout:
+            Seconds to wait for a message before re-registering the watch
+            frame on the existing connection. Default 300 (5 minutes).
 
         Returns dict with keys: position, body, sent_at.
         """
@@ -196,7 +206,57 @@ class BoardClient:
 
         while True:
             try:
-                return await self.watch(channel, cursor)
+                # Send watch frame and enter recv loop with stale detection
+                frame = {
+                    "type": "watch",
+                    "channel": channel,
+                    "swarm": self.swarm_id,
+                    "cursor": cursor,
+                }
+                await self._ws.send(json.dumps(frame))
+                logger.debug(
+                    "Watch registered channel=%s cursor=%d", channel, cursor
+                )
+
+                reregister_count = 0
+                while True:
+                    try:
+                        raw = await asyncio.wait_for(
+                            self._ws.recv(), timeout=stale_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        reregister_count += 1
+                        if reregister_count > 1:
+                            logger.warning(
+                                "Watch stale after %d re-registrations, forcing "
+                                "reconnect channel=%s cursor=%d",
+                                reregister_count,
+                                channel,
+                                cursor,
+                            )
+                            raise ConnectionError("Watch connection stale")
+                        logger.info(
+                            "Watch re-registering: no message in %ds, "
+                            "channel=%s cursor=%d",
+                            stale_timeout,
+                            channel,
+                            cursor,
+                        )
+                        await self._ws.send(json.dumps(frame))
+                        continue
+
+                    response = json.loads(raw)
+                    self._check_error(response)
+                    if response.get("type") != "message":
+                        raise BoardError(
+                            "protocol_error",
+                            f"Expected message, got {response.get('type')}",
+                        )
+                    return {
+                        "position": response["position"],
+                        "body": response["body"],
+                        "sent_at": response["sent_at"],
+                    }
             except (
                 websockets.exceptions.ConnectionClosedError,
                 websockets.exceptions.ConnectionClosedOK,
@@ -243,27 +303,29 @@ class BoardClient:
                     cursor,
                 )
                 # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
-                # Only reset backoff, not attempt — max_retries should count total
-                # failures, not just consecutive failures since last connect().
-                # connect() succeeds (auth handshake) even when the server will
-                # immediately drop the watch, so resetting attempt here would make
-                # max_retries unreachable in degraded-server scenarios.
                 backoff = 1.0
 
     # Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch_multi
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
+    # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
     async def watch_multi(
         self,
         channels: dict[str, int],
         count: int = 1,
         auto_ack: bool = True,
+        stale_timeout: float = 300,
     ) -> AsyncGenerator[dict, None]:
         """Watch multiple channels on a single connection.
 
         Sends a watch frame for each channel, then yields messages as they
         arrive from any channel. After yielding a message, automatically
         re-sends the watch frame for that channel with cursor = message.position.
+
+        When no message arrives within ``stale_timeout`` seconds, re-sends all
+        watch frames on the existing connection to re-register as watchers.
+        If re-registration also times out, raises ``ConnectionError`` to
+        trigger reconnect in the caller.
 
         Parameters
         ----------
@@ -279,26 +341,66 @@ class BoardClient:
             updated cursor after yielding each message. When ``False``,
             skips the re-send so the server will re-deliver the same
             message on reconnect until the consumer manually acks.
+        stale_timeout:
+            Seconds to wait for a message before re-registering all watch
+            frames on the existing connection. Default 300 (5 minutes).
+            Set to ``0`` to disable stale detection.
 
         Yields dicts with keys: channel, position, body, sent_at.
         """
+        # Track current cursors (updated as messages are delivered)
+        cursors = dict(channels)
+
         # Send initial watch frames for all channels
-        for channel, cursor in channels.items():
-            frame = {
-                "type": "watch",
-                "channel": channel,
-                "swarm": self.swarm_id,
-                "cursor": cursor,
-            }
-            await self._ws.send(json.dumps(frame))
+        async def _send_all_watch_frames() -> None:
+            for channel, cursor in cursors.items():
+                if channel not in active_channels:
+                    continue
+                frame = {
+                    "type": "watch",
+                    "channel": channel,
+                    "swarm": self.swarm_id,
+                    "cursor": cursor,
+                }
+                await self._ws.send(json.dumps(frame))
 
         # Track active channels (channels that haven't errored)
         active_channels = set(channels.keys())
         delivered = 0
+        reregister_count = 0
+
+        await _send_all_watch_frames()
 
         # Receive loop: yield messages as they arrive from any channel
         while active_channels:
-            response = json.loads(await self._ws.recv())
+            try:
+                if stale_timeout > 0:
+                    raw = await asyncio.wait_for(
+                        self._ws.recv(), timeout=stale_timeout
+                    )
+                else:
+                    raw = await self._ws.recv()
+            except asyncio.TimeoutError:
+                reregister_count += 1
+                if reregister_count > 1:
+                    logger.warning(
+                        "Watch stale after %d re-registrations, forcing "
+                        "reconnect channels=%s",
+                        reregister_count,
+                        list(active_channels),
+                    )
+                    raise ConnectionError("Watch connection stale")
+                logger.info(
+                    "Watch re-registering: no message in %ds, channels=%s",
+                    stale_timeout,
+                    list(active_channels),
+                )
+                await _send_all_watch_frames()
+                continue
+
+            response = json.loads(raw)
+            # Reset re-registration counter on any successful recv
+            reregister_count = 0
 
             if response.get("type") == "error":
                 # Per-channel error: remove that channel from active set
@@ -338,6 +440,9 @@ class BoardClient:
                 "sent_at": response["sent_at"],
             }
 
+            # Update tracked cursor for this channel
+            cursors[channel] = position
+
             # Track delivered count and exit if limit reached
             delivered += 1
             if count > 0 and delivered >= count:
@@ -357,12 +462,14 @@ class BoardClient:
     # Chunk: docs/chunks/multichannel_watch - Reconnect wrapper for multi-channel watch
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited reconnect wrapper
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
+    # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
     async def watch_multi_with_reconnect(
         self,
         channels: dict[str, int],
         max_retries: int | None = None,
         count: int = 1,
         auto_ack: bool = True,
+        stale_timeout: float = 300,
     ) -> AsyncGenerator[dict, None]:
         """Watch multiple channels with automatic reconnect on connection failure.
 
@@ -383,6 +490,9 @@ class BoardClient:
             When ``True`` (default), the inner ``watch_multi`` re-sends
             watch frames with updated cursors after each message. When
             ``False``, skips cursor advancement for manual acking.
+        stale_timeout:
+            Seconds to wait for a message before re-registering watch
+            frames. Passed through to ``watch_multi``. Default 300.
 
         Yields dicts with keys: channel, position, body, sent_at.
         """
@@ -398,7 +508,9 @@ class BoardClient:
                 # Inner watch_multi streams indefinitely (count=0); the
                 # reconnect wrapper manages the overall message cap so that
                 # reconnects don't reset the count.
-                async for msg in self.watch_multi(cursors, count=0, auto_ack=auto_ack):
+                async for msg in self.watch_multi(
+                    cursors, count=0, auto_ack=auto_ack, stale_timeout=stale_timeout
+                ):
                     # Update cursor for the channel that delivered a message
                     cursors[msg["channel"]] = msg["position"]
                     # Reset backoff on successful message receipt

@@ -1,6 +1,7 @@
 # Chunk: docs/chunks/leader_board_cli - Leader Board CLI client
 """Tests for board.client — WebSocket protocol handling with mocked connections."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1145,3 +1146,400 @@ async def test_watch_multi_reconnect_auto_ack_false_preserves_cursors(keypair):
     # Only the initial watch frame, no re-send
     assert len(watch_frames_1) == 1
     assert watch_frames_1[0]["cursor"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_stale_reregisters(keypair):
+    """When recv() times out, watch_with_reconnect re-sends the watch frame
+    on the same connection (re-registration) before forcing a full reconnect."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 5,
+        "body": "hello==",
+        "sent_at": "2026-03-20T00:00:00Z",
+    })
+
+    # First recv after auth times out (stale), second recv after
+    # re-registration delivers the message.
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=[
+        challenge,
+        auth_ok,
+        asyncio.TimeoutError(),  # triggers re-registration
+        msg,                     # message delivered after re-registration
+    ])
+    mock_ws.send = AsyncMock()
+    mock_ws.close = AsyncMock()
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        result = await client.watch_with_reconnect("ch1", 4, stale_timeout=0.01)
+
+    assert result["position"] == 5
+    assert result["body"] == "hello=="
+
+    # Verify the watch frame was sent TWICE (initial + re-registration)
+    sent_frames = [json.loads(call.args[0]) for call in mock_ws.send.call_args_list]
+    watch_frames = [f for f in sent_frames if f.get("type") == "watch"]
+    assert len(watch_frames) == 2
+    assert watch_frames[0]["cursor"] == 4
+    assert watch_frames[1]["cursor"] == 4  # same cursor for re-registration
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_stale_forces_reconnect(keypair):
+    """Two consecutive stale timeouts force a full reconnect."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 5,
+        "body": "hello==",
+        "sent_at": "2026-03-20T00:00:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: two timeouts → force reconnect
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                asyncio.TimeoutError(),  # first timeout → re-register
+                asyncio.TimeoutError(),  # second timeout → ConnectionError
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: delivers message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            result = await client.watch_with_reconnect(
+                "ch1", 4, stale_timeout=0.01
+            )
+
+    assert result["position"] == 5
+    assert call_count == 2  # required a full reconnect
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_normal_unaffected(keypair):
+    """Normal message delivery (before stale timeout) is unaffected."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 5,
+        "body": "fast==",
+        "sent_at": "2026-03-20T00:00:00Z",
+    })
+
+    mock_ws = _make_mock_ws([challenge, auth_ok, msg])
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        # Large stale_timeout — message arrives immediately
+        result = await client.watch_with_reconnect("ch1", 4, stale_timeout=300)
+
+    assert result["position"] == 5
+    assert result["body"] == "fast=="
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_stale_reregisters(keypair):
+    """watch_multi re-sends all watch frames when recv times out."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "body_a==",
+        "sent_at": "2026-03-20T00:00:00Z",
+    })
+
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=[
+        challenge,
+        auth_ok,
+        asyncio.TimeoutError(),  # triggers re-registration
+        msg,                     # message after re-registration
+    ])
+    mock_ws.send = AsyncMock()
+    mock_ws.close = AsyncMock()
+
+    with patch("board.client.websockets.connect", return_value=_async_ctx(mock_ws)):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        results = []
+        async for m in client.watch_multi(
+            {"ch-a": 2, "ch-b": 0}, count=1, stale_timeout=0.01
+        ):
+            results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 3
+
+    # Verify watch frames: initial (ch-a + ch-b) + re-registration (ch-a + ch-b)
+    sent_frames = [json.loads(call.args[0]) for call in mock_ws.send.call_args_list]
+    watch_frames = [f for f in sent_frames if f.get("type") == "watch"]
+    # 2 initial + 2 re-registration = 4 watch frames
+    assert len(watch_frames) == 4
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_stale_forces_reconnect_in_wrapper(keypair):
+    """watch_multi_with_reconnect handles ConnectionError from stale detection."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "body_a==",
+        "sent_at": "2026-03-20T00:00:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: double timeout → stale → ConnectionError
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                asyncio.TimeoutError(),
+                asyncio.TimeoutError(),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: delivers message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            async for m in client.watch_multi_with_reconnect(
+                {"ch-a": 2}, max_retries=3, count=1, stale_timeout=0.01
+            ):
+                results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 3
+    assert call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/board_watch_stale_reconnect - Multi-cycle reconnection integration test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_10_cycles(keypair):
+    """Simulate 10+ reconnection cycles and verify message delivery after each."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    num_cycles = 12
+    call_count = 0
+    ws_objects = []
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        # Each cycle: auth succeeds, delivers one message, then disconnects
+        # on the next watch recv (except the last cycle which just delivers)
+        position = call_count
+        msg = json.dumps({
+            "type": "message",
+            "channel": "ch1",
+            "position": position,
+            "body": f"msg{position}==",
+            "sent_at": "2026-03-20T00:00:00Z",
+        })
+        if call_count < num_cycles:
+            # Deliver message, then disconnect on next attempt
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                msg,
+            ])
+        else:
+            # Last cycle: deliver message (no disconnect)
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                msg,
+            ])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        ws_objects.append(ws)
+        return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+
+            cursor = 0
+            for _cycle in range(num_cycles):
+                # Each cycle: watch delivers, then we simulate disconnect
+                # for next watch by replacing the ws
+                result = await client.watch_with_reconnect(
+                    "ch1", cursor, stale_timeout=300
+                )
+                results.append(result)
+                cursor = result["position"]
+
+                # Simulate disconnect for the next call by forcing a reconnect
+                if _cycle < num_cycles - 1:
+                    try:
+                        await client.close()
+                    except Exception:
+                        pass
+                    await client.connect()
+
+    # All 12 messages delivered successfully
+    assert len(results) == num_cycles
+    for i, result in enumerate(results):
+        assert result["position"] == i + 1
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_multi_cycle_with_stale(keypair):
+    """Verify that stale re-registration works across multiple reconnection cycles.
+
+    Each cycle calls watch_with_reconnect on a connection established by the
+    previous cycle's between-cycle connect(). The pattern alternates:
+      0: normal delivery
+      1: stale → re-register → delivery
+      2: double stale → internal reconnect → delivery
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    # Build connection sequence. Each connect() (initial, between-cycle, or
+    # internal reconnect) creates one entry. Entries include [challenge,
+    # auth_ok] for the handshake plus any watch recv data.
+    connection_sequence = []
+    message_pos = 0
+
+    for cycle in range(10):
+        pattern = cycle % 3
+        message_pos += 1
+        msg = json.dumps({
+            "type": "message",
+            "channel": "ch1",
+            "position": message_pos,
+            "body": f"msg{message_pos}==",
+            "sent_at": "2026-03-20T00:00:00Z",
+        })
+
+        if pattern == 0:
+            # Normal: connect() consumes challenge+auth_ok, watch consumes msg
+            connection_sequence.append([challenge, auth_ok, msg])
+        elif pattern == 1:
+            # Stale: connect() consumes challenge+auth_ok, watch gets
+            # TimeoutError (re-register) then msg
+            connection_sequence.append([
+                challenge, auth_ok,
+                asyncio.TimeoutError(),
+                msg,
+            ])
+        else:
+            # Double stale: connect() consumes challenge+auth_ok, watch gets
+            # 2x TimeoutError → ConnectionError. Then internal reconnect
+            # creates a NEW connection that delivers.
+            connection_sequence.append([
+                challenge, auth_ok,
+                asyncio.TimeoutError(),
+                asyncio.TimeoutError(),
+            ])
+            connection_sequence.append([challenge, auth_ok, msg])
+
+    conn_idx = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal conn_idx
+        ws = AsyncMock()
+        ws.recv = AsyncMock(side_effect=connection_sequence[conn_idx])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        conn_idx += 1
+        return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+
+            cursor = 0
+            for _cycle in range(10):
+                # Each cycle: connect, watch, close
+                await client.connect()
+                result = await client.watch_with_reconnect(
+                    "ch1", cursor, stale_timeout=0.01
+                )
+                results.append(result)
+                cursor = result["position"]
+                try:
+                    await client.close()
+                except Exception:
+                    pass
+
+    # All 10 messages delivered (some via re-registration, some via reconnect)
+    assert len(results) == 10
+    for i, result in enumerate(results):
+        assert result["position"] == i + 1
