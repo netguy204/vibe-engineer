@@ -7,11 +7,13 @@ Each submodule contains a command group that is registered with the main cli.
 
 import click
 
+from cli.dotenv_loader import load_dotenv_from_project_root
+
 
 @click.group()
 def cli():
     """Vibe Engineer"""
-    pass
+    load_dotenv_from_project_root()
 
 
 # Import and register command groups

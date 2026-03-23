@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- pyproject.toml
+- src/cli/dotenv_loader.py
+- src/cli/__init__.py
+- tests/test_dotenv_loader.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +14,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_monitor_guardrails"]
+created_after:
+- orch_monitor_guardrails
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
