@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/entity_shutdown.py
+- tests/test_entity_shutdown.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["cli_dotenv_loading"]
+created_after:
+- cli_dotenv_loading
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

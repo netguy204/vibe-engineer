@@ -498,8 +498,8 @@ class TestRunConsolidation:
         assert result == {"journals_added": 0, "journals_consolidated": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
 
     @patch("entity_shutdown.anthropic")
-    def test_replaces_existing_tiers(self, mock_anthropic, tmp_path):
-        """Existing consolidated/core files are replaced, not appended."""
+    def test_merges_with_existing_tiers(self, mock_anthropic, tmp_path):
+        """Existing consolidated/core files are preserved alongside new ones."""
         entities = self._setup_entity(tmp_path)
 
         # Write pre-existing consolidated memory
@@ -538,20 +538,264 @@ class TestRunConsolidation:
             "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
         )
 
-        # Old files should be replaced
         cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
         core_dir = tmp_path / ".entities" / "testbot" / "memories" / "core"
 
         cons_files = list(cons_dir.glob("*.md"))
         core_files = list(core_dir.glob("*.md"))
 
-        # Only the new ones from API response
-        assert len(cons_files) == 1
-        assert len(core_files) == 1
+        # Old + new: 1 old consolidated + 1 new = 2, 1 old core + 1 new = 2
+        assert len(cons_files) == 2
+        assert len(core_files) == 2
 
-        # Verify content is from the new response, not old
-        _, content = entities.parse_memory(cons_files[0])
-        assert "Merged skill" in content
+        # Verify both old and new content is present on disk
+        all_cons_content = [entities.parse_memory(f)[1] for f in cons_files]
+        assert any("Old content" in c for c in all_cons_content)
+        assert any("Merged skill" in c for c in all_cons_content)
+
+        all_core_content = [entities.parse_memory(f)[1] for f in core_files]
+        assert any("Old core content" in c for c in all_core_content)
+        assert any("Fundamental principle" in c for c in all_core_content)
+
+    @patch("entity_shutdown.anthropic")
+    def test_existing_memories_survive_when_llm_returns_empty(self, mock_anthropic, tmp_path):
+        """Pre-existing consolidated/core memories survive when LLM returns empty results."""
+        entities = self._setup_entity(tmp_path)
+
+        # Pre-populate 3 consolidated and 2 core memories
+        for i in range(3):
+            fm = MemoryFrontmatter(
+                title=f"Existing consolidated {i}",
+                category=MemoryCategory.SKILL,
+                valence=MemoryValence.NEUTRAL,
+                salience=3,
+                tier=MemoryTier.CONSOLIDATED,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=2,
+                source_memories=[f"Source {i}"],
+            )
+            entities.write_memory("testbot", fm, f"Consolidated content {i}")
+
+        for i in range(2):
+            fm = MemoryFrontmatter(
+                title=f"Existing core {i}",
+                category=MemoryCategory.CORRECTION,
+                valence=MemoryValence.NEGATIVE,
+                salience=5,
+                tier=MemoryTier.CORE,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=5,
+                source_memories=[f"Core source {i}"],
+            )
+            entities.write_memory("testbot", fm, f"Core content {i}")
+
+        # LLM returns empty consolidated and core, all journals unconsolidated
+        api_response = json.dumps({
+            "consolidated": [],
+            "core": [],
+            "unconsolidated": ["Memory 0", "Memory 1", "Memory 2", "Memory 3", "Memory 4"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        run_consolidation(
+            "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
+        )
+
+        cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
+        core_dir = tmp_path / ".entities" / "testbot" / "memories" / "core"
+
+        # All 5 pre-existing memories should remain on disk unchanged
+        assert len(list(cons_dir.glob("*.md"))) == 3
+        assert len(list(core_dir.glob("*.md"))) == 2
+
+    @patch("entity_shutdown.anthropic")
+    def test_new_promotions_merge_into_existing_tiers(self, mock_anthropic, tmp_path):
+        """New promotions from LLM are added alongside existing memories."""
+        entities = self._setup_entity(tmp_path)
+
+        # Pre-populate 2 consolidated and 1 core memory
+        for i in range(2):
+            fm = MemoryFrontmatter(
+                title=f"Existing consolidated {i}",
+                category=MemoryCategory.SKILL,
+                valence=MemoryValence.NEUTRAL,
+                salience=3,
+                tier=MemoryTier.CONSOLIDATED,
+                last_reinforced=datetime.now(timezone.utc),
+                recurrence_count=2,
+                source_memories=[f"Source {i}"],
+            )
+            entities.write_memory("testbot", fm, f"Consolidated content {i}")
+
+        core_fm = MemoryFrontmatter(
+            title="Existing core 0",
+            category=MemoryCategory.CORRECTION,
+            valence=MemoryValence.NEGATIVE,
+            salience=5,
+            tier=MemoryTier.CORE,
+            last_reinforced=datetime.now(timezone.utc),
+            recurrence_count=5,
+            source_memories=["Core source"],
+        )
+        entities.write_memory("testbot", core_fm, "Core content 0")
+
+        # LLM returns 1 new consolidated + 1 new core (different titles)
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "New consolidated insight",
+                    "content": "A brand new consolidated memory",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 4,
+                    "tier": "consolidated",
+                    "source_memories": ["Memory 0", "Memory 1"],
+                    "recurrence_count": 1,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                },
+            ],
+            "core": [
+                {
+                    "title": "New core principle",
+                    "content": "A brand new core memory",
+                    "valence": "negative",
+                    "category": "correction",
+                    "salience": 5,
+                    "tier": "core",
+                    "source_memories": ["Important lesson"],
+                    "recurrence_count": 1,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                },
+            ],
+            "unconsolidated": ["Memory 2", "Memory 3", "Memory 4"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        run_consolidation(
+            "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
+        )
+
+        cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
+        core_dir = tmp_path / ".entities" / "testbot" / "memories" / "core"
+
+        # 2 existing + 1 new = 3 consolidated, 1 existing + 1 new = 2 core
+        assert len(list(cons_dir.glob("*.md"))) == 3
+        assert len(list(core_dir.glob("*.md"))) == 2
+
+    @patch("entity_shutdown.anthropic")
+    def test_llm_can_update_existing_memory_by_title(self, mock_anthropic, tmp_path):
+        """LLM can update an existing memory by matching title."""
+        entities = self._setup_entity(tmp_path)
+
+        # Pre-populate a consolidated memory
+        existing_fm = MemoryFrontmatter(
+            title="Template system editing",
+            category=MemoryCategory.SKILL,
+            valence=MemoryValence.NEUTRAL,
+            salience=3,
+            tier=MemoryTier.CONSOLIDATED,
+            last_reinforced=datetime.now(timezone.utc),
+            recurrence_count=2,
+            source_memories=["Original source"],
+        )
+        entities.write_memory("testbot", existing_fm, "Original content about templates")
+
+        # LLM returns the same title but updated content and recurrence_count
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "Template system editing",
+                    "content": "Updated and enriched content about template editing workflow",
+                    "valence": "neutral",
+                    "category": "skill",
+                    "salience": 4,
+                    "tier": "consolidated",
+                    "source_memories": ["Original source", "New reinforcement"],
+                    "recurrence_count": 3,
+                    "last_reinforced": datetime.now(timezone.utc).isoformat(),
+                },
+            ],
+            "core": [],
+            "unconsolidated": ["Memory 0", "Memory 1", "Memory 2", "Memory 3", "Memory 4"],
+        })
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=api_response)]
+        mock_client.messages.create.return_value = mock_response
+
+        run_consolidation(
+            "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
+        )
+
+        cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
+        cons_files = list(cons_dir.glob("*.md"))
+
+        # Should still be 1 file (updated in place, not duplicated)
+        assert len(cons_files) == 1
+
+        fm, content = entities.parse_memory(cons_files[0])
+        assert fm.title == "Template system editing"
+        assert fm.recurrence_count == 3
+        assert "Updated and enriched" in content
+
+    @patch("entity_shutdown.anthropic")
+    def test_pre_consolidation_snapshot_created(self, mock_anthropic, tmp_path):
+        """A snapshot of consolidated/core tiers is created before merge."""
+        entities = self._setup_entity(tmp_path)
+
+        # Pre-populate consolidated and core memories
+        cons_fm = MemoryFrontmatter(
+            title="Snapshot test consolidated",
+            category=MemoryCategory.SKILL,
+            valence=MemoryValence.NEUTRAL,
+            salience=3,
+            tier=MemoryTier.CONSOLIDATED,
+            last_reinforced=datetime.now(timezone.utc),
+            recurrence_count=2,
+            source_memories=["Source"],
+        )
+        entities.write_memory("testbot", cons_fm, "Consolidated for snapshot")
+
+        core_fm = MemoryFrontmatter(
+            title="Snapshot test core",
+            category=MemoryCategory.CORRECTION,
+            valence=MemoryValence.NEGATIVE,
+            salience=5,
+            tier=MemoryTier.CORE,
+            last_reinforced=datetime.now(timezone.utc),
+            recurrence_count=5,
+            source_memories=["Core source"],
+        )
+        entities.write_memory("testbot", core_fm, "Core for snapshot")
+
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=self._make_api_response(1, 0))]
+        mock_client.messages.create.return_value = mock_response
+
+        run_consolidation(
+            "testbot", self._make_extracted_json(), tmp_path, api_key="test-key"
+        )
+
+        snapshot_dir = tmp_path / ".entities" / "testbot" / "memories" / ".snapshot_pre_consolidation"
+        assert snapshot_dir.exists()
+        assert (snapshot_dir / "consolidated").exists()
+        assert (snapshot_dir / "core").exists()
+        assert len(list((snapshot_dir / "consolidated").glob("*.md"))) == 1
+        assert len(list((snapshot_dir / "core").glob("*.md"))) == 1
 
     @patch("entity_shutdown.anthropic")
     def test_end_to_end_with_existing_tiers(self, mock_anthropic, tmp_path):
@@ -684,12 +928,12 @@ class TestRunConsolidation:
         journal_dir = tmp_path / ".entities" / "testbot" / "memories" / "journal"
         assert len(list(journal_dir.glob("*.md"))) == 1
 
-        # Verify consolidated: old single file replaced by 2 new ones
+        # Verify consolidated: 1 old updated in place + 1 new = 2 total
         cons_dir = tmp_path / ".entities" / "testbot" / "memories" / "consolidated"
         cons_files = list(cons_dir.glob("*.md"))
         assert len(cons_files) == 2
 
-        # Verify core: old single file replaced by 1 updated one
+        # Verify core: 1 old updated in place = 1 total
         core_dir = tmp_path / ".entities" / "testbot" / "memories" / "core"
         core_files = list(core_dir.glob("*.md"))
         assert len(core_files) == 1

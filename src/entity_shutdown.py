@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -370,6 +371,32 @@ def parse_consolidation_response(raw_json: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Pre-consolidation snapshot (defense in depth)
+# Chunk: docs/chunks/entity_shutdown_memory_wipe - Merge tiers instead of replace
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_tiers(entity_dir: Path) -> None:
+    """Create a pre-consolidation snapshot of consolidated and core tiers.
+
+    Overwrites any previous snapshot. Provides single-step recovery for the
+    most recent consolidation pass.
+    """
+    memories_dir = entity_dir / "memories"
+    snapshot_dir = memories_dir / ".snapshot_pre_consolidation"
+
+    # Remove previous snapshot
+    if snapshot_dir.exists():
+        shutil.rmtree(snapshot_dir)
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    for tier_name in ("consolidated", "core"):
+        tier_dir = memories_dir / tier_name
+        if tier_dir.exists():
+            shutil.copytree(tier_dir, snapshot_dir / tier_name)
+
+
+# ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
 
@@ -507,36 +534,32 @@ def run_consolidation(
     # Step 6: Parse response
     consolidation_result = parse_consolidation_response(raw_response)
 
-    # Step 7: Write updated tiers (clear and rewrite)
-    # Write new files first, then delete old ones for safety
+    # Snapshot tiers before any modifications (defense in depth)
+    # Chunk: docs/chunks/entity_shutdown_memory_wipe - Merge tiers instead of replace
+    _snapshot_tiers(entities.entity_dir(entity_name))
 
-    # -- Consolidated tier --
-    new_consolidated_paths = []
-    for entry in consolidation_result["consolidated"]:
-        fm = entry["frontmatter"]
-        content = entry["content"]
-        path = entities.write_memory(entity_name, fm, content)
-        new_consolidated_paths.append(path)
+    # Step 7: Merge updated tiers (preserve existing, add/update from LLM response)
+    # Chunk: docs/chunks/entity_shutdown_memory_wipe - Merge tiers instead of replace
 
-    # Remove old consolidated files (those not just written)
-    if consolidated_dir.exists():
-        for f in consolidated_dir.glob("*.md"):
-            if f not in new_consolidated_paths:
-                f.unlink()
+    for tier_key, tier_dir in [
+        ("consolidated", consolidated_dir),
+        ("core", core_dir),
+    ]:
+        # Build lookup of existing memory files on disk: {title: Path}
+        existing_by_title: dict[str, Path] = {}
+        if tier_dir.exists():
+            for f in sorted(tier_dir.glob("*.md")):
+                fm_existing, _ = entities.parse_memory(f)
+                if fm_existing:
+                    existing_by_title[fm_existing.title] = f
 
-    # -- Core tier --
-    new_core_paths = []
-    for entry in consolidation_result["core"]:
-        fm = entry["frontmatter"]
-        content = entry["content"]
-        path = entities.write_memory(entity_name, fm, content)
-        new_core_paths.append(path)
-
-    # Remove old core files (those not just written)
-    if core_dir.exists():
-        for f in core_dir.glob("*.md"):
-            if f not in new_core_paths:
-                f.unlink()
+        for entry in consolidation_result[tier_key]:
+            fm = entry["frontmatter"]
+            content = entry["content"]
+            # If title matches an existing file, overwrite it (delete old, write new)
+            if fm.title in existing_by_title:
+                existing_by_title[fm.title].unlink()
+            entities.write_memory(entity_name, fm, content)
 
     # Chunk: docs/chunks/entity_consolidate_existing - Remove consolidated journal files
     # Journal files that were consolidated (not in unconsolidated list) are deleted
@@ -562,17 +585,19 @@ def run_consolidation(
             if fm:
                 all_memories_for_decay.append((fm, content, f))
 
-    # Consolidated tier: freshly written files
-    for path in new_consolidated_paths:
-        fm, content = entities.parse_memory(path)
-        if fm:
-            all_memories_for_decay.append((fm, content, path))
+    # Consolidated tier: all files (existing preserved + newly written)
+    if consolidated_dir.exists():
+        for f in sorted(consolidated_dir.glob("*.md")):
+            fm, content = entities.parse_memory(f)
+            if fm:
+                all_memories_for_decay.append((fm, content, f))
 
-    # Core tier: freshly written files
-    for path in new_core_paths:
-        fm, content = entities.parse_memory(path)
-        if fm:
-            all_memories_for_decay.append((fm, content, path))
+    # Core tier: all files (existing preserved + newly written)
+    if core_dir.exists():
+        for f in sorted(core_dir.glob("*.md")):
+            fm, content = entities.parse_memory(f)
+            if fm:
+                all_memories_for_decay.append((fm, content, f))
 
     decay_result = apply_decay(all_memories_for_decay, now, decay_config)
 

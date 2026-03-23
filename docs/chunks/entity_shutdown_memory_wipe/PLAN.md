@@ -10,170 +10,104 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The bug is in `src/entity_shutdown.py` lines 510-539 (Step 7 of `run_consolidation`). The pipeline treats the LLM consolidation response as the **complete replacement** for the consolidated and core tiers: it writes the returned memories, then deletes every existing file not in the response. When the LLM returns only newly-changed memories (or nothing), all pre-existing memories are destroyed.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix changes Step 7 from "clear-and-rewrite" to "merge": new/updated memories from the LLM response are written, but existing files that were not mentioned in the response are **preserved**. Only memories that the LLM explicitly included (by matching title) are overwritten.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Additionally, we add a defense-in-depth pre-consolidation snapshot so that even if a future bug re-introduces destructive behavior, the previous tier state can be recovered.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_shutdown_memory_wipe/GOAL.md)
-with references to the files that you expect to touch.
--->
+The existing test `test_replaces_existing_tiers` asserts the current (broken) destructive behavior. It will be rewritten to assert the correct merge behavior. New tests verify the specific scenarios from the success criteria.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Following docs/trunk/TESTING_PHILOSOPHY.md: tests are written first (TDD), assert semantic properties (memory survival, merge correctness), and focus on boundary conditions (empty LLM response, partial updates).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for merge behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `tests/test_entity_shutdown.py`
 
-Example:
+Add new test methods to the existing `TestRunConsolidation` class:
 
-### Step 1: Define the SegmentHeader struct
+1. **`test_existing_memories_survive_when_llm_returns_empty`** — Pre-populate 3 consolidated and 2 core memories. Mock the LLM to return `{"consolidated": [], "core": [], "unconsolidated": [...]}`. Assert all 5 pre-existing memories remain on disk unchanged.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. **`test_new_promotions_merge_into_existing_tiers`** — Pre-populate 2 consolidated and 1 core memory. Mock the LLM to return 1 new consolidated + 1 new core (different titles from existing). Assert all existing memories survive AND the 2 new ones are added (total: 3 consolidated, 2 core).
 
-Location: src/segment/format.rs
+3. **`test_llm_can_update_existing_memory_by_title`** — Pre-populate a consolidated memory with title "Template system editing". Mock the LLM to return a consolidated memory with the same title but updated content/recurrence_count. Assert the memory file is updated in-place (content changed) and no other files are deleted.
 
-### Step 2: Implement header serialization
+4. **`test_pre_consolidation_snapshot_created`** — Pre-populate consolidated and core memories. Run consolidation. Assert a snapshot directory exists at `.entities/<name>/memories/.snapshot_pre_consolidation/` containing copies of the prior consolidated/ and core/ directories.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Run tests → all 4 should fail (confirming the bug exists).
 
-### Step 3: ...
+### Step 2: Rewrite Step 7 in `run_consolidation` to merge instead of replace
 
----
+Location: `src/entity_shutdown.py`, lines 510-539
 
-**BACKREFERENCE COMMENTS**
+Replace the current "write-then-delete" logic with merge logic:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+**For each tier (consolidated, then core):**
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+1. Build a lookup of existing memory files on disk: `{title: Path}` by parsing each `.md` file in the tier directory.
+2. For each entry in the LLM response for this tier:
+   - If the title matches an existing file → **overwrite** that file (update in place by writing to the same path, or unlink + write_memory)
+   - If the title is new → **write_memory** as a new file
+3. **Do NOT delete** any existing file that was not mentioned in the LLM response.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+This preserves the LLM prompt's contract: "Output the COMPLETE updated tier structure" is reinterpreted as "the complete set of changes/additions", while existing untouched memories are preserved.
 
-Format (place immediately before the symbol):
+Key implementation detail: matching is by `title` field from the frontmatter. The `entities.parse_memory()` function returns a `MemoryFrontmatter` with a `.title` attribute.
+
+Also update the decay step (lines 565-575) which currently only iterates `new_consolidated_paths` and `new_core_paths`. After the merge change, decay must iterate **all** files in the tier directories (not just newly written ones) to correctly apply decay to both old and new memories.
+
+### Step 3: Add pre-consolidation snapshot
+
+Location: `src/entity_shutdown.py`, add a helper function and call it before Step 7.
+
+Create a function `_snapshot_tiers(entity_dir: Path)` that:
+
+1. Creates `.entities/<name>/memories/.snapshot_pre_consolidation/` (overwriting any previous snapshot)
+2. Copies `consolidated/` → `.snapshot_pre_consolidation/consolidated/`
+3. Copies `core/` → `.snapshot_pre_consolidation/core/`
+4. Uses `shutil.copytree` for the copy
+
+Call this function after Step 5 (API call) but before Step 7 (merge). This means we snapshot right before any tier modifications occur.
+
+The snapshot is intentionally a single-depth backup (not versioned). It provides one-step recovery for the most recent consolidation. Full history is available via git if the entity directory is tracked.
+
+### Step 4: Rewrite `test_replaces_existing_tiers` to assert merge behavior
+
+Location: `tests/test_entity_shutdown.py`, the existing `test_replaces_existing_tiers` method.
+
+Rename to `test_merges_with_existing_tiers` and update assertions:
+
+- Pre-existing "Old consolidated memory" and "Old core memory" should **survive** alongside the new memories from the LLM response.
+- Assert total file counts = old + new (not just new).
+- Assert both old and new content is present on disk.
+
+### Step 5: Run all tests and verify green
+
+Run `uv run pytest tests/test_entity_shutdown.py -v` and confirm:
+- All 4 new tests pass
+- The rewritten `test_merges_with_existing_tiers` passes
+- All other existing tests still pass (no regressions)
+
+### Step 6: Add backreference comment
+
+Add a chunk backreference at the merge logic in `src/entity_shutdown.py`:
+
+```python
+# Chunk: docs/chunks/entity_shutdown_memory_wipe - Merge tiers instead of replace
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Title matching for updates**: If the LLM returns a memory with a slightly different title than the existing one (e.g., "Template system editing" vs "Template system requires source editing"), it will be treated as a new memory rather than an update. This is acceptable for this fix — the worst case is a duplicate memory, not data loss. The decay system's capacity pressure will handle duplicates over time.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **LLM prompt says "Output the COMPLETE updated tier structure"**: The prompt (line 138) asks the LLM for a complete replacement set, but the pipeline was interpreting this too literally. The fix reinterprets the response as "changes and additions" rather than "the complete state." A future improvement could clarify the prompt to say "output ONLY changed or new memories," but that's out of scope for this bug fix.
+
+- **Snapshot disk usage**: Each consolidation overwrites the previous snapshot. For entities with many memories, this doubles the disk usage of the memory directories. This is acceptable since memory files are small markdown files.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
