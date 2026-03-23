@@ -10,153 +10,166 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Edit the Jinja2 source template at `src/templates/commands/orchestrator-monitor.md.jinja2`
+to add guardrails that prevent four observed anti-patterns. The changes are:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Add a prominent "DO NOT" guardrails section** near the top of the instructions
+   (after the argument parsing section, before the first step) so agents see the
+   constraints before they start acting.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Rewrite the DONE status handler** to remove the manual merge/branch-delete
+   instructions entirely, replacing them with a clear statement that the
+   orchestrator handles merge automatically.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/orch_monitor_guardrails/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Add CWD verification reminders** after any instruction that inspects a
+   worktree path, and before any git operations.
+
+4. **Add a clean working tree check** before any git operations in the
+   NEEDS_ATTENTION handler.
+
+After editing the source template, re-render via `uv run ve init` and verify the
+output.
+
+Per DEC-005, the template already avoids prescribing git commit operations from
+the operator side. This chunk extends that principle by preventing the *monitor
+agent* from performing git operations that the orchestrator owns.
+
+**Testing:** Per TESTING_PHILOSOPHY.md, template content (prose) is not
+unit-tested. We verify templates render without error. The existing template
+render test suite covers this — re-rendering via `ve init` and confirming no
+errors is sufficient. No new tests are needed.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the orchestrator
+  subsystem. The template governs how monitoring agents interact with orchestrator
+  work units. No code changes to the orchestrator itself — only the skill template.
+- **docs/subsystems/template_system** (DOCUMENTED): This chunk modifies a Jinja2
+  command template following the existing template rendering pattern.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add "DO NOT" guardrails section to the template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Insert a new `### Guardrails — DO NOT` section in the Jinja2 source template
+(`src/templates/commands/orchestrator-monitor.md.jinja2`) immediately after the
+`### Argument Parsing` section (after the `---` divider on line 43) and before
+`### Step 1: Immediate First Check`.
 
-Example:
+The section should contain four clearly numbered rules:
 
-### Step 1: Define the SegmentHeader struct
+1. **DO NOT intervene on DONE chunks.** DONE chunks are finalized by the
+   orchestrator automatically (merge + branch cleanup). Only act on
+   NEEDS_ATTENTION status. If you see DONE, report it and remove from the
+   monitored set — nothing else.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. **DO NOT run `ve orch start` or `ve orch stop`.** The orchestrator daemon is
+   managed by the operator. If `ve orch ps` returns "not running," it may be a
+   transient issue or a CWD mismatch. Report the issue to the operator; never
+   start or stop the orchestrator yourself.
 
-Location: src/segment/format.rs
+3. **DO NOT run git commands from worktree directories.** After inspecting a
+   worktree at `.ve/chunks/<name>/worktree/`, always verify your CWD is the
+   project root before running any git operations. Run `pwd` and confirm it
+   matches the project root.
 
-### Step 2: Implement header serialization
+4. **DO NOT leave uncommitted changes on main.** Before any git operation, run
+   `git status` and confirm a clean working tree. If there are uncommitted
+   changes, stop and escalate to the operator rather than committing or
+   discarding them.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Location: `src/templates/commands/orchestrator-monitor.md.jinja2`, inside the
+`{% raw %}` block, between lines 43 and 44.
 
-### Step 3: ...
+### Step 2: Rewrite the DONE status handler
 
----
+Replace the current `#### DONE` section (lines 139–162 of the source template)
+which instructs agents to manually merge branches and delete them. The new
+version should:
 
-**BACKREFERENCE COMMENTS**
+1. State clearly: "No action needed — the orchestrator handles merge and branch
+   cleanup automatically."
+2. Keep the **conditional deploy** step (check `code_paths` for `workers/`
+   paths) since this is post-merge operator-side action.
+3. Keep the **changelog posting** step.
+4. Keep the **remove from monitored set** step.
+5. Remove all `git merge`, `git branch -d`, and `git log ... ^main` commands
+   from this section.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Add CWD verification to NEEDS_ATTENTION handler
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In the NEEDS_ATTENTION section, after the "Inspect the branch" step (which uses
+`git log` and `git diff` on `orch/<chunk>` — these are remote-ref operations
+safe from any directory), add a reminder before the decision tree:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+> **Before any git operations below**, verify CWD is the project root:
+> ```
+> pwd  # Must be project root, NOT a worktree directory
+> git status  # Must show clean working tree
+> ```
 
-Format (place immediately before the symbol):
+This addresses guardrails #3 and #4 for the one section where the monitoring
+agent may still perform git operations (merge conflict resolution on
+NEEDS_ATTENTION).
+
+### Step 4: Update the `/loop` prompt in Step 2
+
+Update the self-contained `/loop` prompt (lines 66–82) to reflect the changed
+DONE handler. Replace the DONE line:
+
+**Before:**
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+- DONE: check chunk GOAL.md code_paths for worker paths; if any start with
+  workers/, check the project README or deploy config for the deploy command
+  and run it. Post changelog if channel provided: ...
+  Remove chunk from monitored set.
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**After:**
+```
+- DONE: no action needed — orchestrator handles merge automatically. Check
+  code_paths for worker deploys if applicable. Post changelog if channel
+  provided: ... Remove chunk from monitored set.
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Also add to the loop prompt preamble:
+```
+GUARDRAILS: Never run `ve orch start/stop`. Never run git commands from
+worktree directories. Verify `pwd` is project root before git ops.
+```
+
+### Step 5: Update the chunk backreference comment
+
+Update the chunk backreference on line 6 of the template to also reference this
+guardrails chunk:
+
+```
+{# Chunk: docs/chunks/orchestrator_monitor_skill - Orchestrator monitor slash command #}
+{# Chunk: docs/chunks/orch_monitor_guardrails - Monitoring guardrails against anti-patterns #}
+```
+
+### Step 6: Re-render and verify
+
+1. Run `uv run ve init` to re-render the template
+2. Verify the rendered output at `.claude/commands/orchestrator-monitor.md`
+   contains the guardrails section and updated DONE handler
+3. Run `uv run pytest tests/ -x -q` to confirm no regressions
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk only modifies a Jinja2 template — no new libraries or
+infrastructure required. The `orchestrator_monitor_skill` chunk that created
+the original template is already ACTIVE.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The NEEDS_ATTENTION handler still instructs agents to perform `git merge` for
+  merge-failure cases. This is intentional — NEEDS_ATTENTION means the
+  orchestrator has already given up on automatic resolution and is asking for
+  help. The guardrails ensure agents verify CWD and clean working tree before
+  doing so, but the merge itself remains a valid manual intervention.
+- The `/loop` prompt is a compressed summary. Balancing brevity (to fit in a
+  single prompt) with including guardrails requires careful wording.
 
 ## Deviations
 

@@ -1,8 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/commands/orchestrator-monitor.md.jinja2
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +11,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_watch_stale_reconnect"]
+created_after:
+- board_watch_stale_reconnect
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

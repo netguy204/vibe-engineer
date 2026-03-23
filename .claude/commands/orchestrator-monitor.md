@@ -11,6 +11,7 @@ Run `ve init` to regenerate.
 
 
 
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -49,6 +50,30 @@ Store the parsed values in memory:
 
 ---
 
+### Guardrails — DO NOT
+
+1. **DO NOT intervene on DONE chunks.** DONE chunks are finalized by the
+   orchestrator automatically (merge + branch cleanup). Only act on
+   NEEDS_ATTENTION status. If you see DONE, report it and remove from the
+   monitored set — nothing else.
+
+2. **DO NOT run `ve orch start` or `ve orch stop`.** The orchestrator daemon is
+   managed by the operator. If `ve orch ps` returns "not running," it may be a
+   transient issue or a CWD mismatch. Report the issue to the operator; never
+   start or stop the orchestrator yourself.
+
+3. **DO NOT run git commands from worktree directories.** After inspecting a
+   worktree at `.ve/chunks/<name>/worktree/`, always verify your CWD is the
+   project root before running any git operations. Run `pwd` and confirm it
+   matches the project root.
+
+4. **DO NOT leave uncommitted changes on main.** Before any git operation, run
+   `git status` and confirm a clean working tree. If there are uncommitted
+   changes, stop and escalate to the operator rather than committing or
+   discarding them.
+
+---
+
 ### Step 1: Immediate First Check
 
 Run the status handler logic immediately for all monitored chunks. Do NOT wait
@@ -71,17 +96,19 @@ operate independently:
 
 ```
 /loop 3m Run `ve orch ps --json` and check status of chunks: <chunk_names>.
+GUARDRAILS: Never run `ve orch start/stop`. Never run git commands from
+worktree directories. Verify `pwd` is project root before git ops.
 For each chunk, apply status handler:
 - RUNNING/BLOCKED/READY: no action.
 - NEEDS_ATTENTION: run `ve orch work-unit show <chunk>` to get attention_reason.
-  If merge failure with commits on branch: attempt `git merge orch/<chunk> --no-edit`,
+  If merge failure with commits on branch: verify `pwd` is project root and
+  `git status` is clean, then attempt `git merge orch/<chunk> --no-edit`,
   resolve conflicts, then `ve orch work-unit status <chunk> DONE`.
   If agent failure: `ve orch work-unit status <chunk> READY` to retry.
   If unclear: escalate to operator.
-- DONE: check chunk GOAL.md code_paths for worker paths; if any start with
-  workers/, check the project README or deploy config for the deploy command
-  and run it. Post changelog if channel provided:
-  `ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`.
+- DONE: no action needed — orchestrator handles merge automatically. Check
+  code_paths for worker deploys if applicable. Post changelog if channel
+  provided: `ve board send <changelog_channel> "<summary>" --swarm <swarm_id>`.
   Remove chunk from monitored set.
 - FAILED: post failure summary to changelog if channel provided. Remove from
   monitored set.
@@ -116,7 +143,16 @@ the operator for awareness.
    git diff --stat main..orch/<chunk>
    ```
 
-3. **Decision tree:**
+3. **Before any git operations below**, verify CWD is the project root and
+   the working tree is clean:
+   ```
+   pwd  # Must be project root, NOT a worktree directory
+   git status  # Must show clean working tree
+   ```
+   If CWD is wrong, `cd` back to the project root. If there are uncommitted
+   changes, stop and escalate to the operator.
+
+4. **Decision tree:**
 
    - **Merge failure with commits on branch** (attention_reason indicates merge
      failure AND `git log` shows commits):
@@ -144,29 +180,22 @@ the operator for awareness.
 
 #### DONE
 
-1. **Check if branch needs merging:**
-   ```
-   git log --oneline orch/<chunk> ^main 2>/dev/null
-   ```
-   If there are unmerged commits, merge the branch:
-   ```
-   git merge orch/<chunk> --no-edit
-   git branch -d orch/<chunk>
-   ```
+No action needed — the orchestrator handles merge and branch cleanup
+automatically. Do NOT manually merge or delete the branch.
 
-2. **Conditional deploy:** Read the chunk's `GOAL.md` frontmatter and inspect
+1. **Conditional deploy:** Read the chunk's `GOAL.md` frontmatter and inspect
    its `code_paths` list. If any path starts with `workers/`, a deploy may be
    needed. Check the project's README or deploy configuration for the correct
    deploy command rather than hardcoding one. Run the deploy and verify it
    exits cleanly. If the deploy fails, include the failure details in the
    changelog entry but do not block — proceed to the next step.
 
-3. **Post changelog entry** (if `--changelog-channel` and `--swarm` were provided):
+2. **Post changelog entry** (if `--changelog-channel` and `--swarm` were provided):
    ```
    ve board send <changelog_channel> "✅ <chunk> completed: <brief summary of what it accomplished>" --swarm <swarm_id>
    ```
 
-4. **Remove chunk from monitored set.**
+3. **Remove chunk from monitored set.**
 
 #### FAILED
 
@@ -195,6 +224,6 @@ After each status check (both Step 1 and each loop iteration):
 This skill provides:
 - **Immediate feedback** — first check runs right away
 - **Recurring monitoring** — `/loop 3m` polls without blocking the agent
-- **Automated resolution** — merges branches, retries failures, deploys workers
+- **Automated resolution** — retries agent failures, deploys workers
 - **Changelog integration** — posts outcomes to the team's changelog channel
 - **Self-terminating** — cancels the loop when all work is done
