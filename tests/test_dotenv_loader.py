@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from cli.dotenv_loader import _find_dotenv_walking_parents, load_dotenv_from_project_root
+from cli.dotenv_loader import _collect_dotenv_files, load_dotenv_from_project_root
 
 
 class TestLoadDotenvFromProjectRoot:
@@ -81,14 +81,14 @@ class TestLoadDotenvFromProjectRoot:
         monkeypatch.delenv("MULTI_B", raising=False)
 
 
-class TestFindDotenvWalkingParents:
-    """Unit tests for the _find_dotenv_walking_parents helper."""
+class TestCollectDotenvFiles:
+    """Unit tests for the _collect_dotenv_files helper."""
 
     def test_finds_env_in_start_directory(self, tmp_path):
         """Returns .env when it exists in the start directory."""
         (tmp_path / ".env").write_text("KEY=value\n")
-        result = _find_dotenv_walking_parents(tmp_path)
-        assert result == (tmp_path / ".env").resolve()
+        result = _collect_dotenv_files(tmp_path)
+        assert (tmp_path / ".env").resolve() in result
 
     def test_finds_env_in_parent_directory(self, tmp_path):
         """Returns .env from a parent when not in start directory."""
@@ -96,8 +96,8 @@ class TestFindDotenvWalkingParents:
         child = tmp_path / "projects" / "my-project"
         child.mkdir(parents=True)
 
-        result = _find_dotenv_walking_parents(child)
-        assert result == (tmp_path / ".env").resolve()
+        result = _collect_dotenv_files(child)
+        assert (tmp_path / ".env").resolve() in result
 
     def test_finds_env_in_grandparent_directory(self, tmp_path):
         """Returns .env from a grandparent directory."""
@@ -105,29 +105,29 @@ class TestFindDotenvWalkingParents:
         deeply_nested = tmp_path / "a" / "b" / "c"
         deeply_nested.mkdir(parents=True)
 
-        result = _find_dotenv_walking_parents(deeply_nested)
-        assert result == (tmp_path / ".env").resolve()
+        result = _collect_dotenv_files(deeply_nested)
+        assert (tmp_path / ".env").resolve() in result
 
-    def test_returns_none_when_no_env_found(self, tmp_path):
-        """Returns None when no .env exists anywhere in ancestry."""
+    def test_returns_empty_when_no_env_found(self, tmp_path):
+        """Returns empty list when no .env exists in ancestry."""
         child = tmp_path / "no-env-here"
         child.mkdir()
-        # We can't guarantee no .env exists above tmp_path,
-        # so we test the helper directly with a controlled walk
-        # by checking the function returns a Path or None without error
-        result = _find_dotenv_walking_parents(child)
-        # Result is either None (no .env above) or a Path (some .env exists above tmp_path)
-        assert result is None or result.is_file()
+        result = _collect_dotenv_files(child)
+        # All results should be valid files
+        assert all(p.is_file() for p in result)
 
-    def test_closest_env_wins(self, tmp_path):
-        """Returns the .env closest to the start directory (first found)."""
+    def test_collects_all_env_files(self, tmp_path):
+        """Collects .env from both inner and outer directories."""
         (tmp_path / ".env").write_text("OUTER=outer\n")
         inner = tmp_path / "project"
         inner.mkdir()
         (inner / ".env").write_text("INNER=inner\n")
 
-        result = _find_dotenv_walking_parents(inner)
-        assert result == (inner / ".env").resolve()
+        result = _collect_dotenv_files(inner)
+        assert (inner / ".env").resolve() in result
+        assert (tmp_path / ".env").resolve() in result
+        # Closer file comes first
+        assert result.index((inner / ".env").resolve()) < result.index((tmp_path / ".env").resolve())
 
 
 class TestDotenvWalkParents:
