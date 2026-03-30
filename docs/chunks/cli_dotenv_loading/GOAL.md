@@ -9,7 +9,7 @@ code_paths:
 - tests/test_dotenv_loader.py
 code_references:
 - ref: src/cli/dotenv_loader.py#load_dotenv_from_project_root
-  implements: "Loads .env from resolved project root into os.environ with no-override semantics"
+  implements: "Loads .env from resolved project root (or parent dirs) into os.environ with no-override semantics"
 - ref: src/cli/__init__.py#cli
   implements: "Wires dotenv loading into CLI startup via Click group callback"
 narrative: null

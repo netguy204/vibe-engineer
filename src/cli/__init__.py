@@ -4,6 +4,7 @@ This package organizes the CLI into logical command groups for maintainability.
 Each submodule contains a command group that is registered with the main cli.
 """
 # Chunk: docs/chunks/cli_modularize - Main CLI assembly point
+# Chunk: docs/chunks/cli_dotenv_loading - Wires dotenv loading into CLI startup
 
 import click
 
