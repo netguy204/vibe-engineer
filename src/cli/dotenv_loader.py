@@ -35,11 +35,16 @@ def load_dotenv_from_project_root() -> None:
     failure) so CLI startup is never broken by dotenv issues.
     """
     try:
-        from board.storage import resolve_project_root
         from dotenv import dotenv_values
 
-        root = resolve_project_root()
-        dotenv_path = _find_dotenv_walking_parents(Path(root))
+        # Start from project root if resolvable, otherwise CWD
+        try:
+            from board.storage import resolve_project_root
+            root = Path(resolve_project_root())
+        except Exception:
+            root = Path.cwd()
+
+        dotenv_path = _find_dotenv_walking_parents(root)
 
         if dotenv_path is None:
             return
