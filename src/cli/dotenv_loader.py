@@ -1,4 +1,5 @@
 # Chunk: docs/chunks/cli_dotenv_loading
+# Chunk: docs/chunks/cli_dotenv_walk_parents - Walk parent dirs for .env
 """Load .env files from the project root into os.environ."""
 
 from __future__ import annotations
@@ -7,13 +8,28 @@ import os
 from pathlib import Path
 
 
+def _find_dotenv_walking_parents(start: Path) -> Path | None:
+    """Walk from start up to filesystem root, return first .env found."""
+    current = start.resolve()
+    while True:
+        candidate = current / ".env"
+        if candidate.is_file():
+            return candidate
+        parent = current.parent
+        if parent == current:  # filesystem root
+            return None
+        current = parent
+
+
 def load_dotenv_from_project_root() -> None:
-    """Load variables from a .env file at the resolved project root.
+    """Load variables from a .env file at or above the resolved project root.
 
     Uses resolve_project_root() to find the project root via the
-    .ve-task.yaml → .git → CWD resolution chain, then reads any .env
-    file found there.  Variables are only set if they are NOT already
-    present in os.environ (existing env vars always win).
+    .ve-task.yaml → .git → CWD resolution chain, then walks up parent
+    directories until a .env file is found.  More specific .env files
+    (closer to the project root) take precedence because they are found
+    first.  Variables are only set if they are NOT already present in
+    os.environ (existing env vars always win).
 
     Silently returns on any error (missing file, parse errors, resolution
     failure) so CLI startup is never broken by dotenv issues.
@@ -23,9 +39,9 @@ def load_dotenv_from_project_root() -> None:
         from dotenv import dotenv_values
 
         root = resolve_project_root()
-        dotenv_path = Path(root) / ".env"
+        dotenv_path = _find_dotenv_walking_parents(Path(root))
 
-        if not dotenv_path.is_file():
+        if dotenv_path is None:
             return
 
         values = dotenv_values(dotenv_path)

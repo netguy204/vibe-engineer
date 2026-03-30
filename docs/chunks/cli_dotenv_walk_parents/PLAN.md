@@ -10,153 +10,110 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Refactor `load_dotenv_from_project_root()` in `src/cli/dotenv_loader.py` to walk up parent directories from the resolved project root until a `.env` file is found or the filesystem root is reached. The function currently checks only the project root; we'll extract a helper `_find_dotenv_walking_parents(start: Path) -> Path | None` that implements the walk, keeping the public API and error-handling semantics identical.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The resolution order (first found wins) naturally gives project-level `.env` precedence over home-directory `.env` because the walk starts at the project root and moves outward. Existing env vars still take precedence via the `key not in os.environ` guard (no change needed there).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/cli_dotenv_walk_parents/GOAL.md)
-with references to the files that you expect to touch.
--->
+Tests follow TDD per `docs/trunk/TESTING_PHILOSOPHY.md`: write failing tests first for each success criterion, then implement.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems are directly relevant. This chunk modifies a small, self-contained loader module that doesn't touch validation, template rendering, workflow artifacts, or orchestration.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for parent-walking behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add new tests to `tests/test_dotenv_loader.py` that cover each success criterion:
 
-Example:
+1. **`test_finds_env_in_parent_directory`** — Create a directory tree where `.env` exists in a grandparent but not in the project root. Assert the grandparent's `.env` is loaded.
 
-### Step 1: Define the SegmentHeader struct
+2. **`test_project_root_env_wins_over_parent`** — Create `.env` in both project root and a parent directory. Assert only the project root's values are used (first-found-wins).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. **`test_walk_terminates_at_filesystem_root`** — Create a project root with no `.env` anywhere in its ancestry. Assert no error is raised and no variables are set. (Verifies no infinite loop.)
 
-Location: src/segment/format.rs
+4. **`test_existing_env_vars_still_win`** — Set an env var, create a parent `.env` with the same key. Assert the pre-existing value is preserved (no-override semantics unchanged).
 
-### Step 2: Implement header serialization
+5. **`test_home_dir_env_loaded`** — Simulate a home directory `.env` by creating a nested structure where `.env` only exists at the top. Run from a deeply nested project root. Assert the top-level `.env` is loaded.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+All tests should fail initially because the current implementation only checks the project root.
 
-### Step 3: ...
+Location: `tests/test_dotenv_loader.py`
 
----
+### Step 2: Extract `_find_dotenv_walking_parents` helper
 
-**BACKREFERENCE COMMENTS**
+Add a private helper function to `src/cli/dotenv_loader.py`:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+def _find_dotenv_walking_parents(start: Path) -> Path | None:
+    """Walk from start up to filesystem root, return first .env found."""
+    current = start.resolve()
+    while True:
+        candidate = current / ".env"
+        if candidate.is_file():
+            return candidate
+        parent = current.parent
+        if parent == current:  # filesystem root
+            return None
+        current = parent
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+This is a pure function with no side effects — easy to reason about and test in isolation.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/cli/dotenv_loader.py`
+
+### Step 3: Refactor `load_dotenv_from_project_root` to use the helper
+
+Replace the direct `.env` check in `load_dotenv_from_project_root()` with a call to `_find_dotenv_walking_parents(root)`. The function body changes from:
+
+```python
+dotenv_path = Path(root) / ".env"
+if not dotenv_path.is_file():
+    return
+```
+
+to:
+
+```python
+dotenv_path = _find_dotenv_walking_parents(Path(root))
+if dotenv_path is None:
+    return
+```
+
+Everything else stays the same: `dotenv_values()`, the `key not in os.environ` guard, and the bare `except Exception` wrapper.
+
+Update the module-level backreference comment to include this chunk:
+```python
+# Chunk: docs/chunks/cli_dotenv_loading
+# Chunk: docs/chunks/cli_dotenv_walk_parents - Walk parent dirs for .env
+```
+
+Location: `src/cli/dotenv_loader.py`
+
+### Step 4: Run tests and verify all pass
+
+Run `uv run pytest tests/test_dotenv_loader.py -v` and confirm:
+- All new tests pass
+- All existing tests still pass (no regressions)
+
+### Step 5: Update `code_paths` in GOAL.md frontmatter
+
+Set `code_paths` in `docs/chunks/cli_dotenv_walk_parents/GOAL.md` to:
+```yaml
+code_paths:
+  - src/cli/dotenv_loader.py
+  - tests/test_dotenv_loader.py
+```
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **`cli_dotenv_loading` chunk** (ACTIVE): Provides the existing `load_dotenv_from_project_root()` function and `python-dotenv` dependency that this chunk extends.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Symlink loops**: `Path.resolve()` on `start` should collapse symlinks, and `parent == current` terminates the walk at `/`. No additional protection needed unless symlinks create cycles that `resolve()` doesn't flatten (unlikely on modern OSes).
+- **Permission errors**: `is_file()` on a directory the user can't read may raise `PermissionError`. The existing bare `except Exception` in `load_dotenv_from_project_root` already handles this — the walk will bail out to the silent-return path.
+- **Performance**: Walking to `/` adds at most ~20 `stat` calls (typical directory depth). Negligible at CLI startup.
 
 ## Deviations
 
