@@ -13,13 +13,25 @@ import asyncio
 import json
 import logging
 import random
+import ssl
 from typing import Any, AsyncGenerator
 
 import websockets
+import websockets.exceptions
 
 from board.crypto import sign
 
 logger = logging.getLogger(__name__)
+
+# Chunk: docs/chunks/board_watch_handshake_retry - Centralized retryable exception tuple
+_RETRYABLE_ERRORS = (
+    websockets.exceptions.ConnectionClosedError,
+    websockets.exceptions.ConnectionClosedOK,
+    ConnectionError,
+    OSError,
+    TimeoutError,
+    ssl.SSLCertVerificationError,
+)
 
 
 class BoardError(Exception):
@@ -202,7 +214,7 @@ class BoardClient:
         """
         attempt = 0
         backoff = 1.0
-        max_backoff = 30.0
+        max_backoff = 60.0
 
         while True:
             try:
@@ -257,12 +269,8 @@ class BoardClient:
                         "body": response["body"],
                         "sent_at": response["sent_at"],
                     }
-            except (
-                websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.ConnectionClosedOK,
-                ConnectionError,
-                OSError,
-            ) as exc:
+            # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
+            except _RETRYABLE_ERRORS as exc:
                 attempt += 1
                 if max_retries is not None and attempt > max_retries:
                     raise
@@ -291,11 +299,30 @@ class BoardClient:
                 backoff = min(backoff * 2, max_backoff)
 
                 # Re-establish connection and re-authenticate
-                try:
-                    await self.close()
-                except Exception:
-                    pass
-                await self.connect()
+                # Chunk: docs/chunks/board_watch_handshake_retry - Retry connect() on handshake errors
+                while True:
+                    try:
+                        await self.close()
+                    except Exception:
+                        pass
+                    try:
+                        await self.connect()
+                        break  # Connected successfully
+                    except _RETRYABLE_ERRORS as connect_exc:
+                        attempt += 1
+                        if max_retries is not None and attempt > max_retries:
+                            raise connect_exc
+                        jitter = random.uniform(0, backoff * 0.5)
+                        wait_time = min(backoff + jitter, max_backoff)
+                        logger.warning(
+                            "Handshake failed during reconnect in %.1fs "
+                            "(attempt %d) exc=%s",
+                            wait_time,
+                            attempt,
+                            type(connect_exc).__name__,
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff = min(backoff * 2, max_backoff)
                 # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
                 logger.info(
                     "Reconnected, re-polling channel=%s from cursor=%d",
@@ -500,7 +527,7 @@ class BoardClient:
         cursors = dict(channels)
         attempt = 0
         backoff = 1.0
-        max_backoff = 30.0
+        max_backoff = 60.0
         delivered = 0
 
         while True:
@@ -522,12 +549,8 @@ class BoardClient:
                         return
                 # Generator exhausted (all channels errored) — stop
                 return
-            except (
-                websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.ConnectionClosedOK,
-                ConnectionError,
-                OSError,
-            ):
+            # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
+            except _RETRYABLE_ERRORS:
                 attempt += 1
                 if max_retries is not None and attempt > max_retries:
                     raise
@@ -542,11 +565,30 @@ class BoardClient:
                 await asyncio.sleep(wait_time)
                 backoff = min(backoff * 2, max_backoff)
 
-                try:
-                    await self.close()
-                except Exception:
-                    pass
-                await self.connect()
+                # Chunk: docs/chunks/board_watch_handshake_retry - Retry connect() on handshake errors
+                while True:
+                    try:
+                        await self.close()
+                    except Exception:
+                        pass
+                    try:
+                        await self.connect()
+                        break  # Connected successfully
+                    except _RETRYABLE_ERRORS as connect_exc:
+                        attempt += 1
+                        if max_retries is not None and attempt > max_retries:
+                            raise connect_exc
+                        jitter = random.uniform(0, backoff * 0.5)
+                        wait_time = min(backoff + jitter, max_backoff)
+                        logger.warning(
+                            "Handshake failed during reconnect in %.1fs "
+                            "(attempt %d) exc=%s",
+                            wait_time,
+                            attempt,
+                            type(connect_exc).__name__,
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff = min(backoff * 2, max_backoff)
                 # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
                 logger.info(
                     "Reconnected, re-polling %d channel(s) from cursors=%s",

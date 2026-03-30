@@ -10,153 +10,95 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Widen the exception tuple in `watch_with_reconnect()` and `watch_multi_with_reconnect()` to also catch `TimeoutError` and `ssl.SSLCertVerificationError`. These errors occur at the `websockets.connect()` / handshake level and currently propagate uncaught, killing the watch process.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix follows the existing pattern: the same `except` block that handles `ConnectionClosedError` and `OSError` will also handle these two new exception types. The exponential backoff, jitter, max-retry logic, and logging already exist — we just need to widen the net.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Additionally, the `await self.connect()` call inside the reconnect loop (line 298 for single, line 549 for multi) is unprotected. If a handshake error occurs during reconnection itself, it bypasses the retry loop entirely. The fix wraps these `connect()` calls so handshake errors during reconnection feed back into the retry loop rather than crashing.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/board_watch_handshake_retry/GOAL.md)
-with references to the files that you expect to touch.
--->
+The backoff cap will be raised from 30s to 60s per the success criteria, and a default `max_retries=10` sentinel will be documented (callers already pass this via CLI).
+
+Tests follow TDD per docs/trunk/TESTING_PHILOSOPHY.md: mock `websockets.connect` to raise `TimeoutError` and `ssl.SSLCertVerificationError`, verify retry behavior and clean exit after max retries.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing subsystems are relevant to this change. This is a targeted bug fix within the board client's reconnect logic.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define the handshake-retryable exception tuple
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/board/client.py`, add `import ssl` at the top. Define a module-level tuple constant `_RETRYABLE_ERRORS` containing all exception types that should trigger a reconnect:
+- `websockets.exceptions.ConnectionClosedError`
+- `websockets.exceptions.ConnectionClosedOK`
+- `ConnectionError`
+- `OSError`
+- `TimeoutError` (NEW — handshake timeout)
+- `ssl.SSLCertVerificationError` (NEW — transient cert failures)
 
-Example:
+This centralizes the exception list so both `watch_with_reconnect()` and `watch_multi_with_reconnect()` share the same set and future additions only need one change.
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/board/client.py`, module level after imports
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Update `watch_with_reconnect()` exception handling
 
-Location: src/segment/format.rs
+Replace the inline exception tuple (lines 260-265) with `_RETRYABLE_ERRORS`.
 
-### Step 2: Implement header serialization
+Wrap the `await self.connect()` call (line 298) in a `try/except _RETRYABLE_ERRORS` block so that handshake errors during reconnection feed back into the retry loop with `continue` rather than propagating out. Increment `attempt` and check `max_retries` before retrying. Log the handshake error distinctly from mid-connection errors.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Raise `max_backoff` from `30.0` to `60.0`.
 
-### Step 3: ...
+Location: `src/board/client.py`, `watch_with_reconnect()` method
 
----
+### Step 3: Update `watch_multi_with_reconnect()` exception handling
 
-**BACKREFERENCE COMMENTS**
+Apply the same changes as Step 2:
+- Replace inline exception tuple (lines 525-530) with `_RETRYABLE_ERRORS`
+- Wrap the `await self.connect()` call (line 549) in `try/except _RETRYABLE_ERRORS` for handshake retry
+- Raise `max_backoff` from `30.0` to `60.0`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Location: `src/board/client.py`, `watch_multi_with_reconnect()` method
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Write tests — handshake timeout triggers retry
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Add test `test_watch_with_reconnect_retries_on_handshake_timeout` to `tests/test_board_client.py`.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Mock `websockets.connect` to raise `TimeoutError` on the first reconnect attempt, then succeed on the second. Verify:
+- The watch recovers and returns a message
+- `asyncio.sleep` was called (backoff happened)
+- The error was logged
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add a parallel test `test_watch_multi_reconnect_retries_on_handshake_timeout` for `watch_multi_with_reconnect()`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 5: Write tests — SSL error triggers retry
+
+Add test `test_watch_with_reconnect_retries_on_ssl_error`.
+
+Mock `websockets.connect` to raise `ssl.SSLCertVerificationError` on the first reconnect attempt, then succeed. Verify recovery.
+
+Add parallel test for `watch_multi_with_reconnect()`.
+
+### Step 6: Write tests — max retries causes clean exit
+
+Add test `test_watch_with_reconnect_handshake_max_retries_exit`.
+
+Mock `websockets.connect` to always raise `TimeoutError`. Set `max_retries=3`. Verify:
+- The exception propagates after 3 attempts
+- `asyncio.sleep` was called 3 times with increasing backoff
+- The backoff caps at 60s
+
+### Step 7: Update GOAL.md code_paths
+
+Add `src/board/client.py` and `tests/test_board_client.py` to the `code_paths` frontmatter in `docs/chunks/board_watch_handshake_retry/GOAL.md`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. The `ssl` module is in Python's standard library. The `websockets` library is already a dependency.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`ssl.SSLCertVerificationError` may indicate a permanent misconfiguration** rather than a transient issue. The max-retries cap (default 10) bounds exposure, and logging each attempt ensures the operator can diagnose persistent cert problems. We accept retrying a few times for the transient case.
+- **Wrapping `connect()` in the retry loop changes control flow.** Currently, if `connect()` fails during reconnection, the exception propagates immediately. After this change, it retries. This is strictly better for the observed failure modes but could mask permanent server-down scenarios — again bounded by max_retries.
 
 ## Deviations
 
@@ -177,3 +119,7 @@ Example:
   Testing revealed this isn't atomic across filesystems. Changed to
   write-fsync-rename-fsync sequence per platform best practices.
 -->
+
+- Steps 2-3: The plan called for wrapping `connect()` in `try/except` with `continue` to feed back into the outer retry loop. However, `continue` returns to the top of the `while True` where `self._ws.send()` is called — but after a failed `connect()`, `self._ws` is `None`. Instead, used an inner `while True` loop around `connect()` that retries with its own backoff and attempt counting until connection succeeds or `max_retries` is exhausted. This keeps the control flow self-contained within the reconnect block.
+- Step 1: Added `import websockets.exceptions` explicitly because the `websockets` library (version used) does not auto-import the `exceptions` submodule at package level.
+- Step 7: code_paths were already correct in the GOAL.md frontmatter.
