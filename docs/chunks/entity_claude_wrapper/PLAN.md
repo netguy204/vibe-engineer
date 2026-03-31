@@ -10,170 +10,307 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add `ve entity claude --entity <name>` as a new subcommand in `src/cli/entity.py`.
+The command orchestrates five phases using pieces already built in prior chunks:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Launch** – `subprocess.Popen` with inherited stdio, capture PID and start time.
+2. **Capture session ID** – read `~/.claude/sessions/<pid>.json` after exit.
+3. **Archive** – `entities.archive_transcript(entity_name, session_id, project_path)`
+4. **Shutdown** – try `claude --resume <sessionId> --prompt "/entity-shutdown <name>"`;
+   if that exits non-zero or times out, fall back to `shutdown_from_transcript()`.
+5. **Log + summarise** – `entities.append_session()` and print human-readable output.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+All logic lives in a single new Click command plus a couple of small private helpers.
+No new modules are needed: the entity CLI file is the right home for this command.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_claude_wrapper/GOAL.md)
-with references to the files that you expect to touch.
--->
+Following TDD: write failing tests first for each phase of the orchestration, then
+implement until green.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No documented subsystems are directly in scope. This chunk USES the entity memory
+pipeline but does not modify it.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Read tests for existing entity CLI to understand patterns
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Before writing any code, skim `tests/test_entity_cli.py` and
+`tests/test_entity_shutdown_cli.py` to understand how the CliRunner is used and
+what helpers exist in conftest. This informs test design for the new command.
 
-Example:
+### Step 2: Write failing tests in `tests/test_entity_claude_cli.py`
 
-### Step 1: Define the SegmentHeader struct
+Create `tests/test_entity_claude_cli.py`. Each test uses `CliRunner` with
+`mix_stderr=False`. Subprocess calls are patched so tests are fast and deterministic.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Key test cases to cover each success criterion:
 
-Location: src/segment/format.rs
+**Launch / entity validation:**
+- `test_errors_if_entity_missing` — `--entity nonexistent` → non-zero exit, message
+  contains "not found"
 
-### Step 2: Implement header serialization
+**Session ID extraction:**
+- `test_reads_session_id_from_pid_file` — unit test (no Click) for the helper
+  `_read_session_id_from_pid_file(pid, claude_home)`: given a temp dir with
+  a `sessions/<pid>.json` file containing `{"sessionId": "some-uuid", ...}`, asserts
+  the helper returns `"some-uuid"`.
+- `test_warns_when_pid_file_missing` — full command test; pid file absent → exit 0
+  (graceful), stderr contains "session ID not found" warning.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+**Full lifecycle (happy path):**
+- `test_happy_path_resume_shutdown` — patches:
+  - `subprocess.Popen` returns mock process with `.pid = 1234` and `.wait()` → 0
+  - PID file written to temp claude home: `{sessionId: "abc-123", ...}`
+  - `entities.archive_transcript` returns `True`
+  - second `subprocess.Popen` (resume) returns mock with `.wait()` → 0
+  - `entities.append_session` called once
+  - Output contains `"Session ID: abc-123"`, `"Shutdown method: resume"`,
+    `"Transcript archived:"`.
 
-### Step 3: ...
+**Transcript fallback:**
+- `test_falls_back_to_transcript_extraction_on_resume_failure` — second Popen
+  returns exit code 1; asserts `shutdown_from_transcript` is called and output
+  contains `"Shutdown method: transcript fallback"`.
 
----
+**Timeout:**
+- `test_resume_timeout_triggers_fallback` — second Popen's `.wait(timeout=...)` raises
+  `subprocess.TimeoutExpired`; asserts `shutdown_from_transcript` is called and the
+  resume process is killed.
 
-**BACKREFERENCE COMMENTS**
+Run `uv run pytest tests/test_entity_claude_cli.py` — all tests should fail (no
+implementation yet).
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Implement `_read_session_id_from_pid_file` helper
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Add a private helper in `src/cli/entity.py`:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+```python
+# Chunk: docs/chunks/entity_claude_wrapper - Session ID extraction from PID registry
+def _read_session_id_from_pid_file(
+    pid: int,
+    claude_home: pathlib.Path | None = None,
+) -> str | None:
+    """Read the session ID that Claude Code recorded for a given PID.
 
-Format (place immediately before the symbol):
+    Claude Code writes ~/.claude/sessions/<pid>.json on startup with at least:
+        {"pid": 1234, "sessionId": "uuid", "cwd": "/...", "startedAt": "..."}
+
+    Returns the sessionId string, or None if the file doesn't exist or is malformed.
+    """
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+The implementation:
+- Defaults `claude_home` to `pathlib.Path.home() / ".claude"`.
+- Reads `claude_home / "sessions" / f"{pid}.json"`.
+- Parses JSON and returns `data.get("sessionId")`.
+- Returns `None` on any `FileNotFoundError` or `json.JSONDecodeError`.
+
+### Step 4: Implement the `claude` command — launch phase
+
+Add the Click command below the existing `shutdown` command in `src/cli/entity.py`:
+
+```python
+# Chunk: docs/chunks/entity_claude_wrapper - Full entity session lifecycle
+@entity.command("claude")
+@click.option("--entity", "entity_name", required=True, help="Entity name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+@click.option(
+    "--resume-timeout",
+    type=int,
+    default=300,
+    help="Seconds to wait for resume-based shutdown (default: 300)",
+)
+def claude_cmd(entity_name: str, project_dir: pathlib.Path, resume_timeout: int) -> None:
+    """Launch Claude Code with entity lifecycle management."""
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Inside the command:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+1. Resolve `project_dir` via `resolve_entity_project_dir`.
+2. Instantiate `entities = Entities(project_dir)`.
+3. Check `entities.entity_exists(entity_name)` → `ClickException` if missing.
+4. Record `started_at = datetime.now(timezone.utc)`.
+5. Launch Claude:
+   ```python
+   import subprocess
+   proc = subprocess.Popen(
+       ["claude", "--prompt", f"/entity-startup {entity_name}"],
+       stdin=None, stdout=None, stderr=None,   # inherit — user gets normal session
+   )
+   pid = proc.pid
+   proc.wait()  # blocks until user exits (any exit path)
+   ```
+6. Record `ended_at = datetime.now(timezone.utc)`.
+
+### Step 5: Implement session ID extraction and transcript archiving
+
+After `proc.wait()` returns:
+
+```python
+session_id = _read_session_id_from_pid_file(pid)
+if session_id is None:
+    click.echo("Warning: session ID not found (PID file missing); skipping transcript archive", err=True)
+
+archived = False
+if session_id is not None:
+    archived = entities.archive_transcript(
+        entity_name,
+        session_id,
+        str(project_dir.resolve()),
+    )
+    if not archived:
+        click.echo("Warning: transcript not found in Claude Code storage; skipping archive", err=True)
+```
+
+The transcript must be archived **before** shutdown so it exists for the fallback path.
+
+### Step 6: Implement resume-based shutdown with timeout fallback
+
+```python
+shutdown_method = "none"
+shutdown_result: dict = {}
+
+if session_id is not None:
+    # Strategy A: resume the session so the agent reflects on its own context
+    resume_proc = subprocess.Popen(
+        ["claude", "--resume", session_id, "--prompt", f"/entity-shutdown {entity_name}"],
+        stdin=None, stdout=None, stderr=None,
+    )
+    try:
+        resume_exit = resume_proc.wait(timeout=resume_timeout)
+        if resume_exit == 0:
+            shutdown_method = "resume"
+            shutdown_result = {"journals_added": 0, "journals_consolidated": 0,
+                               "consolidated": 0, "core": 0}
+        else:
+            # Non-zero exit — fall through to transcript fallback
+            pass
+    except subprocess.TimeoutExpired:
+        resume_proc.kill()
+        resume_proc.wait()
+        click.echo("Warning: resume shutdown timed out; falling back to transcript extraction", err=True)
+```
+
+If `shutdown_method` is still `"none"` after the resume attempt (failed or timed out):
+
+```python
+# Strategy B: extract from archived transcript via API
+if shutdown_method == "none":
+    from entity_shutdown import shutdown_from_transcript
+    from entity_transcript import parse_session_jsonl, resolve_session_jsonl_path
+
+    jsonl_path = resolve_session_jsonl_path(str(project_dir.resolve()), session_id)
+    if jsonl_path is not None:
+        transcript = parse_session_jsonl(jsonl_path)
+        try:
+            shutdown_result = shutdown_from_transcript(
+                entity_name=entity_name,
+                transcript=transcript,
+                project_dir=project_dir,
+            )
+            shutdown_method = "transcript fallback"
+        except Exception as e:
+            click.echo(f"Warning: transcript extraction failed: {e}", err=True)
+    else:
+        click.echo("Warning: transcript not found; skipping memory extraction", err=True)
+```
+
+If `session_id is None`, set `shutdown_method = "none"` and skip all shutdown.
+
+### Step 7: Log session and print summary
+
+```python
+if session_id is not None:
+    from models.entity import SessionRecord
+    record = SessionRecord(
+        session_id=session_id,
+        started_at=started_at,
+        ended_at=ended_at,
+        summary=None,
+    )
+    entities.append_session(entity_name, record)
+
+# Print summary
+click.echo("")
+click.echo("Entity session complete:")
+click.echo(f"  Session ID:          {session_id or '(unknown)'}")
+if archived and session_id:
+    sessions_dir = entities.entity_dir(entity_name) / "sessions"
+    click.echo(f"  Transcript archived: {sessions_dir / session_id}.jsonl")
+else:
+    click.echo("  Transcript archived: (skipped)")
+click.echo(f"  Shutdown method:     {shutdown_method}")
+if shutdown_result:
+    click.echo(f"  Memories extracted:  {shutdown_result.get('journals_added', 0)} journals, "
+               f"{shutdown_result.get('consolidated', 0)} consolidated, "
+               f"{shutdown_result.get('core', 0)} core")
+```
+
+### Step 8: Update `GOAL.md` code_paths
+
+Add to `docs/chunks/entity_claude_wrapper/GOAL.md` frontmatter:
+```yaml
+code_paths:
+  - src/cli/entity.py
+  - tests/test_entity_claude_cli.py
+```
+
+### Step 9: Run full test suite and fix any issues
+
+```bash
+uv run pytest tests/
+```
+
+All tests including the new ones must pass. Fix any import issues or test
+fixture gaps.
+
+### Step 10: Add backreference comment
+
+At the top of the `claude_cmd` function, add:
+```python
+# Chunk: docs/chunks/entity_claude_wrapper - Full entity session lifecycle
+```
+
+This marks the primary implementation site for future traceability.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `entity_session_tracking` — `entities.archive_transcript()`, `entities.append_session()`,
+  `SessionRecord`. All present in current codebase ✓
+- `entity_transcript_extractor` — `parse_session_jsonl()`, `resolve_session_jsonl_path()`,
+  `SessionTranscript`. All present ✓
+- `entity_api_memory_extraction` — `shutdown_from_transcript()`. Present ✓
+- `claude` binary on PATH — documented as prerequisite in GOAL.md.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **PID file schema**: The investigation confirmed `~/.claude/sessions/<pid>.json`
+  contains `sessionId`, but this should be verified at implementation time on an
+  actual Claude Code installation. The helper is isolated enough that schema
+  variations can be handled locally.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Resume pass-through**: Resume shutdown launches Claude Code interactively.
+  The user's terminal will briefly show a new Claude Code session running the
+  `/entity-shutdown` command. This is expected behaviour but may surprise first-time
+  users. A `click.echo("Running shutdown via session resume...")` before the resume
+  launch would help.
+
+- **`claude` binary name**: Claude Code is invoked as `claude`. If the installed
+  binary has a different name on some platforms, this will fail. Document in the
+  error message: "Ensure `claude` is on your PATH."
+
+- **Anthropic API key for fallback**: `shutdown_from_transcript` calls the API.
+  The key is read from `ANTHROPIC_API_KEY` env var (anthropic SDK default). No
+  special handling needed in the wrapper — the existing error message from
+  `entity_shutdown.py` is clear enough if the key is absent.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

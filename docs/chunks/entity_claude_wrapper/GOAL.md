@@ -1,18 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/cli/entity.py
+- tests/test_entity_claude_cli.py
 code_references: []
 narrative: null
 investigation: entity_session_harness
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_session_tracking", "entity_transcript_extractor", "entity_api_memory_extraction"]
-created_after: ["entity_session_tracking"]
+depends_on:
+- entity_session_tracking
+- entity_transcript_extractor
+- entity_api_memory_extraction
+created_after:
+- entity_session_tracking
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
