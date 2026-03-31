@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/entity_transcript.py
+- tests/test_entity_transcript.py
 code_references: []
 narrative: null
 investigation: entity_session_harness
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["entity_session_tracking"]
+created_after:
+- entity_session_tracking
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
