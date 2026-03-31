@@ -1,8 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/templates/commands/chunk-create.md.jinja2"]
+code_paths:
+- src/templates/commands/chunk-create.md.jinja2
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +11,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["landing_page_analytics_domain"]
+created_after:
+- landing_page_analytics_domain
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
