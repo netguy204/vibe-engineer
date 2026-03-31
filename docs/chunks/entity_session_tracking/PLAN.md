@@ -10,170 +10,198 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Extend the existing entity storage layer with two additions:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`SessionRecord` model** in `src/models/entity.py` — follows the established Pydantic pattern used by `TouchEvent`, `DecayEvent`, and `MemoryFrontmatter` in the same module.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Three new methods** on the `Entities` class in `src/entities.py`:
+   - `append_session` / `list_sessions` — mirror the `touch_log.jsonl` JSONL append/read pattern already used by `touch_memory` / `read_touch_log`.
+   - `archive_transcript` — copy a Claude Code session JSONL from `~/.claude/projects/<encoded-path>/<sessionId>.jsonl` into `.entities/<name>/sessions/<sessionId>.jsonl`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_session_tracking/GOAL.md)
-with references to the files that you expect to touch.
--->
+The `sessions.jsonl` index lives at `.entities/<name>/sessions.jsonl` (alongside `touch_log.jsonl` and `decay_log.jsonl`). The archived transcript files live in `.entities/<name>/sessions/<sessionId>.jsonl`. The `sessions/` directory is created lazily on first `archive_transcript` call, not at entity creation time.
+
+This approach is intentionally narrow — no CLI exposure, no index changes, no changes to `create_entity`. The methods are the foundation that `entity_claude_wrapper` and `entity_episodic_search` will call.
+
+Testing follows TDD: write failing tests first, implement to make them pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No relevant subsystems. The entity storage layer is not yet documented as a subsystem. This chunk is purely additive to `src/models/entity.py` and `src/entities.py`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `SessionRecord` validation
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `TestSessionRecord` class to `tests/test_entities.py`. Write tests that:
 
-Example:
+- Verify `session_id` and `started_at` / `ended_at` fields are required (missing them raises `ValidationError`)
+- Verify `summary` is optional and defaults to `None`
+- Verify that `ended_at` is a `datetime` (semantic: not a string)
 
-### Step 1: Define the SegmentHeader struct
+These tests must fail before any implementation exists (the import of `SessionRecord` will `ImportError`).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `tests/test_entities.py`
 
-Location: src/segment/format.rs
+### Step 2: Add `SessionRecord` to `src/models/entity.py`
 
-### Step 2: Implement header serialization
+Add the model immediately below `TouchEvent` (which it closely resembles):
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+```python
+# Chunk: docs/chunks/entity_session_tracking
+class SessionRecord(BaseModel):
+    """A record of a Claude Code session that an entity participated in."""
 
-### Step 3: ...
+    session_id: str = Field(description="UUID from Claude Code")
+    started_at: datetime = Field(description="When the session began")
+    ended_at: datetime = Field(description="When the session ended")
+    summary: str | None = Field(default=None, description="Optional one-line description")
+```
+
+Update the import in `src/entities.py` to include `SessionRecord`.
+
+Run the Step 1 tests — they should now pass.
+
+### Step 3: Write failing tests for `append_session` / `list_sessions`
+
+Add a `TestSessionLog` class to `tests/test_entities.py`. Write tests that:
+
+- `append_session` writes a JSON line to `.entities/<name>/sessions.jsonl`
+- `append_session` called twice produces two lines in the file
+- `list_sessions` on an entity with no `sessions.jsonl` returns `[]`
+- `list_sessions` round-trips: records written by `append_session` come back as `SessionRecord` instances with correct fields
+- `list_sessions` preserves insertion order
+
+These tests will fail because the methods don't exist yet.
+
+### Step 4: Implement `append_session` and `list_sessions` on `Entities`
+
+Add the methods to `src/entities.py`, following the exact same pattern as `touch_memory` / `read_touch_log`:
+
+```python
+# Chunk: docs/chunks/entity_session_tracking
+def append_session(self, entity_name: str, session_record: SessionRecord) -> None:
+    """Append a session record to the entity's sessions log."""
+    sessions_log_path = self.entity_dir(entity_name) / "sessions.jsonl"
+    with open(sessions_log_path, "a") as f:
+        f.write(session_record.model_dump_json() + "\n")
+
+# Chunk: docs/chunks/entity_session_tracking
+def list_sessions(self, entity_name: str) -> list[SessionRecord]:
+    """Read all session records from the entity's sessions log."""
+    sessions_log_path = self.entity_dir(entity_name) / "sessions.jsonl"
+    if not sessions_log_path.exists():
+        return []
+    sessions = []
+    for line in sessions_log_path.read_text().splitlines():
+        line = line.strip()
+        if line:
+            sessions.append(SessionRecord.model_validate_json(line))
+    return sessions
+```
+
+Run Step 3 tests — they should now pass.
+
+### Step 5: Write failing tests for `archive_transcript`
+
+Add a `TestArchiveTranscript` class to `tests/test_entities.py`. Write tests that:
+
+- When the source JSONL exists, `archive_transcript` copies it into `.entities/<name>/sessions/<sessionId>.jsonl` and returns `True`
+- After archiving, the destination file content matches the source
+- The `sessions/` directory is created by the first call (it doesn't pre-exist)
+- When the source file does not exist, `archive_transcript` returns `False` and does not crash
+- The test creates a fake `~/.claude/`-style directory tree in `tmp_path` to avoid any real filesystem dependency
+
+For the encoded-path logic:
+- Input: `project_path = "/Users/btaylor/Projects/foo"`, session ID = `"abc-123"`
+- Source should resolve to `<claude_home>/projects/-Users-btaylor-Projects-foo/abc-123.jsonl`
+- The encoding rule: prepend `-`, replace every `/` with `-`
+
+These tests will fail because the method doesn't exist.
+
+### Step 6: Implement `archive_transcript` on `Entities`
+
+```python
+# Chunk: docs/chunks/entity_session_tracking
+def archive_transcript(
+    self, entity_name: str, session_id: str, project_path: str
+) -> bool:
+    """Copy a Claude Code session transcript into entity storage.
+
+    Args:
+        entity_name: Entity name.
+        session_id: UUID of the Claude Code session.
+        project_path: Absolute path of the project (e.g. "/Users/btaylor/Projects/foo").
+
+    Returns:
+        True if the transcript was copied, False if source does not exist.
+    """
+    # Encode project_path to Claude Code's directory convention
+    encoded = "-" + project_path.replace("/", "-")
+    claude_home = Path.home() / ".claude"
+    source = claude_home / "projects" / encoded / f"{session_id}.jsonl"
+
+    if not source.exists():
+        return False
+
+    sessions_dir = self.entity_dir(entity_name) / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    destination = sessions_dir / f"{session_id}.jsonl"
+    import shutil
+    shutil.copy2(source, destination)
+    return True
+```
+
+Run all new tests — they should now pass.
+
+### Step 7: Update `GOAL.md` frontmatter `code_paths`
+
+Update `docs/chunks/entity_session_tracking/GOAL.md` frontmatter to:
+
+```yaml
+code_paths:
+  - src/models/entity.py
+  - src/entities.py
+  - tests/test_entities.py
+```
+
+### Step 8: Run the full test suite
+
+```bash
+uv run pytest tests/
+```
+
+All tests must pass, including pre-existing tests.
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add `# Chunk: docs/chunks/entity_session_tracking` backreference comments at the method level on each new method (as shown in the code snippets above) and at the class level on `SessionRecord`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- No new external libraries needed — `shutil`, `pathlib`, and `pydantic` are already in use.
+- No other chunks need to complete first.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`sessions.jsonl` naming collision**: The path `.entities/<name>/sessions.jsonl` for the index and `.entities/<name>/sessions/` for the directory share a prefix. Filesystems handle this fine (file vs. directory), but it's worth noting for clarity when reading code.
+- **`archive_transcript` test isolation**: Tests must not touch `~/.claude/`. The test injects a fake source path via a `tmp_path`-based directory tree. We'll test by calling the method with a modified claude home. To keep the method testable without mocking, we may expose `claude_home` as an optional parameter (defaulting to `Path.home() / ".claude"`). Decide during implementation whether this is warranted — if it simplifies tests significantly, add it.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+### Path encoding formula
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+The plan's code snippet used `encoded = "-" + project_path.replace("/", "-")` which
+would produce `--Users-btaylor-Projects-foo` for `/Users/btaylor/Projects/foo` — one
+too many leading dashes. The correct Claude Code convention is simply
+`project_path.replace("/", "-")` (the leading `/` becomes the leading `-`), which
+produces `-Users-btaylor-Projects-foo` as shown in the GOAL.md example. The test
+`test_archive_encoded_path_convention` caught this.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+### `claude_home` optional parameter added to `archive_transcript`
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+As anticipated in the Risks section, `claude_home` was exposed as an optional
+parameter (defaulting to `Path.home() / ".claude"`) to allow test isolation without
+mocking. This simplifies tests significantly.
