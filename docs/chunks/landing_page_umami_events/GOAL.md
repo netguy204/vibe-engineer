@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: landing_page_veng_dev
-code_paths: ["site/src/pages/index.astro", "site/src/components/Nav.astro"]
+code_paths:
+- site/src/pages/index.astro
+- site/src/components/Nav.astro
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["landing_page_analytics_domain"]
+created_after:
+- landing_page_analytics_domain
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

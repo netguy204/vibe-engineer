@@ -10,153 +10,216 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The site currently has zero client-side JavaScript — all interactivity (hero
+code comparison tabs, workflow step tabs) is implemented with CSS radio inputs
+and `:checked` selectors. The Umami script (`analytics.veng.dev/script.js`) is
+already loaded in `BaseLayout.astro` with `defer`, making `umami.track()`
+available globally after page load.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:** Add a single `<script>` tag at the bottom of `index.astro` that
+attaches event listeners to all interactive elements. This keeps all tracking
+logic co-located and easy to audit. Every `umami.track()` call is wrapped in a
+defensive guard (`typeof umami !== 'undefined'`) so adblockers don't cause
+errors.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Why inline in index.astro, not a separate file:** The tracking is
+page-specific (the landing page is the only page with these interactive
+elements). A separate `.js` file would add a network request for code that's
+only relevant here. An inline script keeps the tracking visibly coupled to the
+markup it instruments.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/landing_page_umami_events/GOAL.md)
-with references to the files that you expect to touch.
--->
+**No tests needed:** This is pure client-side event tracking that calls an
+external analytics API. There's no testable business logic — the correctness
+criteria are: (1) events fire in the browser console's network tab, and (2) the
+page doesn't break when Umami is blocked. Both are verified by manual browser
+testing.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant. This chunk adds client-side analytics to the
+marketing site and does not touch the ve CLI or its subsystems.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the tracking helper and defensive guard
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `<script>` block at the end of `site/src/pages/index.astro` (after the
+closing `</BaseLayout>` tag — Astro supports this). Define a helper function:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```javascript
+function track(event, data) {
+  if (typeof umami !== 'undefined') {
+    umami.track(event, data);
+  }
+}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+All subsequent tracking calls use `track()` instead of `umami.track()` directly,
+ensuring silent failure when Umami is blocked.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Add a `// Chunk: docs/chunks/landing_page_umami_events` backreference comment at
+the top of the script block.
+
+Location: `site/src/pages/index.astro`
+
+### Step 2: Instrument the hero code comparison tabs
+
+Listen for `change` events on the radio inputs named `hero-view`
+(`#tab-engineered` and `#tab-coded`). When a tab is selected, fire:
+
+```javascript
+track('code_compare_switch', { view: 'engineered' | 'coded' });
+```
+
+The radio inputs already exist at lines 15–16 of `index.astro`. Attach
+listeners by querying `input[name="hero-view"]`.
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 3: Instrument the workflow visualization tabs
+
+Listen for `change` events on the radio inputs named `workflow`
+(`#wf-goal`, `#wf-plan`, `#wf-implement`, `#wf-complete`). When a step is
+selected, fire:
+
+```javascript
+track('workflow_step_click', { step: 'goal' | 'plan' | 'implement' | 'complete' });
+```
+
+Extract the step name from the input's `id` attribute (strip the `wf-` prefix).
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 4: Instrument the CTA `<details>` expand/collapse
+
+The "Other install methods" `<details>` element (line 131) fires a `toggle`
+event. Instrument it:
+
+```javascript
+track('code_block_expand');   // when details.open becomes true
+track('code_block_collapse'); // when details.open becomes false
+```
+
+Query `.cta-details` and listen for the `toggle` event.
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 5: Instrument GitHub / outbound link clicks
+
+All GitHub links currently point to
+`https://analytics.veng.dev/q/bMiDbOK78`. There are two: one in `Nav.astro`
+and one in the CTA section of `index.astro`.
+
+Attach `click` listeners to all `a[href*="analytics.veng.dev"]` links. Derive
+a `location` data property from the link's context:
+
+- Nav link → `{ location: 'nav' }`
+- CTA link → `{ location: 'cta' }`
+
+Determine location by checking if the link is inside `nav` (ancestor element)
+or `.cta-links`.
+
+```javascript
+track('github_click', { location: 'nav' });
+track('github_click', { location: 'cta' });
+```
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 6: Instrument CTA button clicks
+
+The primary CTA is the install command block (`.cta-command`). There isn't a
+traditional button, but we should track clicks on the CTA section elements that
+indicate engagement:
+
+- Click on `.cta-command` → `track('cta_click', { label: 'uv-install' })`
+- Click on `.alt-command` → `track('cta_click', { label: 'pip-install' })`
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 7: Instrument navigation link clicks
+
+Add click listeners to all `nav a` elements. Fire:
+
+```javascript
+track('nav_click', { destination: link.textContent.trim().toLowerCase() });
+```
+
+This captures the nav logo ("ve" → home) and the GitHub link (already tracked
+as `github_click` in Step 5, but `nav_click` provides navigation-specific
+context).
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 8: Implement scroll depth tracking
+
+Use an `IntersectionObserver` to fire scroll depth milestones at 25%, 50%,
+75%, and 100%. Place four invisible sentinel `<div>` elements at those
+positions in the page, or calculate based on `document.documentElement.scrollHeight`.
+
+**Preferred approach:** Use a `scroll` event listener (throttled via
+`requestAnimationFrame`) that calculates scroll percentage and fires each
+milestone exactly once:
+
+```javascript
+const milestones = [25, 50, 75, 100];
+const fired = new Set();
+
+function checkScroll() {
+  const scrollTop = window.scrollY;
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  const percent = Math.round((scrollTop / docHeight) * 100);
+  for (const m of milestones) {
+    if (percent >= m && !fired.has(m)) {
+      fired.add(m);
+      track('scroll_depth', { percentage: m });
+    }
+  }
+}
+
+window.addEventListener('scroll', () => requestAnimationFrame(checkScroll));
+```
+
+Location: `site/src/pages/index.astro` (within the script block from Step 1)
+
+### Step 9: Manual browser verification
+
+Open the site in a browser with the Network tab open. Verify:
+
+1. Switching hero tabs fires `code_compare_switch` events
+2. Clicking workflow steps fires `workflow_step_click` events
+3. Expanding/collapsing install methods fires `code_block_expand`/`collapse`
+4. GitHub links fire `github_click` with correct location
+5. CTA commands fire `cta_click` with correct label
+6. Nav links fire `nav_click`
+7. Scrolling fires `scroll_depth` at 25/50/75/100%
+8. With an adblocker enabled, no console errors appear
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- **`landing_page_analytics_domain`** (ACTIVE) — Umami script tag in
+  BaseLayout.astro. Already present.
+- **`landing_page_analytics_redirect`** (ACTIVE) — GitHub links already use
+  the analytics redirect URL. Already present.
+- **`landing_page_veng_dev`** (ACTIVE) — All interactive elements exist.
+  Already present.
 
-If there are no dependencies, delete this section.
--->
+No new external libraries needed. Umami's `track()` API is provided by the
+already-loaded script.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Umami script load timing:** The Umami script is loaded with `defer`, so it
+  runs after HTML parsing but potentially after our inline script. Wrapping
+  calls in the `track()` helper handles this for click/change events (which
+  happen well after page load). Scroll depth tracking starts on `scroll` events
+  which also happen after load. No race condition expected.
+- **Adblocker behavior:** Some adblockers remove the Umami script entirely;
+  others block network requests but leave the global object. The `typeof umami
+  !== 'undefined'` guard handles both cases.
+- **Event name conventions:** Umami has no strict naming rules, but we should
+  keep names lowercase with underscores for consistency. All event names in
+  GOAL.md already follow this convention.
 
 ## Deviations
 

@@ -143,3 +143,94 @@ import { heroLines } from '../data/hero-code';
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  // Chunk: docs/chunks/landing_page_umami_events
+  // Umami custom event tracking for landing page interactive elements
+
+  function track(event, data) {
+    if (typeof umami !== 'undefined') {
+      umami.track(event, data);
+    }
+  }
+
+  // Hero code comparison tabs (Step 2)
+  document.querySelectorAll('input[name="hero-view"]').forEach(function(input) {
+    input.addEventListener('change', function() {
+      var view = this.id === 'tab-engineered' ? 'engineered' : 'coded';
+      track('code_compare_switch', { view: view });
+    });
+  });
+
+  // Workflow visualization tabs (Step 3)
+  document.querySelectorAll('input[name="workflow"]').forEach(function(input) {
+    input.addEventListener('change', function() {
+      var step = this.id.replace('wf-', '');
+      track('workflow_step_click', { step: step });
+    });
+  });
+
+  // CTA details expand/collapse (Step 4)
+  var ctaDetails = document.querySelector('.cta-details');
+  if (ctaDetails) {
+    ctaDetails.addEventListener('toggle', function() {
+      if (this.open) {
+        track('code_block_expand');
+      } else {
+        track('code_block_collapse');
+      }
+    });
+  }
+
+  // GitHub / outbound link clicks (Step 5)
+  document.querySelectorAll('a[href*="analytics.veng.dev"]').forEach(function(link) {
+    link.addEventListener('click', function() {
+      var location = this.closest('nav') ? 'nav' : 'cta';
+      track('github_click', { location: location });
+    });
+  });
+
+  // CTA button clicks (Step 6)
+  var ctaCommand = document.querySelector('.cta-command');
+  if (ctaCommand) {
+    ctaCommand.addEventListener('click', function() {
+      track('cta_click', { label: 'uv-install' });
+    });
+  }
+
+  var altCommand = document.querySelector('.alt-command');
+  if (altCommand) {
+    altCommand.addEventListener('click', function() {
+      track('cta_click', { label: 'pip-install' });
+    });
+  }
+
+  // Navigation link clicks (Step 7)
+  document.querySelectorAll('nav a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      track('nav_click', { destination: this.textContent.trim().toLowerCase() });
+    });
+  });
+
+  // Scroll depth tracking (Step 8)
+  var milestones = [25, 50, 75, 100];
+  var fired = {};
+
+  function checkScroll() {
+    var scrollTop = window.scrollY;
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    if (docHeight <= 0) return;
+    var percent = Math.round((scrollTop / docHeight) * 100);
+    for (var i = 0; i < milestones.length; i++) {
+      var m = milestones[i];
+      if (percent >= m && !fired[m]) {
+        fired[m] = true;
+        track('scroll_depth', { percentage: m });
+      }
+    }
+  }
+
+  window.addEventListener('scroll', function() {
+    requestAnimationFrame(checkScroll);
+  });
+</script>
