@@ -1,0 +1,50 @@
+---
+description: "Run a chunk's full plan \u2192 implement \u2192 complete cycle in the current session. Use /chunk-execute to run a chunk inline. Use ve orch inject to delegate to a background agent."
+---
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+Run `ve init` to regenerate.
+-->
+
+## Tips
+
+- The ve command is an installed CLI tool, not a file in the repository. Do not
+search for it - run it directly via Bash.
+
+
+## Instructions
+
+1. **Determine the target chunk.** If a chunk name was provided as an argument,
+   use that. Otherwise, run `ve chunk list --current` to find the currently
+   IMPLEMENTING chunk. We will refer to the chunk directory below as
+   `<chunk directory>`.
+
+2. **Plan phase guard.** Check if `<chunk directory>/PLAN.md` already has
+   substantive content beyond the template skeleton. Look for an `## Approach`
+   section that contains actual implementation details (not just HTML comments
+   or placeholder text).
+
+   - If the plan is still a bare template: invoke `/chunk-plan` to create the
+     plan. Wait for it to complete before proceeding.
+   - If a plan already exists with real content: report "Plan already exists,
+     skipping /chunk-plan" and proceed to the next step.
+
+3. **Implement phase.** Invoke `/chunk-implement` to execute the plan.
+
+4. **Error gate.** If implementation encounters errors (test failures, build
+   errors, or issues that prevent the chunk from being considered complete),
+   STOP and report the error to the operator. Do NOT proceed to the complete
+   phase. The operator may want to intervene, run `/chunk-review`, or adjust
+   the plan.
+
+5. **Complete phase.** Invoke `/chunk-complete` to finalize code references,
+   run overlap analysis, and transition the chunk to its final status.
+
+6. **Summary.** Report the final status of the chunk execution:
+   - Which phases ran (plan, implement, complete)
+   - Whether any phases were skipped (e.g., plan already existed)
+   - The chunk's final status
+   - Any issues encountered along the way
