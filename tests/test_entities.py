@@ -1,13 +1,14 @@
 """Tests for Entities domain class.
 
 Tests entity creation, listing, memory write/parse, startup index,
-find_memory, touch_memory, and read_touch_log.
+find_memory, touch_memory, read_touch_log, and session tracking.
 """
 
 import json
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from entities import Entities
 from models.entity import (
@@ -15,6 +16,7 @@ from models.entity import (
     MemoryFrontmatter,
     MemoryTier,
     MemoryValence,
+    SessionRecord,
     TouchEvent,
 )
 
@@ -755,3 +757,222 @@ class TestReadTouchLog:
         events = entities.read_touch_log("agent")
         assert len(events) == 1
         assert isinstance(events[0], TouchEvent)
+
+
+# --- Session Tracking Tests ---
+
+def _make_session_record(**overrides) -> SessionRecord:
+    """Create a valid SessionRecord with optional overrides."""
+    defaults = {
+        "session_id": "abc-123-def-456",
+        "started_at": datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+        "ended_at": datetime(2026, 3, 31, 11, 0, 0, tzinfo=timezone.utc),
+        "summary": None,
+    }
+    defaults.update(overrides)
+    return SessionRecord(**defaults)
+
+
+class TestSessionRecord:
+    """Tests for SessionRecord model validation."""
+
+    def test_valid_session_record(self):
+        """A fully specified SessionRecord is valid."""
+        record = SessionRecord(
+            session_id="abc-123",
+            started_at=datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+            ended_at=datetime(2026, 3, 31, 11, 0, 0, tzinfo=timezone.utc),
+            summary="Did some work",
+        )
+        assert record.session_id == "abc-123"
+        assert record.summary == "Did some work"
+
+    def test_session_id_required(self):
+        """Missing session_id raises ValidationError."""
+        with pytest.raises(ValidationError):
+            SessionRecord(
+                started_at=datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+                ended_at=datetime(2026, 3, 31, 11, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_started_at_required(self):
+        """Missing started_at raises ValidationError."""
+        with pytest.raises(ValidationError):
+            SessionRecord(
+                session_id="abc-123",
+                ended_at=datetime(2026, 3, 31, 11, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_ended_at_required(self):
+        """Missing ended_at raises ValidationError."""
+        with pytest.raises(ValidationError):
+            SessionRecord(
+                session_id="abc-123",
+                started_at=datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_summary_optional_defaults_to_none(self):
+        """summary is optional and defaults to None."""
+        record = SessionRecord(
+            session_id="abc-123",
+            started_at=datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+            ended_at=datetime(2026, 3, 31, 11, 0, 0, tzinfo=timezone.utc),
+        )
+        assert record.summary is None
+
+    def test_started_at_is_datetime(self):
+        """started_at is stored as a datetime, not a string."""
+        record = _make_session_record()
+        assert isinstance(record.started_at, datetime)
+
+    def test_ended_at_is_datetime(self):
+        """ended_at is stored as a datetime, not a string."""
+        record = _make_session_record()
+        assert isinstance(record.ended_at, datetime)
+
+
+class TestSessionLog:
+    """Tests for Entities.append_session() and list_sessions()."""
+
+    def test_append_session_writes_jsonl_line(self, entities, temp_project):
+        """append_session writes a single JSON line to sessions.jsonl."""
+        entities.create_entity("agent")
+        record = _make_session_record()
+        entities.append_session("agent", record)
+
+        log_path = temp_project / ".entities" / "agent" / "sessions.jsonl"
+        assert log_path.exists()
+        lines = log_path.read_text().strip().splitlines()
+        assert len(lines) == 1
+
+    def test_append_session_twice_produces_two_lines(self, entities, temp_project):
+        """Two append_session calls produce two lines in sessions.jsonl."""
+        entities.create_entity("agent")
+        r1 = _make_session_record(session_id="session-1")
+        r2 = _make_session_record(session_id="session-2")
+        entities.append_session("agent", r1)
+        entities.append_session("agent", r2)
+
+        log_path = temp_project / ".entities" / "agent" / "sessions.jsonl"
+        lines = log_path.read_text().strip().splitlines()
+        assert len(lines) == 2
+
+    def test_list_sessions_empty_when_no_log(self, entities):
+        """list_sessions returns [] when sessions.jsonl doesn't exist."""
+        entities.create_entity("agent")
+        assert entities.list_sessions("agent") == []
+
+    def test_list_sessions_roundtrip(self, entities):
+        """Records written by append_session come back as SessionRecord instances."""
+        entities.create_entity("agent")
+        record = _make_session_record(
+            session_id="roundtrip-001",
+            summary="Round trip test",
+        )
+        entities.append_session("agent", record)
+
+        sessions = entities.list_sessions("agent")
+        assert len(sessions) == 1
+        assert isinstance(sessions[0], SessionRecord)
+        assert sessions[0].session_id == "roundtrip-001"
+        assert sessions[0].summary == "Round trip test"
+        assert isinstance(sessions[0].started_at, datetime)
+        assert isinstance(sessions[0].ended_at, datetime)
+
+    def test_list_sessions_preserves_insertion_order(self, entities):
+        """list_sessions returns records in insertion order."""
+        entities.create_entity("agent")
+        r1 = _make_session_record(session_id="first")
+        r2 = _make_session_record(session_id="second")
+        r3 = _make_session_record(session_id="third")
+        entities.append_session("agent", r1)
+        entities.append_session("agent", r2)
+        entities.append_session("agent", r3)
+
+        sessions = entities.list_sessions("agent")
+        assert [s.session_id for s in sessions] == ["first", "second", "third"]
+
+
+class TestArchiveTranscript:
+    """Tests for Entities.archive_transcript()."""
+
+    def _make_fake_claude_home(self, tmp_path, project_path: str, session_id: str, content: str) -> "Path":
+        """Create a fake ~/.claude directory tree with a transcript file."""
+        from pathlib import Path
+        encoded = project_path.replace("/", "-")
+        source_dir = tmp_path / "claude_home" / "projects" / encoded
+        source_dir.mkdir(parents=True)
+        source_file = source_dir / f"{session_id}.jsonl"
+        source_file.write_text(content)
+        return tmp_path / "claude_home"
+
+    def test_archive_copies_transcript(self, entities, tmp_path, temp_project):
+        """archive_transcript copies JSONL file into .entities/<name>/sessions/."""
+        entities.create_entity("agent")
+        project_path = "/Users/btaylor/Projects/foo"
+        session_id = "abc-123"
+        transcript_content = '{"role": "user", "content": "hello"}\n'
+
+        claude_home = self._make_fake_claude_home(tmp_path, project_path, session_id, transcript_content)
+
+        result = entities.archive_transcript("agent", session_id, project_path, claude_home=claude_home)
+
+        assert result is True
+        dest = temp_project / ".entities" / "agent" / "sessions" / f"{session_id}.jsonl"
+        assert dest.exists()
+        assert dest.read_text() == transcript_content
+
+    def test_archive_creates_sessions_directory(self, entities, tmp_path, temp_project):
+        """archive_transcript creates .entities/<name>/sessions/ on first call."""
+        entities.create_entity("agent")
+        sessions_dir = temp_project / ".entities" / "agent" / "sessions"
+        assert not sessions_dir.exists()
+
+        project_path = "/Users/btaylor/Projects/bar"
+        session_id = "new-session"
+        claude_home = self._make_fake_claude_home(tmp_path, project_path, session_id, "{}\n")
+
+        entities.archive_transcript("agent", session_id, project_path, claude_home=claude_home)
+
+        assert sessions_dir.is_dir()
+
+    def test_archive_returns_false_when_source_missing(self, entities, tmp_path):
+        """archive_transcript returns False (no crash) when source doesn't exist."""
+        entities.create_entity("agent")
+        # Point to a claude_home with no matching session file
+        fake_claude_home = tmp_path / "empty_claude_home"
+        fake_claude_home.mkdir()
+
+        result = entities.archive_transcript(
+            "agent",
+            "nonexistent-session",
+            "/Users/btaylor/Projects/foo",
+            claude_home=fake_claude_home,
+        )
+
+        assert result is False
+
+    def test_archive_encoded_path_convention(self, entities, tmp_path, temp_project):
+        """Encodes project_path using Claude Code's convention (prepend '-', replace '/' with '-')."""
+        entities.create_entity("agent")
+        project_path = "/Users/btaylor/Projects/foo"
+        session_id = "test-session"
+
+        # The encoded path should be "-Users-btaylor-Projects-foo"
+        encoded = "-Users-btaylor-Projects-foo"
+        source_dir = tmp_path / "claude_home" / "projects" / encoded
+        source_dir.mkdir(parents=True)
+        (source_dir / f"{session_id}.jsonl").write_text("transcript data\n")
+        claude_home = tmp_path / "claude_home"
+
+        result = entities.archive_transcript("agent", session_id, project_path, claude_home=claude_home)
+
+        assert result is True
+        dest = temp_project / ".entities" / "agent" / "sessions" / f"{session_id}.jsonl"
+        assert dest.read_text() == "transcript data\n"
+
+    def test_sessions_dir_not_created_at_entity_creation(self, entities, temp_project):
+        """The sessions/ directory is NOT created by create_entity."""
+        entities.create_entity("agent")
+        sessions_dir = temp_project / ".entities" / "agent" / "sessions"
+        assert not sessions_dir.exists()

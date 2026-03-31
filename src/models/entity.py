@@ -81,6 +81,16 @@ class EntityIdentity(BaseModel):
         return v
 
 
+# Chunk: docs/chunks/entity_session_tracking
+class SessionRecord(BaseModel):
+    """A record of a Claude Code session that an entity participated in."""
+
+    session_id: str = Field(description="UUID from Claude Code")
+    started_at: datetime = Field(description="When the session began")
+    ended_at: datetime = Field(description="When the session ended")
+    summary: str | None = Field(default=None, description="Optional one-line description")
+
+
 # Chunk: docs/chunks/entity_touch_command
 class TouchEvent(BaseModel):
     """A touch event recording runtime reinforcement of a memory.

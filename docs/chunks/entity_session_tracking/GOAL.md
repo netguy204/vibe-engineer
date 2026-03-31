@@ -1,8 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/models/entity.py
+- src/entities.py
+- tests/test_entities.py
 code_references: []
 narrative: null
 investigation: entity_session_harness
@@ -10,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["landing_page_veng_dev"]
+created_after:
+- landing_page_veng_dev
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
