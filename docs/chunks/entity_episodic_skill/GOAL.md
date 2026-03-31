@@ -1,18 +1,21 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/templates/commands/entity-episodic.md.jinja2
+  - src/templates/commands/entity-startup.md.jinja2
 code_references: []
 narrative: null
 investigation: entity_session_harness
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_episodic_search"]
-created_after: ["entity_session_tracking"]
+depends_on:
+- entity_episodic_search
+created_after:
+- entity_session_tracking
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

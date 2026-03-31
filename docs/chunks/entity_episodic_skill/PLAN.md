@@ -10,170 +10,192 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is pure template authoring — no Python logic, no CLI changes. We
+create one new Jinja2 skill template and update an existing one, then re-render
+both via `uv run ve init`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The new `/entity-episodic` skill follows the same structural conventions as
+`entity-startup.md.jinja2` and `entity-shutdown.md.jinja2`:
+- Frontmatter with `description`
+- `{% set source_template = ... %}` + auto-generated-header partial
+- A backreference comment linking to this chunk
+- `{% include "partials/common-tips.md.jinja2" %}`
+- Content wrapped in `{% raw %}` / `{% endraw %}` to prevent Jinja2 from
+  processing the command examples
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The update to `/entity-startup` is minimal: insert a new Step 7 block after
+the touch protocol step, and renumber the old Step 7 ("Restore active state")
+to Step 8.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_episodic_skill/GOAL.md)
-with references to the files that you expect to touch.
--->
+No new decisions are required — this chunk is purely documentation/skill
+scaffolding.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this chunk. The template command system is a
+well-understood pattern; this chunk uses it but doesn't modify its
+infrastructure.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Update `code_paths` in GOAL.md
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Update the chunk's GOAL.md frontmatter to list the files this chunk touches:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```yaml
+code_paths:
+  - src/templates/commands/entity-episodic.md.jinja2
+  - src/templates/commands/entity-startup.md.jinja2
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 2: Create `src/templates/commands/entity-episodic.md.jinja2`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Create the new skill template. It must include:
+
+**Frontmatter** (YAML):
+```yaml
+description: Search prior session transcripts for specific events, conversations, and decisions
+```
+
+**Template preamble** (before `{% raw %}`):
+```jinja2
+{% set source_template = "entity-episodic.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/entity_episodic_skill - Episodic memory search skill #}
+
+## Tips
+
+{% include "partials/common-tips.md.jinja2" %}
+```
+
+**Content** (inside `{% raw %}` / `{% endraw %}`):
+
+The skill should cover these sections in order:
+
+1. **When to use episodic vs memory recall** — a clear two-line contrast:
+   - `ve entity recall <name> <query>` → distilled knowledge, lessons, skills,
+     principles. "What do I know about X?"
+   - `ve entity episodic --entity <name> --query "..."` → raw session history,
+     conversations, decisions in context. "When did I encounter X? What did
+     the operator say? What was the outcome?"
+
+2. **Common triggers for episodic search** (bulleted list):
+   - Operator references a prior session ("remember when we...")
+   - About to make a decision similar to one made before
+   - Encountered an error you think you've seen before
+   - Need context behind a core memory (why was it created?)
+   - Operator asks you to find a specific conversation or decision
+
+3. **Two-phase workflow**:
+
+   *Step 1 — Search*: Run `ve entity episodic --entity <name> --query "..."` to
+   get ranked snippets. Scan the results to identify which hits look relevant.
+   Each result includes a copy-pasteable expand command.
+
+   If working in the vibe-engineer source repo, use `uv run`:
+   ```
+   uv run ve entity episodic --entity <name> --query "..."
+   ```
+
+   *Step 2 — Expand*: Run the expand command from the search output to read
+   surrounding conversation context:
+   ```
+   ve entity episodic --entity <name> --expand <session_id> --chunk <chunk_id> --radius 10
+   ```
+   The hit region is marked with `>>>`, context lines with spaces. Read the
+   expanded output to understand:
+   - What led to this moment
+   - What correction or decision followed
+   - What the outcome was
+
+   Be selective — expand the top 1–2 results, not all of them. Each expansion
+   costs context window space.
+
+4. **Practical examples**:
+   ```
+   # "I think we had a similar merge conflict issue before"
+   ve entity episodic --entity steward --query "merge conflict orchestrator"
+
+   # "What did the operator say about how to handle chunk creation?"
+   ve entity episodic --entity steward --query "chunk creation SOP correction"
+
+   # "I'm seeing a WebSocket timeout — have we debugged this before?"
+   ve entity episodic --entity steward --query "websocket timeout reconnect"
+   ```
+
+5. **Important caveats**:
+   - Episodic search only covers sessions run through `ve entity claude` (which
+     archives transcripts). Older sessions may not be indexed.
+   - The search is keyword-based (BM25), not semantic. Use specific terms from
+     the domain rather than abstract concepts.
+   - Expanding a hit costs context window space. Be selective.
+
+### Step 3: Update `src/templates/commands/entity-startup.md.jinja2`
+
+Insert a new Step 7 block immediately after the existing Step 6 ("Follow the
+touch protocol") and before the current Step 7 ("Restore active state"). Then
+renumber the existing Step 7 to Step 8.
+
+The new Step 7 to insert:
+
+```
+### Step 7: Episodic memory
+
+You can search your prior session transcripts for specific events, conversations,
+and decisions using episodic search:
+
+    ve entity episodic --entity <name> --query "..."
+
+Use this when you need context about what happened in a prior session, not just
+the distilled lessons in your memory. Run /entity-episodic for detailed usage.
+```
+
+After the insert, the original Step 7 heading becomes:
+
+```
+### Step 8: Restore active state
+```
+
+### Step 4: Re-render templates via `ve init`
+
+Run:
+```
+uv run ve init
+```
+
+This re-renders all templates in `src/templates/commands/` into
+`.claude/commands/`. Verify:
+- `.claude/commands/entity-episodic.md` exists and contains the rendered skill
+- `.claude/commands/entity-startup.md` contains the new Step 7 and the
+  renumbered Step 8
+
+### Step 5: Validate rendered output
+
+Spot-check both rendered files:
+- `entity-episodic.md` should open with the auto-generated header and contain
+  the two-phase workflow instructions
+- `entity-startup.md` should show Steps 1–8 with Step 7 being "Episodic memory"
+  and Step 8 being "Restore active state"
+
+No tests are needed for this chunk — the content is documentation, not logic.
+The success criteria from GOAL.md are verified by reading the rendered output.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `entity_episodic_search` must be ACTIVE (it is — the `ve entity episodic`
+  CLI command the skill teaches must exist before the skill is useful). ✓
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The `partials/common-tips.md.jinja2` and `partials/auto-generated-header.md.jinja2`
+  includes must be confirmed to exist before referencing them. Verify by reading
+  another entity template and following its include paths.
+- The `{% raw %}` / `{% endraw %}` wrapper is required because the template
+  examples contain `{{ }}` and `{% %}` syntax that Jinja2 would try to process.
+  Confirm the existing entity templates use this pattern before copying it.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
