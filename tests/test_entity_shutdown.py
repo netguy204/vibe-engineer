@@ -13,13 +13,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from entity_shutdown import (
+    EXTRACTION_PROMPT,
+    _format_transcript_text,
+    extract_memories_from_transcript,
     format_consolidation_prompt,
     parse_consolidation_response,
     parse_extracted_memories,
     run_consolidation,
+    shutdown_from_transcript,
     strip_code_fences,
 )
 from entities import Entities
+from entity_transcript import SessionTranscript, Turn
 from models.entity import MemoryCategory, MemoryFrontmatter, MemoryTier, MemoryValence
 
 
@@ -1154,3 +1159,237 @@ class TestRunConsolidation:
         assert "New memory 0" in prompt_text
         assert "New memory 1" in prompt_text
         assert "New memory 2" in prompt_text
+
+
+# ---------------------------------------------------------------------------
+# _format_transcript_text
+# ---------------------------------------------------------------------------
+
+
+def _make_turn(role: str, text: str) -> Turn:
+    return Turn(role=role, text=text, timestamp="2026-01-01T00:00:00Z", uuid="test-uuid")
+
+
+def _make_transcript(*turns: tuple[str, str]) -> SessionTranscript:
+    return SessionTranscript(
+        session_id="test-session",
+        turns=[_make_turn(role, text) for role, text in turns],
+    )
+
+
+class TestFormatTranscriptText:
+    def test_formats_user_and_assistant_turns(self):
+        transcript = _make_transcript(("user", "Hello"), ("assistant", "Hi there"))
+        result = _format_transcript_text(transcript)
+        assert result == "[USER]: Hello\n\n[ASSISTANT]: Hi there"
+
+    def test_empty_transcript_returns_empty_string(self):
+        transcript = _make_transcript()
+        result = _format_transcript_text(transcript)
+        assert result == ""
+
+    def test_truncates_to_max_chars(self):
+        # Build a transcript whose formatted text exceeds max_chars
+        transcript = _make_transcript(("user", "A" * 200), ("assistant", "B" * 200))
+        result = _format_transcript_text(transcript, max_chars=100)
+        assert len(result) <= 100
+
+    def test_truncation_cuts_from_front(self):
+        # The last part of the text should be preserved (most recent context)
+        transcript = _make_transcript(
+            ("user", "AAAA"),
+            ("assistant", "ZZZZ"),
+        )
+        # Full formatted text: "[USER]: AAAA\n\n[ASSISTANT]: ZZZZ"
+        full_text = "[USER]: AAAA\n\n[ASSISTANT]: ZZZZ"
+        # Truncate to last 15 chars
+        result = _format_transcript_text(transcript, max_chars=15)
+        assert result == full_text[-15:]
+
+    def test_multiple_turns_separated_by_double_newline(self):
+        transcript = _make_transcript(
+            ("user", "A"),
+            ("assistant", "B"),
+            ("user", "C"),
+        )
+        result = _format_transcript_text(transcript)
+        assert result == "[USER]: A\n\n[ASSISTANT]: B\n\n[USER]: C"
+
+
+# ---------------------------------------------------------------------------
+# extract_memories_from_transcript
+# ---------------------------------------------------------------------------
+
+
+class TestExtractMemoriesFromTranscript:
+    def test_returns_empty_json_for_empty_transcript(self):
+        transcript = _make_transcript()
+        with patch("entity_shutdown.anthropic") as mock_anthropic:
+            result = extract_memories_from_transcript(transcript)
+        assert result == "[]"
+        mock_anthropic.Anthropic.assert_not_called()
+
+    @patch("entity_shutdown.anthropic")
+    def test_calls_api_with_extraction_prompt_as_system(self, mock_anthropic):
+        transcript = _make_transcript(("user", "Hello"), ("assistant", "Hi"))
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[{"title": "test", "content": "c", "valence": "neutral", "category": "domain", "salience": 1}]')]
+        mock_client.messages.create.return_value = mock_response
+
+        extract_memories_from_transcript(transcript, api_key="test-key")
+
+        call_kwargs = mock_client.messages.create.call_args
+        assert call_kwargs.kwargs["system"] == EXTRACTION_PROMPT
+
+    @patch("entity_shutdown.anthropic")
+    def test_calls_api_with_formatted_transcript_as_user_message(self, mock_anthropic):
+        transcript = _make_transcript(("user", "Hello from user"), ("assistant", "Hi there"))
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="[]")]
+        mock_client.messages.create.return_value = mock_response
+
+        extract_memories_from_transcript(transcript, api_key="test-key")
+
+        call_kwargs = mock_client.messages.create.call_args
+        messages = call_kwargs.kwargs["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert "[USER]:" in messages[0]["content"]
+
+    @patch("entity_shutdown.anthropic")
+    def test_returns_raw_api_response_text(self, mock_anthropic):
+        transcript = _make_transcript(("user", "Hello"), ("assistant", "Hi"))
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        expected_text = '[{"title": "memory", "content": "stuff", "valence": "positive", "category": "skill", "salience": 3}]'
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=expected_text)]
+        mock_client.messages.create.return_value = mock_response
+
+        result = extract_memories_from_transcript(transcript, api_key="test-key")
+
+        assert result == expected_text
+
+    @patch("entity_shutdown.anthropic")
+    def test_truncates_large_transcript(self, mock_anthropic):
+        # Build turns with large text content
+        turns = [("user", "X" * 10_000), ("assistant", "Y" * 10_000)] * 6  # 120K chars formatted
+        transcript = _make_transcript(*turns)
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="[]")]
+        mock_client.messages.create.return_value = mock_response
+
+        extract_memories_from_transcript(transcript, api_key="test-key")
+
+        call_kwargs = mock_client.messages.create.call_args
+        user_content = call_kwargs.kwargs["messages"][0]["content"]
+        assert len(user_content) <= 100_000
+
+    @patch("entity_shutdown.anthropic")
+    def test_uses_claude_sonnet_model(self, mock_anthropic):
+        transcript = _make_transcript(("user", "Hello"), ("assistant", "Hi"))
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="[]")]
+        mock_client.messages.create.return_value = mock_response
+
+        extract_memories_from_transcript(transcript, api_key="test-key")
+
+        call_kwargs = mock_client.messages.create.call_args
+        assert call_kwargs.kwargs["model"] == "claude-sonnet-4-20250514"
+
+
+# ---------------------------------------------------------------------------
+# shutdown_from_transcript
+# ---------------------------------------------------------------------------
+
+
+class TestShutdownFromTranscript:
+    def _make_transcript(self):
+        return _make_transcript(("user", "Hello"), ("assistant", "Hi there"))
+
+    @patch("entity_shutdown.run_consolidation")
+    @patch("entity_shutdown.extract_memories_from_transcript")
+    def test_calls_extract_then_consolidation(
+        self, mock_extract, mock_consolidation, tmp_path
+    ):
+        transcript = self._make_transcript()
+        mock_extract.return_value = '[{"memories": "data"}]'
+        mock_consolidation.return_value = {"journals_added": 0, "consolidated": 0, "core": 0}
+
+        shutdown_from_transcript("mybot", transcript, tmp_path, api_key="test-key")
+
+        mock_extract.assert_called_once()
+        mock_consolidation.assert_called_once()
+        # extract output passed as extracted_memories_json to consolidation
+        call_kwargs = mock_consolidation.call_args
+        assert call_kwargs.kwargs["extracted_memories_json"] == '[{"memories": "data"}]'
+
+    @patch("entity_shutdown.run_consolidation")
+    @patch("entity_shutdown.extract_memories_from_transcript")
+    def test_passes_api_key_through(
+        self, mock_extract, mock_consolidation, tmp_path
+    ):
+        transcript = self._make_transcript()
+        mock_extract.return_value = "[]"
+        mock_consolidation.return_value = {}
+
+        shutdown_from_transcript("mybot", transcript, tmp_path, api_key="my-api-key")
+
+        call_kwargs = mock_extract.call_args
+        assert call_kwargs.kwargs.get("api_key") == "my-api-key" or call_kwargs.args[1] == "my-api-key"
+
+    @patch("entity_shutdown.run_consolidation")
+    @patch("entity_shutdown.extract_memories_from_transcript")
+    def test_passes_decay_config_through(
+        self, mock_extract, mock_consolidation, tmp_path
+    ):
+        from models.entity import DecayConfig
+        transcript = self._make_transcript()
+        mock_extract.return_value = "[]"
+        mock_consolidation.return_value = {}
+        decay_cfg = DecayConfig(journal_ttl_days=7)
+
+        shutdown_from_transcript("mybot", transcript, tmp_path, decay_config=decay_cfg)
+
+        call_kwargs = mock_consolidation.call_args
+        assert call_kwargs.kwargs.get("decay_config") == decay_cfg or call_kwargs.args[-1] == decay_cfg
+
+    @patch("entity_shutdown.run_consolidation")
+    @patch("entity_shutdown.extract_memories_from_transcript")
+    def test_returns_consolidation_summary(
+        self, mock_extract, mock_consolidation, tmp_path
+    ):
+        transcript = self._make_transcript()
+        mock_extract.return_value = "[]"
+        expected_summary = {"journals_added": 3, "consolidated": 2, "core": 1, "expired": 0, "demoted": 0}
+        mock_consolidation.return_value = expected_summary
+
+        result = shutdown_from_transcript("mybot", transcript, tmp_path)
+
+        assert result == expected_summary
+
+    @patch("entity_shutdown.anthropic")
+    @patch("entity_shutdown.run_consolidation")
+    def test_empty_transcript_completes_without_api_call(
+        self, mock_consolidation, mock_anthropic, tmp_path
+    ):
+        transcript = _make_transcript()  # empty
+        mock_consolidation.return_value = {"journals_added": 0, "consolidated": 0, "core": 0}
+
+        shutdown_from_transcript("mybot", transcript, tmp_path, api_key="test-key")
+
+        # No Anthropic client instantiated for empty transcript
+        mock_anthropic.Anthropic.assert_not_called()
+        # Consolidation still called
+        mock_consolidation.assert_called_once()
+        # With "[]" as extracted memories
+        call_kwargs = mock_consolidation.call_args
+        assert call_kwargs.kwargs["extracted_memories_json"] == "[]"

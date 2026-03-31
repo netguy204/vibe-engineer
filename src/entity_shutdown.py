@@ -26,6 +26,7 @@ except ModuleNotFoundError:
     anthropic = None
 
 from entity_decay import apply_decay
+from entity_transcript import SessionTranscript
 from models.entity import (
     DecayConfig,
     MemoryCategory,
@@ -394,6 +395,92 @@ def _snapshot_tiers(entity_dir: Path) -> None:
         tier_dir = memories_dir / tier_name
         if tier_dir.exists():
             shutil.copytree(tier_dir, snapshot_dir / tier_name)
+
+
+# ---------------------------------------------------------------------------
+# Transcript-based memory extraction (API fallback)
+# Chunk: docs/chunks/entity_api_memory_extraction - API fallback extraction
+# ---------------------------------------------------------------------------
+
+_MAX_TRANSCRIPT_CHARS = 100_000
+
+
+def _format_transcript_text(
+    transcript: SessionTranscript,
+    max_chars: int = _MAX_TRANSCRIPT_CHARS,
+) -> str:
+    """Render transcript turns as readable [USER]/[ASSISTANT] blocks.
+
+    Truncates to the last max_chars characters so long sessions don't
+    exceed API context limits.
+    """
+    blocks = []
+    for turn in transcript.turns:
+        label = "[USER]" if turn.role == "user" else "[ASSISTANT]"
+        blocks.append(f"{label}: {turn.text}")
+    text = "\n\n".join(blocks)
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    return text
+
+
+# Chunk: docs/chunks/entity_api_memory_extraction - API fallback extraction
+def extract_memories_from_transcript(
+    transcript: SessionTranscript,
+    api_key: str | None = None,
+) -> str:
+    """Extract memories from a session transcript via Anthropic API.
+
+    Formats the transcript as a readable conversation, sends it with
+    EXTRACTION_PROMPT to the API, and returns raw JSON string of
+    extracted memories (compatible with run_consolidation's
+    extracted_memories_json parameter).
+
+    Returns "[]" immediately for empty transcripts (no API call).
+    """
+    if not transcript.turns:
+        return "[]"
+
+    if anthropic is None:
+        raise RuntimeError(
+            "The 'anthropic' package is required for transcript-based memory "
+            "extraction. Install it with: pip install anthropic"
+        )
+
+    formatted = _format_transcript_text(transcript)
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        system=EXTRACTION_PROMPT,
+        messages=[{"role": "user", "content": formatted}],
+    )
+    return response.content[0].text
+
+
+# Chunk: docs/chunks/entity_api_memory_extraction - Full fallback shutdown pipeline
+def shutdown_from_transcript(
+    entity_name: str,
+    transcript: SessionTranscript,
+    project_dir: Path,
+    api_key: str | None = None,
+    decay_config: DecayConfig | None = None,
+) -> dict:
+    """Full shutdown pipeline using a transcript instead of agent-provided memories.
+
+    1. Extract memories from transcript via API
+    2. Run consolidation (journals → consolidated → core)
+    3. Apply decay
+    4. Return summary dict
+    """
+    extracted_json = extract_memories_from_transcript(transcript, api_key=api_key)
+    return run_consolidation(
+        entity_name=entity_name,
+        extracted_memories_json=extracted_json,
+        project_dir=project_dir,
+        api_key=api_key,
+        decay_config=decay_config,
+    )
 
 
 # ---------------------------------------------------------------------------

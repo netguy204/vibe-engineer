@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,153 +9,260 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add two functions to `src/entity_shutdown.py`:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`extract_memories_from_transcript(transcript, api_key)`** — a pure extraction
+   function that formats a `SessionTranscript` as readable conversation text and
+   calls the Anthropic API with the existing `EXTRACTION_PROMPT` as the system
+   message. Returns the raw JSON string the API produces (already compatible with
+   `parse_extracted_memories`).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **`shutdown_from_transcript(entity_name, transcript, project_dir, api_key,
+   decay_config)`** — the full fallback pipeline: call `extract_memories_from_transcript`,
+   then hand the result straight to the existing `run_consolidation()`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_api_memory_extraction/GOAL.md)
-with references to the files that you expect to touch.
--->
+A private helper `_format_transcript_text(transcript, max_chars)` handles:
+- Rendering each `Turn` as a `[USER]: ...` / `[ASSISTANT]: ...` block with double-newline
+  separation
+- Truncating the formatted string to the last `max_chars` characters (default 100 000)
+  so very long sessions don't exceed API limits
+
+The API call mirrors the pattern already used in `run_consolidation()`:
+```python
+client = anthropic.Anthropic(api_key=api_key)
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=4096,
+    system=EXTRACTION_PROMPT,
+    messages=[{"role": "user", "content": formatted_text}],
+)
+```
+
+Empty transcripts (`turns == []`) are handled without an API call — the function
+returns `"[]"` immediately, which `parse_extracted_memories` correctly parses as an
+empty list.
+
+Following the project's TDD philosophy: tests are written first (failing), then
+the implementation is written to make them pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No existing entity subsystem is documented. The entity shutdown / memory pipeline
+is a cluster of related `entity_*` chunks but has not yet been captured as a
+subsystem. This chunk is not the right place to formalize that — it's a focused
+addition to an existing module.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `_format_transcript_text`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `tests/test_entity_shutdown.py`, add a `TestFormatTranscriptText` class that
+imports and tests the private helper (tests can access private functions directly).
 
-Example:
+Tests to write:
+- `test_formats_user_and_assistant_turns` — two turns produce the expected
+  `[USER]: ...\n\n[ASSISTANT]: ...` string.
+- `test_empty_transcript_returns_empty_string` — zero turns → empty string.
+- `test_truncates_to_max_chars` — a transcript that would exceed `max_chars` is
+  truncated to that length (i.e. `len(result) <= max_chars`).
+- `test_truncation_cuts_from_front` — truncation keeps the *last* `max_chars`
+  characters (most recent context is preserved).
 
-### Step 1: Define the SegmentHeader struct
+All tests must fail at this point (`_format_transcript_text` doesn't exist yet).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Implement `_format_transcript_text`
 
-Location: src/segment/format.rs
+Add the private helper to `src/entity_shutdown.py`, just before
+`extract_memories_from_transcript`:
 
-### Step 2: Implement header serialization
+```python
+_MAX_TRANSCRIPT_CHARS = 100_000
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+def _format_transcript_text(
+    transcript: SessionTranscript,
+    max_chars: int = _MAX_TRANSCRIPT_CHARS,
+) -> str:
+    """Render transcript turns as readable [USER]/[ASSISTANT] blocks.
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Truncates to the last max_chars characters so long sessions don't
+    exceed API context limits.
+    """
+    blocks = []
+    for turn in transcript.turns:
+        label = "[USER]" if turn.role == "user" else "[ASSISTANT]"
+        blocks.append(f"{label}: {turn.text}")
+    text = "\n\n".join(blocks)
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    return text
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Run the Step 1 tests — they should now pass.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Write failing tests for `extract_memories_from_transcript`
+
+In `tests/test_entity_shutdown.py`, add `TestExtractMemoriesFromTranscript`:
+
+- `test_returns_empty_json_for_empty_transcript` — `SessionTranscript` with no
+  turns → function returns `"[]"` without making any API call (assert the
+  anthropic mock is NOT called).
+- `test_calls_api_with_extraction_prompt_as_system` — non-empty transcript →
+  the mocked `client.messages.create` is called with `system=EXTRACTION_PROMPT`.
+- `test_calls_api_with_formatted_transcript_as_user_message` — the `messages`
+  kwarg contains a user message whose content includes `"[USER]:"` (verifying
+  the formatter was used).
+- `test_returns_raw_api_response_text` — the function returns exactly the text
+  from `response.content[0].text`, not a parsed form.
+- `test_truncates_large_transcript` — build a transcript where each turn has 10K
+  chars of text; assert the user message sent to the API is ≤ 100 000 chars.
+- `test_uses_claude_sonnet_model` — assert `model="claude-sonnet-4-20250514"`.
+
+Use `unittest.mock.patch("entity_shutdown.anthropic")` as done in existing
+shutdown tests.
+
+All tests must fail before implementation.
+
+### Step 4: Implement `extract_memories_from_transcript`
+
+Add the function to `src/entity_shutdown.py` immediately after
+`_format_transcript_text`:
+
+```python
+# Chunk: docs/chunks/entity_api_memory_extraction - API fallback extraction
+def extract_memories_from_transcript(
+    transcript: SessionTranscript,
+    api_key: str | None = None,
+) -> str:
+    """Extract memories from a session transcript via Anthropic API.
+
+    Formats the transcript as a readable conversation, sends it with
+    EXTRACTION_PROMPT to the API, and returns raw JSON string of
+    extracted memories (compatible with run_consolidation's
+    extracted_memories_json parameter).
+
+    Returns "[]" immediately for empty transcripts (no API call).
+    """
+    if not transcript.turns:
+        return "[]"
+
+    if anthropic is None:
+        raise RuntimeError(
+            "The 'anthropic' package is required for transcript-based memory "
+            "extraction. Install it with: pip install anthropic"
+        )
+
+    formatted = _format_transcript_text(transcript)
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        system=EXTRACTION_PROMPT,
+        messages=[{"role": "user", "content": formatted}],
+    )
+    return response.content[0].text
+```
+
+Add `SessionTranscript` to the import from `entity_transcript`:
+```python
+from entity_transcript import SessionTranscript
+```
+
+Run Step 3 tests — all should pass.
+
+### Step 5: Write failing tests for `shutdown_from_transcript`
+
+In `tests/test_entity_shutdown.py`, add `TestShutdownFromTranscript`:
+
+- `test_calls_extract_then_consolidation` — patch both
+  `entity_shutdown.extract_memories_from_transcript` and
+  `entity_shutdown.run_consolidation`; assert both are called in order, and that
+  `run_consolidation` receives the output of the extract call as
+  `extracted_memories_json`.
+- `test_passes_api_key_through` — assert `extract_memories_from_transcript` is
+  called with the provided `api_key`.
+- `test_passes_decay_config_through` — assert `run_consolidation` is called with
+  the provided `decay_config`.
+- `test_returns_consolidation_summary` — assert the return value of
+  `shutdown_from_transcript` matches the mock return value from `run_consolidation`.
+- `test_empty_transcript_completes_without_api_call` — empty transcript: extract
+  returns `"[]"`, `run_consolidation` is still called (so journals/decay run), but
+  no Anthropic client is instantiated.
+
+All tests must fail before implementation.
+
+### Step 6: Implement `shutdown_from_transcript`
+
+Add immediately after `extract_memories_from_transcript`:
+
+```python
+# Chunk: docs/chunks/entity_api_memory_extraction - Full fallback shutdown pipeline
+def shutdown_from_transcript(
+    entity_name: str,
+    transcript: SessionTranscript,
+    project_dir: Path,
+    api_key: str | None = None,
+    decay_config: DecayConfig | None = None,
+) -> dict:
+    """Full shutdown pipeline using a transcript instead of agent-provided memories.
+
+    1. Extract memories from transcript via API
+    2. Run consolidation (journals → consolidated → core)
+    3. Apply decay
+    4. Return summary dict
+    """
+    extracted_json = extract_memories_from_transcript(transcript, api_key=api_key)
+    return run_consolidation(
+        entity_name=entity_name,
+        extracted_memories_json=extracted_json,
+        project_dir=project_dir,
+        api_key=api_key,
+        decay_config=decay_config,
+    )
+```
+
+Run Step 5 tests — all should pass.
+
+### Step 7: Update GOAL.md code_paths
+
+Update the `code_paths` field in `docs/chunks/entity_api_memory_extraction/GOAL.md`:
+
+```yaml
+code_paths:
+  - src/entity_shutdown.py
+  - tests/test_entity_shutdown.py
+```
+
+### Step 8: Run the full test suite
+
+```bash
+uv run pytest tests/
+```
+
+All tests must pass, including the existing shutdown tests. If any pre-existing
+tests break (e.g., import changes), fix them before completing the chunk.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `entity_transcript_extractor` chunk must be complete — this chunk imports
+  `SessionTranscript` from `src/entity_transcript.py`.
+- The `anthropic` Python package must be available (it's already a project
+  dependency — existing consolidation code uses it).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`SessionTranscript` import placement**: `entity_shutdown.py` currently has no
+  import from `entity_transcript`. Adding it at module top-level is clean, but we
+  must verify there are no circular imports (both live in `src/` alongside
+  `entities.py`, `entity_decay.py`, etc.).
+- **`max_tokens` for extraction**: The EXTRACTION_PROMPT asks for 5–20 memories as
+  a JSON array. 4096 tokens should be more than sufficient, but if sessions are
+  pathologically long and the model tries to extract many memories, we may need to
+  bump to 8192. Start at 4096 and note the risk.
+- **Very large transcripts**: The 100K char truncation keeps the *tail* of the
+  session. For most workflows this is right (the most recent interactions are most
+  memory-worthy). But it may miss important early-session corrections. If this
+  becomes a problem, a future chunk can implement smarter summarization or chunked
+  extraction.
 
 ## Deviations
 
@@ -167,13 +273,4 @@ When reality diverges from the plan, document it here:
 - What changed?
 - Why?
 - What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

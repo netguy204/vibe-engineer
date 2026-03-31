@@ -1,18 +1,21 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/entity_shutdown.py
+- tests/test_entity_shutdown.py
 code_references: []
 narrative: null
 investigation: entity_session_harness
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_transcript_extractor"]
-created_after: ["entity_session_tracking"]
+depends_on:
+- entity_transcript_extractor
+created_after:
+- entity_session_tracking
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
