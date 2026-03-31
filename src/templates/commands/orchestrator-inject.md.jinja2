@@ -1,0 +1,91 @@
+---
+description: "Commit and inject a chunk into the orchestrator for background execution."
+---
+{% set source_template = "orchestrator-inject.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/skill_orchestrator_inject - Orchestrator inject slash command #}
+
+## Tips
+
+{% include "partials/common-tips.md.jinja2" %}
+
+## Instructions
+
+{% raw %}
+Inject a chunk into the orchestrator for background execution, with a pre-flight
+commit check to ensure the chunk files are available in the worktree.
+
+### Step 1: Argument Parsing
+
+**Input:** `$ARGUMENTS`
+
+Parse the arguments for an optional chunk name (positional).
+
+Example invocations:
+```
+/orchestrator-inject my_chunk
+/orchestrator-inject
+```
+
+If no chunk name is provided, run `ve chunk list --current` to resolve the
+current IMPLEMENTING chunk. If that returns nothing, run `ve chunk list` and
+look for FUTURE chunks. If still ambiguous, ask the operator which chunk to
+inject.
+
+Store the resolved chunk name as `<chunk>` for subsequent steps.
+
+---
+
+### Step 2: Pre-flight — Ensure chunk is committed
+
+Run `git status --porcelain docs/chunks/<chunk>/` to check if GOAL.md or
+PLAN.md have uncommitted changes (modified, untracked, etc.).
+
+**If changes exist:**
+
+1. Stage the chunk files:
+   ```bash
+   git add docs/chunks/<chunk>/GOAL.md docs/chunks/<chunk>/PLAN.md
+   ```
+
+2. Commit with a conventional message:
+   ```bash
+   git commit -m "docs: commit <chunk> for orchestrator injection"
+   ```
+
+3. Report to the operator that files were auto-committed.
+
+**If the chunk files are already committed and clean:**
+
+Report that the chunk files are already committed and skip to Step 3.
+
+**If git is not available** (the `git status` command fails):
+
+Skip the commit step and proceed to Step 3. The orchestrator requires git
+for worktrees, so this scenario is unlikely but should be handled gracefully.
+
+---
+
+### Step 3: Ensure orchestrator is running
+
+Run `ve orch status`. If the orchestrator is not running, start it with
+`ve orch start`.
+
+---
+
+### Step 4: Inject the chunk
+
+Run `ve orch inject <chunk>` and capture the output. Report success or
+failure to the operator.
+
+---
+
+### Step 5: Offer monitoring
+
+After successful injection, suggest:
+
+> Would you like me to monitor this chunk? I can run
+> `/orchestrator-monitor <chunk>`.
+
+Do not auto-start monitoring unless the operator confirms.
+{% endraw %}

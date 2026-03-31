@@ -88,7 +88,7 @@ Manages parallel chunk execution across worktrees. **Read when**:
 
 See: `docs/trunk/ORCHESTRATOR.md`
 
-Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+Commands: `/orchestrator-inject`, `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
 
 ## Code Backreferences
 
@@ -110,6 +110,8 @@ Use these slash commands for artifact management:
 - `/chunk-create` - Create a new chunk and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
+
+- `/chunk-execute` - Run a chunk's full lifecycle (plan → implement → complete) in the current session
 
 - `/chunk-review` - Review chunk implementation for alignment with documented intent
 - `/chunk-complete` - Mark a chunk complete and update references

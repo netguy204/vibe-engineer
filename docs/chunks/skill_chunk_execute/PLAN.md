@@ -10,153 +10,132 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new Jinja2 command template `chunk-execute.md.jinja2` that orchestrates
+the plan → implement → complete lifecycle inline (same agent, same session). This
+follows the established pattern: each slash command is a rendered Jinja2 template
+in `src/templates/commands/` that becomes a `.claude/commands/*.md` file after
+`ve init`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The skill delegates to the existing `/chunk-plan`, `/chunk-implement`, and
+`/chunk-complete` skills sequentially, with guard checks between each stage. It
+does NOT re-implement any of those skills' logic — it composes them.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The CLAUDE.md template must also be updated to list `/chunk-execute` in the
+Available Commands section, with a description that differentiates it from
+orchestrator injection (per DEC-005, we don't prescribe git ops; per DEC-007,
+the orchestrator is the daemon-based parallel path).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/skill_chunk_execute/GOAL.md)
-with references to the files that you expect to touch.
--->
+No Python code changes needed — this is purely a template/documentation change.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system
+  to create a new command template and update the CLAUDE.md template. Both follow
+  established patterns (Jinja2 templates, `ve init` rendering). No deviations expected.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the chunk-execute command template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/chunk-execute.md.jinja2` following the established
+pattern from existing command templates.
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
+**Frontmatter:**
+```yaml
 ---
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+description: "Run a chunk's full plan → implement → complete cycle in the current session. Use /chunk-execute to run a chunk inline. Use ve orch inject to delegate to a background agent."
+---
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The description must serve double duty: it's what Claude Code uses for skill
+matching AND what differentiates this from orchestrator injection. It should
+trigger on phrases like "execute the chunk", "implement the chunk in this
+session", "run the chunk lifecycle".
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Template structure:**
+- Include `partials/auto-generated-header.md.jinja2`
+- Include `partials/common-tips.md.jinja2`
+- Task context conditional block (like other commands)
+
+**Instructions section — the core logic:**
+
+1. Accept an optional chunk name argument. If not provided, determine the
+   current IMPLEMENTING chunk via `ve chunk list --current`.
+
+2. **Plan phase guard:** Check if `<chunk directory>/PLAN.md` already has
+   content beyond the template skeleton. If it's still a bare template (look
+   for the `## Approach` section being empty / still containing only HTML
+   comments), invoke `/chunk-plan`. If a plan already exists, skip this step
+   and report "Plan already exists, skipping /chunk-plan".
+
+3. **Implement phase:** Invoke `/chunk-implement` to execute the plan.
+
+4. **Error gate:** If implementation encounters errors, STOP and report the
+   error to the operator. Do NOT proceed to the complete phase. The operator
+   may want to intervene, run `/chunk-review`, or adjust the plan.
+
+5. **Complete phase:** Invoke `/chunk-complete` to finalize code references,
+   run overlap analysis, and transition the chunk to ACTIVE/HISTORICAL status.
+
+6. **Summary:** Report the final status of the chunk execution — which phases
+   ran, whether any were skipped, and the chunk's final status.
+
+Location: `src/templates/commands/chunk-execute.md.jinja2`
+
+### Step 2: Add /chunk-execute to the CLAUDE.md template
+
+Update `src/templates/claude/CLAUDE.md.jinja2` to list `/chunk-execute` in the
+Available Commands section. Place it after `/chunk-implement` and before
+`/chunk-review`, since it logically encompasses plan + implement + complete:
+
+```
+- `/chunk-execute` - Run a chunk's full lifecycle (plan → implement → complete) in the current session
+```
+
+Add a chunk backreference comment above the line for traceability.
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 3: Render and verify
+
+Run `uv run ve init` to render the templates and verify:
+- `.claude/commands/chunk-execute.md` is created
+- `CLAUDE.md` lists `/chunk-execute`
+- The rendered output matches expectations (no Jinja2 syntax errors)
+
+### Step 4: Test template rendering
+
+Since this is a template-only change, testing follows the project's convention:
+"We verify templates render without error and files are created, but don't assert
+on template prose" (per TESTING_PHILOSOPHY.md).
+
+Run the existing test suite (`uv run pytest tests/`) to ensure no regressions in
+template rendering. If there are existing tests for `ve init` or command template
+rendering, verify the new template is included in their coverage.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. This chunk composes three existing skills
+(`/chunk-plan`, `/chunk-implement`, `/chunk-complete`) that are already
+implemented and rendered.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Plan detection heuristic:** Determining whether a PLAN.md is "already filled
+  in" vs "still a bare template" relies on checking whether the `## Approach`
+  section contains only HTML comments. This is fragile if the template structure
+  changes. Mitigation: keep the heuristic simple and document it clearly. The
+  agent executing the skill can use judgment.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Error propagation between phases:** The skill instructs the agent to "STOP if
+  implementation has errors", but the definition of "error" is subjective when an
+  agent is executing code. This is acceptable because the agent has judgment, and
+  the instruction is a guideline, not a programmatic check.
+
+- **Task context compatibility:** The skill needs to work both in single-project
+  and multi-project (task) contexts. The existing sub-skills already handle task
+  context via Jinja2 conditionals, so chunk-execute just needs to include the
+  same conditional blocks for tips/context.
 
 ## Deviations
 
