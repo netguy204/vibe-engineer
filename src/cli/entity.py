@@ -223,3 +223,95 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
     click.echo(f"  Journals processed: {result['journals_consolidated']}")
     click.echo(f"  Consolidated:    {result['consolidated']}")
     click.echo(f"  Core:            {result['core']}")
+
+
+# Chunk: docs/chunks/entity_episodic_search
+@entity.command("episodic")
+@click.option("--entity", "entity_name", required=True, help="Entity name")
+@click.option("--query", default=None, help="Search query (search mode)")
+@click.option(
+    "--expand",
+    "expand_session",
+    default=None,
+    metavar="SESSION_ID",
+    help="Session ID to expand around (expand mode)",
+)
+@click.option(
+    "--chunk",
+    "expand_chunk_id",
+    type=int,
+    default=None,
+    help="Chunk ID to expand (required with --expand)",
+)
+@click.option(
+    "--radius",
+    default=10,
+    show_default=True,
+    help="Number of turns to include before/after in expand mode",
+)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def episodic(
+    entity_name: str,
+    query: str | None,
+    expand_session: str | None,
+    expand_chunk_id: int | None,
+    radius: int,
+    project_dir: pathlib.Path | None,
+) -> None:
+    """Search or expand episodic memory from archived session transcripts.
+
+    Search mode: --entity <name> --query "..."
+    Expand mode: --entity <name> --expand <session_id> --chunk <id>
+    """
+    from entity_episodic import EpisodicStore
+
+    # Validate mutual exclusion
+    if query is None and expand_session is None:
+        raise click.ClickException(
+            "Provide either --query (search mode) or --expand (expand mode)"
+        )
+
+    project_dir = resolve_entity_project_dir(project_dir)
+    entities = Entities(project_dir)
+
+    if not entities.entity_exists(entity_name):
+        raise click.ClickException(f"Entity '{entity_name}' not found")
+
+    store = EpisodicStore(entities.entity_dir(entity_name))
+
+    if query is not None:
+        # Search mode
+        store.build_or_update(entity_name)
+        results = store.search(query, entity_name=entity_name)
+        if not results:
+            click.echo(f'No results for "{query}"')
+            return
+
+        # Count unique sessions
+        unique_sessions = len({r.session_id for r in results})
+        click.echo(
+            f'Results for "{query}" ({len(results)} matches across {unique_sessions} sessions):\n'
+        )
+        for r in results:
+            click.echo(
+                f"[{r.rank}] score={r.score:.2f} session={r.session_id[:8]} date={r.timestamp}"
+            )
+            click.echo(f"    {r.preview}")
+            click.echo(f"    → expand: {r.expand_cmd}")
+            click.echo("")
+
+    else:
+        # Expand mode
+        if expand_chunk_id is None:
+            raise click.ClickException("--chunk is required with --expand")
+
+        expanded = store.expand(expand_session, expand_chunk_id, radius)
+        if expanded is None:
+            raise click.ClickException(
+                f"Session '{expand_session}' chunk {expand_chunk_id} not found"
+            )
+        click.echo(expanded)
