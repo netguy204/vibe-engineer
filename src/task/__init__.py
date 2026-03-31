@@ -94,6 +94,7 @@ from task.external import (
 from task.demote import (
     demote_artifact,
     scan_demotable_artifacts,
+    read_artifact_frontmatter,
 )
 
 # Friction operations
@@ -165,6 +166,7 @@ __all__ = [
     # Demotion
     "demote_artifact",
     "scan_demotable_artifacts",
+    "read_artifact_frontmatter",
     # Friction
     "create_task_friction_entry",
     "add_external_friction_source",

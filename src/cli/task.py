@@ -73,6 +73,8 @@ def demote(artifact, auto, apply, project, cwd):
         ve task demote --auto                # Dry-run: list demotable artifacts
         ve task demote --auto --apply        # Demote all single-project artifacts
     """
+    from external_refs import ARTIFACT_DIR_NAME
+    from models import ArtifactType
     from task import TaskDemoteError
     from task.demote import demote_artifact as _demote_artifact, scan_demotable_artifacts
 
@@ -129,7 +131,7 @@ def demote(artifact, auto, apply, project, cwd):
                 try:
                     result = _demote_artifact(
                         task_dir=cwd,
-                        artifact_path=f"docs/{ARTIFACT_DIR_NAMES[c['artifact_type']]}/{c['artifact_id']}",
+                        artifact_path=f"docs/{ARTIFACT_DIR_NAME[ArtifactType(c['artifact_type'])]}/{c['artifact_id']}",
                         target_project=c["target_project"],
                     )
                     demoted.append(result)
@@ -147,10 +149,3 @@ def demote(artifact, auto, apply, project, cwd):
         raise SystemExit(1)
 
 
-# Mapping from artifact type value to directory name for auto-apply path construction
-ARTIFACT_DIR_NAMES = {
-    "chunk": "chunks",
-    "narrative": "narratives",
-    "investigation": "investigations",
-    "subsystem": "subsystems",
-}

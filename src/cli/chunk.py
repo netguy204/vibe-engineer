@@ -552,7 +552,7 @@ def _complete_task_chunk(chunk_id, task_dir):
         get_current_task_chunk,
         TaskDemoteError,
     )
-    from task.demote import demote_artifact, _read_artifact_frontmatter
+    from task.demote import demote_artifact, read_artifact_frontmatter
 
     config = load_task_config(task_dir)
     external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
@@ -587,7 +587,7 @@ def _complete_task_chunk(chunk_id, task_dir):
 
     # Auto-demote if single-project
     chunk_path = external_repo_path / "docs" / "chunks" / chunk_name
-    frontmatter = _read_artifact_frontmatter(chunk_path, ArtifactType.CHUNK)
+    frontmatter = read_artifact_frontmatter(chunk_path, ArtifactType.CHUNK)
     dependents = frontmatter.get("dependents", []) or []
 
     if len(dependents) == 1:
@@ -616,18 +616,53 @@ def _auto_demote_if_eligible(context, chunk_name):
     """Check if a completed chunk should be auto-demoted from external to local.
 
     Called when chunk-complete runs from within a task's project directory.
+    Checks if there is a corresponding external artifact in the task's external
+    repo that has this project as its sole dependent. If so, the external copy
+    is now orphaned and we log a note. If the chunk itself is still an external
+    reference (external.yaml present), we attempt to demote it.
     """
-    from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
-    from task import TaskDemoteError
-    from task.demote import demote_artifact, _read_artifact_frontmatter
+    from models import ArtifactType
+    from task import TaskDemoteError, load_task_config, resolve_repo_directory
+    from task.demote import demote_artifact, read_artifact_frontmatter
 
-    # Check if the chunk is an external reference
-    chunk_dir = context.task_dir / ".." / context.project_ref.split("/")[-1] / "docs" / "chunks" / chunk_name
-    # The chunk was just completed locally - check if there's also an external reference
-    # This path is for when running from within a project that's part of a task
-    # The external.yaml would have been in the local project's docs/chunks/
-    # But since we just completed it locally, it's already local - skip demotion
-    pass
+    try:
+        config = load_task_config(context.task_dir)
+        project_path = resolve_repo_directory(context.task_dir, context.project_ref)
+        external_repo_path = resolve_repo_directory(
+            context.task_dir, config.external_artifact_repo
+        )
+    except (FileNotFoundError, Exception):
+        return
+
+    chunk_dir = project_path / "docs" / "chunks" / chunk_name
+
+    # If the chunk still has an external.yaml, it's an external reference — demote it
+    if (chunk_dir / "external.yaml").exists():
+        try:
+            result = demote_artifact(
+                task_dir=context.task_dir,
+                artifact_path=f"docs/chunks/{chunk_name}",
+            )
+            click.echo(
+                f"Auto-demoted chunk '{chunk_name}' to {result['target_project']} "
+                f"(single-project artifact)"
+            )
+        except TaskDemoteError as e:
+            click.echo(f"Note: chunk '{chunk_name}' not auto-demoted: {e}", err=True)
+        return
+
+    # Chunk is already local — check if there's an external copy that's now orphaned
+    ext_chunk_path = external_repo_path / "docs" / "chunks" / chunk_name
+    if not ext_chunk_path.exists():
+        return
+
+    frontmatter = read_artifact_frontmatter(ext_chunk_path, ArtifactType.CHUNK)
+    dependents = frontmatter.get("dependents", []) or []
+
+    if len(dependents) == 0:
+        click.echo(
+            f"Note: external copy of '{chunk_name}' has no remaining dependents"
+        )
 
 
 # Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode

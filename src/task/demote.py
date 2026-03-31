@@ -32,7 +32,7 @@ from task.exceptions import TaskDemoteError
 from task.external import remove_dependent_from_artifact
 
 
-def _read_artifact_frontmatter(artifact_path: Path, artifact_type: ArtifactType) -> dict:
+def read_artifact_frontmatter(artifact_path: Path, artifact_type: ArtifactType) -> dict:
     """Read and parse the frontmatter from an artifact's main file.
 
     Args:
@@ -120,7 +120,7 @@ def demote_artifact(
         )
 
     # 5. Read frontmatter to get dependents list
-    frontmatter = _read_artifact_frontmatter(source_path, artifact_type)
+    frontmatter = read_artifact_frontmatter(source_path, artifact_type)
     dependents = frontmatter.get("dependents", []) or []
 
     # 6. Validate exactly one dependent (or target_project specified)
@@ -222,7 +222,7 @@ def demote_artifact(
         pass
 
     # 12. Check if external artifact is now orphaned (no remaining dependents)
-    updated_frontmatter = _read_artifact_frontmatter(source_path, artifact_type)
+    updated_frontmatter = read_artifact_frontmatter(source_path, artifact_type)
     remaining_dependents = updated_frontmatter.get("dependents", []) or []
     external_cleaned = len(remaining_dependents) == 0
 
@@ -293,7 +293,7 @@ def scan_demotable_artifacts(
             artifact_id = artifact_dir.name
 
             # Read frontmatter
-            frontmatter = _read_artifact_frontmatter(artifact_dir, artifact_type)
+            frontmatter = read_artifact_frontmatter(artifact_dir, artifact_type)
             dependents = frontmatter.get("dependents", []) or []
 
             if len(dependents) == 1:
