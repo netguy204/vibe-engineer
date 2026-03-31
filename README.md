@@ -4,9 +4,21 @@ Documentation-driven development workflow tooling. Vibe Engineer helps you maint
 
 ## Installation
 
-### Global Installation with UV
+### From PyPI
 
-Install `ve` as a globally available command using UV:
+```bash
+pip install vibe-engineer
+```
+
+Or with UV:
+
+```bash
+uv tool install vibe-engineer
+```
+
+### From Git
+
+Install directly from the repository:
 
 ```bash
 uv tool install git+https://github.com/netguy204/vibe-engineer.git
@@ -271,6 +283,25 @@ vibe-engineer/
 │   ├── trunk/         # Project documentation
 │   └── chunks/        # Work chunks
 └── pyproject.toml     # Project configuration
+```
+
+## Releasing
+
+Releases are published to [PyPI](https://pypi.org/project/vibe-engineer/) automatically when a version tag is pushed.
+
+1. Update the version in `pyproject.toml`
+2. Commit the version bump: `git commit -am "chore: bump version to 0.2.0"`
+3. Tag the release: `git tag v0.2.0`
+4. Push the tag: `git push origin v0.2.0`
+
+GitHub Actions will build the package and publish it to PyPI using trusted publishing (OIDC).
+
+**First-time setup:** Before the first release, configure a [trusted publisher](https://docs.pypi.org/trusted-publishers/) on pypi.org linking the `netguy204/vibe-engineer` repository and the `publish.yml` workflow to the `vibe-engineer` PyPI project. Create a GitHub environment named `pypi` in the repository settings.
+
+After publishing, users can install with:
+
+```bash
+pip install vibe-engineer
 ```
 
 ## License

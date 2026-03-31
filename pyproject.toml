@@ -4,6 +4,20 @@ version = "0.1.0"
 description = "Documentation-driven development workflow tooling"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+authors = [
+    { name = "Brian Taylor", email = "el.wansen@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Documentation",
+]
 dependencies = [
     "anthropic>=0.40.0",
     "base58>=2.1.0",
@@ -24,6 +38,12 @@ dependencies = [
 
 [project.scripts]
 ve = "ve:cli"
+
+[project.urls]
+Homepage = "https://veng.dev"
+Repository = "https://github.com/netguy204/vibe-engineer"
+Documentation = "https://veng.dev"
+Issues = "https://github.com/netguy204/vibe-engineer/issues"
 
 [build-system]
 requires = ["hatchling"]
