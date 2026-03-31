@@ -3,14 +3,14 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
+  - src/models/references.py
   - src/templates/commands/chunk-create.md.jinja2
   - tests/test_models.py
   - tests/test_narratives.py
 code_references:
-  - ref: src/models.py#ProposedChunk
+  - ref: src/models/references.py#ProposedChunk
     implements: "Model with depends_on field for index-based dependencies in narrative proposed_chunks"
-  - ref: src/models.py#ProposedChunk::validate_depends_on
+  - ref: src/models/references.py#ProposedChunk::validate_depends_on
     implements: "Field validator ensuring depends_on indices are non-negative"
   - ref: src/templates/commands/chunk-create.md.jinja2
     implements: "Agent instructions for detecting and resolving dependencies from narrative proposed_chunks"

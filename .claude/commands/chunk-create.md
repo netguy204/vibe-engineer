@@ -1,5 +1,5 @@
 ---
-description: Create a new chunk of work and refine its goal.
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new work, chunk something, define a piece of work, or break work into a chunk.
 ---
 
 
@@ -61,6 +61,30 @@ completely in order:
    the user has described, ask them any questions required to complete the
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
+
+   **Critical: Capture conversation context for the implementing agent.**
+   The agent that implements this chunk will work in a separate session with NO
+   access to this conversation. Everything the implementing agent needs must be
+   written into the GOAL.md. As you refine the goal, actively extract and embed:
+
+   - **File paths and symbols** — Specific files, functions, classes, or config
+     keys referenced in discussion. Don't say "the parser"; say
+     "`src/parser/core.py#Parser.parse_block`".
+   - **Error messages and reproduction steps** — For bugs, include the exact
+     error text, stack traces, and steps to trigger the issue.
+   - **Design decisions and rejected alternatives** — If the operator considered
+     approach A but chose B, record both and the reasoning. This prevents the
+     implementing agent from re-proposing rejected ideas.
+   - **Code patterns or snippets** — If the operator showed example code,
+     described a desired API shape, or referenced existing patterns to follow,
+     include them verbatim.
+   - **Operator preferences and constraints** — Performance requirements, style
+     preferences, backward-compatibility needs, or any "make sure to..." notes.
+   - **Related artifacts** — Link to relevant chunks, investigations,
+     subsystems, or narratives that provide additional context.
+
+   The goal is **self-contained**: an agent reading only the GOAL.md should have
+   everything needed to plan and implement without asking follow-up questions.
 
 5. **Check if this chunk comes from a narrative or investigation with dependencies.**
 
