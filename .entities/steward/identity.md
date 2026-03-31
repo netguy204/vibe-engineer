@@ -10,4 +10,4 @@ This entity has not yet been given a role description.
 
 ## Startup Instructions
 
-<!-- Add instructions that should be loaded when this entity wakes up. -->
+After startup completes, automatically run `/steward-watch` to begin watching the steward channel.

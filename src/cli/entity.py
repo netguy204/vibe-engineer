@@ -9,6 +9,7 @@ Commands for managing entities - long-running agent personas with persistent mem
 """
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -249,6 +250,36 @@ def _read_session_id_from_pid_file(
         return None
 
 
+def _find_most_recent_session(
+    project_path: str,
+    after_timestamp: float,
+    claude_home: pathlib.Path | None = None,
+) -> str | None:
+    """Find the most recently modified session JSONL for a project.
+
+    Claude Code cleans up PID files on exit, so this is a fallback for
+    extracting the session ID by finding the JSONL that was modified
+    after a given timestamp (the session start time).
+
+    Returns the sessionId string, or None if no matching session is found.
+    """
+    if claude_home is None:
+        claude_home = pathlib.Path.home() / ".claude"
+    encoded = "-" + project_path.strip("/").replace("/", "-")
+    sessions_dir = claude_home / "projects" / encoded
+    if not sessions_dir.exists():
+        return None
+
+    best_session: str | None = None
+    best_mtime: float = 0.0
+    for jsonl_file in sessions_dir.glob("*.jsonl"):
+        mtime = jsonl_file.stat().st_mtime
+        if mtime > after_timestamp and mtime > best_mtime:
+            best_mtime = mtime
+            best_session = jsonl_file.stem
+    return best_session
+
+
 # Chunk: docs/chunks/entity_claude_wrapper - Full entity session lifecycle
 @entity.command("claude")
 @click.option("--entity", "entity_name", required=True, help="Entity name")
@@ -263,7 +294,13 @@ def _read_session_id_from_pid_file(
     default=300,
     help="Seconds to wait for resume-based shutdown (default: 300)",
 )
-def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeout: int) -> None:
+@click.option(
+    "--megaclaude",
+    is_flag=True,
+    default=False,
+    help="Launch with agent teams and skip-permissions (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true --dangerously-skip-permissions)",
+)
+def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeout: int, megaclaude: bool) -> None:
     """Launch Claude Code with entity lifecycle management."""
     project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
@@ -272,24 +309,40 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
         raise click.ClickException(f"Entity '{entity_name}' not found")
 
     started_at = datetime.now(timezone.utc)
+    launch_timestamp = started_at.timestamp()
+
+    # --- Megaclaude environment ---
+    mega_env = {**os.environ, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "true"} if megaclaude else None
 
     # --- Phase 1: Launch Claude Code interactively ---
+    cmd = ["claude", "--name", f"entity:{entity_name}"]
+    if megaclaude:
+        cmd.append("--dangerously-skip-permissions")
+    cmd.append(f"/entity-startup {entity_name}")
+
     proc = subprocess.Popen(
-        ["claude", "--prompt", f"/entity-startup {entity_name}"],
+        cmd,
         stdin=None,
         stdout=None,
         stderr=None,
+        env=mega_env,
     )
     pid = proc.pid
     proc.wait()
 
     ended_at = datetime.now(timezone.utc)
 
-    # --- Phase 2: Extract session ID from PID file ---
+    # --- Phase 2: Extract session ID ---
+    # Try PID file first (may be cleaned up on exit), then fall back to
+    # finding the most recently modified JSONL for this project.
     session_id = _read_session_id_from_pid_file(pid)
     if session_id is None:
+        session_id = _find_most_recent_session(
+            str(project_dir.resolve()), launch_timestamp
+        )
+    if session_id is None:
         click.echo(
-            "Warning: session ID not found (PID file missing); skipping transcript archive",
+            "Warning: session ID not found; skipping transcript archive",
             err=True,
         )
 
@@ -313,11 +366,17 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
 
     if session_id is not None:
         click.echo("Running shutdown via session resume...")
+        resume_cmd = ["claude", "--resume", session_id, "-p"]
+        if megaclaude:
+            resume_cmd.append("--dangerously-skip-permissions")
+        resume_cmd.append(f"/entity-shutdown {entity_name}")
+
         resume_proc = subprocess.Popen(
-            ["claude", "--resume", session_id, "--prompt", f"/entity-shutdown {entity_name}"],
+            resume_cmd,
             stdin=None,
             stdout=None,
             stderr=None,
+            env=mega_env,
         )
         try:
             resume_exit = resume_proc.wait(timeout=resume_timeout)

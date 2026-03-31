@@ -1,5 +1,6 @@
 __pycache__/
 .lite-edit-recent
+.entities/steward/sessions/
 
 .pytest_cache/
 .venv/
