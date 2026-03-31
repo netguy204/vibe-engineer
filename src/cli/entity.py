@@ -10,7 +10,9 @@ Commands for managing entities - long-running agent personas with persistent mem
 
 import json
 import pathlib
+import subprocess
 import sys
+from datetime import datetime, timezone
 
 import click
 
@@ -223,6 +225,168 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
     click.echo(f"  Journals processed: {result['journals_consolidated']}")
     click.echo(f"  Consolidated:    {result['consolidated']}")
     click.echo(f"  Core:            {result['core']}")
+
+
+# Chunk: docs/chunks/entity_claude_wrapper - Session ID extraction from PID registry
+def _read_session_id_from_pid_file(
+    pid: int,
+    claude_home: pathlib.Path | None = None,
+) -> str | None:
+    """Read the session ID that Claude Code recorded for a given PID.
+
+    Claude Code writes ~/.claude/sessions/<pid>.json on startup with at least:
+        {"pid": 1234, "sessionId": "uuid", "cwd": "/...", "startedAt": "..."}
+
+    Returns the sessionId string, or None if the file doesn't exist or is malformed.
+    """
+    if claude_home is None:
+        claude_home = pathlib.Path.home() / ".claude"
+    pid_file = claude_home / "sessions" / f"{pid}.json"
+    try:
+        data = json.loads(pid_file.read_text())
+        return data.get("sessionId") or None
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+# Chunk: docs/chunks/entity_claude_wrapper - Full entity session lifecycle
+@entity.command("claude")
+@click.option("--entity", "entity_name", required=True, help="Entity name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+@click.option(
+    "--resume-timeout",
+    type=int,
+    default=300,
+    help="Seconds to wait for resume-based shutdown (default: 300)",
+)
+def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeout: int) -> None:
+    """Launch Claude Code with entity lifecycle management."""
+    project_dir = resolve_entity_project_dir(project_dir)
+    entities = Entities(project_dir)
+
+    if not entities.entity_exists(entity_name):
+        raise click.ClickException(f"Entity '{entity_name}' not found")
+
+    started_at = datetime.now(timezone.utc)
+
+    # --- Phase 1: Launch Claude Code interactively ---
+    proc = subprocess.Popen(
+        ["claude", "--prompt", f"/entity-startup {entity_name}"],
+        stdin=None,
+        stdout=None,
+        stderr=None,
+    )
+    pid = proc.pid
+    proc.wait()
+
+    ended_at = datetime.now(timezone.utc)
+
+    # --- Phase 2: Extract session ID from PID file ---
+    session_id = _read_session_id_from_pid_file(pid)
+    if session_id is None:
+        click.echo(
+            "Warning: session ID not found (PID file missing); skipping transcript archive",
+            err=True,
+        )
+
+    # --- Phase 3: Archive transcript ---
+    archived = False
+    if session_id is not None:
+        archived = entities.archive_transcript(
+            entity_name,
+            session_id,
+            str(project_dir.resolve()),
+        )
+        if not archived:
+            click.echo(
+                "Warning: transcript not found in Claude Code storage; skipping archive",
+                err=True,
+            )
+
+    # --- Phase 4: Shutdown (resume first, then transcript fallback) ---
+    shutdown_method = "none"
+    shutdown_result: dict = {}
+
+    if session_id is not None:
+        click.echo("Running shutdown via session resume...")
+        resume_proc = subprocess.Popen(
+            ["claude", "--resume", session_id, "--prompt", f"/entity-shutdown {entity_name}"],
+            stdin=None,
+            stdout=None,
+            stderr=None,
+        )
+        try:
+            resume_exit = resume_proc.wait(timeout=resume_timeout)
+            if resume_exit == 0:
+                shutdown_method = "resume"
+                shutdown_result = {
+                    "journals_added": 0,
+                    "journals_consolidated": 0,
+                    "consolidated": 0,
+                    "core": 0,
+                }
+        except subprocess.TimeoutExpired:
+            resume_proc.kill()
+            resume_proc.wait()
+            click.echo(
+                "Warning: resume shutdown timed out; falling back to transcript extraction",
+                err=True,
+            )
+
+        if shutdown_method == "none":
+            # Strategy B: extract from archived transcript via API
+            from entity_shutdown import shutdown_from_transcript
+            from entity_transcript import parse_session_jsonl, resolve_session_jsonl_path
+
+            jsonl_path = resolve_session_jsonl_path(str(project_dir.resolve()), session_id)
+            if jsonl_path is not None:
+                transcript = parse_session_jsonl(jsonl_path)
+                try:
+                    shutdown_result = shutdown_from_transcript(
+                        entity_name=entity_name,
+                        transcript=transcript,
+                        project_dir=project_dir,
+                    )
+                    shutdown_method = "transcript fallback"
+                except Exception as e:
+                    click.echo(f"Warning: transcript extraction failed: {e}", err=True)
+            else:
+                click.echo(
+                    "Warning: transcript not found; skipping memory extraction",
+                    err=True,
+                )
+
+    # --- Phase 5: Log session and print summary ---
+    if session_id is not None:
+        from models.entity import SessionRecord
+
+        record = SessionRecord(
+            session_id=session_id,
+            started_at=started_at,
+            ended_at=ended_at,
+            summary=None,
+        )
+        entities.append_session(entity_name, record)
+
+    click.echo("")
+    click.echo("Entity session complete:")
+    click.echo(f"  Session ID:          {session_id or '(unknown)'}")
+    if archived and session_id:
+        sessions_dir = entities.entity_dir(entity_name) / "sessions"
+        click.echo(f"  Transcript archived: {sessions_dir / session_id}.jsonl")
+    else:
+        click.echo("  Transcript archived: (skipped)")
+    click.echo(f"  Shutdown method:     {shutdown_method}")
+    if shutdown_result:
+        click.echo(
+            f"  Memories extracted:  {shutdown_result.get('journals_added', 0)} journals, "
+            f"{shutdown_result.get('consolidated', 0)} consolidated, "
+            f"{shutdown_result.get('core', 0)} core"
+        )
 
 
 # Chunk: docs/chunks/entity_episodic_search
