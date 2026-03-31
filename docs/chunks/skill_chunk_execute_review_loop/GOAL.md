@@ -1,8 +1,9 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: skill_chunk_execute
-code_paths: ["src/templates/commands/chunk-execute.md.jinja2"]
+code_paths:
+- src/templates/commands/chunk-execute.md.jinja2
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +11,14 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["landing_page_umami_events", "pip_publish_workflow", "skill_chunk_create_improve", "skill_chunk_execute", "skill_narrative_execute", "skill_orchestrator_inject"]
+created_after:
+- landing_page_umami_events
+- pip_publish_workflow
+- skill_chunk_create_improve
+- skill_chunk_execute
+- skill_narrative_execute
+- skill_orchestrator_inject
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
