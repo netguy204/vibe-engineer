@@ -59,6 +59,23 @@ When a message arrives:
    - A stuck chunk is resolved (include what went wrong and how it was fixed)
    - A question is answered
 
+## Episodic Context
+
+Before creating a chunk for an inbound request, search episodic memory and
+recent chunks for historical context that might inform the work:
+
+1. **Episodic search** — Run `/entity-episodic` to search prior session
+   transcripts for related conversations, decisions, or past attempts.
+   Use specific domain terms from the request, not abstract concepts.
+
+2. **Chunk exploration** — Check recent and related chunks
+   (`ve chunk list --recent`, grep chunk GOALs) for prior work that
+   overlaps with or informs the request.
+
+Use this context to write better chunk goals — referencing prior decisions,
+avoiding repeated mistakes, and linking to parent chunks when the new work
+modifies previous output.
+
 ## Server
 
 Use the currently bound swarm and server from `~/.ve/board.toml`. No explicit
