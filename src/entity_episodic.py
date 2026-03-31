@@ -9,6 +9,7 @@ Two-phase workflow:
 import json
 import math
 import re
+import shutil
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -194,9 +195,58 @@ class SearchResult:
 # EpisodicStore
 # ---------------------------------------------------------------------------
 
+@dataclass
+class IngestResult:
+    """Result of ingesting external session transcripts."""
+    ingested: list[str] = field(default_factory=list)   # stems of successfully ingested files
+    skipped: list[str] = field(default_factory=list)     # stems skipped (invalid or duplicate)
+    errors: list[str] = field(default_factory=list)      # human-readable error messages
+
+
 class EpisodicStore:
     def __init__(self, entity_dir: Path) -> None:
         self._entity_dir = entity_dir
+
+    # Chunk: docs/chunks/episodic_ingest_external - External transcript ingest
+    def ingest_files(self, paths: list[Path]) -> IngestResult:
+        """Copy external session JSONL files into the entity's sessions directory.
+
+        Each file is validated via parse_session_jsonl(). Valid files are copied
+        with an ``ingested_`` prefix to avoid collision with ve-archived sessions.
+        Duplicates (destination already exists) are skipped with a message.
+        """
+        result = IngestResult()
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+
+        for path in paths:
+            stem = path.stem
+            if not path.is_file():
+                result.errors.append(f"{path}: not a file or does not exist")
+                result.skipped.append(stem)
+                continue
+
+            # Validate: must be parseable with at least one turn
+            try:
+                transcript = parse_session_jsonl(path)
+                if not transcript.turns:
+                    result.errors.append(f"{stem}: no valid turns found")
+                    result.skipped.append(stem)
+                    continue
+            except Exception as e:
+                result.errors.append(f"{stem}: parse error — {e}")
+                result.skipped.append(stem)
+                continue
+
+            dest = self.sessions_dir / f"ingested_{stem}.jsonl"
+            if dest.exists():
+                result.errors.append(f"{stem}: already ingested")
+                result.skipped.append(stem)
+                continue
+
+            shutil.copy2(path, dest)
+            result.ingested.append(stem)
+
+        return result
 
     @property
     def sessions_dir(self) -> Path:

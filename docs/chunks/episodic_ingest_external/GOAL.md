@@ -1,8 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/entity_episodic.py", "src/cli.py"]
+code_paths:
+- src/entity_episodic.py
+- src/cli/entity.py
+- tests/test_entity_ingest.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +13,13 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["entity_api_memory_extraction", "entity_claude_wrapper", "entity_episodic_search", "entity_episodic_skill", "entity_transcript_extractor"]
+created_after:
+- entity_api_memory_extraction
+- entity_claude_wrapper
+- entity_episodic_search
+- entity_episodic_skill
+- entity_transcript_extractor
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

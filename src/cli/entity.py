@@ -448,6 +448,61 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
         )
 
 
+# Chunk: docs/chunks/episodic_ingest_external - External transcript ingest CLI
+@entity.command("ingest")
+@click.argument("name")
+@click.argument("path", nargs=-1, required=True)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def ingest(name: str, path: tuple[str, ...], project_dir: pathlib.Path | None) -> None:
+    """Ingest external Claude Code session transcripts into an entity's sessions.
+
+    NAME is the entity identifier.
+    PATH is one or more file paths or glob patterns pointing to JSONL session files.
+    """
+    import glob as globmod
+
+    from entity_episodic import EpisodicStore
+
+    project_dir = resolve_entity_project_dir(project_dir)
+    entities = Entities(project_dir)
+
+    if not entities.entity_exists(name):
+        raise click.ClickException(f"Entity '{name}' not found")
+
+    # Expand globs and collect all resolved paths
+    resolved: list[pathlib.Path] = []
+    for p in path:
+        expanded = globmod.glob(p)
+        if expanded:
+            resolved.extend(pathlib.Path(e) for e in expanded)
+        else:
+            # No glob match — pass through as-is so ingest_files reports the error
+            resolved.append(pathlib.Path(p))
+
+    store = EpisodicStore(entities.entity_dir(name))
+    result = store.ingest_files(resolved)
+
+    # Print summary
+    n_ingested = len(result.ingested)
+    n_skipped = len(result.skipped)
+
+    if n_ingested == 0 and n_skipped == 0:
+        click.echo("No files matched the provided path(s).")
+        return
+
+    click.echo(f"Ingested {n_ingested}, skipped {n_skipped}.")
+
+    for stem in result.ingested:
+        click.echo(f"  ✓ {stem}")
+
+    for msg in result.errors:
+        click.echo(f"  ⚠ {msg}", err=True)
+
+
 # Chunk: docs/chunks/entity_episodic_search
 @entity.command("episodic")
 @click.option("--entity", "entity_name", required=True, help="Entity name")
