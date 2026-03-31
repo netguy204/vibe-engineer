@@ -10,153 +10,92 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The analytics script tag lives in `site/src/layouts/BaseLayout.astro` (lines
+16–49). It currently uses environment variables with a fallback to the old Umami
+host (`https://umami-bold-frog-5356.fly.dev`). Now that we own the
+`analytics.veng.dev` subdomain, we should hardcode the new domain directly and
+remove the environment-variable indirection — there's no longer a reason to
+configure the analytics URL per-environment since all deployments should use our
+domain.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The change is purely mechanical: replace the env-var-based URL construction with
+a static `https://analytics.veng.dev/script.js` src and confirm the website ID
+matches the target value.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+No tests are needed for this change — it's a static HTML attribute swap in a
+layout template. Verification is visual (inspect the rendered `<head>` tag).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/landing_page_analytics_domain/GOAL.md)
-with references to the files that you expect to touch.
--->
+Code paths in GOAL.md already reference `site/src/layouts/Layout.astro`; we
+should update that to the correct file `site/src/layouts/BaseLayout.astro`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant to this change.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Remove environment-variable indirection for analytics URL
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `site/src/layouts/BaseLayout.astro`, replace the env-var-based URL
+construction (lines 16–17):
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```astro
+const umamiUrl = import.meta.env.PUBLIC_UMAMI_URL || 'https://umami-bold-frog-5356.fly.dev';
+const umamiSiteId = import.meta.env.PUBLIC_UMAMI_SITE_ID || '45c5153f-764f-4e64-8ae3-21a8db285393';
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Remove both `const` declarations entirely. They are no longer needed since the
+URL is now a known constant.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Replace the script tag with a static version
+
+Replace the conditional script block (lines 47–49):
+
+```astro
+{umamiUrl && umamiSiteId && (
+  <script defer src={`${umamiUrl}/script.js`} data-website-id={umamiSiteId}></script>
+)}
+```
+
+With a simple static script tag:
+
+```html
+<script defer src="https://analytics.veng.dev/script.js" data-website-id="45c5153f-764f-4e64-8ae3-21a8db285393"></script>
+```
+
+The conditional wrapper is no longer needed since there are no variable inputs
+that could be missing.
+
+### Step 3: Verify no other references to old analytics host
+
+Search the entire `site/` directory for `umami-bold-frog-5356.fly.dev` and any
+other references to the old host. Confirm zero matches remain. Also search for
+`PUBLIC_UMAMI_URL` and `PUBLIC_UMAMI_SITE_ID` env-var references (e.g., in
+`.env` files, `astro.config.*`, or other templates) and remove any that exist.
+
+### Step 4: Update GOAL.md code_paths
+
+Update the chunk GOAL.md frontmatter `code_paths` to reference the correct file
+`site/src/layouts/BaseLayout.astro` instead of `site/src/layouts/Layout.astro`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- The `analytics.veng.dev` DNS record must be configured and pointing to the
+  Umami instance. This is an infrastructure prerequisite outside this chunk's
+  scope (assumed already done since the sibling chunk
+  `landing_page_analytics_redirect` is ACTIVE and already uses this domain for
+  redirect URLs).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **DNS/TLS readiness**: If `analytics.veng.dev` is not yet serving the Umami
+  script, the analytics tag will silently fail (the `defer` attribute and
+  browser behavior mean this won't block page load). Low risk — the redirect
+  sibling chunk already uses this domain.
+- **Removing env-var flexibility**: Hardcoding the URL means local/staging
+  environments can't override the analytics endpoint. This is acceptable because
+  analytics in dev is either irrelevant or actively undesirable (pollutes
+  production data).
 
 ## Deviations
 

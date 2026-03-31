@@ -12,9 +12,6 @@ const {
 
 const siteUrl = 'https://veng.dev';
 const ogImage = `${siteUrl}/og-image.svg`;
-
-const umamiUrl = import.meta.env.PUBLIC_UMAMI_URL || 'https://umami-bold-frog-5356.fly.dev';
-const umamiSiteId = import.meta.env.PUBLIC_UMAMI_SITE_ID || '45c5153f-764f-4e64-8ae3-21a8db285393';
 ---
 
 <!DOCTYPE html>
@@ -43,10 +40,8 @@ const umamiSiteId = import.meta.env.PUBLIC_UMAMI_SITE_ID || '45c5153f-764f-4e64-
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <!-- Analytics (graceful degradation if env vars missing) -->
-  {umamiUrl && umamiSiteId && (
-    <script defer src={`${umamiUrl}/script.js`} data-website-id={umamiSiteId}></script>
-  )}
+  <!-- Analytics -->
+  <script defer src="https://analytics.veng.dev/script.js" data-website-id="45c5153f-764f-4e64-8ae3-21a8db285393"></script>
 </head>
 <body>
   <a href="#main-content" class="skip-link">Skip to content</a>
