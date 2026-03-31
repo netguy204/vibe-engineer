@@ -3,28 +3,24 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/chunk.py
 - src/templates/chunk/GOAL.md.jinja2
 - src/templates/commands/chunk-create.md.jinja2
 - src/templates/commands/chunk-complete.md.jinja2
 - tests/test_models.py
 code_references:
-  - ref: src/models.py#BugType
-    implements: "BugType enum with SEMANTIC and IMPLEMENTATION values"
-  - ref: src/models.py#ChunkFrontmatter
-    implements: "bug_type field added to ChunkFrontmatter model"
-  - ref: src/templates/chunk/GOAL.md.jinja2
-    implements: "BUG_TYPE documentation section and frontmatter field"
-  - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Step 7: Bug fix detection (classification prompting not yet implemented)"
-  - ref: src/templates/commands/chunk-complete.md.jinja2
-    implements: "Bug type-aware backreference and status transition guidance"
-  - ref: tests/test_models.py#TestChunkFrontmatterBugType
-    implements: "Unit tests for bug_type field validation"
   - ref: src/models/chunk.py#BugType
     implements: "BugType enum with SEMANTIC and IMPLEMENTATION values"
   - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "bug_type field added to ChunkFrontmatter model"
+  - ref: src/templates/chunk/GOAL.md.jinja2
+    implements: "BUG_TYPE documentation section and frontmatter field"
+  - ref: src/templates/commands/chunk-create.md.jinja2
+    implements: "Step 7: Bug fix detection signals for bug fix chunks"
+  - ref: src/templates/commands/chunk-complete.md.jinja2
+    implements: "Bug type-aware backreference and status transition guidance"
+  - ref: tests/test_models.py#TestChunkFrontmatterBugType
+    implements: "Unit tests for bug_type field validation"
 narrative: null
 investigation: bug_chunk_semantic_value
 subsystems: []

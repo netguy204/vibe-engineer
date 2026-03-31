@@ -10,153 +10,112 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk modifies a single file: `src/templates/commands/chunk-create.md.jinja2`.
+The changes are purely to the skill template prose — no Python code, no CLI logic,
+no tests needed (per docs/trunk/TESTING_PHILOSOPHY.md: "We verify templates render
+without error and files are created, but don't assert on template prose").
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The two improvements are:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Skill description (line 2)** — Rewrite the `description:` frontmatter to include
+   trigger phrases that match how operators naturally ask for chunk creation. Currently
+   it says "Create a new chunk of work and refine its goal." which misses phrases like
+   "start new work", "chunk this", "make a chunk for X".
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/skill_chunk_create_improve/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Context capture instructions (step 4)** — Expand the GOAL.md refinement step to
+   explicitly instruct the creating agent to extract and embed conversation context
+   that would be lost when handing off to an implementing agent in a separate session.
+
+The template system (docs/subsystems/template_system) renders this Jinja2 template
+into `.claude/commands/chunk-create.md` via `ve init`. Our changes stay within the
+template source per the template editing workflow in CLAUDE.md.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system.
+  We edit the Jinja2 source template and rely on `ve init` to render it. No
+  deviations from the subsystem's patterns are introduced.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Improve the skill description for discoverability
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `src/templates/commands/chunk-create.md.jinja2`, line 2 (the `description:` field)
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+Current description:
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+description: Create a new chunk of work and refine its goal.
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Replace with a description that includes trigger phrases operators naturally use.
+The description should trigger on phrases like:
+- "create a chunk"
+- "start new work" / "start a new chunk"
+- "chunk this work" / "chunk this"
+- "make a chunk for X"
+- "define a piece of work"
+- "break this into a chunk"
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+New description (draft):
+```
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new work, chunk something, define a piece of work, or break work into a chunk.
+```
+
+The description field is used by the skill matching system to decide when to
+trigger. Including verb phrases that operators use ("start new work", "chunk this")
+improves recall without hurting precision.
+
+### Step 2: Add context capture guidance to the GOAL.md refinement step
+
+Location: `src/templates/commands/chunk-create.md.jinja2`, step 4 (currently lines 59-62)
+
+Current step 4:
+```
+4. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
+   the user has described, ask them any questions required to complete the
+   template and cohesively and thoroughly define the goal of what they're trying
+   to accomplish.
+```
+
+Expand this step to instruct the creating agent to capture conversation context
+that would otherwise be lost. The implementing agent will work in a separate
+session without access to the conversation that spawned the chunk.
+
+New step 4 should include explicit guidance to embed:
+
+- **Specific file paths and function names** referenced in the conversation
+- **Error messages or reproduction steps** for bugs
+- **Design decisions and rejected alternatives** discussed
+- **Code patterns or snippets** that illustrate the desired behavior
+- **Operator preferences or constraints** mentioned verbally
+- **Links to related artifacts** (chunks, investigations, subsystems, narratives)
+
+The key insight: anything the creating agent "just knows" from conversation
+context must be written into the GOAL.md, because the implementing agent will
+have zero conversation context. The goal should be **self-contained** — an agent
+reading only the GOAL.md should have everything needed to plan and implement.
+
+### Step 3: Verify rendering
+
+Run `uv run ve init` to re-render the template and confirm the output at
+`.claude/commands/chunk-create.md` looks correct. Spot-check that:
+- The description field renders properly
+- The new step 4 guidance is present
+- No existing functionality is broken (naming, frontmatter steps, etc.)
+- The Jinja2 template syntax is valid (no render errors)
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk modifies only the chunk-create skill template.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Description length**: The skill description field may have a practical length
+  limit where matching quality degrades. If the expanded description causes issues,
+  fall back to a shorter version with the most impactful trigger phrases.
+- **Over-prescription in step 4**: Too many sub-bullets in the context capture
+  guidance could make the step feel overwhelming. Balance thoroughness with
+  readability — the guidance should feel like a natural checklist, not an essay.
 
 ## Deviations
 

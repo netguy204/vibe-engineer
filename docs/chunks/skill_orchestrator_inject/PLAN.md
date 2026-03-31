@@ -10,153 +10,150 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new Jinja2 slash command template `orchestrator-inject.md.jinja2` that
+follows the established pattern of the other `orchestrator-*.md.jinja2` commands.
+The skill wraps `ve orch inject <chunk>` with a pre-flight commit check.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Key design tension with DEC-005 (commands don't prescribe git operations):**
+DEC-005 says commands should not prescribe when git operations occur. However,
+the GOAL.md explicitly calls for auto-committing uncommitted chunk files because
+this is the #1 failure mode when injecting chunks — the orchestrator worktree
+won't have the files. This is a pragmatic exception: the commit is a pre-flight
+safety check to ensure the orchestrator can function, not a workflow prescription.
+The skill only commits the chunk's own GOAL.md and PLAN.md, not arbitrary work.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Build on the existing command template patterns:
+- Frontmatter with `description` field (triggers skill matching)
+- `{% include "partials/..." %}` for auto-generated header and common tips
+- `$ARGUMENTS` for argument parsing
+- `ve chunk list --current` as default chunk resolution
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/skill_orchestrator_inject/GOAL.md)
-with references to the files that you expect to touch.
--->
+Also update `CLAUDE.md.jinja2` to list the new command alongside the other
+orchestrator commands.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the orchestrator
+  subsystem — it creates a slash command that wraps `ve orch inject`. No new
+  orchestrator functionality is added; this is a convenience layer.
+- **docs/subsystems/template_system** (DOCUMENTED): This chunk USES the template
+  system to create a new Jinja2 command template following established patterns.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the slash command template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/orchestrator-inject.md.jinja2` following the
+established pattern from `orchestrator-monitor.md.jinja2` and
+`orchestrator-submit-future.md.jinja2`.
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
+**Frontmatter:**
+```yaml
 ---
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+description: "Commit and inject a chunk into the orchestrator for background execution."
+---
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The `description` field drives skill trigger matching. It should match phrases
+like "inject the chunk", "inject it", "send to orchestrator".
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Template structure:**
+```
+{% set source_template = "orchestrator-inject.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+{# Chunk: docs/chunks/skill_orchestrator_inject - ... #}
+
+## Tips
+{% include "partials/common-tips.md.jinja2" %}
+
+## Instructions
+...
+```
+
+**Instructions content (inside `{% raw %}...{% endraw %}` if needed):**
+
+1. **Argument Parsing** — Parse `$ARGUMENTS` for an optional chunk name. If
+   none provided, run `ve chunk list --current` to resolve the current
+   IMPLEMENTING chunk. If that returns nothing, try `ve chunk list` filtered
+   for FUTURE status. If still ambiguous, ask the operator.
+
+2. **Pre-flight: Ensure chunk is committed** — Run
+   `git status --porcelain docs/chunks/<chunk>/` to check if GOAL.md or
+   PLAN.md have uncommitted changes (modified, untracked, etc.). If changes
+   exist:
+   - Stage just the chunk files: `git add docs/chunks/<chunk>/GOAL.md docs/chunks/<chunk>/PLAN.md`
+   - Also stage PLAN.md even if clean (the GOAL.md comment block says to commit both)
+   - Commit with a conventional message: `docs: commit <chunk> for orchestrator injection`
+   - Report to the operator that files were auto-committed
+
+   If the chunk files are already committed and clean, report that and skip
+   the commit step.
+
+3. **Ensure orchestrator is running** — Run `ve orch status`. If the
+   orchestrator is not running, start it with `ve orch start`.
+
+4. **Inject the chunk** — Run `ve orch inject <chunk>` and capture the output.
+   Report success or failure to the operator.
+
+5. **Optional: Offer monitoring** — After successful injection, suggest:
+   "Would you like me to monitor this chunk? I can run
+   `/orchestrator-monitor <chunk>`." Do not auto-start monitoring unless
+   the operator confirms.
+
+Location: `src/templates/commands/orchestrator-inject.md.jinja2`
+
+### Step 2: Update CLAUDE.md template with the new command
+
+Edit `src/templates/claude/CLAUDE.md.jinja2` to add `/orchestrator-inject` to
+the orchestrator commands listing.
+
+Change line:
+```
+Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+```
+To:
+```
+Commands: `/orchestrator-inject`, `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+```
+
+Place `/orchestrator-inject` first since it's the most common entry point
+(inject a single chunk → then optionally monitor it).
+
+Location: `src/templates/claude/CLAUDE.md.jinja2`
+
+### Step 3: Re-render templates and verify
+
+Run `uv run ve init` to re-render all templates from their Jinja2 sources.
+Verify:
+- `.claude/commands/orchestrator-inject.md` exists and contains the rendered skill
+- `CLAUDE.md` contains the updated orchestrator commands listing with
+  `/orchestrator-inject`
+
+### Step 4: Manual smoke test
+
+Run `uv run ve init` in a clean state and confirm:
+- The new command file renders without Jinja2 errors
+- The CLAUDE.md orchestrator section includes the new command
+- The rendered command file has the AUTO-GENERATED header
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No implementation dependencies. The orchestrator CLI (`ve orch inject`) and the
+template system already exist. This chunk only adds a new template file and
+updates an existing one.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **DEC-005 tension:** The auto-commit behavior is a deliberate pragmatic
+  exception to DEC-005's "don't prescribe git operations" principle. The commit
+  is scoped narrowly (only chunk GOAL.md/PLAN.md) and is a pre-condition for
+  the orchestrator to function. If this pattern expands beyond this narrow
+  scope, it should be revisited as a DEC-005 amendment.
+- **Non-git environments:** Per DEC-002, git is not assumed. If the project has
+  no git repo, the pre-flight commit step should be skipped gracefully (the
+  `git status` command will fail, and we should proceed to injection). The
+  orchestrator itself requires git for worktrees, so this scenario is unlikely
+  but worth handling cleanly.
 
 ## Deviations
 
