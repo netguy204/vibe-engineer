@@ -31,10 +31,14 @@ When a message arrives:
    delegate to the orchestrator. This protects the steward's context window
    from implementation noise.
 
-4. **Monitor the orchestrator** — After injection, monitor orchestrator
-   progress (`ve orch status`). When a requested chunk completes, publish a
-   changelog entry. When a chunk is stuck, investigate and resolve it
-   autonomously (`/orchestrator-investigate`).
+4. **Monitor the orchestrator** — After injection, run
+   `/orchestrator-monitor <chunk_name> --changelog-channel vibe-engineer-changelog --swarm SLPRuNDf1A6j4XcKqp287V`
+   to set up recurring monitoring. This polls orchestrator status on a timer
+   concurrently with the channel watch. When multiple chunks are injected
+   during the session, pass all chunk names to a single monitor invocation.
+   When a chunk completes, the monitor triggers step 5. When a chunk is
+   stuck, investigate and resolve it autonomously
+   (`/orchestrator-investigate`).
 
 5. **Push completed work** — When a chunk finishes in the orchestrator, run
    `git push` to publish the merged work to the remote before posting the
