@@ -1,0 +1,217 @@
+
+---
+description: Execute a narrative's proposed chunks in dependency order with parallel subagents.
+---
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+Run `ve init` to regenerate.
+-->
+
+## Tips
+
+- The ve command is an installed CLI tool, not a file in the repository. Do not
+search for it - run it directly via Bash.
+
+## Instructions
+
+Execute the narrative specified by the operator:
+
+$ARGUMENTS
+
+---
+
+### Phase 1: Parse and validate the narrative
+
+1. The `$ARGUMENTS` value is the narrative short name (e.g., `gsr_coverage_integration`).
+   We will refer to this as `<name>` below.
+
+2. Read `docs/narratives/<name>/OVERVIEW.md`.
+   - If the file does not exist, report the error and stop.
+
+3. Extract the `proposed_chunks` array from the YAML frontmatter.
+   - If `proposed_chunks` is missing or empty, report the error and stop.
+
+4. Extract the `status` field from frontmatter.
+   - If status is `COMPLETED`, report that the narrative is already completed and stop.
+   - If status is `DRAFTING`, report that the narrative is still being drafted and stop.
+     Only `ACTIVE` narratives (or narratives without an explicit status restriction) should
+     be executed.
+
+### Phase 2: Build the dependency DAG
+
+1. For each entry in `proposed_chunks`, note its index (0-based), `chunk_directory`,
+   `prompt`, and `depends_on` field.
+
+2. Resolve `depends_on` indices: each entry's `depends_on` is a list of integer indices
+   referencing other entries in the same `proposed_chunks` array. Map these to the
+   corresponding `chunk_directory` names.
+
+3. Identify **root chunks**: entries where `depends_on` is empty, null, or omitted.
+
+4. **Detect cycles**: Perform a topological sort. If a cycle is detected, report the
+   cycle to the operator and stop.
+
+5. **Compute execution waves**: Group chunks into waves where each wave contains only
+   chunks whose dependencies are ALL in prior (already-completed) waves.
+
+6. **Display the execution plan** to the operator before proceeding:
+   ```
+   Execution plan for narrative: <name>
+
+   Wave 1 (parallel):
+     - chunk_a (root)
+     - chunk_b (root)
+
+   Wave 2 (parallel, after wave 1):
+     - chunk_c (depends on: chunk_a)
+     - chunk_d (depends on: chunk_a, chunk_b)
+
+   Wave 3 (after wave 2):
+     - chunk_e (depends on: chunk_c, chunk_d)
+
+   Total: N chunks in M waves
+   ```
+
+7. **Wait for operator confirmation** before proceeding. Ask:
+   > "Ready to execute this plan? This will create missing chunks and run them
+   > through the full lifecycle (plan -> implement -> review -> complete).
+   > Proceed? (yes/no)"
+
+### Phase 3: Create missing chunks and detect already-completed chunks
+
+1. For each entry in `proposed_chunks`:
+
+   - **If `chunk_directory` is null** (chunk not yet created):
+     - Derive a chunk name following naming conventions (initiative-based prefix,
+       underscore-separated, under 32 characters)
+     - Run `ve chunk create <derived_name>`
+     - Read the created GOAL.md and populate it with content from the narrative
+       entry's `prompt` field — set the Minor Goal section to describe the work
+     - Update the narrative's OVERVIEW.md frontmatter to set `chunk_directory`
+       for that entry to the newly created directory name
+     - If the narrative entry has `depends_on` indices that map to other chunk
+       directories, set the chunk's `depends_on` frontmatter field accordingly
+
+   - **If `chunk_directory` is set**:
+     - Verify the directory `docs/chunks/<chunk_directory>` exists on disk
+     - If it doesn't exist, warn the operator and stop
+     - Read the chunk's GOAL.md frontmatter to check its status:
+       - If status is `ACTIVE` or `HISTORICAL` or `SUPERSEDED`: this chunk is
+         already completed. Mark it as "done" in your tracking and skip it
+         during execution
+       - If status is `IMPLEMENTING`: this chunk is in progress. Include it in
+         execution (it may be a resumed run)
+       - If status is `FUTURE`: this chunk needs to be executed
+
+2. **Recompute waves** after accounting for already-completed chunks. Remove completed
+   chunks from the DAG and recalculate which chunks are unblocked.
+
+3. If all chunks are already completed, report that the narrative is fully executed
+   and proceed to Phase 6 (Finalize).
+
+### Phase 4: Execute in topological waves
+
+For each wave (in order):
+
+1. For each chunk in the wave:
+   - Run `ve chunk activate <chunk_name>` to set it to IMPLEMENTING status
+   - Launch a **background Agent** with the following prompt (adapt the chunk name):
+
+     ```
+     You are executing chunk `<chunk_name>` as part of the `<narrative_name>` narrative.
+
+     Run these steps in order:
+     1. Run `/chunk-plan` to create the implementation plan
+     2. Run `/chunk-implement` to implement the plan
+     3. Run `/chunk-review` to review the implementation
+        - If the review finds issues, run `/chunk-implement` again to address
+          the feedback, then `/chunk-review` again
+        - Repeat this implement/review cycle up to 3 times maximum
+        - If still failing after 3 review cycles, report the remaining issues
+     4. Run `/chunk-complete` to finalize the chunk
+
+     Report your final status:
+     - SUCCESS: if all steps completed and the chunk is marked ACTIVE
+     - FAILURE: with details of what went wrong and at which step
+     ```
+
+2. **Launch ALL chunks in the current wave as parallel Agent calls in a single
+   message.** Use the Agent tool's `run_in_background: true` parameter for each.
+
+3. **Wait for all agents in the wave to complete.** You will be notified as each
+   finishes.
+
+4. **Check results** for each completed agent:
+   - If SUCCESS: mark the chunk as completed in your tracking
+   - If FAILURE: record the failure details and proceed to Phase 5
+
+5. If all chunks in the wave succeeded, proceed to the next wave.
+
+6. If any chunk failed, proceed to Phase 5 before launching the next wave.
+
+### Phase 5: Handle failures
+
+When a chunk fails:
+
+1. **Report the failure** to the operator with full details:
+   ```
+   FAILURE in wave N:
+     - <chunk_name>: <failure details>
+
+   Blocked chunks (will not execute):
+     - <dependent_chunk_1> (depends on: <chunk_name>)
+     - <dependent_chunk_2> (depends on: <chunk_name>, ...)
+
+   Unblocked chunks (can still execute):
+     - <independent_chunk> (no dependency on failed chunk)
+   ```
+
+2. **Do NOT launch any chunk that depends (directly or transitively) on the
+   failed chunk.**
+
+3. **Ask the operator** how to proceed:
+   > "A chunk has failed. Options:
+   > 1. **Continue** - Execute remaining unblocked chunks
+   > 2. **Pause** - Stop execution so you can fix the failed chunk manually
+   > 3. **Retry** - Re-run the failed chunk
+   >
+   > Choose an option (1/2/3):"
+
+4. If the operator chooses to continue, remove the failed chunk and all its
+   transitive dependents from the execution plan, then resume with the next wave.
+
+5. If the operator chooses to pause, stop execution and report the current state
+   (which chunks completed, which failed, which are pending).
+
+6. If the operator chooses to retry, re-launch the failed chunk and wait for it
+   before continuing.
+
+### Phase 6: Finalize
+
+When all proposed chunks have completed successfully (or the operator has chosen
+to continue past failures):
+
+1. **Update the narrative status**: Edit the narrative's OVERVIEW.md frontmatter
+   to set `status: COMPLETED` (only if ALL chunks completed successfully).
+
+2. **Report a summary**:
+   ```
+   Narrative execution complete: <name>
+
+   Completed chunks:
+     - chunk_a (wave 1)
+     - chunk_b (wave 1)
+     - chunk_c (wave 2)
+     ...
+
+   Failed chunks: (none | list)
+   Skipped chunks: (none | list of chunks blocked by failures)
+
+   Narrative status: COMPLETED | ACTIVE (if partial completion)
+   ```
+
+3. If there were failures, do NOT set the narrative status to COMPLETED. Leave it
+   as ACTIVE so the operator can resume later by re-running `/narrative-execute`.
