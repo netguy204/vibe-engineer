@@ -20,7 +20,7 @@ code_references:
   - ref: src/cli/entity.py#recall
     implements: "CLI command 've entity recall <name> <query>' — retrieves memories matching a title query"
   - ref: src/templates/commands/entity-startup.md.jinja2
-    implements: "/entity-startup slash command template — instructs agent to run startup CLI and adopt entity identity"
+    implements: "/entity-startup slash command template — instructs agent to run startup CLI, adopt entity identity, internalize core memories, note consolidated index, follow touch protocol, use episodic search (Step 7), and restore active state (Step 8)"
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
