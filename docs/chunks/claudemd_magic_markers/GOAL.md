@@ -9,18 +9,25 @@ code_paths:
 code_references:
   - ref: src/project.py#MARKER_START
     implements: "Magic marker constant for START delimiter"
+    verified: "2026-03-31"
   - ref: src/project.py#MARKER_END
     implements: "Magic marker constant for END delimiter"
+    verified: "2026-03-31"
   - ref: src/project.py#MarkerParseResult
     implements: "Named tuple for marker parsing results"
+    verified: "2026-03-31"
   - ref: src/project.py#parse_markers
     implements: "Marker detection and content segmentation logic"
+    verified: "2026-03-31"
   - ref: src/project.py#Project::_init_claude_md
     implements: "Marker-aware CLAUDE.md initialization with preservation"
+    verified: "2026-03-31"
   - ref: src/templates/claude/CLAUDE.md.jinja2
     implements: "Template with magic markers wrapping VE-managed content"
+    verified: "2026-03-31"
   - ref: tests/test_project.py#TestMagicMarkers
     implements: "Test suite for marker detection, preservation, and edge cases"
+    verified: "2026-03-31"
 subsystems: []
 created_after:
 - external_resolve_enhance
