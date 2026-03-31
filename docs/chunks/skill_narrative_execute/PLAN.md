@@ -10,153 +10,186 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Create a new Jinja2 command template `narrative-execute.md.jinja2` that instructs
+the agent to parse a narrative's `proposed_chunks`, build a dependency DAG, create
+any missing chunks, and execute them in topological waves using Claude Code's
+native Agent tool for parallelism.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+This follows the established command template pattern (DEC-001, DEC-009): a Jinja2
+file in `src/templates/commands/` with frontmatter description, auto-generated
+header, and step-by-step agent instructions. The skill is purely a prompt
+template — no new Python library code is needed. The agent executing the skill
+orchestrates via `ve` CLI commands and the Agent tool.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Register the new skill in `CLAUDE.md.jinja2` under Available Commands alongside
+the existing `/narrative-create` and `/narrative-compact` entries.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/skill_narrative_execute/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per DEC-005, the skill does not prescribe git operations — chunk lifecycle
+commands handle their own artifacts and the operator controls version control.
+
+**Testing**: This is a prompt template (no Python behavior to test). Per
+TESTING_PHILOSOPHY.md, we verify templates render without error. The existing
+template rendering test infrastructure covers this — adding the file to
+`src/templates/commands/` is sufficient for it to be included in render tests.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template
+  system to add a new command template. The new file follows the established
+  Jinja2 command template pattern (frontmatter + partials + instructions).
+  Re-rendering via `ve init` will produce the `.claude/commands/` output.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create the command template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/commands/narrative-execute.md.jinja2` following the
+established pattern:
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
+```
 ---
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+description: Execute a narrative's proposed chunks in dependency order with parallel subagents.
+---
+{% set source_template = "narrative-execute.md.jinja2" %}
+{% include "partials/auto-generated-header.md.jinja2" %}
+## Tips
+{% include "partials/common-tips.md.jinja2" %}
+## Instructions
+...
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The instructions must guide the executing agent through these phases:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Phase 1 — Parse and validate the narrative**
+- Accept `$ARGUMENTS` as the narrative short name
+- Read `docs/narratives/<name>/OVERVIEW.md`
+- Extract `proposed_chunks` from frontmatter
+- Validate that the narrative exists and has proposed_chunks
+- Validate that the narrative status is ACTIVE (not DRAFTING or COMPLETED)
+
+**Phase 2 — Build the dependency DAG**
+- For each proposed chunk, resolve `depends_on` indices to chunk directory names
+  (using the `chunk_directory` field of referenced entries)
+- Identify root chunks (those with empty `depends_on` or no dependencies)
+- Detect any cycles and abort with error message if found
+- Display the execution plan to the operator: which chunks will run in which
+  wave, showing the parallelism structure
+
+**Phase 3 — Create missing chunks**
+- For proposed chunks where `chunk_directory` is null (chunk not yet created):
+  - Run `ve chunk create <name>` using a reasonable name derived from the prompt
+  - Populate the created GOAL.md with content from the narrative's prompt field
+  - Update the narrative's OVERVIEW.md to set `chunk_directory` for that entry
+- For proposed chunks where `chunk_directory` is already set:
+  - Verify the chunk directory exists on disk
+  - If it doesn't exist, warn the operator
+
+**Phase 4 — Execute in topological waves**
+- Compute execution waves: group chunks so that each wave contains only chunks
+  whose dependencies are all in prior (already-completed) waves
+- For each wave:
+  - For each chunk in the wave:
+    - Set chunk status to IMPLEMENTING via `ve chunk activate <name>`
+    - Launch a background Agent to execute the full lifecycle:
+      `/chunk-plan` → `/chunk-implement` → `/chunk-review` (loop until
+      approved) → `/chunk-complete`
+  - Launch ALL chunks in the wave as parallel Agent calls in a single message
+  - Wait for all agents in the wave to complete
+  - Check results: if any chunk failed, pause and report to operator
+  - Once all in wave succeed, proceed to next wave
+
+**Phase 5 — Handle failures**
+- If a chunk's agent reports failure:
+  - Report the failure details to the operator
+  - Do NOT launch any chunks that depend on the failed chunk
+  - Allow independent chunks in future waves to continue if they don't
+    depend on the failed chunk (operator can choose to pause all or
+    continue unblocked work)
+  - Provide a clear summary: which chunks succeeded, which failed, which
+    are blocked
+
+**Phase 6 — Finalize**
+- When all proposed chunks have completed successfully:
+  - Update the narrative's OVERVIEW.md frontmatter status to COMPLETED
+  - Report a summary of all executed chunks
+
+**Agent invocation pattern**: Each subagent prompt should include:
+- The chunk name to work on
+- Instruction to run `ve chunk activate <name>` first
+- Instruction to execute `/chunk-plan`, then `/chunk-implement`, then
+  `/chunk-review` (repeating implement/review if review finds issues),
+  then `/chunk-complete`
+- Instruction to report success or failure with details
+
+Location: `src/templates/commands/narrative-execute.md.jinja2`
+
+### Step 2: Register the skill in CLAUDE.md.jinja2
+
+Add `/narrative-execute` to the Available Commands section in
+`src/templates/claude/CLAUDE.md.jinja2`, alongside the existing narrative
+commands:
+
+```
+- `/narrative-create` - Create a new narrative for multi-chunk initiatives
+- `/narrative-compact` - Consolidate multiple chunks into a narrative
+- `/narrative-execute` - Execute a narrative's chunks in dependency order with parallel agents
+```
+
+Add the backreference comment for this chunk above the new entry.
+
+Location: `src/templates/claude/CLAUDE.md.jinja2` (around line 124)
+
+### Step 3: Re-render templates
+
+Run `uv run ve init` to render the new command template into
+`.claude/commands/narrative-execute.md` and update `CLAUDE.md` with the
+new command listing.
+
+Verify:
+- `.claude/commands/narrative-execute.md` exists and contains rendered content
+- `CLAUDE.md` lists `/narrative-execute` in the Available Commands section
+
+### Step 4: Verify template renders cleanly
+
+Run `uv run pytest tests/` to ensure the existing template rendering tests
+pass with the new template included. No new test files are needed — the
+template rendering infrastructure automatically discovers and renders all
+templates in `src/templates/commands/`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This chunk creates a new command template using existing infrastructure:
+- The Jinja2 template system already handles command rendering
+- The `ve chunk` CLI commands already support the lifecycle operations
+- The narrative frontmatter model already includes `proposed_chunks` with `depends_on`
+- Claude Code's Agent tool provides native parallelism
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Chunk creation naming**: When `chunk_directory` is null and we need to create
+  a chunk, the skill must derive a reasonable directory name from the prompt text.
+  The instruction should tell the agent to derive a name following the naming
+  conventions in CLAUDE.md (initiative-based prefixes, underscore-separated).
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`ve chunk activate` existence**: The GOAL.md references `ve chunk activate`
+  to set a chunk to IMPLEMENTING status. Need to verify this command exists.
+  If not, the instruction should use a direct frontmatter edit to set
+  `status: IMPLEMENTING`. Check during implementation.
+
+- **Agent tool limitations**: The skill relies on Claude Code's Agent tool
+  supporting multiple concurrent background agents. If the runtime limits
+  parallelism, waves will execute with reduced concurrency but still correctly
+  (the dependency ordering is what matters for correctness, parallelism is
+  an optimization).
+
+- **Review loop**: The `/chunk-review` → `/chunk-implement` loop could
+  theoretically run indefinitely. The subagent instruction should cap review
+  iterations (e.g., max 3 cycles) and report to the operator if still failing.
+
+- **Partial completion and resume**: If the operator pauses execution after a
+  failure and later wants to resume, the skill should detect which chunks are
+  already ACTIVE (completed) and skip them, only executing remaining chunks.
+  This is handled naturally by checking chunk status before launching.
 
 ## Deviations
 

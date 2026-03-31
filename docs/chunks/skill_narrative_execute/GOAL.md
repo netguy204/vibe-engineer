@@ -1,18 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/templates/commands/narrative-execute.md.jinja2", "src/templates/claude/CLAUDE.md.jinja2"]
+code_paths:
+- src/templates/commands/narrative-execute.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
+- .claude/commands/narrative-execute.md
+- CLAUDE.md
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: template_system
+  relationship: uses
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["landing_page_analytics_domain"]
+created_after:
+- landing_page_analytics_domain
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
