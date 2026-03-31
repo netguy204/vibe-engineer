@@ -32,6 +32,7 @@ from task.exceptions import (
     TaskFrictionError,
     TaskOverlapError,
     TaskActivateError,
+    TaskDemoteError,
 )
 
 # Config functions
@@ -89,6 +90,12 @@ from task.external import (
     remove_dependent_from_artifact,
 )
 
+# Demotion
+from task.demote import (
+    demote_artifact,
+    scan_demotable_artifacts,
+)
+
 # Friction operations
 from task.friction import (
     create_task_friction_entry,
@@ -116,6 +123,7 @@ __all__ = [
     "TaskFrictionError",
     "TaskOverlapError",
     "TaskActivateError",
+    "TaskDemoteError",
     # Config
     "is_task_directory",
     "load_task_config",
@@ -154,6 +162,9 @@ __all__ = [
     "copy_artifact_as_external",
     "remove_artifact_from_external",
     "remove_dependent_from_artifact",
+    # Demotion
+    "demote_artifact",
+    "scan_demotable_artifacts",
     # Friction
     "create_task_friction_entry",
     "add_external_friction_source",

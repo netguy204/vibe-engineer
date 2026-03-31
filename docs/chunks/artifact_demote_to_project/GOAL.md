@@ -1,8 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/task/demote.py", "src/cli/task.py", "src/cli/chunk.py", "tests/test_task_demote.py"]
+code_paths:
+- src/task/demote.py
+- src/task/exceptions.py
+- src/task/__init__.py
+- src/cli/task.py
+- src/cli/chunk.py
+- tests/test_task_demote.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +16,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["episodic_ingest_external"]
+created_after:
+- episodic_ingest_external
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

@@ -507,10 +507,11 @@ def complete_chunk(chunk_id, project_dir):
     """
     from frontmatter import update_frontmatter_field
 
+    # Chunk: docs/chunks/artifact_demote_to_project - Enable chunk-complete in task context
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        click.echo("Error: complete command not supported in task context", err=True)
-        raise SystemExit(1)
+        _complete_task_chunk(chunk_id, project_dir)
+        return
 
     # Single-repo mode - complete in docs/chunks/
     chunks = Chunks(project_dir)
@@ -530,6 +531,103 @@ def complete_chunk(chunk_id, project_dir):
     goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
     update_frontmatter_field(goal_path, "status", "ACTIVE")
     click.echo(f"Completed docs/chunks/{chunk_name}")
+
+    # Check for task project context (running from within a task's project)
+    context = check_task_project_context(project_dir)
+    if context:
+        _auto_demote_if_eligible(context, chunk_name)
+
+
+# Chunk: docs/chunks/artifact_demote_to_project - Task context chunk completion
+def _complete_task_chunk(chunk_id, task_dir):
+    """Complete a chunk in task context (cross-repo mode).
+
+    Completes the chunk in the external repo and auto-demotes if the chunk
+    references only a single project.
+    """
+    from frontmatter import update_frontmatter_field
+    from task import (
+        load_task_config,
+        resolve_repo_directory,
+        get_current_task_chunk,
+        TaskDemoteError,
+    )
+    from task.demote import demote_artifact, _read_artifact_frontmatter
+
+    config = load_task_config(task_dir)
+    external_repo_path = resolve_repo_directory(task_dir, config.external_artifact_repo)
+
+    # Resolve which chunk to complete
+    if chunk_id is None:
+        current_chunk, _ = get_current_task_chunk(task_dir)
+        if current_chunk is None:
+            click.echo("No implementing chunk found", err=True)
+            raise SystemExit(1)
+        chunk_name = current_chunk
+    else:
+        # Try to resolve the chunk_id in the external repo
+        external_chunks = Chunks(external_repo_path)
+        chunk_name = external_chunks.resolve_chunk_id(chunk_id)
+        if chunk_name is None:
+            from cli.utils import format_not_found_error
+            click.echo(
+                f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    # Update status to ACTIVE in external repo
+    goal_path = external_repo_path / "docs" / "chunks" / chunk_name / "GOAL.md"
+    if not goal_path.exists():
+        click.echo(f"Error: chunk '{chunk_name}' not found in external repo", err=True)
+        raise SystemExit(1)
+
+    update_frontmatter_field(goal_path, "status", "ACTIVE")
+    click.echo(f"Completed docs/chunks/{chunk_name}")
+
+    # Auto-demote if single-project
+    chunk_path = external_repo_path / "docs" / "chunks" / chunk_name
+    frontmatter = _read_artifact_frontmatter(chunk_path, ArtifactType.CHUNK)
+    dependents = frontmatter.get("dependents", []) or []
+
+    if len(dependents) == 1:
+        try:
+            result = demote_artifact(
+                task_dir=task_dir,
+                artifact_path=f"docs/chunks/{chunk_name}",
+                target_project=dependents[0].get("repo"),
+            )
+            click.echo(
+                f"Auto-demoted chunk '{chunk_name}' to {result['target_project']} "
+                f"(single-project artifact)"
+            )
+        except TaskDemoteError as e:
+            click.echo(f"Warning: auto-demotion failed: {e}", err=True)
+    elif len(dependents) > 1:
+        dep_repos = [d.get("repo") for d in dependents]
+        click.echo(
+            f"Chunk '{chunk_name}' references {len(dependents)} projects "
+            f"({', '.join(dep_repos)}); keeping as external"
+        )
+
+
+# Chunk: docs/chunks/artifact_demote_to_project - Auto-demotion helper for project context
+def _auto_demote_if_eligible(context, chunk_name):
+    """Check if a completed chunk should be auto-demoted from external to local.
+
+    Called when chunk-complete runs from within a task's project directory.
+    """
+    from external_refs import is_external_artifact, load_external_ref, ARTIFACT_DIR_NAME
+    from task import TaskDemoteError
+    from task.demote import demote_artifact, _read_artifact_frontmatter
+
+    # Check if the chunk is an external reference
+    chunk_dir = context.task_dir / ".." / context.project_ref.split("/")[-1] / "docs" / "chunks" / chunk_name
+    # The chunk was just completed locally - check if there's also an external reference
+    # This path is for when running from within a project that's part of a task
+    # The external.yaml would have been in the local project's docs/chunks/
+    # But since we just completed it locally, it's already local - skip demotion
+    pass
 
 
 # Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode

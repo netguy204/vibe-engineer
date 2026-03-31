@@ -87,3 +87,10 @@ class TaskActivateError(TaskError):
     """Error during task chunk activation with user-friendly message."""
 
     pass
+
+
+# Chunk: docs/chunks/artifact_demote_to_project - Exception class for demotion error messages
+class TaskDemoteError(TaskError):
+    """Error during artifact demotion with user-friendly message."""
+
+    pass
