@@ -33,6 +33,7 @@ from models.entity import (
     EntityIdentity,
     MemoryFrontmatter,
     MemoryTier,
+    SessionRecord,
     TouchEvent,
 )
 from template_system import render_template
@@ -590,3 +591,61 @@ class Entities:
             if line:
                 events.append(TouchEvent.model_validate_json(line))
         return events
+
+    # Chunk: docs/chunks/entity_session_tracking
+    def append_session(self, entity_name: str, session_record: SessionRecord) -> None:
+        """Append a session record to the entity's sessions log."""
+        sessions_log_path = self.entity_dir(entity_name) / "sessions.jsonl"
+        with open(sessions_log_path, "a") as f:
+            f.write(session_record.model_dump_json() + "\n")
+
+    # Chunk: docs/chunks/entity_session_tracking
+    def list_sessions(self, entity_name: str) -> list[SessionRecord]:
+        """Read all session records from the entity's sessions log."""
+        sessions_log_path = self.entity_dir(entity_name) / "sessions.jsonl"
+        if not sessions_log_path.exists():
+            return []
+        sessions = []
+        for line in sessions_log_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                sessions.append(SessionRecord.model_validate_json(line))
+        return sessions
+
+    # Chunk: docs/chunks/entity_session_tracking
+    def archive_transcript(
+        self,
+        entity_name: str,
+        session_id: str,
+        project_path: str,
+        claude_home: Path | None = None,
+    ) -> bool:
+        """Copy a Claude Code session transcript into entity storage.
+
+        Args:
+            entity_name: Entity name.
+            session_id: UUID of the Claude Code session.
+            project_path: Absolute path of the project (e.g. "/Users/btaylor/Projects/foo").
+            claude_home: Override for ~/.claude (used in tests). Defaults to Path.home() / ".claude".
+
+        Returns:
+            True if the transcript was copied, False if source does not exist.
+        """
+        import shutil
+
+        # Encode project_path to Claude Code's directory convention:
+        # replace every '/' with '-' (the leading '/' becomes the leading '-')
+        encoded = project_path.replace("/", "-")
+        if claude_home is None:
+            claude_home = Path.home() / ".claude"
+        source = claude_home / "projects" / encoded / f"{session_id}.jsonl"
+
+        if not source.exists():
+            return False
+
+        sessions_dir = self.entity_dir(entity_name) / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+
+        destination = sessions_dir / f"{session_id}.jsonl"
+        shutil.copy2(source, destination)
+        return True
