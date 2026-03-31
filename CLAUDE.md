@@ -88,7 +88,7 @@ Manages parallel chunk execution across worktrees. **Read when**:
 
 See: `docs/trunk/ORCHESTRATOR.md`
 
-Commands: `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+Commands: `/orchestrator-inject`, `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
 
 ## Code Backreferences
 
