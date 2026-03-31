@@ -232,3 +232,9 @@ This is the vibe-engineer source repository. Many files are **rendered from Jinj
 Edits to rendered files will be **lost** when templates are re-rendered. Always modify the source template instead.
 
 If you see a rendered file with an `AUTO-GENERATED` header, that file is managed by the template system and should not be edited directly.
+
+## Design System
+Always read DESIGN.md before making any visual or UI decisions.
+All font choices, colors, spacing, and aesthetic direction are defined there.
+Do not deviate without explicit user approval.
+In QA mode, flag any code that doesn't match DESIGN.md.

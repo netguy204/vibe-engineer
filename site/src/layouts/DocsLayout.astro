@@ -1,0 +1,123 @@
+---
+// Chunk: docs/chunks/landing_page_veng_dev
+// Docs layout with left sidebar. Hidden from nav until content exists.
+import BaseLayout from './BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+
+const sidebarItems = [
+  { href: '/docs/', label: 'Getting Started' },
+  { href: '/docs/concepts/', label: 'Concepts' },
+];
+
+const currentPath = Astro.url.pathname;
+---
+
+<BaseLayout title={`${title} — ve docs`}>
+  <Nav slot="nav" />
+
+  <div class="docs-wrapper">
+    <!-- Sidebar: hidden on mobile, collapsed to dropdown -->
+    <aside class="docs-sidebar">
+      <select class="docs-mobile-nav" aria-label="Documentation navigation">
+        {sidebarItems.map(item => (
+          <option value={item.href} selected={currentPath === item.href}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+      <nav class="docs-desktop-nav" aria-label="Documentation">
+        <ul>
+          {sidebarItems.map(item => (
+            <li>
+              <a href={item.href} class:list={{ active: currentPath === item.href }}>
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </aside>
+
+    <article class="docs-content">
+      <slot />
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .docs-wrapper {
+    max-width: var(--max-code);
+    margin: var(--space-2xl) auto 0;
+    padding: 0 var(--space-lg);
+    display: flex;
+    gap: var(--space-2xl);
+  }
+
+  .docs-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+  }
+
+  .docs-mobile-nav {
+    display: none;
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    margin-bottom: var(--space-md);
+  }
+
+  .docs-desktop-nav ul {
+    list-style: none;
+  }
+
+  .docs-desktop-nav li {
+    margin-bottom: var(--space-sm);
+  }
+
+  .docs-desktop-nav a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 14px;
+    padding: var(--space-xs) 0;
+    display: block;
+  }
+
+  .docs-desktop-nav a:hover,
+  .docs-desktop-nav a.active {
+    color: var(--text);
+  }
+
+  .docs-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  @media (max-width: 768px) {
+    .docs-wrapper {
+      flex-direction: column;
+    }
+
+    .docs-sidebar {
+      width: 100%;
+    }
+
+    .docs-mobile-nav {
+      display: block;
+    }
+
+    .docs-desktop-nav {
+      display: none;
+    }
+  }
+</style>

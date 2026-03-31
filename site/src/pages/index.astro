@@ -1,0 +1,145 @@
+---
+// Chunk: docs/chunks/landing_page_veng_dev
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import { heroLines } from '../data/hero-code';
+---
+
+<BaseLayout>
+  <Nav slot="nav" />
+
+  <!-- Section 1: Hero with tabbed code comparison -->
+  <!-- Radio inputs at section level so :has() can toggle both code panels and captions -->
+  <section class="hero hero-section">
+    <input type="radio" name="hero-view" id="tab-engineered" checked class="hero-tab-input" />
+    <input type="radio" name="hero-view" id="tab-coded" class="hero-tab-input" />
+
+    <div class="content">
+      <h1 class="hero-tagline">Your codebase doesn't remember <span class="accent">why</span>.</h1>
+    </div>
+
+    <div class="content-wide">
+      <div class="hero-tab-bar">
+        <label for="tab-engineered" class="hero-tab-label">Vibe engineered</label>
+        <label for="tab-coded" class="hero-tab-label">Vibe coded</label>
+      </div>
+
+      <div class="hero-tab-panel hero-panel-engineered">
+        <CodeBlock lines={heroLines} showBackreferences={true} />
+      </div>
+
+      <div class="hero-tab-panel hero-panel-coded">
+        <CodeBlock lines={heroLines} showBackreferences={false} />
+      </div>
+    </div>
+
+    <div class="content">
+      <p class="hero-caption hero-caption-engineered">An agent reading this code knows where it came from, why it exists, and what it's allowed to change.</p>
+      <p class="hero-caption hero-caption-coded">An agent reading this code has to guess why it exists.</p>
+    </div>
+  </section>
+
+  <!-- Section 2: Day-2 Problem -->
+  <section>
+    <div class="content">
+      <h2>Day 2</h2>
+      <p>Vibe coding is magic on day 1. You describe what you want, the agent builds it, and it works.</p>
+      <p>Day 2, you ask for a change. The agent doesn't know why anything was built the way it was. It guesses. It breaks things. You start over, or you stop trusting it.</p>
+      <p><strong>The problem isn't the agent. It's that your codebase contains only the result, not the reasoning.</strong></p>
+    </div>
+  </section>
+
+  <!-- Section 3: How Does It Get There -->
+  <section>
+    <div class="content">
+      <h2>How does it get there?</h2>
+      <p>VE organizes work into <strong>chunks</strong>. Small, documented units of change. Before you write code, you write what you're trying to do and why. The agent implements against that intent, and the documentation stays connected to the code it produced.</p>
+
+      <p>This doesn't replace comments. You still want comments explaining what the code does. Chunks define something broader: the envelope of what correct looks like. An agent refactoring that code can see the invariants and the intent behind it, not just what each line does.</p>
+
+      <div class="workflow-tabs">
+        <input type="radio" name="workflow" id="wf-goal" checked class="workflow-input" />
+        <input type="radio" name="workflow" id="wf-plan" class="workflow-input" />
+        <input type="radio" name="workflow" id="wf-implement" class="workflow-input" />
+        <input type="radio" name="workflow" id="wf-complete" class="workflow-input" />
+
+        <div class="lifecycle">
+          <label for="wf-goal" class="step">Goal</label>
+          <span class="arrow">&rarr;</span>
+          <label for="wf-plan" class="step">Plan</label>
+          <span class="arrow">&rarr;</span>
+          <label for="wf-implement" class="step">Implement</label>
+          <span class="arrow">&rarr;</span>
+          <label for="wf-complete" class="step">Complete</label>
+        </div>
+
+        <div class="workflow-panel wf-panel-goal">
+          <p><strong>Define what you're trying to do and why.</strong> The goal captures the problem, the success criteria, and the constraints. It's the contract between you and the agent. A well-written goal means the agent doesn't have to guess your intent.</p>
+        </div>
+
+        <div class="workflow-panel wf-panel-plan">
+          <p><strong>Break down how you'll get there.</strong> The plan is an ordered sequence of steps, each small enough to reason about in isolation. It references existing code, decisions, and subsystems so the agent knows what it's building on.</p>
+        </div>
+
+        <div class="workflow-panel wf-panel-implement">
+          <p><strong>The agent writes code against documented intent.</strong> With the goal and plan as context, the agent implements each step and adds backreference comments that link the code back to the documentation that produced it. The codebase gains context as it grows.</p>
+        </div>
+
+        <div class="workflow-panel wf-panel-complete">
+          <p><strong>Code references are updated and the chunk is closed.</strong> The documentation now accurately describes what shipped. Future agents discover this context by following backreferences in the code, learning progressively instead of needing everything upfront.</p>
+        </div>
+      </div>
+
+      <p>Recent research confirms what VE practitioners already know: agents don't benefit from being told everything upfront. They need to discover context progressively, at the point where it's relevant. That's what backreferences and chunk documentation create. A codebase that teaches the agent as it navigates.</p>
+    </div>
+  </section>
+
+  <!-- Section 4: The Hardcoded Retry -->
+  <section>
+    <div class="content">
+      <h2>The hardcoded retry</h2>
+      <p>Look at the example above again. <code>time.sleep(3)</code>. Any engineer would "fix" that to exponential backoff. Any agent would too.</p>
+      <p>But the backreference points to this:</p>
+
+      <div class="decision-card">
+        <div class="card-label">Decision Record</div>
+        <p><strong>Stripe retry policy.</strong> The vendor's rate limiter bans clients that retry faster than 3 seconds. We discovered this during the Nov 15 2024 incident when exponential backoff (starting at 100ms) triggered a 24-hour IP ban during peak checkout.</p>
+        <p>Fixed sleep of 3 seconds is the only correct retry interval. Do not change without re-testing against the vendor's rate limiter in staging.</p>
+        <div class="card-date">2024-11-15</div>
+      </div>
+
+      <blockquote>Code can look wrong and be exactly right. Without the reasoning, the next agent to touch it will "fix" it.</blockquote>
+    </div>
+  </section>
+
+  <!-- Section 5: Retrofit -->
+  <section>
+    <div class="content">
+      <h2>Retrofit, don't rewrite</h2>
+      <p>You don't need to have used VE from the start. Run <code>ve init</code> in any existing project. Start documenting your next chunk of work. The backreferences accumulate. The codebase gets smarter one change at a time.</p>
+    </div>
+  </section>
+
+  <!-- Section 6: CTA -->
+  <section class="cta-section">
+    <div class="content">
+      <div class="cta-command">
+        <span class="prompt">$</span> uv tool install vibe-engineer
+      </div>
+
+      <details class="cta-details">
+        <summary>Other install methods</summary>
+        <div class="alt-command">
+          <span class="prompt">$</span> pip install vibe-engineer
+        </div>
+      </details>
+
+      <div class="cta-links">
+        <a href="https://github.com/netguy204/vibe-engineer" target="_blank" rel="noopener">GitHub</a>
+      </div>
+
+      <div class="badge">Open Source</div>
+    </div>
+  </section>
+</BaseLayout>

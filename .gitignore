@@ -5,3 +5,8 @@ __pycache__/
 .venv/
 .artifact-order.json
 .ve/
+
+# Site (Astro)
+site/node_modules/
+site/dist/
+site/.astro/
