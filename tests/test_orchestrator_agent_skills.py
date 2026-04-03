@@ -104,7 +104,11 @@ def create_mock_claude_sdk_client(messages=None, exception=None):
 @pytest.fixture
 def project_dir(tmp_path):
     """Create a project directory with skill files for testing."""
-    # Create .claude/commands directory
+    # Create .agents/skills directory structure (canonical location)
+    skills_dir = tmp_path / ".agents" / "skills"
+    skills_dir.mkdir(parents=True)
+
+    # Create .claude/commands directory for backwards-compat symlinks
     commands_dir = tmp_path / ".claude" / "commands"
     commands_dir.mkdir(parents=True)
 
@@ -117,10 +121,16 @@ description: Test skill
 
 This is a test skill for {phase}.
 """
-    for phase, filename in PHASE_SKILL_FILES.items():
-        (commands_dir / filename).write_text(
+    for phase, skill_name in PHASE_SKILL_FILES.items():
+        # Create canonical skill directory and SKILL.md
+        skill_dir = skills_dir / skill_name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
             skill_content.format(phase=phase.value)
         )
+        # Create backwards-compat symlink in .claude/commands/
+        symlink_path = commands_dir / f"{skill_name}.md"
+        symlink_path.symlink_to(skill_dir / "SKILL.md")
 
     return tmp_path
 
@@ -133,10 +143,11 @@ class TestPhaseSkillFiles:
         for phase in WorkUnitPhase:
             assert phase in PHASE_SKILL_FILES
 
-    def test_skill_file_format(self):
-        """Skill files are .md files."""
-        for filename in PHASE_SKILL_FILES.values():
-            assert filename.endswith(".md")
+    def test_skill_name_format(self):
+        """Skill names are bare directory names (no extension)."""
+        for skill_name in PHASE_SKILL_FILES.values():
+            assert not skill_name.endswith(".md")
+            assert "/" not in skill_name
 
 
 class TestLoadSkillContent:
@@ -311,12 +322,12 @@ class TestAgentRunner:
     """Tests for AgentRunner class."""
 
     def test_get_skill_path(self, project_dir):
-        """Returns correct path for each phase."""
+        """Returns correct path under .agents/skills/ for each phase."""
         runner = AgentRunner(project_dir)
 
-        for phase, filename in PHASE_SKILL_FILES.items():
+        for phase, skill_name in PHASE_SKILL_FILES.items():
             path = runner.get_skill_path(phase)
-            assert path == project_dir / ".claude" / "commands" / filename
+            assert path == project_dir / ".agents" / "skills" / skill_name / "SKILL.md"
 
     def test_get_phase_prompt_loads_content(self, project_dir):
         """Phase prompt loads content from skill file."""
@@ -331,8 +342,9 @@ class TestAgentRunner:
     def test_get_phase_prompt_goal_replaces_arguments(self, project_dir):
         """GOAL phase prompt replaces $ARGUMENTS placeholder."""
         # Create a skill file with $ARGUMENTS
-        commands_dir = project_dir / ".claude" / "commands"
-        (commands_dir / "chunk-create.md").write_text("""---
+        skills_dir = project_dir / ".agents" / "skills" / "chunk-create"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        (skills_dir / "SKILL.md").write_text("""---
 description: Create chunk
 ---
 

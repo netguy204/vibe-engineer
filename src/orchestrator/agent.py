@@ -44,12 +44,12 @@ class AgentRunnerError(Exception):
 # Chunk: docs/chunks/orch_pre_review_rebase - REBASE skill for pre-review trunk integration
 # Mapping from phase to skill file name
 PHASE_SKILL_FILES = {
-    WorkUnitPhase.GOAL: "chunk-create.md",
-    WorkUnitPhase.PLAN: "chunk-plan.md",
-    WorkUnitPhase.IMPLEMENT: "chunk-implement.md",
-    WorkUnitPhase.REBASE: "chunk-rebase.md",
-    WorkUnitPhase.REVIEW: "chunk-review.md",
-    WorkUnitPhase.COMPLETE: "chunk-complete.md",
+    WorkUnitPhase.GOAL: "chunk-create",
+    WorkUnitPhase.PLAN: "chunk-plan",
+    WorkUnitPhase.IMPLEMENT: "chunk-implement",
+    WorkUnitPhase.REBASE: "chunk-rebase",
+    WorkUnitPhase.REVIEW: "chunk-review",
+    WorkUnitPhase.COMPLETE: "chunk-complete",
 }
 
 
@@ -479,6 +479,7 @@ class AgentRunner:
         self.project_dir = project_dir.resolve()
         self.host_repo_path = self.project_dir
 
+    # Chunk: docs/chunks/orchestrator_skill_path_fix - Use canonical .agents/skills/ paths
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
         """Get the path to the skill file for a phase.
 
@@ -486,15 +487,15 @@ class AgentRunner:
             phase: The work unit phase
 
         Returns:
-            Path to the skill file
+            Path to the skill file under .agents/skills/<name>/SKILL.md
         """
-        skill_file = PHASE_SKILL_FILES[phase]
-        return self.project_dir / ".claude" / "commands" / skill_file
+        skill_name = PHASE_SKILL_FILES[phase]
+        return self.project_dir / ".agents" / "skills" / skill_name / "SKILL.md"
 
     def get_phase_prompt(self, chunk: str, phase: WorkUnitPhase) -> str:
         """Build the prompt for a phase execution.
 
-        Loads the skill content from the .claude/commands/ directory and
+        Loads the skill content from the .agents/skills/ directory and
         injects any necessary arguments.
 
         Args:

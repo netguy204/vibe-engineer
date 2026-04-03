@@ -1,8 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: agentskills_migration
-code_paths: ["src/orchestrator/"]
+code_paths:
+- src/orchestrator/agent.py
+- tests/test_orchestrator_agent_skills.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["agentskills_migration"]
+created_after:
+- agentskills_migration
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
