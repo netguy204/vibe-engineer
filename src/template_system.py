@@ -322,11 +322,13 @@ def render_template(
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/agentskills_migration - Added skill_layout parameter for agentskills.io directory structure
 def render_to_directory(
     collection: str,
     dest_dir: pathlib.Path,
     context: TemplateContext | None = None,
     overwrite: bool = False,
+    skill_layout: bool = False,
     **kwargs,
 ) -> RenderResult:
     """Render all templates in a collection to a destination directory.
@@ -334,11 +336,15 @@ def render_to_directory(
     Files with .jinja2 suffix will have that suffix stripped in the output.
     Files in partials/ subdirectories are excluded (they're meant to be included).
 
+    When skill_layout=True, each template renders to dest_dir/<name>/SKILL.md
+    instead of dest_dir/<name>.md, following the agentskills.io directory spec.
+
     Args:
         collection: Name of the template collection (e.g., "chunk", "narrative").
         dest_dir: Destination directory for rendered files.
         context: Optional TemplateContext providing project-level context.
         overwrite: If True, replace existing files; if False, skip them.
+        skill_layout: If True, render to <name>/SKILL.md subdirectories.
         **kwargs: Additional variables to pass to each template.
 
     Returns:
@@ -353,7 +359,17 @@ def render_to_directory(
         if output_name.endswith(".jinja2"):
             output_name = output_name[:-7]  # Remove ".jinja2"
 
-        output_path = dest_dir / output_name
+        if skill_layout:
+            # agentskills.io layout: <name>/SKILL.md
+            # Strip .md to get the skill name (e.g., "chunk-create.md" -> "chunk-create")
+            skill_name = output_name
+            if skill_name.endswith(".md"):
+                skill_name = skill_name[:-3]
+            skill_dir = dest_dir / skill_name
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            output_path = skill_dir / "SKILL.md"
+        else:
+            output_path = dest_dir / output_name
 
         if output_path.exists():
             if overwrite:

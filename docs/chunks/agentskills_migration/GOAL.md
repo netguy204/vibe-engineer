@@ -1,18 +1,30 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/templates/claude/CLAUDE.md.jinja2", "src/ve.py", "src/templates/commands/"]
+code_paths:
+- src/templates/claude/AGENTS.md.jinja2
+- src/templates/commands/
+- src/project.py
+- src/template_system.py
+- src/task_init.py
+- src/orchestrator/worktree.py
+- tests/test_project.py
+- tests/test_init.py
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: template_system
+  relationship: implements
+- subsystem_id: cross_repo_operations
+  relationship: uses
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["skill_chunk_execute_review_loop"]
+created_after:
+- skill_chunk_execute_review_loop
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

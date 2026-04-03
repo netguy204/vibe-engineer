@@ -585,13 +585,16 @@ class WorktreeManager:
 
         return work_dir
 
+    # Chunk: docs/chunks/agentskills_migration - Added AGENTS.md and .agents symlinks
     def _setup_agent_environment_symlinks(self, work_dir: Path) -> None:
         """Create symlinks to task-level configuration in work/ directory.
 
         Creates symlinks for:
         - .ve-task.yaml -> task_directory/.ve-task.yaml
-        - CLAUDE.md -> task_directory/CLAUDE.md
-        - .claude/ -> task_directory/.claude/
+        - AGENTS.md -> task_directory/AGENTS.md
+        - CLAUDE.md -> task_directory/CLAUDE.md (may itself be a symlink)
+        - .agents/ -> task_directory/.agents/
+        - .claude/ -> task_directory/.claude/ (may itself be a symlink)
 
         Missing source files are skipped (not an error).
 
@@ -604,13 +607,15 @@ class WorktreeManager:
 
         symlink_targets = [
             (".ve-task.yaml", task_dir / ".ve-task.yaml"),
+            ("AGENTS.md", task_dir / "AGENTS.md"),
             ("CLAUDE.md", task_dir / "CLAUDE.md"),
+            (".agents", task_dir / ".agents"),
             (".claude", task_dir / ".claude"),
         ]
 
         for link_name, target_path in symlink_targets:
             link_path = work_dir / link_name
-            if target_path.exists() and not link_path.exists():
+            if (target_path.exists() or target_path.is_symlink()) and not link_path.exists():
                 link_path.symlink_to(target_path)
 
     def remove_worktree(
@@ -727,13 +732,14 @@ class WorktreeManager:
             self._cleanup_agent_environment_symlinks(work_dir)
             shutil.rmtree(work_dir, ignore_errors=True)
 
+    # Chunk: docs/chunks/agentskills_migration - Added AGENTS.md and .agents cleanup
     def _cleanup_agent_environment_symlinks(self, work_dir: Path) -> None:
         """Remove symlinks from work/ directory.
 
         Args:
             work_dir: The work/ directory containing symlinks
         """
-        symlink_names = [".ve-task.yaml", "CLAUDE.md", ".claude"]
+        symlink_names = [".ve-task.yaml", "AGENTS.md", "CLAUDE.md", ".agents", ".claude"]
 
         for link_name in symlink_names:
             link_path = work_dir / link_name

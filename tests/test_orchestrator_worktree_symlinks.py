@@ -1,4 +1,5 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
+# Chunk: docs/chunks/agentskills_migration - Updated for AGENTS.md and .agents/ structure
 """Tests for symlink creation in task context mode."""
 
 import subprocess
@@ -45,15 +46,20 @@ class TestTaskContextSymlinks:
 
     @pytest.fixture
     def task_directory_with_config(self, tmp_path):
-        """Create a task directory with CLAUDE.md and .claude/ for testing."""
+        """Create a task directory with AGENTS.md, .agents/, and compat symlinks for testing."""
         task_dir, external, projects = setup_task_directory(
             tmp_path,
             external_name="external",
             project_names=["project_a"],
         )
-        # Create task-level CLAUDE.md
-        (task_dir / "CLAUDE.md").write_text("# Task-level guidance\n")
-        # Create task-level .claude/ directory with a command
+        # Create task-level AGENTS.md (canonical)
+        (task_dir / "AGENTS.md").write_text("# Task-level guidance\n")
+        # Create CLAUDE.md symlink for backwards compatibility
+        (task_dir / "CLAUDE.md").symlink_to("AGENTS.md")
+        # Create task-level .agents/ directory with skills
+        (task_dir / ".agents").mkdir()
+        (task_dir / ".agents" / "skills").mkdir()
+        # Create task-level .claude/ directory with a command symlink
         (task_dir / ".claude").mkdir()
         (task_dir / ".claude" / "test-command.md").write_text("# Test command\n")
         return {
@@ -86,6 +92,29 @@ class TestTaskContextSymlinks:
         assert ve_task_symlink.is_symlink()
         assert ve_task_symlink.resolve() == (task_dir / ".ve-task.yaml").resolve()
 
+    def test_creates_agents_md_symlink(self, task_directory_with_config):
+        """Creates symlink to AGENTS.md in work/ directory."""
+        from orchestrator.models import TaskContextInfo
+
+        task_dir = task_directory_with_config["task_dir"]
+        external = task_directory_with_config["external"]
+
+        task_info = TaskContextInfo(
+            root_dir=task_dir,
+            is_task_context=True,
+            external_repo_path=external,
+            project_paths=[task_directory_with_config["project_a"]],
+        )
+
+        manager = WorktreeManager(external, task_info=task_info)
+        repo_paths = [external, task_directory_with_config["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Check AGENTS.md symlink exists
+        agents_md_symlink = work_dir / "AGENTS.md"
+        assert agents_md_symlink.is_symlink()
+        assert agents_md_symlink.resolve() == (task_dir / "AGENTS.md").resolve()
+
     def test_creates_claude_md_symlink(self, task_directory_with_config):
         """Creates symlink to CLAUDE.md in work/ directory."""
         from orchestrator.models import TaskContextInfo
@@ -104,10 +133,32 @@ class TestTaskContextSymlinks:
         repo_paths = [external, task_directory_with_config["project_a"]]
         work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
 
-        # Check CLAUDE.md symlink exists
+        # Check CLAUDE.md symlink exists (may be a symlink to a symlink)
         claude_md_symlink = work_dir / "CLAUDE.md"
         assert claude_md_symlink.is_symlink()
-        assert claude_md_symlink.resolve() == (task_dir / "CLAUDE.md").resolve()
+
+    def test_creates_agents_dir_symlink(self, task_directory_with_config):
+        """Creates symlink to .agents/ directory in work/ directory."""
+        from orchestrator.models import TaskContextInfo
+
+        task_dir = task_directory_with_config["task_dir"]
+        external = task_directory_with_config["external"]
+
+        task_info = TaskContextInfo(
+            root_dir=task_dir,
+            is_task_context=True,
+            external_repo_path=external,
+            project_paths=[task_directory_with_config["project_a"]],
+        )
+
+        manager = WorktreeManager(external, task_info=task_info)
+        repo_paths = [external, task_directory_with_config["project_a"]]
+        work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
+
+        # Check .agents/ symlink exists
+        agents_dir_symlink = work_dir / ".agents"
+        assert agents_dir_symlink.is_symlink()
+        assert agents_dir_symlink.resolve() == (task_dir / ".agents").resolve()
 
     def test_creates_claude_dir_symlink(self, task_directory_with_config):
         """Creates symlink to .claude/ directory in work/ directory."""
@@ -151,7 +202,7 @@ class TestTaskContextSymlinks:
         work_dir = manager.create_worktree("test_chunk", repo_paths=repo_paths)
 
         # Symlinked files should contain task-level content
-        assert (work_dir / "CLAUDE.md").read_text() == "# Task-level guidance\n"
+        assert (work_dir / "AGENTS.md").read_text() == "# Task-level guidance\n"
         assert (work_dir / ".claude" / "test-command.md").read_text() == "# Test command\n"
 
     def test_symlinks_removed_on_worktree_cleanup(self, task_directory_with_config):
@@ -174,7 +225,9 @@ class TestTaskContextSymlinks:
 
         # Verify symlinks exist
         assert (work_dir / ".ve-task.yaml").is_symlink()
+        assert (work_dir / "AGENTS.md").is_symlink()
         assert (work_dir / "CLAUDE.md").is_symlink()
+        assert (work_dir / ".agents").is_symlink()
         assert (work_dir / ".claude").is_symlink()
 
         # Remove worktree
@@ -194,18 +247,21 @@ class TestTaskContextSymlinks:
         # Single-repo mode should not have symlinks in the worktree
         # (there's no work/ directory in single-repo mode)
         assert not (worktree_path / ".ve-task.yaml").is_symlink()
+        assert not (worktree_path / "AGENTS.md").is_symlink()
         assert not (worktree_path / "CLAUDE.md").is_symlink()
+        assert not (worktree_path / ".agents").is_symlink()
         assert not (worktree_path / ".claude").is_symlink()
 
-    def test_missing_claude_md_skipped(self, task_directory_with_config):
-        """Missing CLAUDE.md doesn't cause error, just skips that symlink."""
+    def test_missing_agents_md_skipped(self, task_directory_with_config):
+        """Missing AGENTS.md doesn't cause error, just skips that symlink."""
         from orchestrator.models import TaskContextInfo
 
         task_dir = task_directory_with_config["task_dir"]
         external = task_directory_with_config["external"]
 
-        # Remove CLAUDE.md from task directory
+        # Remove AGENTS.md and CLAUDE.md symlink from task directory
         (task_dir / "CLAUDE.md").unlink()
+        (task_dir / "AGENTS.md").unlink()
 
         task_info = TaskContextInfo(
             root_dir=task_dir,
@@ -222,8 +278,12 @@ class TestTaskContextSymlinks:
 
         # .ve-task.yaml symlink should exist
         assert (work_dir / ".ve-task.yaml").is_symlink()
+        # AGENTS.md symlink should NOT exist (source missing)
+        assert not (work_dir / "AGENTS.md").exists()
         # CLAUDE.md symlink should NOT exist (source missing)
         assert not (work_dir / "CLAUDE.md").exists()
+        # .agents/ symlink should exist
+        assert (work_dir / ".agents").is_symlink()
         # .claude/ symlink should exist
         assert (work_dir / ".claude").is_symlink()
 
@@ -253,8 +313,12 @@ class TestTaskContextSymlinks:
 
         # .ve-task.yaml symlink should exist
         assert (work_dir / ".ve-task.yaml").is_symlink()
-        # CLAUDE.md symlink should exist
+        # AGENTS.md symlink should exist
+        assert (work_dir / "AGENTS.md").is_symlink()
+        # CLAUDE.md symlink should exist (it's a symlink to AGENTS.md, which exists)
         assert (work_dir / "CLAUDE.md").is_symlink()
+        # .agents/ symlink should exist
+        assert (work_dir / ".agents").is_symlink()
         # .claude/ symlink should NOT exist (source missing)
         assert not (work_dir / ".claude").exists()
 
@@ -271,5 +335,7 @@ class TestTaskContextSymlinks:
 
         # No symlinks should be created (task_info is required to know task_dir)
         assert not (work_dir / ".ve-task.yaml").is_symlink()
+        assert not (work_dir / "AGENTS.md").is_symlink()
         assert not (work_dir / "CLAUDE.md").is_symlink()
+        assert not (work_dir / ".agents").is_symlink()
         assert not (work_dir / ".claude").is_symlink()

@@ -1186,34 +1186,34 @@ class TestVeConfigInTemplates:
         assert "AUTO-GENERATED FILE" in result
         assert "DO NOT EDIT DIRECTLY" in result
 
-    def test_claude_md_template_has_managed_markers(self):
-        """CLAUDE.md template has VE:MANAGED markers for managed content."""
+    def test_agents_md_template_has_managed_markers(self):
+        """AGENTS.md template has VE:MANAGED markers for managed content."""
         from template_system import render_template
 
         result = render_template(
             "claude",
-            "CLAUDE.md.jinja2",
+            "AGENTS.md.jinja2",
         )
         assert "<!-- VE:MANAGED:START -->" in result
         assert "<!-- VE:MANAGED:END -->" in result
 
-    def test_claude_md_template_no_development_section(self):
-        """CLAUDE.md template does not include Development section."""
+    def test_agents_md_template_no_development_section(self):
+        """AGENTS.md template does not include Development section."""
         from template_system import render_template
 
         result = render_template(
             "claude",
-            "CLAUDE.md.jinja2",
+            "AGENTS.md.jinja2",
         )
         assert "## Development" not in result
 
-    def test_claude_md_template_no_template_editing_workflow_section(self):
-        """CLAUDE.md template does not include Template Editing Workflow section."""
+    def test_agents_md_template_no_template_editing_workflow_section(self):
+        """AGENTS.md template does not include Template Editing Workflow section."""
         from template_system import render_template
 
         result = render_template(
             "claude",
-            "CLAUDE.md.jinja2",
+            "AGENTS.md.jinja2",
         )
         assert "## Template Editing Workflow" not in result
 

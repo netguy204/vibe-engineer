@@ -172,34 +172,48 @@ class TaskInit:
                 errors.append(f"Directory '{repo_ref}': {error_msg}")
             return errors, None
 
-    def _render_claude_md(self) -> list[str]:
-        """Render the task CLAUDE.md template to task root.
+    # Chunk: docs/chunks/agentskills_migration - AGENTS.md as canonical, CLAUDE.md as symlink
+    def _render_agents_md(self) -> list[str]:
+        """Render the task AGENTS.md template to task root.
+
+        Creates AGENTS.md as the canonical file and a CLAUDE.md symlink
+        for backwards compatibility with Claude Code.
 
         Returns:
             List of created file paths (relative to task root).
         """
         created = []
-        dest_file = self.cwd / "CLAUDE.md"
 
+        # Render to AGENTS.md
+        agents_file = self.cwd / "AGENTS.md"
         task_context = TaskContext(
             external_artifact_repo=self.external,
             projects=self.projects,
         )
         rendered = render_template(
-            "task", "CLAUDE.md.jinja2", **task_context.as_dict()
+            "task", "AGENTS.md.jinja2", **task_context.as_dict()
         )
-        dest_file.write_text(rendered)
-        created.append("CLAUDE.md")
+        agents_file.write_text(rendered)
+        created.append("AGENTS.md")
+
+        # Create CLAUDE.md symlink for backwards compatibility
+        claude_file = self.cwd / "CLAUDE.md"
+        if not claude_file.exists():
+            claude_file.symlink_to("AGENTS.md")
 
         return created
 
-    def _render_commands(self) -> list[str]:
-        """Render command templates to .claude/commands/ with task context.
+    # Chunk: docs/chunks/agentskills_migration - Skills rendered to .agents/skills/ with symlinks
+    def _render_skills(self) -> list[str]:
+        """Render skill templates to .agents/skills/ with task context.
+
+        Creates per-file symlinks in .claude/commands/ for backwards compatibility.
 
         Returns:
             List of created file paths (relative to task root).
         """
         created = []
+        skills_dir = self.cwd / ".agents" / "skills"
         commands_dir = self.cwd / ".claude" / "commands"
 
         task_context = TaskContext(
@@ -207,12 +221,28 @@ class TaskInit:
             projects=self.projects,
         )
         render_result = render_to_directory(
-            "commands", commands_dir, **task_context.as_dict()
+            "commands", skills_dir, skill_layout=True, **task_context.as_dict()
         )
 
         # Map paths to relative strings
         for path in render_result.created:
-            created.append(f".claude/commands/{path.name}")
+            skill_name = path.parent.name
+            created.append(f".agents/skills/{skill_name}/SKILL.md")
+
+        # Create .claude/commands/ symlinks for backwards compatibility
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        import pathlib
+        for skill_subdir in sorted(skills_dir.iterdir()):
+            if not skill_subdir.is_dir():
+                continue
+            skill_md = skill_subdir / "SKILL.md"
+            if not skill_md.exists():
+                continue
+            skill_name = skill_subdir.name
+            link_path = commands_dir / f"{skill_name}.md"
+            relative_target = pathlib.Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
+            if not link_path.exists():
+                link_path.symlink_to(relative_target)
 
         return created
 
@@ -242,11 +272,11 @@ class TaskInit:
             yaml.dump(config_data, f, default_flow_style=False)
         created_files.append(".ve-task.yaml")
 
-        # Render CLAUDE.md
-        created_files.extend(self._render_claude_md())
+        # Render AGENTS.md (with CLAUDE.md symlink)
+        created_files.extend(self._render_agents_md())
 
-        # Render command templates
-        created_files.extend(self._render_commands())
+        # Render skill templates (with .claude/commands/ symlinks)
+        created_files.extend(self._render_skills())
 
         return TaskInitResult(
             config_path=config_path,

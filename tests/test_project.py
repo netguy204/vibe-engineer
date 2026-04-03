@@ -1,6 +1,7 @@
 """Tests for the Project class."""
 # Chunk: docs/chunks/project_init_command - Tests for Project class, init(), and idempotency
 # Chunk: docs/chunks/project_artifact_registry - Tests for unified artifact registry properties
+# Chunk: docs/chunks/agentskills_migration - Updated for AGENTS.md and .agents/skills/ structure
 
 from chunks import Chunks
 from friction import Friction
@@ -145,61 +146,107 @@ class TestProjectInit:
         for filename in expected_files:
             assert (trunk_dir / filename).exists(), f"Missing {filename}"
 
-    def test_init_creates_claude_commands_directory(self, temp_project):
-        """init() creates .claude/commands/ directory."""
+    def test_init_creates_agents_skills_directory(self, temp_project):
+        """init() creates .agents/skills/ directory with skill subdirectories."""
+        project = Project(temp_project)
+        project.init()
+        skills_dir = temp_project / ".agents" / "skills"
+        assert skills_dir.exists()
+        assert skills_dir.is_dir()
+
+    def test_init_creates_skill_files(self, temp_project):
+        """init() creates SKILL.md files in skill subdirectories."""
+        project = Project(temp_project)
+        project.init()
+        skills_dir = temp_project / ".agents" / "skills"
+        expected_skills = [
+            "chunk-create",
+            "chunk-plan",
+            "chunk-complete",
+            "chunk-update-references",
+            "chunks-resolve-references",
+        ]
+        for skill in expected_skills:
+            skill_path = skills_dir / skill / "SKILL.md"
+            assert skill_path.exists(), f"Missing {skill}/SKILL.md"
+            assert skill_path.is_file(), f"{skill}/SKILL.md should be a file"
+
+    def test_init_creates_claude_commands_symlinks(self, temp_project):
+        """init() creates .claude/commands/ symlinks pointing to skills."""
         project = Project(temp_project)
         project.init()
         commands_dir = temp_project / ".claude" / "commands"
         assert commands_dir.exists()
         assert commands_dir.is_dir()
 
-    def test_init_creates_command_files(self, temp_project):
-        """init() creates command files (rendered from templates)."""
-        project = Project(temp_project)
-        project.init()
-        commands_dir = temp_project / ".claude" / "commands"
-        expected_commands = [
-            "chunk-create.md",
-            "chunk-plan.md",
-            "chunk-complete.md",
-            "chunk-update-references.md",
-            "chunks-resolve-references.md",
-        ]
-        for cmd in expected_commands:
-            cmd_path = commands_dir / cmd
-            assert cmd_path.exists(), f"Missing {cmd}"
-            assert cmd_path.is_file(), f"{cmd} should be a file"
+        # Check that symlinks exist and point to correct targets
+        link_path = commands_dir / "chunk-create.md"
+        assert link_path.is_symlink(), "chunk-create.md should be a symlink"
+        target = link_path.resolve()
+        expected_target = (temp_project / ".agents" / "skills" / "chunk-create" / "SKILL.md").resolve()
+        assert target == expected_target
 
-    def test_init_command_files_have_content(self, temp_project):
-        """init() command files have content rendered from templates."""
+    def test_init_command_symlinks_are_relative(self, temp_project):
+        """init() creates relative symlinks in .claude/commands/."""
         project = Project(temp_project)
         project.init()
         commands_dir = temp_project / ".claude" / "commands"
 
-        # Check that command files are not empty
-        for cmd_path in commands_dir.iterdir():
-            if cmd_path.is_file():
-                content = cmd_path.read_text()
-                assert len(content) > 0, f"{cmd_path.name} should have content"
+        for link_path in commands_dir.iterdir():
+            if link_path.is_symlink():
+                import os
+                target = os.readlink(link_path)
+                assert not target.startswith("/"), f"Symlink {link_path.name} should be relative, got {target}"
 
-    def test_init_creates_claude_md(self, temp_project):
-        """init() creates CLAUDE.md at project root."""
+    def test_init_skill_files_have_content(self, temp_project):
+        """init() skill files have content rendered from templates."""
+        project = Project(temp_project)
+        project.init()
+        skills_dir = temp_project / ".agents" / "skills"
+
+        # Check that skill files are not empty
+        for skill_dir in skills_dir.iterdir():
+            if skill_dir.is_dir():
+                skill_md = skill_dir / "SKILL.md"
+                if skill_md.exists():
+                    content = skill_md.read_text()
+                    assert len(content) > 0, f"{skill_dir.name}/SKILL.md should have content"
+
+    def test_init_creates_agents_md(self, temp_project):
+        """init() creates AGENTS.md at project root."""
+        project = Project(temp_project)
+        project.init()
+        agents_md = temp_project / "AGENTS.md"
+        assert agents_md.exists()
+        assert agents_md.is_file()
+
+    def test_init_creates_claude_md_symlink(self, temp_project):
+        """init() creates CLAUDE.md as symlink to AGENTS.md."""
         project = Project(temp_project)
         project.init()
         claude_md = temp_project / "CLAUDE.md"
-        assert claude_md.exists()
-        assert claude_md.is_file()
+        agents_md = temp_project / "AGENTS.md"
+        assert claude_md.is_symlink()
+        assert claude_md.resolve() == agents_md.resolve()
 
-    def test_init_claude_md_has_content(self, temp_project):
-        """init() creates CLAUDE.md with expected content."""
+    def test_init_agents_md_has_content(self, temp_project):
+        """init() creates AGENTS.md with expected content."""
         project = Project(temp_project)
         project.init()
-        claude_md = temp_project / "CLAUDE.md"
-        content = claude_md.read_text()
+        agents_md = temp_project / "AGENTS.md"
+        content = agents_md.read_text()
         assert "Vibe Engineering" in content
         assert "docs/trunk/" in content
         assert "docs/chunks/" in content
         assert "/chunk-create" in content
+
+    def test_init_claude_md_symlink_has_same_content(self, temp_project):
+        """CLAUDE.md symlink reads same content as AGENTS.md."""
+        project = Project(temp_project)
+        project.init()
+        agents_content = (temp_project / "AGENTS.md").read_text()
+        claude_content = (temp_project / "CLAUDE.md").read_text()
+        assert agents_content == claude_content
 
     def test_init_reports_created_files(self, temp_project):
         """init() reports all created files in result."""
@@ -207,9 +254,9 @@ class TestProjectInit:
         result = project.init()
         # Verify items are created and key files are present
         assert len(result.created) > 0
-        assert "CLAUDE.md" in result.created
+        assert "AGENTS.md" in result.created
         assert any("docs/trunk/" in f for f in result.created)
-        assert any(".claude/commands/" in f for f in result.created)
+        assert any(".agents/skills/" in f for f in result.created)
 
 
 class TestProjectInitChunks:
@@ -320,19 +367,20 @@ class TestProjectInitReviewers:
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Test suite for marker detection, preservation, and edge cases
+# Chunk: docs/chunks/agentskills_migration - Updated for AGENTS.md as canonical file
 class TestMagicMarkers:
-    """Tests for CLAUDE.md magic marker functionality."""
+    """Tests for AGENTS.md magic marker functionality."""
 
     MARKER_START = "<!-- VE:MANAGED:START -->"
     MARKER_END = "<!-- VE:MANAGED:END -->"
 
-    def test_new_claude_md_includes_markers(self, temp_project):
-        """New CLAUDE.md files include magic markers."""
+    def test_new_agents_md_includes_markers(self, temp_project):
+        """New AGENTS.md files include magic markers."""
         project = Project(temp_project)
         project.init()
 
-        claude_md = temp_project / "CLAUDE.md"
-        content = claude_md.read_text()
+        agents_md = temp_project / "AGENTS.md"
+        content = agents_md.read_text()
 
         assert self.MARKER_START in content
         assert self.MARKER_END in content
@@ -344,18 +392,18 @@ class TestMagicMarkers:
         project = Project(temp_project)
         project.init()
 
-        claude_md = temp_project / "CLAUDE.md"
-        original = claude_md.read_text()
+        agents_md = temp_project / "AGENTS.md"
+        original = agents_md.read_text()
 
         # Add custom content before the START marker
         custom_header = "# My Custom Project\n\nThis is my custom documentation.\n\n"
         start_idx = original.index(self.MARKER_START)
         modified = custom_header + original[start_idx:]
-        claude_md.write_text(modified)
+        agents_md.write_text(modified)
 
         # Reinit should preserve custom content
         project.init()
-        result = claude_md.read_text()
+        result = agents_md.read_text()
 
         assert result.startswith(custom_header)
         assert self.MARKER_START in result
@@ -366,17 +414,17 @@ class TestMagicMarkers:
         project = Project(temp_project)
         project.init()
 
-        claude_md = temp_project / "CLAUDE.md"
-        original = claude_md.read_text()
+        agents_md = temp_project / "AGENTS.md"
+        original = agents_md.read_text()
 
         # Add custom content after the END marker
         custom_footer = "\n\n## My Custom Section\n\nMore custom content here.\n"
         modified = original + custom_footer
-        claude_md.write_text(modified)
+        agents_md.write_text(modified)
 
         # Reinit should preserve custom content
         project.init()
-        result = claude_md.read_text()
+        result = agents_md.read_text()
 
         assert result.endswith(custom_footer)
         assert self.MARKER_START in result
@@ -387,8 +435,8 @@ class TestMagicMarkers:
         project = Project(temp_project)
         project.init()
 
-        claude_md = temp_project / "CLAUDE.md"
-        original = claude_md.read_text()
+        agents_md = temp_project / "AGENTS.md"
+        original = agents_md.read_text()
 
         # Modify content inside markers
         start_idx = original.index(self.MARKER_START)
@@ -400,45 +448,73 @@ class TestMagicMarkers:
             + self.MARKER_END
             + original[end_idx:]
         )
-        claude_md.write_text(modified)
+        agents_md.write_text(modified)
 
         # Reinit should replace the managed content
         project.init()
-        result = claude_md.read_text()
+        result = agents_md.read_text()
 
         assert "OLD MANAGED CONTENT THAT SHOULD BE REPLACED" not in result
         # The managed content should contain VE instructions
         assert "Vibe Engineering" in result
 
-    def test_existing_without_markers_unchanged(self, temp_project):
-        """Existing CLAUDE.md without markers is left unchanged (backward compat)."""
+    def test_existing_agents_md_without_markers_unchanged(self, temp_project):
+        """Existing AGENTS.md without markers is left unchanged (backward compat)."""
         project = Project(temp_project)
 
-        # Create a CLAUDE.md without markers
-        claude_md = temp_project / "CLAUDE.md"
-        custom_content = "# Custom CLAUDE.md\n\nNo markers here.\n"
-        claude_md.write_text(custom_content)
+        # Create an AGENTS.md without markers
+        agents_md = temp_project / "AGENTS.md"
+        custom_content = "# Custom AGENTS.md\n\nNo markers here.\n"
+        agents_md.write_text(custom_content)
 
         result = project.init()
 
         # File should be unchanged
-        assert claude_md.read_text() == custom_content
-        assert "CLAUDE.md" in result.skipped
+        assert agents_md.read_text() == custom_content
+        assert "AGENTS.md" in result.skipped
+
+    def test_pre_migration_claude_md_renamed_to_agents_md(self, temp_project):
+        """Existing CLAUDE.md (regular file) is renamed to AGENTS.md on init."""
+        project = Project(temp_project)
+
+        # Create a CLAUDE.md with markers (simulating pre-migration state)
+        claude_md = temp_project / "CLAUDE.md"
+        content_with_markers = (
+            "# My Project\n\n"
+            + self.MARKER_START
+            + "\nOld managed content\n"
+            + self.MARKER_END
+            + "\n\n## Custom Footer\n"
+        )
+        claude_md.write_text(content_with_markers)
+
+        result = project.init()
+
+        # CLAUDE.md should now be a symlink
+        assert claude_md.is_symlink()
+        # AGENTS.md should exist and have updated managed content
+        agents_md = temp_project / "AGENTS.md"
+        assert agents_md.exists()
+        assert not agents_md.is_symlink()
+        # Custom content outside markers should be preserved
+        agents_content = agents_md.read_text()
+        assert "# My Project" in agents_content
+        assert "## Custom Footer" in agents_content
 
     def test_malformed_markers_missing_end_warns(self, temp_project):
         """Missing END marker results in warning and file unchanged."""
         project = Project(temp_project)
 
-        # Create CLAUDE.md with only START marker
-        claude_md = temp_project / "CLAUDE.md"
+        # Create AGENTS.md with only START marker
+        agents_md = temp_project / "AGENTS.md"
         malformed_content = f"# Header\n\n{self.MARKER_START}\n\nSome content\n"
-        claude_md.write_text(malformed_content)
+        agents_md.write_text(malformed_content)
 
         result = project.init()
 
         # File should be unchanged
-        assert claude_md.read_text() == malformed_content
-        assert "CLAUDE.md" in result.skipped
+        assert agents_md.read_text() == malformed_content
+        assert "AGENTS.md" in result.skipped
         # Should have a warning about malformed markers
         assert any("marker" in w.lower() for w in result.warnings)
 
@@ -446,16 +522,16 @@ class TestMagicMarkers:
         """Missing START marker results in warning and file unchanged."""
         project = Project(temp_project)
 
-        # Create CLAUDE.md with only END marker
-        claude_md = temp_project / "CLAUDE.md"
+        # Create AGENTS.md with only END marker
+        agents_md = temp_project / "AGENTS.md"
         malformed_content = f"# Header\n\nSome content\n\n{self.MARKER_END}\n"
-        claude_md.write_text(malformed_content)
+        agents_md.write_text(malformed_content)
 
         result = project.init()
 
         # File should be unchanged
-        assert claude_md.read_text() == malformed_content
-        assert "CLAUDE.md" in result.skipped
+        assert agents_md.read_text() == malformed_content
+        assert "AGENTS.md" in result.skipped
         # Should have a warning about malformed markers
         assert any("marker" in w.lower() for w in result.warnings)
 
@@ -463,16 +539,16 @@ class TestMagicMarkers:
         """END before START marker results in warning and file unchanged."""
         project = Project(temp_project)
 
-        # Create CLAUDE.md with markers in wrong order
-        claude_md = temp_project / "CLAUDE.md"
+        # Create AGENTS.md with markers in wrong order
+        agents_md = temp_project / "AGENTS.md"
         malformed_content = f"# Header\n\n{self.MARKER_END}\n\nContent\n\n{self.MARKER_START}\n"
-        claude_md.write_text(malformed_content)
+        agents_md.write_text(malformed_content)
 
         result = project.init()
 
         # File should be unchanged
-        assert claude_md.read_text() == malformed_content
-        assert "CLAUDE.md" in result.skipped
+        assert agents_md.read_text() == malformed_content
+        assert "AGENTS.md" in result.skipped
         # Should have a warning about malformed markers
         assert any("marker" in w.lower() for w in result.warnings)
 
@@ -480,20 +556,20 @@ class TestMagicMarkers:
         """Multiple marker pairs results in warning and file unchanged."""
         project = Project(temp_project)
 
-        # Create CLAUDE.md with multiple marker pairs
-        claude_md = temp_project / "CLAUDE.md"
+        # Create AGENTS.md with multiple marker pairs
+        agents_md = temp_project / "AGENTS.md"
         malformed_content = (
             f"# Header\n\n"
             f"{self.MARKER_START}\nContent 1\n{self.MARKER_END}\n\n"
             f"{self.MARKER_START}\nContent 2\n{self.MARKER_END}\n"
         )
-        claude_md.write_text(malformed_content)
+        agents_md.write_text(malformed_content)
 
         result = project.init()
 
         # File should be unchanged
-        assert claude_md.read_text() == malformed_content
-        assert "CLAUDE.md" in result.skipped
+        assert agents_md.read_text() == malformed_content
+        assert "AGENTS.md" in result.skipped
         # Should have a warning about multiple markers
         assert any("marker" in w.lower() for w in result.warnings)
 
@@ -506,22 +582,22 @@ class TestMagicMarkers:
         result = project.init()
 
         # With markers, we should see it in created (updated), not skipped
-        assert "CLAUDE.md" in result.created
+        assert "AGENTS.md" in result.created
 
 
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.
 
-    Note: Commands are always updated (overwrite=True) so they appear in
+    Note: Skills are always updated (overwrite=True) so they appear in
     created on every run. Trunk docs are never overwritten (overwrite=False)
-    so they appear in skipped on subsequent runs. CLAUDE.md with markers
+    so they appear in skipped on subsequent runs. AGENTS.md with markers
     has its managed content updated while preserving user content.
     """
 
-    def test_init_preserves_user_content_skips_commands(self, temp_project):
-        """Running init() twice: trunk skipped, commands and CLAUDE.md updated.
+    def test_init_preserves_user_content_skips_skills(self, temp_project):
+        """Running init() twice: trunk skipped, skills and AGENTS.md updated.
 
-        Note: CLAUDE.md with markers is now updated (in created) on subsequent runs,
+        Note: AGENTS.md with markers is now updated (in created) on subsequent runs,
         preserving user content outside markers while refreshing managed content.
         """
         project = Project(temp_project)
@@ -536,10 +612,10 @@ class TestProjectInitIdempotency:
         assert "docs/narratives/" in result2.skipped
         assert "docs/chunks/" in result2.skipped
 
-        # Commands and CLAUDE.md (with markers) are always updated
-        assert any(".claude/commands/" in f for f in result2.created)
-        # CLAUDE.md with markers is updated, not skipped
-        assert "CLAUDE.md" in result2.created
+        # Skills and AGENTS.md (with markers) are always updated
+        assert any(".agents/skills/" in f for f in result2.created)
+        # AGENTS.md with markers is updated, not skipped
+        assert "AGENTS.md" in result2.created
 
     def test_init_skips_existing_trunk_files(self, temp_project):
         """init() skips existing trunk files without overwriting."""
@@ -556,36 +632,36 @@ class TestProjectInitIdempotency:
         # Custom content should be preserved
         assert (trunk_dir / "GOAL.md").read_text() == custom_content
 
-    def test_init_overwrites_existing_commands(self, temp_project):
-        """init() always overwrites existing command files (managed templates)."""
+    def test_init_overwrites_existing_skills(self, temp_project):
+        """init() always overwrites existing skill files (managed templates)."""
         project = Project(temp_project)
 
-        # Create commands dir with existing file
-        commands_dir = temp_project / ".claude" / "commands"
-        commands_dir.mkdir(parents=True)
-        existing_cmd = commands_dir / "chunk-create.md"
-        existing_cmd.write_text("Old content")
+        # Create skills dir with existing file
+        skill_dir = temp_project / ".agents" / "skills" / "chunk-create"
+        skill_dir.mkdir(parents=True)
+        existing_skill = skill_dir / "SKILL.md"
+        existing_skill.write_text("Old content")
 
         result = project.init()
 
-        # Command should be updated (in created), not skipped
-        assert ".claude/commands/chunk-create.md" in result.created
+        # Skill should be updated (in created), not skipped
+        assert ".agents/skills/chunk-create/SKILL.md" in result.created
         # Content should be updated from template
-        assert existing_cmd.read_text() != "Old content"
+        assert existing_skill.read_text() != "Old content"
 
-    def test_init_skips_existing_claude_md(self, temp_project):
-        """init() skips existing CLAUDE.md without overwriting."""
+    def test_init_skips_existing_agents_md_without_markers(self, temp_project):
+        """init() skips existing AGENTS.md without markers."""
         project = Project(temp_project)
 
-        # Create custom CLAUDE.md
-        custom_content = "# Custom CLAUDE.md\nDo not overwrite."
-        (temp_project / "CLAUDE.md").write_text(custom_content)
+        # Create custom AGENTS.md without markers
+        custom_content = "# Custom AGENTS.md\nDo not overwrite."
+        (temp_project / "AGENTS.md").write_text(custom_content)
 
         result = project.init()
 
         # Custom content should be preserved
-        assert (temp_project / "CLAUDE.md").read_text() == custom_content
-        assert "CLAUDE.md" in result.skipped
+        assert (temp_project / "AGENTS.md").read_text() == custom_content
+        assert "AGENTS.md" in result.skipped
 
     def test_init_result_tracks_skipped_and_created(self, temp_project):
         """init() result correctly tracks which files were skipped vs created."""
@@ -596,27 +672,32 @@ class TestProjectInitIdempotency:
         assert len(result1.skipped) == 0
         assert len(result1.created) > 0
 
-        # Second run - user content skipped, commands created (updated)
+        # Second run - user content skipped, skills created (updated)
         result2 = project.init()
-        # Trunk + CLAUDE.md + narratives + chunks should be skipped
-        assert len(result2.skipped) >= 6  # 4 trunk files + CLAUDE.md + narratives
-        # Commands should be in created (updated)
+        # Trunk + AGENTS.md (without markers = skip) + narratives + chunks should be skipped
+        assert len(result2.skipped) >= 6  # 4 trunk files + narratives + chunks + reviewers
+        # Skills should be in created (updated)
         assert len(result2.created) > 0
 
-    def test_init_restores_deleted_file(self, temp_project):
-        """init() restores a deleted file on subsequent run."""
+    def test_init_restores_deleted_agents_md(self, temp_project):
+        """init() restores a deleted AGENTS.md on subsequent run."""
         project = Project(temp_project)
 
         # First run - initialize
         project.init()
-        claude_md = temp_project / "CLAUDE.md"
-        assert claude_md.exists()
+        agents_md = temp_project / "AGENTS.md"
+        assert agents_md.exists()
 
-        # Delete a file
-        claude_md.unlink()
-        assert not claude_md.exists()
+        # Delete AGENTS.md and its symlink
+        claude_md = temp_project / "CLAUDE.md"
+        if claude_md.is_symlink():
+            claude_md.unlink()
+        agents_md.unlink()
+        assert not agents_md.exists()
 
         # Second run - should restore the deleted file
         result = project.init()
-        assert claude_md.exists()
-        assert "CLAUDE.md" in result.created
+        assert agents_md.exists()
+        assert "AGENTS.md" in result.created
+        # CLAUDE.md symlink should be recreated
+        assert claude_md.is_symlink()

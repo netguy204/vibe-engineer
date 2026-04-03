@@ -190,39 +190,79 @@ class Project:
 
     # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
-    def _init_commands(self) -> InitResult:
-        """Set up Claude commands by rendering templates.
+    # Chunk: docs/chunks/agentskills_migration - Migrated to agentskills.io skill layout
+    def _init_skills(self) -> InitResult:
+        """Set up agent skills by rendering templates to .agents/skills/.
 
-        Commands are always updated to the latest templates (overwrite=True)
+        Skills are always updated to the latest templates (overwrite=True)
         because they are managed artifacts, not user content.
 
-        Commands are rendered with task_context=False to ensure the conditional
+        Skills are rendered with task_context=False to ensure the conditional
         blocks for task-specific content are properly omitted in project context.
+
+        Creates per-file symlinks in .claude/commands/ for backwards compatibility
+        with Claude Code.
         """
         result = InitResult()
+        skills_dir = self.project_dir / ".agents" / "skills"
         commands_dir = self.project_dir / ".claude" / "commands"
 
-        # Use render_to_directory with overwrite=True to always update commands
-        # Pass task_context=False to ensure project-context commands don't include
-        # task-specific conditional content
-        # Pass ve_config so templates can conditionally render auto-generated headers
+        # Render templates to .agents/skills/<name>/SKILL.md
         context = TemplateContext()
         render_result = render_to_directory(
             "commands",
-            commands_dir,
+            skills_dir,
             context=context,
             overwrite=True,
+            skill_layout=True,
             task_context=False,
             ve_config=self.ve_config.as_dict(),
         )
 
         # Map RenderResult paths to relative path strings for InitResult
         for path in render_result.created:
-            result.created.append(f".claude/commands/{path.name}")
+            skill_name = path.parent.name
+            result.created.append(f".agents/skills/{skill_name}/SKILL.md")
         for path in render_result.overwritten:
-            # Overwritten files were updated, but we report as "created" for simplicity
-            # since the user just sees that the file was written
-            result.created.append(f".claude/commands/{path.name}")
+            skill_name = path.parent.name
+            result.created.append(f".agents/skills/{skill_name}/SKILL.md")
+
+        # Create .claude/commands/ directory for backwards compatibility symlinks
+        commands_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create per-file symlinks: .claude/commands/<name>.md -> ../../.agents/skills/<name>/SKILL.md
+        # Use relative paths so the project remains relocatable
+        for skill_subdir in sorted(skills_dir.iterdir()):
+            if not skill_subdir.is_dir():
+                continue
+            skill_md = skill_subdir / "SKILL.md"
+            if not skill_md.exists():
+                continue
+            skill_name = skill_subdir.name
+            link_path = commands_dir / f"{skill_name}.md"
+            relative_target = pathlib.Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
+
+            if link_path.is_symlink():
+                # Update symlink if target changed
+                if link_path.resolve() != skill_md.resolve():
+                    link_path.unlink()
+                    link_path.symlink_to(relative_target)
+            elif link_path.exists():
+                # Regular file exists with same name - skip to avoid data loss, warn
+                result.warnings.append(
+                    f".claude/commands/{skill_name}.md exists as a regular file, skipping symlink"
+                )
+            else:
+                link_path.symlink_to(relative_target)
+
+        # Clean up stale symlinks in .claude/commands/ that no longer correspond to skills
+        if commands_dir.exists():
+            active_skill_names = {d.name for d in skills_dir.iterdir() if d.is_dir()}
+            for link_path in sorted(commands_dir.iterdir()):
+                if link_path.is_symlink():
+                    link_name = link_path.stem  # e.g., "chunk-create" from "chunk-create.md"
+                    if link_name not in active_skill_names:
+                        link_path.unlink()
 
         return result
 
@@ -313,81 +353,100 @@ class Project:
         return result
 
     # Subsystem: docs/subsystems/template_system - Uses render_template
-    # Chunk: docs/chunks/claudemd_magic_markers - Marker-aware CLAUDE.md initialization with preservation
-    def _init_claude_md(self) -> InitResult:
-        """Create or update CLAUDE.md at project root from template.
+    # Chunk: docs/chunks/claudemd_magic_markers - Marker-aware initialization with preservation
+    # Chunk: docs/chunks/agentskills_migration - AGENTS.md as canonical, CLAUDE.md as symlink
+    def _init_agents_md(self) -> InitResult:
+        """Create or update AGENTS.md at project root from template.
+
+        AGENTS.md is the canonical agent instructions file. A CLAUDE.md symlink
+        is created for backwards compatibility with Claude Code.
 
         Behavior depends on file state:
-        1. File doesn't exist: Create with markers
-        2. File exists without markers: Skip (backward compatible)
-        3. File exists with valid markers: Rewrite content inside markers
-        4. File exists with malformed markers: Skip with warning
+        A. Fresh init (no AGENTS.md, no CLAUDE.md): Create AGENTS.md + symlink
+        B. Existing CLAUDE.md as regular file (pre-migration): Rename to AGENTS.md + symlink
+        C. AGENTS.md exists (already migrated): Update managed content
+        D. CLAUDE.md is already a symlink to AGENTS.md: Update AGENTS.md via markers
         """
         result = InitResult()
-        dest_file = self.project_dir / "CLAUDE.md"
+        agents_file = self.project_dir / "AGENTS.md"
+        claude_file = self.project_dir / "CLAUDE.md"
 
-        # Render the template (we may need it for new files or marker updates)
+        # Render the template
         context = TemplateContext()
         rendered = render_template(
             "claude",
-            "CLAUDE.md.jinja2",
+            "AGENTS.md.jinja2",
             context=context,
             ve_config=self.ve_config.as_dict(),
         )
 
-        if not dest_file.exists():
-            # Case 1: New file - write with markers
-            dest_file.write_text(rendered)
-            result.created.append("CLAUDE.md")
-            return result
+        # Case B: Existing CLAUDE.md as regular file (pre-migration project)
+        # Rename it to AGENTS.md before proceeding
+        if claude_file.exists() and not claude_file.is_symlink() and not agents_file.exists():
+            claude_file.rename(agents_file)
 
-        # File exists - check for markers
-        existing_content = dest_file.read_text()
-        parse_result = parse_markers(existing_content)
+        if not agents_file.exists():
+            # Case A: Fresh init - write AGENTS.md with markers
+            agents_file.write_text(rendered)
+            result.created.append("AGENTS.md")
+        else:
+            # Cases C/D: AGENTS.md exists - check for markers and update
+            existing_content = agents_file.read_text()
+            parse_result = parse_markers(existing_content)
 
-        if parse_result.error:
-            # Case 4: Malformed markers - skip with warning
-            result.skipped.append("CLAUDE.md")
-            result.warnings.append(parse_result.error)
-            return result
+            if parse_result.error:
+                # Malformed markers - skip with warning
+                result.skipped.append("AGENTS.md")
+                result.warnings.append(parse_result.error)
+            elif not parse_result.has_markers:
+                # No markers - skip (backward compatible)
+                result.skipped.append("AGENTS.md")
+            else:
+                # Valid markers - rewrite content inside markers
+                rendered_parse = parse_markers(rendered)
+                if not rendered_parse.has_markers:
+                    result.skipped.append("AGENTS.md")
+                    result.warnings.append(
+                        "AGENTS.md template does not contain markers (internal error)"
+                    )
+                else:
+                    new_content = (
+                        parse_result.before + rendered_parse.inside + parse_result.after
+                    )
+                    agents_file.write_text(new_content)
+                    result.created.append("AGENTS.md")
 
-        if not parse_result.has_markers:
-            # Case 2: No markers - skip (backward compatible)
-            result.skipped.append("CLAUDE.md")
-            return result
-
-        # Case 3: Valid markers - rewrite content inside markers
-        # Parse the rendered template to get just the managed content
-        rendered_parse = parse_markers(rendered)
-        if not rendered_parse.has_markers:
-            # Template should have markers; if not, skip with warning
-            result.skipped.append("CLAUDE.md")
+        # Ensure CLAUDE.md symlink exists and points to AGENTS.md
+        if claude_file.is_symlink():
+            # Check if it already points to AGENTS.md
+            if claude_file.resolve() != agents_file.resolve():
+                claude_file.unlink()
+                claude_file.symlink_to("AGENTS.md")
+        elif not claude_file.exists():
+            claude_file.symlink_to("AGENTS.md")
+        # else: claude_file exists as regular file AND agents_file exists
+        # This shouldn't happen after the rename logic above, but if both
+        # exist as regular files, leave them alone and warn
+        elif agents_file.exists():
             result.warnings.append(
-                "CLAUDE.md template does not contain markers (internal error)"
+                "Both AGENTS.md and CLAUDE.md exist as regular files. "
+                "CLAUDE.md should be a symlink to AGENTS.md."
             )
-            return result
-
-        # Combine: existing before + rendered inside + existing after
-        new_content = (
-            parse_result.before + rendered_parse.inside + parse_result.after
-        )
-        dest_file.write_text(new_content)
-        result.created.append("CLAUDE.md")
 
         return result
 
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
-        Creates trunk documents, Claude commands, CLAUDE.md, and baseline reviewer.
+        Creates trunk documents, agent skills, AGENTS.md, and baseline reviewer.
         Idempotent: skips files that already exist.
         """
         result = InitResult()
 
         for sub_result in [
             self._init_trunk(),
-            self._init_commands(),
-            self._init_claude_md(),
+            self._init_skills(),
+            self._init_agents_md(),
             self._init_narratives(),
             self._init_chunks(),
             self._init_reviewers(),
