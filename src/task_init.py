@@ -231,7 +231,6 @@ class TaskInit:
 
         # Create .claude/commands/ symlinks for backwards compatibility
         commands_dir.mkdir(parents=True, exist_ok=True)
-        import pathlib
         for skill_subdir in sorted(skills_dir.iterdir()):
             if not skill_subdir.is_dir():
                 continue
@@ -240,7 +239,7 @@ class TaskInit:
                 continue
             skill_name = skill_subdir.name
             link_path = commands_dir / f"{skill_name}.md"
-            relative_target = pathlib.Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
+            relative_target = Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
             if not link_path.exists():
                 link_path.symlink_to(relative_target)
 
