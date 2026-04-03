@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/git_utils.py
 - src/task_init.py
-- src/ve.py
+- src/cli/task.py
 - tests/test_task_init.py
 - tests/test_task_init_cli.py
 - README.md
@@ -24,10 +24,10 @@ code_references:
   implements: Creates .ve-task.yaml and coordinates scaffolding (CLAUDE.md and commands added by task_init_scaffolding)
 - ref: src/git_utils.py#is_git_repository
   implements: Helper for git repository validation
-- ref: src/ve.py#task
+- ref: src/cli/task.py#task
   implements: Task command group
-- ref: src/ve.py#task_init
-  implements: task init subcommand (note - function named 'init' under @task.command decorator)
+- ref: src/cli/task.py#init
+  implements: task init subcommand (function named 'init' under @task.command decorator)
 - ref: README.md
   implements: Cross-Repository Work documentation section
 narrative: cross_repo_chunks

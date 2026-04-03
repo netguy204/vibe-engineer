@@ -37,9 +37,9 @@ code_references:
   implements: Migrated to use render_to_directory with ActiveNarrative context
 - ref: src/project.py#Project::_init_trunk
   implements: Migrated from shutil.copy to render_to_directory (overwrite=False)
-- ref: src/project.py#Project::_init_commands
+- ref: src/project.py#Project::_init_skills
   implements: Migrated from symlinks to render_to_directory (overwrite=True)
-- ref: src/project.py#Project::_init_claude_md
+- ref: src/project.py#Project::_init_agents_md
   implements: Migrated from shutil.copy to render_template
 - ref: tests/test_template_system.py#TestRenderToDirectory
   implements: Tests for RenderResult and overwrite behavior
@@ -104,7 +104,7 @@ project-level variables.
 
 ### Symlink Removal
 
-The current `_init_commands` creates symlinks (with copy fallback) for development
+The current `_init_skills` creates symlinks (with copy fallback) for development
 convenience. This approach is being removed in favor of full template rendering, which
 enables command templates to use Jinja2 features (includes, variables, filters). Commands
 will be rendered files, not symlinks.
@@ -114,7 +114,7 @@ will be rendered files, not symlinks.
 1. **No duplicate render_template functions** - `src/subsystems.py` and `src/narratives.py`
    no longer contain local `render_template` functions
 
-2. **project.py uses template_system** - `_init_trunk`, `_init_commands`, and `_init_claude_md`
+2. **project.py uses template_system** - `_init_trunk`, `_init_skills`, and `_init_agents_md`
    use `render_to_directory` or `render_template` instead of `shutil.copy`
 
 3. **Idempotency preserved** - Running `ve init` twice produces the same result:

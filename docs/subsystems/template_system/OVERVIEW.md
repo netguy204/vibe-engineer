@@ -33,6 +33,8 @@ chunks:
     relationship: uses
   - chunk_id: artifact_pattern_consolidation
     relationship: implements
+  - chunk_id: agentskills_migration
+    relationship: implements
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass
@@ -79,11 +81,11 @@ code_references:
 - ref: src/project.py#Project::_init_trunk
   implements: Trunk initialization using render_to_directory (overwrite=False)
   compliance: COMPLIANT
-- ref: src/project.py#Project::_init_commands
-  implements: Commands initialization using render_to_directory (overwrite=True)
+- ref: src/project.py#Project::_init_skills
+  implements: Skills initialization using render_to_directory (overwrite=True, skill_layout=True)
   compliance: COMPLIANT
-- ref: src/project.py#Project::_init_claude_md
-  implements: CLAUDE.md initialization using render_template
+- ref: src/project.py#Project::_init_agents_md
+  implements: AGENTS.md initialization using render_template
   compliance: COMPLIANT
 - ref: src/constants.py#template_dir
   implements: Template directory location
@@ -242,7 +244,7 @@ The canonical implementation provides:
 ### Implements
 
 - **0003-project_init_command** - Created `src/project.py` with template copying/symlinking
-  for project initialization (`_init_trunk`, `_init_commands`, `_init_claude_md`)
+  for project initialization (`_init_trunk`, `_init_skills`, `_init_agents_md`)
 
 - **0006-narrative_cli_commands** - Created `src/narratives.py` with `render_template`
   function and `Narratives::create_narrative` for narrative directory creation

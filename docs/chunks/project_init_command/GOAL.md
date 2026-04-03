@@ -13,10 +13,10 @@ code_references:
   implements: Project class with lazy Chunks property
 - ref: src/project.py#Project::_init_trunk
   implements: Renders trunk templates to docs/trunk/ directory
-- ref: src/project.py#Project::_init_commands
-  implements: Renders command templates to .claude/commands/ directory
-- ref: src/project.py#Project::_init_claude_md
-  implements: Renders CLAUDE.md Jinja2 template to project root
+- ref: src/project.py#Project::_init_skills
+  implements: Renders skill templates to .claude/commands/ directory
+- ref: src/project.py#Project::_init_agents_md
+  implements: Renders AGENTS.md Jinja2 template to project root
 - ref: src/project.py#Project::init
   implements: Orchestrates all initialization, aggregates results
 - ref: src/templates/claude/CLAUDE.md.jinja2

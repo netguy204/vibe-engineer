@@ -4,15 +4,15 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/worktree.py
-- tests/test_orchestrator_worktree.py
+- tests/test_orchestrator_worktree_symlinks.py
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::_get_task_directory
     implements: "Helper to resolve task directory from task_info for symlink creation"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_setup_agent_environment_symlinks
-    implements: "Creates symlinks to task-level configuration (.ve-task.yaml, CLAUDE.md, .claude/) in work/ directory"
+    implements: "Creates symlinks to task-level configuration (.ve-task.yaml, AGENTS.md, CLAUDE.md, .agents/, .claude/) in work/ directory"
   - ref: src/orchestrator/worktree.py#WorktreeManager::_cleanup_agent_environment_symlinks
-    implements: "Removes symlinks during worktree cleanup"
-  - ref: tests/test_orchestrator_worktree.py#TestTaskContextSymlinks
+    implements: "Removes symlinks (including AGENTS.md and .agents/) during worktree cleanup"
+  - ref: tests/test_orchestrator_worktree_symlinks.py#TestTaskContextSymlinks
     implements: "Tests for symlink creation, resolution, and cleanup in task context mode"
 narrative: null
 investigation: orch_task_context
@@ -33,8 +33,10 @@ Set up the agent environment in the `work/` directory with symlinks to task-leve
 
 When an agent runs in a task context, it needs access to:
 - `.ve-task.yaml` - so it knows it's in a task context
-- `CLAUDE.md` - task-level agent guidance (different from individual repo versions)
-- `.claude/` - task-level commands
+- `AGENTS.md` - task-level agent guidance (primary, different from individual repo versions)
+- `CLAUDE.md` - task-level agent guidance (legacy symlink, may point to AGENTS.md)
+- `.agents/` - task-level skills (primary)
+- `.claude/` - task-level commands (legacy symlink, may point to .agents/)
 
 These files exist at the task directory level and provide task-context-specific behavior. Symlinks ensure agents get the task-level instructions rather than repo-specific ones.
 
@@ -43,7 +45,9 @@ Target structure:
 .ve/chunks/<chunk>/
   work/
     .ve-task.yaml        # symlink → task-directory/.ve-task.yaml
+    AGENTS.md            # symlink → task-directory/AGENTS.md
     CLAUDE.md            # symlink → task-directory/CLAUDE.md
+    .agents/             # symlink → task-directory/.agents/
     .claude/             # symlink → task-directory/.claude/
     external-repo/       # Worktree
     project-a/           # Worktree
@@ -52,8 +56,8 @@ Target structure:
 
 ## Success Criteria
 
-- When creating worktrees in task context, symlinks are created for `.ve-task.yaml`, `CLAUDE.md`, and `.claude/`
+- When creating worktrees in task context, symlinks are created for `.ve-task.yaml`, `AGENTS.md`, `CLAUDE.md`, `.agents/`, and `.claude/`
 - Symlinks point to task directory versions (parent of `.ve/`)
 - Agent running from `work/` directory sees task-level configuration
 - Symlinks are cleaned up when worktree is removed
-- Single-repo mode unchanged (no symlinks needed, agent runs in worktree which has its own `CLAUDE.md`)
+- Single-repo mode unchanged (no symlinks needed, agent runs in worktree which has its own `AGENTS.md`)

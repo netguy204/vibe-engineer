@@ -118,9 +118,9 @@ Replace `shutil.copy` in `_init_trunk` with `render_to_directory`:
 
 Location: `src/project.py`
 
-### Step 11: Migrate project.py _init_commands to use template rendering
+### Step 11: Migrate project.py _init_skills to use template rendering
 
-Replace symlink/copy logic in `_init_commands` with `render_to_directory`:
+Replace symlink/copy logic in `_init_skills` with `render_to_directory`:
 - Use collection `"commands"`
 - Use `overwrite=True` (always update to latest templates)
 - Remove symlink creation code entirely
@@ -128,9 +128,9 @@ Replace symlink/copy logic in `_init_commands` with `render_to_directory`:
 
 Location: `src/project.py`
 
-### Step 12: Migrate project.py _init_claude_md to use template rendering
+### Step 12: Migrate project.py _init_agents_md to use template rendering
 
-Replace `shutil.copy` in `_init_claude_md` with `render_template`:
+Replace `shutil.copy` in `_init_agents_md` with `render_template`:
 - The CLAUDE.md template is a single file, not a collection directory
 - Use `overwrite=False` (preserve user content)
 - Handle the single-file case appropriately
@@ -167,7 +167,7 @@ Run `pytest tests/` and verify:
 
 1. **CLAUDE.md is a single file, not in a collection subdirectory** - The current template
    structure has `src/templates/CLAUDE.md` at the root, not in a `claude/` subdirectory.
-   Need to handle this as a special case in `_init_claude_md` using `render_template`
+   Need to handle this as a special case in `_init_agents_md` using `render_template`
    directly rather than `render_to_directory`.
 
 2. **Existing tests expect symlinks for commands** - `test_project.py` has tests like
