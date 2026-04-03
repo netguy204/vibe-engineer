@@ -57,6 +57,11 @@ class MockClaudeSDKClient:
 @pytest.fixture
 def project_dir(tmp_path):
     """Create a project directory with skill files for testing."""
+    # Create .agents/skills directory structure (canonical location)
+    skills_dir = tmp_path / ".agents" / "skills"
+    skills_dir.mkdir(parents=True)
+
+    # Create .claude/commands directory for backwards-compat symlinks
     commands_dir = tmp_path / ".claude" / "commands"
     commands_dir.mkdir(parents=True)
 
@@ -68,10 +73,16 @@ description: Test skill
 
 This is a test skill for {phase}.
 """
-    for phase, filename in PHASE_SKILL_FILES.items():
-        (commands_dir / filename).write_text(
+    for phase, skill_name in PHASE_SKILL_FILES.items():
+        # Create canonical skill directory and SKILL.md
+        skill_dir = skills_dir / skill_name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
             skill_content.format(phase=phase.value)
         )
+        # Create backwards-compat symlink in .claude/commands/
+        symlink_path = commands_dir / f"{skill_name}.md"
+        symlink_path.symlink_to(skill_dir / "SKILL.md")
 
     return tmp_path
 
