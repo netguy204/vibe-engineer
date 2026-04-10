@@ -184,7 +184,7 @@ class BoardClient:
         self,
         channel: str,
         cursor: int,
-        max_retries: int | None = None,
+        max_retries: int | None = 10,
         stale_timeout: float = 300,
     ) -> dict:
         """Watch with automatic reconnect on connection failure.
@@ -205,7 +205,7 @@ class BoardClient:
         cursor:
             Position to watch after.
         max_retries:
-            Maximum reconnect attempts. ``None`` means unlimited.
+            Maximum reconnect attempts. ``None`` means unlimited. Default 10.
         stale_timeout:
             Seconds to wait for a message before re-registering the watch
             frame on the existing connection. Default 300 (5 minutes).
@@ -328,6 +328,11 @@ class BoardClient:
                     "Reconnected, re-polling channel=%s from cursor=%d",
                     channel,
                     cursor,
+                )
+                # Chunk: docs/chunks/board_watch_reconnect_fix - Explicit re-subscription log
+                logger.info(
+                    "Re-subscribing to channel=%s after reconnect",
+                    channel,
                 )
                 # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
                 backoff = 1.0
@@ -493,7 +498,7 @@ class BoardClient:
     async def watch_multi_with_reconnect(
         self,
         channels: dict[str, int],
-        max_retries: int | None = None,
+        max_retries: int | None = 10,
         count: int = 1,
         auto_ack: bool = True,
         stale_timeout: float = 300,
@@ -508,7 +513,7 @@ class BoardClient:
         channels:
             Initial mapping of channel name to cursor position.
         max_retries:
-            Maximum reconnect attempts. ``None`` means unlimited.
+            Maximum reconnect attempts. ``None`` means unlimited. Default 10.
         count:
             Maximum total messages to yield across all reconnects. When
             ``count > 0``, the generator yields at most *count* messages
@@ -592,6 +597,12 @@ class BoardClient:
                 # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
                 logger.info(
                     "Reconnected, re-polling %d channel(s) from cursors=%s",
+                    len(cursors),
+                    cursors,
+                )
+                # Chunk: docs/chunks/board_watch_reconnect_fix - Explicit re-subscription log
+                logger.info(
+                    "Re-subscribing to %d channel(s) after reconnect, cursors=%s",
                     len(cursors),
                     cursors,
                 )

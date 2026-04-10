@@ -1,8 +1,12 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/board/client.py"]
+code_paths:
+- src/board/client.py
+- src/cli/board.py
+- tests/test_board_client.py
+- tests/test_board_cli.py
 code_references: []
 narrative: null
 investigation: null
@@ -10,9 +14,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["orchestrator_skill_path_fix"]
+created_after:
+- orchestrator_skill_path_fix
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

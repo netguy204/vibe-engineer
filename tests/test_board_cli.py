@@ -693,7 +693,7 @@ def test_watch_multi_command_output_format(runner, stored_swarm, tmp_path):
     encrypted_body_a = encrypt("message from alpha", sym_key)
     encrypted_body_b = encrypt("message from beta", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-alpha",
             "position": 1,
@@ -737,7 +737,7 @@ def test_watch_multi_advances_cursors(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("msg", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-x",
             "position": 5,
@@ -780,7 +780,7 @@ def test_watch_multi_single_connection(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("test", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-1",
             "position": 1,
@@ -823,7 +823,7 @@ def test_watch_multi_count_flag_exits_after_n(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     bodies = [encrypt(f"msg{i}", sym_key) for i in range(3)]
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         for i in range(3):
             yield {
                 "channel": "ch-a",
@@ -866,7 +866,7 @@ def test_watch_multi_count_zero_streams_all(runner, stored_swarm, tmp_path):
     sym_key = derive_symmetric_key(seed)
     bodies = [encrypt(f"msg{i}", sym_key) for i in range(3)]
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         for i in range(3):
             yield {
                 "channel": "ch-a",
@@ -908,7 +908,7 @@ def test_watch_multi_default_count_one(runner, stored_swarm, tmp_path):
 
     call_kwargs = {}
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         call_kwargs["count"] = count
         yield {
             "channel": "ch-a",
@@ -952,7 +952,7 @@ def test_watch_multi_no_auto_ack_skips_save_cursor(runner, stored_swarm, tmp_pat
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("msg", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-x",
             "position": 5,
@@ -990,7 +990,7 @@ def test_watch_multi_no_auto_ack_includes_position_in_output(runner, stored_swar
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("hello world", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-alpha",
             "position": 42,
@@ -1028,7 +1028,7 @@ def test_watch_multi_default_auto_ack_saves_cursor(runner, stored_swarm, tmp_pat
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("normal msg", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch-y",
             "position": 7,
@@ -1070,7 +1070,7 @@ def test_watch_multi_no_auto_ack_passes_auto_ack_false_to_client(runner, stored_
 
     call_kwargs = {}
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         call_kwargs["auto_ack"] = auto_ack
         yield {
             "channel": "ch-a",
@@ -1228,7 +1228,7 @@ def test_watch_with_offset_overrides_cursor(runner, stored_swarm, tmp_path):
 
     assert result.exit_code == 0
     # The cursor passed to watch_with_reconnect should be 5 (offset), not 0 (persisted)
-    instance.watch_with_reconnect.assert_called_once_with("test-channel", 5)
+    instance.watch_with_reconnect.assert_called_once_with("test-channel", 5, max_retries=10)
 
 
 def test_watch_with_offset_does_not_modify_cursor(runner, stored_swarm, tmp_path):
@@ -1275,7 +1275,7 @@ def test_watch_multi_with_offset_overrides_cursors(runner, stored_swarm, tmp_pat
 
     call_kwargs = {}
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         call_kwargs["channels"] = dict(channels)
         yield {
             "channel": "ch1",
@@ -1318,7 +1318,7 @@ def test_watch_multi_with_offset_does_not_prevent_auto_ack(runner, stored_swarm,
     sym_key = derive_symmetric_key(seed)
     encrypted_body = encrypt("ack test", sym_key)
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         yield {
             "channel": "ch1",
             "position": 7,
@@ -1371,7 +1371,7 @@ def test_watch_creates_pid_file(runner, stored_swarm, tmp_path):
         "sent_at": "2026-03-16T00:00:00Z",
     })
 
-    async def mock_watch(channel, cursor):
+    async def mock_watch(channel, cursor, **kwargs):
         # Check that PID file exists while watch is running
         pid_val = read_watch_pid("test-ch", tmp_path)
         pid_seen["pid"] = pid_val
@@ -1523,7 +1523,7 @@ def test_watch_multi_creates_pid_files_per_channel(runner, stored_swarm, tmp_pat
 
     pids_during = {}
 
-    async def mock_watch_multi(channels, count=1, auto_ack=True):
+    async def mock_watch_multi(channels, count=1, auto_ack=True, **kwargs):
         # Capture PID files while running
         for ch_name in ["ch-a", "ch-b"]:
             pids_during[ch_name] = read_watch_pid(ch_name, tmp_path)
@@ -1643,3 +1643,171 @@ def test_channel_delete_not_found(runner, stored_swarm):
 
     assert result.exit_code != 0
     assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/board_watch_reconnect_fix - CLI reconnect tests
+# ---------------------------------------------------------------------------
+
+
+def test_watch_max_reconnects_flag_accepted(runner, stored_swarm, tmp_path):
+    """--max-reconnects flag is accepted by the watch command."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--max-reconnects", "5",
+        ])
+
+    assert result.exit_code == 0
+    # Verify max_retries=5 was passed to the client
+    instance.watch_with_reconnect.assert_called_once()
+    call_kwargs = instance.watch_with_reconnect.call_args
+    assert call_kwargs.kwargs.get("max_retries") == 5
+
+
+def test_watch_multi_max_reconnects_flag_accepted(runner, stored_swarm, tmp_path):
+    """--max-reconnects flag is accepted by the watch-multi command."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        async def mock_watch_multi(*args, **kwargs):
+            return
+            yield  # noqa: unreachable — makes it an async generator
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = MagicMock(side_effect=mock_watch_multi)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-a", "ch-b",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--max-reconnects", "20",
+        ])
+
+    assert result.exit_code == 0
+    instance.watch_multi_with_reconnect.assert_called_once()
+    call_kwargs = instance.watch_multi_with_reconnect.call_args
+    assert call_kwargs.kwargs.get("max_retries") == 20
+
+
+def test_watch_max_reconnects_zero_means_unlimited(runner, stored_swarm, tmp_path):
+    """--max-reconnects 0 passes None (unlimited) to the client."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    sym_key = derive_symmetric_key(seed)
+    encrypted_body = encrypt("msg", sym_key)
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        watch_return = {
+            "position": 1,
+            "body": encrypted_body,
+            "sent_at": "2026-03-16T00:00:00Z",
+        }
+        instance.watch_with_reconnect = AsyncMock(return_value=watch_return)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+            "--max-reconnects", "0",
+        ])
+
+    assert result.exit_code == 0
+    call_kwargs = instance.watch_with_reconnect.call_args
+    assert call_kwargs.kwargs.get("max_retries") is None
+
+
+def test_watch_reconnect_exhaustion_exits_nonzero(runner, stored_swarm, tmp_path):
+    """When reconnect exhaustion occurs, watch exits with code 3 and error on stderr."""
+    import websockets.exceptions
+
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_with_reconnect = AsyncMock(
+            side_effect=websockets.exceptions.ConnectionClosedError(None, None)
+        )
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch", "test-ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 3
+    assert "reconnect exhaustion" in result.output
+
+
+def test_watch_multi_reconnect_exhaustion_exits_nonzero(runner, stored_swarm, tmp_path):
+    """When reconnect exhaustion occurs, watch-multi exits with code 3."""
+    import websockets.exceptions
+
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_cursor", return_value=0), \
+         patch("cli.board.load_board_config", return_value=BoardConfig()), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        async def mock_watch_multi_raises(*args, **kwargs):
+            raise websockets.exceptions.ConnectionClosedError(None, None)
+            yield  # noqa: unreachable — makes it an async generator
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.watch_multi_with_reconnect = MagicMock(side_effect=mock_watch_multi_raises)
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "watch-multi", "ch-a",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 3
+    assert "reconnect exhaustion" in result.output

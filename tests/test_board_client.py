@@ -1854,3 +1854,134 @@ async def test_watch_with_reconnect_backoff_caps_at_60s(keypair):
     assert max(sleep_values) == pytest.approx(60.0)
     # The last few should be capped at 60
     assert sleep_values[-1] == pytest.approx(60.0)
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/board_watch_reconnect_fix - Default max_retries and logging tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_default_max_retries(keypair):
+    """watch_with_reconnect with default max_retries=10 raises after 10
+    consecutive failed reconnects (not unlimited)."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    def make_ws_factory(*args, **kwargs):
+        """Every connection's watch recv raises ConnectionClosedError."""
+        ws = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge,
+            auth_ok,
+            websockets.exceptions.ConnectionClosedError(None, None),
+        ])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        return _async_ctx(ws)
+
+    connect_count = 0
+    original_factory = make_ws_factory
+
+    def counting_factory(*args, **kwargs):
+        nonlocal connect_count
+        connect_count += 1
+        return original_factory(*args, **kwargs)
+
+    with patch("board.client.websockets.connect", side_effect=counting_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                # Default max_retries=10, should raise after 10 attempts
+                with pytest.raises(websockets.exceptions.ConnectionClosedError):
+                    await client.watch_with_reconnect("ch1", 0)
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_reconnect_default_max_retries(keypair):
+    """watch_multi_with_reconnect with default max_retries=10 raises after 10
+    consecutive failed reconnects."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    def make_ws_factory(*args, **kwargs):
+        ws = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge,
+            auth_ok,
+            websockets.exceptions.ConnectionClosedError(None, None),
+        ])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                with pytest.raises(websockets.exceptions.ConnectionClosedError):
+                    async for _ in client.watch_multi_with_reconnect(
+                        {"ch-a": 0}, count=0
+                    ):
+                        pass
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_logs_resubscription(keypair):
+    """After a successful reconnect, verify a log message confirms
+    re-subscription to the channel."""
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 1,
+        "body": "ok==",
+        "sent_at": "2026-03-16T00:00:00Z",
+    })
+
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First connection: auth OK, then watch disconnects
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            # Second connection: auth OK, watch delivers message
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            with patch("board.client.logger") as mock_logger:
+                result = await client.watch_with_reconnect("ch1", 0)
+
+    assert result["position"] == 1
+    # Check that the re-subscription log was emitted
+    info_messages = [
+        call.args[0] for call in mock_logger.info.call_args_list
+    ]
+    assert any("Re-subscribing to channel=" in m for m in info_messages)

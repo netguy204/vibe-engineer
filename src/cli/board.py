@@ -26,7 +26,7 @@ from pathlib import Path
 import click
 import httpx
 
-from board.client import BoardClient
+from board.client import BoardClient, _RETRYABLE_ERRORS
 from board.config import (
     add_swarm,
     gateway_http_url,
@@ -220,12 +220,16 @@ def send_cmd(channel: str, body: str, swarm: str | None, server: str | None) -> 
 @click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
 @click.option("--no-reconnect", is_flag=True, help="Disable automatic reconnect on disconnect")
 @click.option("--offset", type=int, default=None, help="Start reading from this position instead of the persisted cursor")
-def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, offset: int | None) -> None:
+# Chunk: docs/chunks/board_watch_reconnect_fix - Configurable reconnect limit
+@click.option("--max-reconnects", type=int, default=10, show_default=True, help="Max reconnect attempts before giving up (0 = unlimited)")
+def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, offset: int | None, max_reconnects: int) -> None:
     """Watch a channel for the next message after the persisted cursor.
 
     Blocks until a message exists, decrypts the body, prints plaintext to
     stdout, then exits. The cursor is NOT auto-advanced — use 'ack' after
     durable processing.
+
+    Exit codes: 0 = success, 1 = configuration error, 3 = reconnect exhaustion.
     """
     if project_root is not None and not project_root.exists():
         raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
@@ -263,6 +267,9 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 
     write_watch_pid(channel, os.getpid(), project_root)
 
+    # Chunk: docs/chunks/board_watch_reconnect_fix - max_reconnects and exit code 3
+    max_retries = None if max_reconnects == 0 else max_reconnects
+
     async def _watch():
         client = BoardClient(server, swarm, seed)
         await client.connect()
@@ -270,7 +277,7 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
             if no_reconnect:
                 msg = await client.watch(channel, cursor)
             else:
-                msg = await client.watch_with_reconnect(channel, cursor)
+                msg = await client.watch_with_reconnect(channel, cursor, max_retries=max_retries)
             plaintext = decrypt(msg["body"], sym_key)
             click.echo(plaintext)
         finally:
@@ -278,6 +285,9 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 
     try:
         asyncio.run(_watch())
+    except _RETRYABLE_ERRORS as exc:
+        click.echo(f"Error: watch terminated after reconnect exhaustion: {exc}", err=True)
+        sys.exit(3)
     finally:
         remove_watch_pid(channel, project_root)
 
@@ -301,7 +311,9 @@ def watch_cmd(channel: str, swarm: str | None, server: str | None, project_root:
 # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
 @click.option("--no-auto-ack", is_flag=True, help="Don't auto-advance cursor; include position in output for manual acking")
 @click.option("--offset", type=int, default=None, help="Start reading from this position instead of the persisted cursor")
-def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, count: int, no_auto_ack: bool, offset: int | None) -> None:
+# Chunk: docs/chunks/board_watch_reconnect_fix - Configurable reconnect limit
+@click.option("--max-reconnects", type=int, default=10, show_default=True, help="Max reconnect attempts before giving up (0 = unlimited)")
+def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | None, project_root: Path | None, no_reconnect: bool, count: int, no_auto_ack: bool, offset: int | None, max_reconnects: int) -> None:
     """Watch multiple channels on a single connection.
 
     Blocks and prints messages from any subscribed channel.
@@ -313,6 +325,8 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     With --no-auto-ack, cursors are NOT auto-advanced and the output
     includes position for manual acking via 've board ack'.
     Output format: [channel-name] position=N message text
+
+    Exit codes: 0 = success, 1 = configuration error, 3 = reconnect exhaustion.
     """
     if project_root is not None and not project_root.exists():
         raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
@@ -357,6 +371,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
     if offset is not None:
         channel_cursors = {ch: offset for ch in channels}
 
+    # Chunk: docs/chunks/board_watch_reconnect_fix - max_reconnects and exit code 3
+    max_retries = None if max_reconnects == 0 else max_reconnects
+
     async def _watch_multi():
         client = BoardClient(server, swarm, seed)
         await client.connect()
@@ -365,7 +382,7 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
             if no_reconnect:
                 gen = client.watch_multi(channel_cursors, count=count, auto_ack=auto_ack)
             else:
-                gen = client.watch_multi_with_reconnect(channel_cursors, count=count, auto_ack=auto_ack)
+                gen = client.watch_multi_with_reconnect(channel_cursors, count=count, auto_ack=auto_ack, max_retries=max_retries)
 
             async for msg in gen:
                 plaintext = decrypt(msg["body"], sym_key)
@@ -384,6 +401,9 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
         asyncio.run(_watch_multi())
     except KeyboardInterrupt:
         pass
+    except _RETRYABLE_ERRORS as exc:
+        click.echo(f"Error: watch terminated after reconnect exhaustion: {exc}", err=True)
+        sys.exit(3)
     finally:
         for ch in channels:
             remove_watch_pid(ch, project_root)
