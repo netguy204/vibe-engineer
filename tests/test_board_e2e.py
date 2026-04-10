@@ -72,7 +72,7 @@ def test_send_watch_ack_cycle(e2e_env):
         captured_ciphertext["body"] = body_b64
         return 1  # assigned position
 
-    async def mock_watch(channel, cursor):
+    async def mock_watch(channel, cursor, **kwargs):
         assert cursor == 0, "First watch should start from cursor 0"
         return {
             "position": 1,
@@ -163,7 +163,7 @@ def test_watch_uses_persisted_cursor(e2e_env):
     # Now watch — should use cursor=1
     encrypted_body = encrypt("message two", sym_key)
 
-    async def mock_watch(channel, cursor):
+    async def mock_watch(channel, cursor, **kwargs):
         assert cursor == 1, f"Expected cursor=1 after ack, got {cursor}"
         return {
             "position": 2,
