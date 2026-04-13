@@ -19,6 +19,7 @@ from board.crypto import (
     decrypt,
     generate_keypair,
 )
+from board.config import BoardConfig
 from board.storage import load_cursor, load_keypair, save_keypair
 from cli.board import board
 
@@ -129,10 +130,14 @@ def test_send_watch_ack_cycle(e2e_env):
     assert load_cursor("test-channel", project_root) == 0
 
     # Step 5: Ack position 1
-    result = runner.invoke(board, [
-        "ack", "test-channel", "1",
-        "--project-root", str(project_root),
-    ])
+    # Patch load_board_config so the head guard doesn't attempt a real server connection.
+    # (The guard is tested separately in test_board_cli; this e2e test focuses on the
+    # storage layer composing correctly with crypto and CLI.)
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "test-channel", "1",
+            "--project-root", str(project_root),
+        ])
     assert result.exit_code == 0
 
     # Step 6: Verify cursor file contains position 1
@@ -153,11 +158,12 @@ def test_watch_uses_persisted_cursor(e2e_env):
     sym_key = env["sym_key"]
     project_root = env["project_root"]
 
-    # Ack position 1 first
-    result = runner.invoke(board, [
-        "ack", "test-channel", "1",
-        "--project-root", str(project_root),
-    ])
+    # Ack position 1 first (patch board config so head guard doesn't hit real server)
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "test-channel", "1",
+            "--project-root", str(project_root),
+        ])
     assert result.exit_code == 0
 
     # Now watch — should use cursor=1
