@@ -116,6 +116,25 @@ class InitResult:
     warnings: list[str] = field(default_factory=list)
 
 
+# Chunk: docs/chunks/init_skill_symlink_migration - VE-generated file detection for symlink migration
+def _is_ve_generated_file(path: pathlib.Path) -> bool:
+    """Return True if the file appears to be a VE-generated command file.
+
+    Detects the AUTO-GENERATED header comment present in all VE-rendered
+    command files (injected via auto-generated-header.md.jinja2). Used to
+    determine whether a regular file in .claude/commands/ is safe to replace
+    with a symlink during migration.
+
+    Returns False for any file that cannot be read (binary, permission error,
+    encoding error) — treat unreadable files as user-authored to avoid data loss.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+        return "AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY" in content
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 # Chunk: docs/chunks/project_artifact_registry - Unified artifact registry
 class Project:
@@ -247,11 +266,19 @@ class Project:
                 if link_path.resolve() != skill_md.resolve():
                     link_path.unlink()
                     link_path.symlink_to(relative_target)
+            # Chunk: docs/chunks/init_skill_symlink_migration - Migrate VE-generated regular files to symlinks
             elif link_path.exists():
-                # Regular file exists with same name - skip to avoid data loss, warn
-                result.warnings.append(
-                    f".claude/commands/{skill_name}.md exists as a regular file, skipping symlink"
-                )
+                # Regular file exists - check if it's a VE-generated file we can safely replace
+                if _is_ve_generated_file(link_path):
+                    # VE-generated file: replace with symlink (migration from pre-agentskills layout)
+                    link_path.unlink()
+                    link_path.symlink_to(relative_target)
+                    result.created.append(f".claude/commands/{skill_name}.md")
+                else:
+                    # User-authored file: warn and skip to avoid data loss
+                    result.warnings.append(
+                        f".claude/commands/{skill_name}.md is a user-authored file; skipping symlink creation"
+                    )
             else:
                 link_path.symlink_to(relative_target)
 

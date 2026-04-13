@@ -1,5 +1,5 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: agentskills_migration
 code_paths:
@@ -15,9 +15,9 @@ subsystems:
 friction_entries: []
 bug_type: implementation
 depends_on: []
-created_after: ["board_watch_reconnect_fix"]
+created_after:
+- board_watch_reconnect_fix
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

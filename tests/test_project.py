@@ -701,3 +701,78 @@ class TestProjectInitIdempotency:
         assert "AGENTS.md" in result.created
         # CLAUDE.md symlink should be recreated
         assert claude_md.is_symlink()
+
+
+class TestInitSkillsSymlinkMigration:
+    """Tests for migration of VE-generated regular files to symlinks in .claude/commands/."""
+
+    def test_ve_generated_regular_file_is_replaced_with_symlink(self, temp_project):
+        """A VE-generated regular file in .claude/commands/ is replaced with a symlink."""
+        project = Project(temp_project)
+
+        # Pre-create .claude/commands/ with a VE-generated regular file
+        commands_dir = temp_project / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = commands_dir / "chunk-create.md"
+        skill_file.write_text(
+            "<!--\nAUTO-GENERATED FILE - DO NOT EDIT DIRECTLY\n-->\n# chunk-create skill"
+        )
+
+        result = project.init()
+
+        # File should now be a symlink
+        assert skill_file.is_symlink(), "VE-generated file should be replaced with a symlink"
+
+        # Symlink should resolve to the skill SKILL.md
+        expected_target = temp_project / ".agents" / "skills" / "chunk-create" / "SKILL.md"
+        assert skill_file.resolve() == expected_target.resolve()
+
+        # Should appear in result.created
+        assert ".claude/commands/chunk-create.md" in result.created
+
+        # No user-authored warning should be emitted for this file
+        assert not any("user-authored" in w for w in result.warnings)
+
+    def test_user_authored_regular_file_is_preserved_with_warning(self, temp_project):
+        """A user-authored regular file in .claude/commands/ is left alone with a warning."""
+        project = Project(temp_project)
+
+        # Pre-create .claude/commands/ with a user-authored regular file (no AUTO-GENERATED sentinel)
+        commands_dir = temp_project / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = commands_dir / "chunk-create.md"
+        original_content = "# My custom command\nThis is user-authored content."
+        skill_file.write_text(original_content)
+
+        result = project.init()
+
+        # File should remain a regular file (not a symlink)
+        assert not skill_file.is_symlink(), "User-authored file should not be converted to symlink"
+        assert skill_file.read_text() == original_content, "User-authored file content should be unchanged"
+
+        # Should NOT appear in result.created
+        assert ".claude/commands/chunk-create.md" not in result.created
+
+        # A warning about user-authored content should be present
+        assert any("user-authored" in w for w in result.warnings), (
+            "Expected a warning about skipping user-authored file"
+        )
+
+    def test_warning_messages_are_distinguishable(self, temp_project):
+        """Warnings for user-authored skips are distinct from VE-generated replacements."""
+        project = Project(temp_project)
+
+        # Pre-create a user-authored file for chunk-create
+        commands_dir = temp_project / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = commands_dir / "chunk-create.md"
+        skill_file.write_text("# User content — no AUTO-GENERATED header here")
+
+        result = project.init()
+
+        # Warning should mention user-authored, not "replaced"
+        user_authored_warnings = [w for w in result.warnings if "user-authored" in w]
+        assert len(user_authored_warnings) >= 1, "Should have at least one user-authored warning"
+        for w in user_authored_warnings:
+            assert "replaced" not in w, "User-authored skip warning should not say 'replaced'"
+            assert "chunk-create" in w, "Warning should identify the file"
