@@ -14,7 +14,7 @@ code_references:
 - ref: src/project.py#Project::_init_trunk
   implements: Renders trunk templates to docs/trunk/ directory
 - ref: src/project.py#Project::_init_skills
-  implements: Renders skill templates to .claude/commands/ directory
+  implements: Renders skill templates to .agents/skills/ and creates backwards-compat symlinks in .claude/commands/; migrates VE-generated regular files to symlinks
 - ref: src/project.py#Project::_init_agents_md
   implements: Renders AGENTS.md Jinja2 template to project root
 - ref: src/project.py#Project::init

@@ -38,7 +38,7 @@ code_references:
 - ref: src/project.py#Project::_init_trunk
   implements: Migrated from shutil.copy to render_to_directory (overwrite=False)
 - ref: src/project.py#Project::_init_skills
-  implements: Migrated from symlinks to render_to_directory (overwrite=True)
+  implements: Migrated from symlinks to render_to_directory (overwrite=True); extended by init_skill_symlink_migration to also migrate VE-generated regular files to symlinks in .claude/commands/
 - ref: src/project.py#Project::_init_agents_md
   implements: Migrated from shutil.copy to render_template
 - ref: tests/test_template_system.py#TestRenderToDirectory
