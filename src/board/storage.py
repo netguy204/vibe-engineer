@@ -99,6 +99,7 @@ def collect_board_files(
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/board_cursor_root_resolution - Walk parent dirs to find .git root
 def find_git_root(start_path: Path) -> Path | None:
     """Walk up from start_path to find directory containing .git.
 
