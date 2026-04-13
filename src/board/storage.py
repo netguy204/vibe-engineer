@@ -99,6 +99,7 @@ def collect_board_files(
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/board_cursor_root_resolution - Walk parent dirs to find .git root
 def find_git_root(start_path: Path) -> Path | None:
     """Walk up from start_path to find directory containing .git.
 
@@ -239,6 +240,8 @@ def remove_watch_pid(channel: str, project_root: Path) -> None:
 
 
 # Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
+# Chunk: docs/chunks/ack_cursor_head_guard - Head guard lives in CLI layer (ack_cmd);
+#   this function stays pure-local intentionally.
 def ack_and_advance(channel: str, project_root: Path) -> int:
     """Read the current cursor and advance it by 1.
 

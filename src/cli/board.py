@@ -414,13 +414,45 @@ def watch_multi_cmd(channels: tuple[str, ...], swarm: str | None, server: str | 
 # ---------------------------------------------------------------------------
 
 
+def _fetch_channel_head(server: str, swarm_id: str, seed: bytes, channel: str) -> int | None:
+    """Return head_position for channel, or None if server is unreachable.
+
+    Returns 0 if the channel doesn't appear in the list (no messages sent yet).
+    # Chunk: docs/chunks/ack_cursor_head_guard - Head guard server query
+    """
+    async def _query():
+        client = BoardClient(server, swarm_id, seed)
+        await client.connect()
+        try:
+            channels = await client.list_channels()
+        finally:
+            await client.close()
+        for ch in channels:
+            if ch["name"] == channel:
+                return ch["head_position"]
+        return 0  # channel not found → no messages yet, head = 0
+
+    try:
+        return asyncio.run(_query())
+    except Exception:
+        click.echo(
+            "Warning: could not verify channel head (server unreachable); "
+            "ack guard skipped.",
+            err=True,
+        )
+        return None  # Caller skips the guard when None
+
+
 # Chunk: docs/chunks/ack_auto_increment - Auto-increment cursor on ack
 # Chunk: docs/chunks/board_cursor_root_resolution - Auto-resolve project root
+# Chunk: docs/chunks/ack_cursor_head_guard - Head guard options
 @board.command("ack")
 @click.argument("channel")
 @click.argument("position", type=int, required=False, default=None)
 @click.option("--project-root", type=click.Path(path_type=Path), default=None, help="Project root for cursor storage")
-def ack_cmd(channel: str, position: int | None, project_root: Path | None) -> None:
+@click.option("--swarm", default=None, help="Swarm ID")
+@click.option("--server", default=None, help="Server URL")
+def ack_cmd(channel: str, position: int | None, project_root: Path | None, swarm: str | None, server: str | None) -> None:
     """Advance the persisted cursor for a channel.
 
     When called without a position, auto-increments the cursor by 1.
@@ -429,6 +461,27 @@ def ack_cmd(channel: str, position: int | None, project_root: Path | None) -> No
     if project_root is not None and not project_root.exists():
         raise click.BadParameter(f"Path '{project_root}' does not exist.", param_hint="'--project-root'")
     project_root = resolve_board_root(project_root)
+
+    # --- HEAD GUARD ---
+    # Chunk: docs/chunks/ack_cursor_head_guard - Prevent ack past channel head
+    config = load_board_config()
+    resolved_swarm = resolve_swarm(config, swarm)
+    if resolved_swarm is not None:
+        resolved_server = resolve_server(config, resolved_swarm, server)
+        keypair = load_keypair(resolved_swarm)
+        if keypair is not None:
+            seed, _pub = keypair
+            head = _fetch_channel_head(resolved_server, resolved_swarm, seed, channel)
+            if head is not None:
+                current = load_cursor(channel, project_root)
+                new_pos = position if position is not None else current + 1
+                if new_pos > head:
+                    click.echo(
+                        f"ack rejected: cursor {current} is already at or past "
+                        f"channel head {head}",
+                        err=True,
+                    )
+                    return
 
     if position is not None:
         click.echo(

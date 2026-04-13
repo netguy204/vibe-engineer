@@ -201,10 +201,11 @@ def test_watch_does_not_advance_cursor(runner, stored_swarm, tmp_path):
 
 def test_ack_command(runner, tmp_path):
     """ack advances cursor in project-local storage."""
-    result = runner.invoke(board, [
-        "ack", "my-channel", "42",
-        "--project-root", str(tmp_path),
-    ])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "my-channel", "42",
+            "--project-root", str(tmp_path),
+        ])
     assert result.exit_code == 0
     assert "42" in result.output
     assert load_cursor("my-channel", tmp_path) == 42
@@ -219,10 +220,11 @@ def test_ack_command(runner, tmp_path):
 def test_ack_auto_increment(runner, tmp_path):
     """ack without position auto-increments cursor from N to N+1."""
     save_cursor("my-channel", 5, tmp_path)
-    result = runner.invoke(board, [
-        "ack", "my-channel",
-        "--project-root", str(tmp_path),
-    ])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "my-channel",
+            "--project-root", str(tmp_path),
+        ])
     assert result.exit_code == 0
     assert "6" in result.output
     assert load_cursor("my-channel", tmp_path) == 6
@@ -230,10 +232,11 @@ def test_ack_auto_increment(runner, tmp_path):
 
 def test_ack_auto_increment_from_zero(runner, tmp_path):
     """ack without position advances cursor from 0 to 1 when no cursor file exists."""
-    result = runner.invoke(board, [
-        "ack", "my-channel",
-        "--project-root", str(tmp_path),
-    ])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "my-channel",
+            "--project-root", str(tmp_path),
+        ])
     assert result.exit_code == 0
     assert "1" in result.output
     assert load_cursor("my-channel", tmp_path) == 1
@@ -241,10 +244,11 @@ def test_ack_auto_increment_from_zero(runner, tmp_path):
 
 def test_ack_with_position_deprecation_warning(runner, tmp_path):
     """ack with explicit position still works but emits deprecation warning."""
-    result = runner.invoke(board, [
-        "ack", "my-channel", "42",
-        "--project-root", str(tmp_path),
-    ])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "my-channel", "42",
+            "--project-root", str(tmp_path),
+        ])
     assert result.exit_code == 0
     assert load_cursor("my-channel", tmp_path) == 42
     assert "42" in result.output
@@ -1116,7 +1120,8 @@ def test_ack_from_subdirectory_writes_to_project_root(runner, tmp_path, monkeypa
     subdir.mkdir(parents=True)
     monkeypatch.chdir(subdir)
 
-    result = runner.invoke(board, ["ack", "my-channel"])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, ["ack", "my-channel"])
 
     assert result.exit_code == 0
     # Cursor should be at the git root, not in the subdirectory
@@ -1132,10 +1137,11 @@ def test_ack_with_explicit_project_root_overrides(runner, tmp_path, monkeypatch)
     explicit_root.mkdir()
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(board, [
-        "ack", "my-channel",
-        "--project-root", str(explicit_root),
-    ])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "my-channel",
+            "--project-root", str(explicit_root),
+        ])
 
     assert result.exit_code == 0
     assert load_cursor("my-channel", explicit_root) == 1
@@ -1147,14 +1153,16 @@ def test_ack_from_root_and_subdir_same_cursor(runner, tmp_path, monkeypatch):
 
     # ack from project root
     monkeypatch.chdir(tmp_path)
-    result1 = runner.invoke(board, ["ack", "shared-channel"])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result1 = runner.invoke(board, ["ack", "shared-channel"])
     assert result1.exit_code == 0
 
     # ack from subdirectory
     subdir = tmp_path / "packages" / "core"
     subdir.mkdir(parents=True)
     monkeypatch.chdir(subdir)
-    result2 = runner.invoke(board, ["ack", "shared-channel"])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result2 = runner.invoke(board, ["ack", "shared-channel"])
     assert result2.exit_code == 0
 
     # Both should have written to the same cursor file at the git root
@@ -1175,7 +1183,8 @@ def test_ack_prefers_task_root_over_git_root(runner, tmp_path, monkeypatch):
     subdir.mkdir(parents=True)
     monkeypatch.chdir(subdir)
 
-    result = runner.invoke(board, ["ack", "task-channel"])
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, ["ack", "task-channel"])
     assert result.exit_code == 0
     assert load_cursor("task-channel", task_root) == 1
     # Should NOT be at the git root
@@ -1811,3 +1820,122 @@ def test_watch_multi_reconnect_exhaustion_exits_nonzero(runner, stored_swarm, tm
 
     assert result.exit_code == 3
     assert "reconnect exhaustion" in result.output
+
+
+# ---------------------------------------------------------------------------
+# ack head guard tests
+# Chunk: docs/chunks/ack_cursor_head_guard - Prevent ack past channel head
+# ---------------------------------------------------------------------------
+
+
+def test_ack_head_guard_normal_advance(runner, stored_swarm, tmp_path):
+    """ack with cursor < head succeeds and advances cursor normally."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    save_cursor("ch", 3, tmp_path)
+
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig(server_url="ws://test:8787")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.list_channels = AsyncMock(return_value=[
+            {"name": "ch", "head_position": 5, "oldest_position": 1},
+        ])
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "ack", "ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert load_cursor("ch", tmp_path) == 4
+    assert "ack rejected" not in result.output
+
+
+def test_ack_head_guard_at_head_rejected(runner, stored_swarm, tmp_path):
+    """ack when auto-increment would exceed head prints warning and does not advance."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+    save_cursor("ch", 5, tmp_path)
+
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig(server_url="ws://test:8787")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.list_channels = AsyncMock(return_value=[
+            {"name": "ch", "head_position": 5, "oldest_position": 1},
+        ])
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "ack", "ch",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert load_cursor("ch", tmp_path) == 5  # unchanged
+    assert "ack rejected" in result.output
+    assert "5" in result.output  # head position mentioned in warning
+
+
+def test_ack_head_guard_explicit_position_beyond_head_rejected(runner, stored_swarm, tmp_path):
+    """ack with explicit position > head prints warning and does not save."""
+    swarm_id, seed, pub, keys_dir = stored_swarm
+
+    config = BoardConfig(
+        default_swarm=swarm_id,
+        swarms={swarm_id: SwarmConfig(server_url="ws://test:8787")},
+    )
+
+    with patch("cli.board.load_keypair", return_value=(seed, pub)), \
+         patch("cli.board.load_board_config", return_value=config), \
+         patch("cli.board.BoardClient") as MockClient:
+
+        instance = MockClient.return_value
+        instance.connect = AsyncMock()
+        instance.list_channels = AsyncMock(return_value=[
+            {"name": "ch", "head_position": 3, "oldest_position": 1},
+        ])
+        instance.close = AsyncMock()
+
+        result = runner.invoke(board, [
+            "ack", "ch", "10",
+            "--swarm", swarm_id,
+            "--server", "ws://test:8787",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert load_cursor("ch", tmp_path) == 0  # unchanged (no cursor file → 0)
+    assert "ack rejected" in result.output
+
+
+def test_ack_head_guard_no_swarm_skips_guard(runner, tmp_path):
+    """When no swarm can be resolved, the guard is skipped and cursor advances normally."""
+    # Empty BoardConfig → no default_swarm, no --swarm flag → resolve_swarm returns None
+    with patch("cli.board.load_board_config", return_value=BoardConfig()):
+        result = runner.invoke(board, [
+            "ack", "ch",
+            "--project-root", str(tmp_path),
+        ])
+
+    assert result.exit_code == 0
+    assert load_cursor("ch", tmp_path) == 1  # advanced from 0 to 1
+    assert "ack rejected" not in result.output
