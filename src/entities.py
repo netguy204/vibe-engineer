@@ -384,6 +384,7 @@ class Entities:
 
         return "\n".join(sections)
 
+    # Chunk: docs/chunks/entity_startup_skill - Helper to extract markdown body content after frontmatter for identity loading
     def _read_body(self, file_path: Path) -> str:
         """Read the body content of a markdown file (after frontmatter).
 

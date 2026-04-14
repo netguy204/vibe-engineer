@@ -1,0 +1,103 @@
+---
+name: chunk-execute
+description: "Run a chunk's full plan \u2192 implement \u2192 complete cycle in the current session. Use /chunk-execute to run a chunk inline. Use ve orch inject to delegate to a background agent."
+---
+
+
+
+
+<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+Run `ve init` to regenerate.
+-->
+
+## Tips
+
+- The ve command is an installed CLI tool, not a file in the repository. Do not
+search for it - run it directly via Bash.
+
+
+## Instructions
+
+1. **Determine the target chunk.** If a chunk name was provided as an argument,
+   use that. Otherwise, run `ve chunk list --current` to find the currently
+   IMPLEMENTING chunk. We will refer to the chunk directory below as
+   `<chunk directory>`.
+
+2. **Plan phase guard.** Check if `<chunk directory>/PLAN.md` already has
+   substantive content beyond the template skeleton. Look for an `## Approach`
+   section that contains actual implementation details (not just HTML comments
+   or placeholder text).
+
+   - If the plan is still a bare template: invoke `/chunk-plan` to create the
+     plan. Wait for it to complete before proceeding.
+   - If a plan already exists with real content: report "Plan already exists,
+     skipping /chunk-plan" and proceed to the next step.
+
+3. **Implement phase.** Invoke `/chunk-implement` to execute the plan.
+
+4. **Error gate.** If implementation encounters errors (test failures, build
+   errors, or issues that prevent the chunk from being considered complete),
+   STOP and report the error to the operator. Do NOT proceed to the review
+   phase. The operator may want to intervene or adjust the plan.
+
+5. **Review loop.** After successful implementation, enter the review loop.
+   Track the current iteration number starting at 1, with a maximum of 5
+   iterations.
+
+   **LOOP START:**
+
+   a. **Run review.** Invoke `/chunk-review` and read its output to determine
+      the review decision (APPROVE, FEEDBACK, or ESCALATE). The reviewer will
+      call the `ReviewDecision` tool and output a YAML decision block — use
+      the `decision:` field to determine the outcome.
+
+   b. **If APPROVE** — The review is clean. Exit the loop and proceed to the
+      complete phase (step 6).
+
+   c. **If ESCALATE** — STOP execution entirely. Report the escalation reason
+      and questions to the operator. Do NOT proceed to complete. The operator
+      must intervene.
+
+   d. **If FEEDBACK** — Issues were found that need fixing:
+      1. Check the iteration count. If this is iteration 5 (the maximum),
+         STOP and report to the operator: "Review found issues but max
+         iterations (5) reached. Manual intervention required." List the
+         remaining issues.
+      2. Write the review issues to `<chunk directory>/REVIEW_FEEDBACK.md`
+         in this format so `/chunk-implement` can address them:
+
+         ```markdown
+         # Review Feedback (Iteration N)
+
+         The following issues were identified during review. Address each one.
+
+         ## Issue 1: [concern]
+         - **Location**: [file:line]
+         - **Concern**: [what's wrong]
+         - **Suggestion**: [how to fix]
+         - **Severity**: [severity]
+
+         ## Issue 2: [concern]
+         ...
+         ```
+
+         Populate each issue from the FEEDBACK decision's `issues` array.
+
+      3. Invoke `/chunk-implement` to address the feedback. It will read
+         `REVIEW_FEEDBACK.md` and fix each issue (or defer/dispute with
+         documented rationale).
+      4. **Error gate (re-implementation).** If re-implementation encounters
+         build/test errors, STOP and report to the operator.
+      5. Increment the iteration count and go back to **LOOP START**.
+
+6. **Complete phase.** Invoke `/chunk-complete` to finalize code references,
+   run overlap analysis, and transition the chunk to its final status.
+
+7. **Summary.** Report the final status of the chunk execution:
+   - Which phases ran (plan, implement, review, complete)
+   - Whether any phases were skipped (e.g., plan already existed)
+   - How many review iterations were needed (1 = clean first pass)
+   - The chunk's final status
+   - Any issues encountered along the way
