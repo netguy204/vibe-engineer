@@ -359,14 +359,15 @@ class Entities:
             sections.append("*No consolidated memories yet.*")
             sections.append("")
 
+        # Chunk: docs/chunks/entity_touch_protocol_docs - Fix Touch Protocol command signature
         # --- Touch Protocol ---
         sections.append("## Touch Protocol")
         sections.append("")
         sections.append(
             "When you notice yourself applying a core memory, "
-            "run `ve entity touch <memory_id> \"<reason>\"` to reinforce it. "
+            "run `ve entity touch <name> <memory_id> \"<reason>\"` to reinforce it. "
             "Use the ID shown next to each core memory above (e.g., "
-            "`ve entity touch 20260319_core_memory \"applied this insight\"`). "
+            "`ve entity touch <name> 20260319_core_memory \"applied this insight\"`). "
             "This enables retrieval-as-reinforcement — the act of noticing "
             "you used a memory strengthens it."
         )

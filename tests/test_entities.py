@@ -395,10 +395,11 @@ class TestStartupPayload:
         assert "- Pattern X" in payload
 
     def test_startup_payload_includes_touch_protocol(self, entities):
-        """Text includes ve entity touch instruction."""
+        """Touch Protocol shows correct 3-argument signature."""
         entities.create_entity("agent")
         payload = entities.startup_payload("agent")
-        assert "ve entity touch" in payload
+        # Must include entity name argument in the command signature
+        assert "ve entity touch <name> <memory_id>" in payload
 
     def test_startup_payload_excludes_journal(self, entities):
         """Journal memories do not appear in the startup payload."""

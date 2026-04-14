@@ -70,17 +70,19 @@ Where `<query>` is a case-insensitive substring of the memory title.
 
 ### Step 6: Follow the touch protocol
 
-When you notice yourself applying a core memory (CM1, CM2, ...), run:
+When you notice yourself applying a core memory, run the touch command
+using the full ID stem shown next to each memory (the `ID:` field in the
+startup payload above):
 
 ```
-ve entity touch <memory_id> <reason>
+ve entity touch <name> <memory_id> <reason>
 ```
 
 This enables retrieval-as-reinforcement — the act of noticing you used a
 memory strengthens it. For example:
 
 ```
-ve entity touch CM3 "Used template editing workflow to fix rendering issue"
+ve entity touch aria 20260414_120742_089450_template_editing_workflow "Used template editing workflow to fix rendering issue"
 ```
 
 ### Step 7: Episodic memory
