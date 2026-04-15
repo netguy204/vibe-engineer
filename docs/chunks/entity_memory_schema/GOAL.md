@@ -26,7 +26,7 @@ code_references:
   - ref: src/entities.py#Entities
     implements: "Entity lifecycle management: create, list, parse identity, memory CRUD, and startup memory index"
   - ref: src/entities.py#Entities::create_entity
-    implements: "Directory structure creation (.entities/<name>/ with identity.md and memory tier subdirectories)"
+    implements: "Directory structure creation (.entities/<name>/ with identity.md, memory tier subdirectories, and wiki/ directory with subdirectories and initial pages)"
   - ref: src/entities.py#Entities::write_memory
     implements: "Memory file writing with YAML frontmatter and unique filename generation"
   - ref: src/entities.py#Entities::parse_memory

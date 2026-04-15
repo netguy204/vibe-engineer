@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -9,7 +9,19 @@ code_paths:
 - src/templates/entity/wiki/log.md.jinja2
 - src/entities.py
 - tests/test_entities.py
-code_references: []
+code_references:
+- ref: src/templates/entity/wiki_schema.md.jinja2
+  implements: "Wiki schema instruction document — the CLAUDE.md for the wiki, describing directory structure, page conventions, and maintenance workflow"
+- ref: src/templates/entity/wiki/identity.md.jinja2
+  implements: "Initial identity page template for entity wiki (role, working style, values, hard-won lessons)"
+- ref: src/templates/entity/wiki/index.md.jinja2
+  implements: "Initial index page template for entity wiki (content catalog with category tables and wikilinks)"
+- ref: src/templates/entity/wiki/log.md.jinja2
+  implements: "Initial log page template for entity wiki (chronological session log with format example)"
+- ref: src/entities.py#Entities::create_entity
+  implements: "Wiki directory initialization — creates wiki/ subdirectories and renders all four wiki templates during entity creation"
+- ref: tests/test_entities.py#TestCreateEntityWiki
+  implements: "Tests for wiki directory/page creation including structural and content correctness"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
