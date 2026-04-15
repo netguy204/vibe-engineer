@@ -1,12 +1,24 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - src/entities.py
 - src/templates/commands/entity-startup.md.jinja2
 - tests/test_entities.py
-code_references: []
+code_references:
+- ref: src/entities.py#Entities::has_wiki
+  implements: "Wiki format detection — returns True if entity has a wiki/ directory"
+- ref: src/entities.py#Entities::startup_payload
+  implements: "Wiki-aware startup payload — branches on has_wiki() to include wiki index and maintenance protocol sections"
+- ref: src/entities.py#Entities::_wiki_index_content
+  implements: "Helper to read wiki/index.md content for inclusion in startup payload"
+- ref: src/templates/commands/entity-startup.md.jinja2
+  implements: "Wiki-aware startup skill template — Steps 5/6 added for wiki orientation and maintenance commitment"
+- ref: tests/test_entities.py#TestHasWiki
+  implements: "Tests for has_wiki() covering wiki and legacy entity paths"
+- ref: tests/test_entities.py#TestStartupPayloadWiki
+  implements: "Tests for wiki startup payload: content, ordering, maintenance reminder, legacy backward compatibility"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

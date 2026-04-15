@@ -10,7 +10,7 @@ code_paths:
   - tests/test_entity_cli.py
 code_references:
   - ref: src/entities.py#Entities::startup_payload
-    implements: "Core startup/wake payload assembly — loads identity, core memories, consolidated index, touch protocol, and active state"
+    implements: "Core startup/wake payload assembly — loads identity, core memories, wiki index and maintenance protocol (wiki entities only), consolidated index, touch protocol, and active state"
   - ref: src/entities.py#Entities::_read_body
     implements: "Helper to extract markdown body content after frontmatter for identity loading"
   - ref: src/entities.py#Entities::recall_memory
@@ -20,7 +20,7 @@ code_references:
   - ref: src/cli/entity.py#recall
     implements: "CLI command 've entity recall <name> <query>' — retrieves memories matching a title query"
   - ref: src/templates/commands/entity-startup.md.jinja2
-    implements: "/entity-startup slash command template — instructs agent to run startup CLI, adopt entity identity, internalize core memories, note consolidated index, follow touch protocol, use episodic search (Step 7), and restore active state (Step 8)"
+    implements: "/entity-startup slash command template — instructs agent to run startup CLI, adopt entity identity, internalize core memories, orient with wiki and commit to wiki maintenance (Steps 5-6, wiki entities only), note consolidated memory index (Step 7), follow touch protocol (Step 8), use episodic search (Step 9), and restore active state (Step 10)"
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
