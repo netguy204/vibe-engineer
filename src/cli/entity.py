@@ -643,6 +643,94 @@ def migrate(
     click.echo(f"  Unclassified:       {result.unclassified_count} (review manually)")
 
 
+# Chunk: docs/chunks/entity_push_pull - CLI push command
+@entity.command("push")
+@click.argument("name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def push(name: str, project_dir: pathlib.Path | None) -> None:
+    """Push entity commits to remote origin.
+
+    NAME is the entity identifier (subdirectory under .entities/).
+    Pushes committed changes in the entity's repo to its remote origin.
+    Warns if uncommitted changes are present (these are NOT pushed).
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    entity_path = project_dir / ".entities" / name
+    try:
+        result = entity_repo.push_entity(entity_path)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    if result.has_uncommitted:
+        click.echo(
+            f"Warning: entity '{name}' has uncommitted changes — these will not be pushed"
+        )
+    if result.commits_pushed == 0:
+        click.echo("Already up to date")
+    else:
+        click.echo(f"Pushed {result.commits_pushed} commit(s) to origin")
+
+
+# Chunk: docs/chunks/entity_push_pull - CLI pull command
+@entity.command("pull")
+@click.argument("name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def pull(name: str, project_dir: pathlib.Path | None) -> None:
+    """Fetch and merge entity commits from remote origin.
+
+    NAME is the entity identifier (subdirectory under .entities/).
+    Fast-forwards the local entity branch when possible. If histories
+    have diverged, warns and suggests 've entity merge'.
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    entity_path = project_dir / ".entities" / name
+    try:
+        result = entity_repo.pull_entity(entity_path)
+    except entity_repo.MergeNeededError as e:
+        raise click.ClickException(
+            f"Histories have diverged. Use 've entity merge' to resolve.\n{e}"
+        )
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    if result.up_to_date:
+        click.echo("Already up to date")
+    else:
+        click.echo(f"Merged {result.commits_merged} new commit(s) from origin")
+
+
+# Chunk: docs/chunks/entity_push_pull - CLI set-origin command
+@entity.command("set-origin")
+@click.argument("name")
+@click.argument("url")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def set_origin(name: str, url: str, project_dir: pathlib.Path | None) -> None:
+    """Set or update the remote origin URL for an entity.
+
+    NAME is the entity identifier (subdirectory under .entities/).
+    URL is the remote repository URL (GitHub HTTPS/SSH or local path).
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    entity_path = project_dir / ".entities" / name
+    try:
+        entity_repo.set_entity_origin(entity_path, url)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Set origin for '{name}' to {url}")
+
+
 # Chunk: docs/chunks/entity_episodic_search
 @entity.command("episodic")
 @click.option("--entity", "entity_name", required=True, help="Entity name")
