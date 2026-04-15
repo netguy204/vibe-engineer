@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -7,7 +7,29 @@ code_paths:
 - src/entity_repo.py
 - tests/test_entity_push_pull.py
 - tests/test_entity_push_pull_cli.py
-code_references: []
+code_references:
+- ref: src/entity_repo.py#MergeNeededError
+  implements: "Custom exception for diverged histories during pull"
+- ref: src/entity_repo.py#PushResult
+  implements: "Result dataclass for push_entity operations"
+- ref: src/entity_repo.py#PullResult
+  implements: "Result dataclass for pull_entity operations"
+- ref: src/entity_repo.py#push_entity
+  implements: "Push entity repo's current branch to remote origin"
+- ref: src/entity_repo.py#pull_entity
+  implements: "Fetch and fast-forward merge entity repo from remote origin"
+- ref: src/entity_repo.py#set_entity_origin
+  implements: "Set or update the remote origin URL for an entity's repo"
+- ref: src/cli/entity.py#push
+  implements: "CLI push command for ve entity push <name>"
+- ref: src/cli/entity.py#pull
+  implements: "CLI pull command for ve entity pull <name>"
+- ref: src/cli/entity.py#set_origin
+  implements: "CLI set-origin command for ve entity set-origin <name> <url>"
+- ref: tests/test_entity_push_pull.py
+  implements: "Unit tests for push_entity, pull_entity, set_entity_origin library functions"
+- ref: tests/test_entity_push_pull_cli.py
+  implements: "CLI integration tests for push, pull, set-origin commands"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
