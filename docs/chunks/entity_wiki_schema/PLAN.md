@@ -1,179 +1,209 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is purely additive: create new Jinja2 template files and extend `Entities.create_entity()` to render them. No existing behavior changes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The three templates (`wiki_schema.md.jinja2`, `wiki/identity.md.jinja2`, `wiki/index.md.jinja2`, `wiki/log.md.jinja2`) are Jinja2 files in `src/templates/entity/`. They follow the conventions already established by `src/templates/entity/identity.md.jinja2`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+`create_entity()` in `src/entities.py` already uses `render_template()` to produce files in the entity directory. We extend it to also render the four wiki templates, creating `wiki/` alongside the existing `identity.md` and `memories/` directories.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_wiki_schema/GOAL.md)
-with references to the files that you expect to touch.
--->
+The wiki schema template (`wiki_schema.md`) is the "CLAUDE.md for the wiki" — an instruction document rendered inside `wiki/` that tells the entity how to maintain its wiki during sessions. It has no Jinja2 variables (it is entity-agnostic prose); the other three page templates receive `name`, `role`, and `created` for their frontmatter.
+
+The investigation's three prototype wikis (`wiki_a/`, `wiki_b/`, `wiki_uniharness/`) are the golden references. The schema and page templates must match the conventions observed in those prototypes.
+
+No new decision needs to be added to DECISIONS.md — this is a straightforward template addition using the existing `render_template()` pattern (DEC-009).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant — this chunk adds template files and extends a single method. The template rendering system is used but not modified.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write the wiki schema template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `src/templates/entity/wiki_schema.md.jinja2`.
 
-Example:
+This is the instruction document that tells the entity how to maintain its wiki. It has no Jinja2 variables — it is pure markdown prose. The content should cover:
 
-### Step 1: Define the SegmentHeader struct
+- **Directory structure**: The canonical layout (`index.md`, `identity.md`, `log.md`, `domain/`, `projects/`, `techniques/`, `relationships/`) with one-line purpose descriptions for each.
+- **Page conventions**: YAML frontmatter (`title`, `created`, `updated` minimum), wikilinks (`[[page_name]]`), page size guideline (~500 words, split when exceeded), one concept per page.
+- **What to capture by category**:
+  - `identity.md`: role, strengths, working style, values, hard-won lessons — especially lessons from failures and adversity
+  - `domain/` pages: concepts, how they relate, key facts, open questions
+  - `techniques/` pages: what it is, when to use it, pitfalls, examples from experience
+  - `projects/` pages: goals, constraints, current state, key decisions made
+  - `relationships/` pages: who they are, what they do, how you work with them
+  - `log.md`: chronological session record, format `## [YYYY-MM-DD] session | Brief summary` with subsections Task, What Happened, Key Learnings
+- **Maintenance workflow**: Maintain the wiki _during_ the session as a natural part of working (not as a separate post-session step). When you learn something, update the relevant page. When you complete a session, add a log entry.
+- **Index maintenance**: `index.md` is the content catalog. Every page must have a row in the index table for its category. Keep summaries to one line. Update the index when creating a new page.
+- **Page operations**: When to create a new page (new distinct concept), when to update an existing one (refinement, new examples, corrected understanding), when to split (page exceeds ~500 words and covers multiple separable concepts).
+- **Cross-references**: Use `[[page_name]]` for references within the same directory level, `[[domain/topic]]` for cross-directory references.
+- **Ingest signal**: The entity should treat every discovery, failure, correction, and hard-won insight as a wiki update trigger. The most valuable content comes from adversity.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Location: `src/templates/entity/wiki_schema.md.jinja2`
 
-Location: src/segment/format.rs
+Backreference: `{# Chunk: docs/chunks/entity_wiki_schema - Wiki schema instruction document for entity self-maintenance #}`
 
-### Step 2: Implement header serialization
+### Step 2: Write the wiki/identity.md page template
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Create `src/templates/entity/wiki/identity.md.jinja2`.
 
-### Step 3: ...
+This template renders the initial `wiki/identity.md` page for a new entity. It receives the same variables already used by `identity.md.jinja2`: `name`, `role`, and `created`.
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+Frontmatter:
+```yaml
+title: Identity
+created: {{ created }}
+updated: {{ created }}
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Sections (based on the prototype `wiki_a/identity.md`):
+- **Who I Am**: Placeholder text acknowledging this is populated as the entity works; starts minimal
+- **Role**: Render `{{ role }}` if provided, otherwise a placeholder
+- **Working Style**: Empty skeleton with prompt ("Document how you approach work — methodologies, phase structures, decision patterns")
+- **Values**: Empty skeleton ("Document what you optimize for — what tradeoffs you make, what you refuse to compromise on")
+- **Hard-Won Lessons**: Empty skeleton ("This section becomes your most valuable asset — document failures, surprising discoveries, and corrected assumptions. Especially capture lessons from adversity.")
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+The template should guide the entity to fill it in, not pre-fill it with generic content.
+
+Location: `src/templates/entity/wiki/identity.md.jinja2`
+
+Backreference: `{# Chunk: docs/chunks/entity_wiki_schema - Initial identity page template for entity wiki #}`
+
+### Step 3: Write the wiki/index.md page template
+
+Create `src/templates/entity/wiki/index.md.jinja2`.
+
+This template renders the initial `wiki/index.md` — the content catalog that the entity reads at startup to orient itself. It receives `name` and `created`.
+
+Frontmatter:
+```yaml
+title: Wiki Index — {{ name }}
+created: {{ created }}
+updated: {{ created }}
+```
+
+Content:
+- Brief description: "Personal knowledge base for `{{ name }}`."
+- **Core** table with rows for `[[identity]]` and `[[log]]`
+- **Domain Knowledge** table — empty (placeholder row or empty table with comment)
+- **Projects** table — empty
+- **Techniques** table — empty
+- **Relationships** table — empty
+
+Each table uses the two-column format from the prototype (`| Page | Summary |`).
+
+Add a comment block instructing the entity: "Keep this index current. Every page you create should appear here. One-line summaries only."
+
+Location: `src/templates/entity/wiki/index.md.jinja2`
+
+Backreference: `{# Chunk: docs/chunks/entity_wiki_schema - Initial index page template for entity wiki #}`
+
+### Step 4: Write the wiki/log.md page template
+
+Create `src/templates/entity/wiki/log.md.jinja2`.
+
+This template renders the initial `wiki/log.md` — the chronological session log. It receives `created`.
+
+Frontmatter:
+```yaml
+title: Session Log
+created: {{ created }}
+updated: {{ created }}
+```
+
+Content:
+- A brief description: "Chronological record of sessions. Add an entry at the end of each session."
+- Format instructions: `## [YYYY-MM-DD] session | Brief summary` header, then `### Task`, `### What Happened`, `### Key Learnings` subsections
+- One example entry that is clearly marked as an example/template (use a comment or a visually distinct placeholder), so the entity understands the format without being confused about whether the example reflects real history
+
+Location: `src/templates/entity/wiki/log.md.jinja2`
+
+Backreference: `{# Chunk: docs/chunks/entity_wiki_schema - Initial log page template for entity wiki #}`
+
+### Step 5: Extend create_entity() to render wiki templates
+
+Modify `src/entities.py` → `Entities.create_entity()`.
+
+After creating the `memories/` tier directories, also:
+
+1. Create the `wiki/` directory and subdirectories:
+   ```python
+   wiki_dir = entity_path / "wiki"
+   wiki_dir.mkdir()
+   for subdir in ["domain", "projects", "techniques", "relationships"]:
+       (wiki_dir / subdir).mkdir()
+   ```
+
+2. Render and write `wiki/wiki_schema.md` from `wiki_schema.md.jinja2` (no variables needed):
+   ```python
+   schema_content = render_template("entity", "wiki_schema.md.jinja2")
+   (wiki_dir / "wiki_schema.md").write_text(schema_content)
+   ```
+
+3. Render and write the three page templates (all receive `name`, `role`, `created`):
+   ```python
+   for template_name, output_path in [
+       ("wiki/identity.md.jinja2", wiki_dir / "identity.md"),
+       ("wiki/index.md.jinja2",    wiki_dir / "index.md"),
+       ("wiki/log.md.jinja2",      wiki_dir / "log.md"),
+   ]:
+       content = render_template("entity", template_name, name=name, role=role, created=created)
+       output_path.write_text(content)
+   ```
+
+Update the module docstring to include `wiki/` in the documented directory structure.
+
+Add a backreference comment at the extension point: `# Chunk: docs/chunks/entity_wiki_schema - Wiki directory initialization`
+
+### Step 6: Update GOAL.md code_paths
+
+Update `docs/chunks/entity_wiki_schema/GOAL.md` `code_paths` to include:
+- `src/templates/entity/wiki_schema.md.jinja2`
+- `src/templates/entity/wiki/identity.md.jinja2`
+- `src/templates/entity/wiki/index.md.jinja2`
+- `src/templates/entity/wiki/log.md.jinja2`
+- `src/entities.py` (modified)
+- `tests/test_entities.py` (modified)
+
+These paths were listed in the GOAL.md frontmatter already for the first four. Add `src/entities.py` and `tests/test_entities.py`.
+
+### Step 7: Write tests
+
+Extend `tests/test_entities.py` with a new `TestCreateEntityWiki` class. Tests to write (TDD order — write failing tests first, then implement):
+
+**Structural tests** (verify wiki directory creation):
+
+- `test_creates_wiki_directory`: `create_entity()` creates `wiki/` directory
+- `test_creates_wiki_subdirectories`: `wiki/domain/`, `wiki/projects/`, `wiki/techniques/`, `wiki/relationships/` all exist
+- `test_creates_wiki_initial_pages`: `wiki/wiki_schema.md`, `wiki/identity.md`, `wiki/index.md`, `wiki/log.md` all exist
+
+**Content tests** (verify meaningful properties of rendered output):
+
+- `test_wiki_schema_mentions_directory_structure`: `wiki_schema.md` contains "domain", "projects", "techniques", "relationships" (the directory names) — verifies schema document describes the structure
+- `test_wiki_schema_mentions_wikilinks`: `wiki_schema.md` contains `[[` — verifies wikilink convention is documented
+- `test_wiki_schema_mentions_log_format`: `wiki_schema.md` contains `YYYY-MM-DD` — verifies log entry format is documented
+- `test_wiki_identity_contains_entity_name`: `wiki/identity.md` contains the entity name passed to `create_entity()`
+- `test_wiki_identity_valid_frontmatter`: `wiki/identity.md` has parseable YAML frontmatter with `title`, `created`, `updated`
+- `test_wiki_index_contains_identity_link`: `wiki/index.md` contains `[[identity]]`
+- `test_wiki_index_contains_log_link`: `wiki/index.md` contains `[[log]]`
+- `test_wiki_index_valid_frontmatter`: `wiki/index.md` has parseable YAML frontmatter
+- `test_wiki_log_valid_frontmatter`: `wiki/log.md` has parseable YAML frontmatter with `title`, `created`, `updated`
+- `test_wiki_log_contains_format_example`: `wiki/log.md` contains `YYYY-MM-DD` — the log format is documented/exemplified
+
+Use the existing `temp_project` fixture and the `entities` fixture already defined in `test_entities.py`. Parse frontmatter via `yaml.safe_load()` on the lines between `---` delimiters — no need to import the full frontmatter module.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No external dependencies. All required infrastructure (`render_template`, `Entities`, `MemoryTier`, test fixtures) already exists.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Template subdirectory resolution**: `render_template("entity", "wiki/identity.md.jinja2")` — verify that the `render_template()` function handles subdirectory template paths correctly. If it doesn't, we may need to use `"wiki_identity.md.jinja2"` (flat names) or adjust the template lookup. Read `src/template_system.py` before implementing Step 5 to confirm.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION, not at planning time. -->

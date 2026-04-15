@@ -15,6 +15,15 @@ Directory structure:
           journal/          # Tier 0: raw session memories
           consolidated/     # Tier 1: cross-session patterns
           core/             # Tier 2: persistent skills
+        wiki/               # Persistent structured knowledge base
+          wiki_schema.md    # Schema and maintenance instructions
+          identity.md       # Entity self-model
+          index.md          # Content catalog
+          log.md            # Chronological session log
+          domain/           # Domain knowledge pages
+          projects/         # Per-project working notes
+          techniques/       # Approaches and patterns
+          relationships/    # People, teams, other entities
 """
 
 from __future__ import annotations
@@ -120,6 +129,28 @@ class Entities:
             created=created,
         )
         (entity_path / "identity.md").write_text(identity_content)
+
+        # Chunk: docs/chunks/entity_wiki_schema - Wiki directory initialization
+        # Create wiki/ directory and subdirectories
+        wiki_dir = entity_path / "wiki"
+        wiki_dir.mkdir()
+        for subdir in ["domain", "projects", "techniques", "relationships"]:
+            (wiki_dir / subdir).mkdir()
+
+        # Render wiki_schema.md (entity-agnostic — no variables)
+        schema_content = render_template("entity", "wiki_schema.md.jinja2")
+        (wiki_dir / "wiki_schema.md").write_text(schema_content)
+
+        # Render initial wiki pages (receive name, role, created)
+        for template_name, output_path in [
+            ("wiki/identity.md.jinja2", wiki_dir / "identity.md"),
+            ("wiki/index.md.jinja2", wiki_dir / "index.md"),
+            ("wiki/log.md.jinja2", wiki_dir / "log.md"),
+        ]:
+            content = render_template(
+                "entity", template_name, name=name, role=role, created=created
+            )
+            output_path.write_text(content)
 
         return entity_path
 

@@ -1,0 +1,156 @@
+{#- Chunk: docs/chunks/entity_wiki_schema - Wiki schema instruction document for entity self-maintenance -#}
+# Wiki Schema
+
+This document is the schema for your personal wiki — your persistent, compounding knowledge base.
+Read it at the start of each session to orient yourself. It tells you what goes where and how to maintain it.
+
+## Directory Structure
+
+```
+wiki/
+├── wiki_schema.md    # This file — the schema and maintenance instructions
+├── index.md          # Content catalog — read this first to find relevant pages
+├── identity.md       # Who you are, your role, working style, values, hard-won lessons
+├── log.md            # Chronological session log
+├── domain/           # Domain knowledge pages (one per major topic or concept)
+├── projects/         # Per-project working notes and state
+├── techniques/       # Approaches, patterns, and tools you have learned to use well
+└── relationships/    # People, teams, and other entities you work with
+```
+
+### What Goes Where
+
+- **`index.md`** — The content catalog. Every page you create has a row here. Read this first.
+- **`identity.md`** — Your self-model: role, strengths, working style, values, and hard-won lessons.
+- **`log.md`** — Chronological record of sessions. Add an entry at the end of each session.
+- **`domain/`** — One page per major concept or topic. Captures concepts, relationships, key facts, open questions.
+- **`projects/`** — One page per project. Captures goals, constraints, current state, key decisions made.
+- **`techniques/`** — One page per approach or pattern. Captures what it is, when to use it, pitfalls, examples.
+- **`relationships/`** — One page per person, team, or entity. Captures who they are, what they do, how you work with them.
+
+## Page Conventions
+
+### Frontmatter
+
+Every page must have YAML frontmatter with at minimum:
+
+```yaml
+---
+title: Page Title
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+---
+```
+
+Update `updated` whenever you modify a page.
+
+### Wikilinks
+
+Use `[[page_name]]` for cross-references within the same directory level.
+Use `[[domain/topic]]` or `[[techniques/name]]` for cross-directory references.
+Wikilinks are compatible with Obsidian for human browsing.
+
+### Page Size
+
+Keep pages focused — one concept per page. When a page exceeds ~500 words and covers
+multiple separable concepts, split it into two pages and update the index.
+
+## What to Capture
+
+### `identity.md`
+
+Your self-model. The most important section is **Hard-Won Lessons** — document failures,
+surprising discoveries, corrected assumptions, and adversity. This is where your memory matters most.
+
+- **Who I Am**: What kind of entity you are, what you've done
+- **Role**: Your current purpose and responsibilities
+- **Working Style**: How you approach work — methodologies, phases, decision patterns
+- **Values**: What you optimize for, what tradeoffs you make, what you refuse to compromise on
+- **Hard-Won Lessons**: Lessons from failure and adversity — the things you had to learn the hard way
+
+### `domain/` Pages
+
+One page per major concept. Capture:
+- What the concept is and how it works
+- How it relates to other concepts (use wikilinks)
+- Key facts you've discovered
+- Open questions you haven't resolved yet
+
+### `techniques/` Pages
+
+One page per approach or pattern. Capture:
+- What it is and how to apply it
+- When to use it (and when not to)
+- Pitfalls and failure modes
+- Examples from your own experience
+
+### `projects/` Pages
+
+One page per project. Capture:
+- Goals and success criteria
+- Constraints and non-negotiables
+- Current state and what's been done
+- Key decisions made and why
+
+### `relationships/` Pages
+
+One page per person, team, or entity. Capture:
+- Who they are and what they do
+- How you work with them
+- Communication patterns and preferences
+- Anything that has surprised you
+
+### `log.md` — Session Log Format
+
+Add an entry at the end of every session using this format:
+
+```markdown
+## [YYYY-MM-DD] session | Brief one-line summary of the session
+
+### Task
+What you were asked to do.
+
+### What Happened
+What actually happened — key events, discoveries, decisions, failures.
+
+### Key Learnings
+What you will carry forward. Use wikilinks to reference pages you updated.
+```
+
+## Maintenance Workflow
+
+**Maintain the wiki during the session, not after.** When you learn something, update the relevant page immediately.
+The wiki is a natural byproduct of working, not a separate note-taking step.
+
+**Triggers for wiki updates:**
+
+- You encounter a new concept → create or update a `domain/` page
+- You apply a technique → create or update a `techniques/` page
+- You discover something was wrong → update the relevant page and add to `identity.md` Hard-Won Lessons
+- You make a significant decision → update the relevant `projects/` page
+- You learn something about how to work with someone → update their `relationships/` page
+- A session ends → add a `log.md` entry
+
+**The most valuable content comes from adversity.** Failures, unexpected behaviors, corrected
+assumptions, and hard-won insights are what make your wiki valuable across sessions.
+Treat every failure as a wiki update trigger.
+
+## Index Maintenance
+
+`index.md` is your content catalog. Every page you create must have a row in the appropriate table.
+Keep summaries to one line. Update the index immediately when creating a new page.
+
+## Page Operations
+
+| Situation | Action |
+|-----------|--------|
+| New distinct concept | Create a new page in the appropriate directory |
+| Refinement, new example, corrected understanding | Update the existing page |
+| Page exceeds ~500 words covering multiple separable concepts | Split into two pages, update index |
+| Concept referenced from multiple places | Use wikilinks rather than duplicating content |
+
+## Cross-Reference Conventions
+
+- Same directory: `[[page_name]]` (e.g., `[[proving_model]]` from within `domain/`)
+- Cross-directory: `[[domain/topic]]`, `[[techniques/name]]`, `[[projects/name]]`
+- Core pages: `[[identity]]`, `[[log]]`, `[[index]]`

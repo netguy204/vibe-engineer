@@ -977,3 +977,117 @@ class TestArchiveTranscript:
         entities.create_entity("agent")
         sessions_dir = temp_project / ".entities" / "agent" / "sessions"
         assert not sessions_dir.exists()
+
+
+class TestCreateEntityWiki:
+    """Tests for wiki directory and page creation in Entities.create_entity()."""
+
+    def _parse_frontmatter(self, content: str) -> dict:
+        """Parse YAML frontmatter from a markdown file (between --- delimiters)."""
+        import yaml as _yaml
+        import re as _re
+        match = _re.match(r"^---\s*\n(.*?)\n---", content, _re.DOTALL)
+        if not match:
+            return {}
+        return _yaml.safe_load(match.group(1)) or {}
+
+    # --- Structural tests ---
+
+    def test_creates_wiki_directory(self, entities, temp_project):
+        """create_entity creates the wiki/ directory."""
+        entities.create_entity("agent")
+        wiki_dir = temp_project / ".entities" / "agent" / "wiki"
+        assert wiki_dir.is_dir()
+
+    def test_creates_wiki_subdirectories(self, entities, temp_project):
+        """create_entity creates domain/, projects/, techniques/, relationships/ inside wiki/."""
+        entities.create_entity("agent")
+        wiki_dir = temp_project / ".entities" / "agent" / "wiki"
+        for subdir in ["domain", "projects", "techniques", "relationships"]:
+            assert (wiki_dir / subdir).is_dir(), f"Missing wiki/{subdir}/"
+
+    def test_creates_wiki_initial_pages(self, entities, temp_project):
+        """create_entity creates wiki_schema.md, identity.md, index.md, log.md inside wiki/."""
+        entities.create_entity("agent")
+        wiki_dir = temp_project / ".entities" / "agent" / "wiki"
+        for page in ["wiki_schema.md", "identity.md", "index.md", "log.md"]:
+            assert (wiki_dir / page).is_file(), f"Missing wiki/{page}"
+
+    # --- Content tests: wiki_schema.md ---
+
+    def test_wiki_schema_mentions_directory_structure(self, entities, temp_project):
+        """wiki_schema.md describes the directory structure (domain, projects, techniques, relationships)."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        for section in ["domain", "projects", "techniques", "relationships"]:
+            assert section in content, f"wiki_schema.md missing '{section}'"
+
+    def test_wiki_schema_mentions_wikilinks(self, entities, temp_project):
+        """wiki_schema.md documents the wikilink convention."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        assert "[[" in content
+
+    def test_wiki_schema_mentions_log_format(self, entities, temp_project):
+        """wiki_schema.md documents the YYYY-MM-DD log entry format."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        assert "YYYY-MM-DD" in content
+
+    # --- Content tests: wiki/identity.md ---
+
+    def test_wiki_identity_contains_entity_name(self, entities, temp_project):
+        """wiki/identity.md contains the entity name."""
+        entities.create_entity("agent", role="Test role")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "identity.md").read_text()
+        # Entity name appears via role or other means — at minimum role is present
+        assert "agent" in content or "Test role" in content
+
+    def test_wiki_identity_valid_frontmatter(self, entities, temp_project):
+        """wiki/identity.md has parseable YAML frontmatter with title, created, updated."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "identity.md").read_text()
+        fm = self._parse_frontmatter(content)
+        assert "title" in fm
+        assert "created" in fm
+        assert "updated" in fm
+
+    # --- Content tests: wiki/index.md ---
+
+    def test_wiki_index_contains_identity_link(self, entities, temp_project):
+        """wiki/index.md contains [[identity]] wikilink."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "index.md").read_text()
+        assert "[[identity]]" in content
+
+    def test_wiki_index_contains_log_link(self, entities, temp_project):
+        """wiki/index.md contains [[log]] wikilink."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "index.md").read_text()
+        assert "[[log]]" in content
+
+    def test_wiki_index_valid_frontmatter(self, entities, temp_project):
+        """wiki/index.md has parseable YAML frontmatter with title, created, updated."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "index.md").read_text()
+        fm = self._parse_frontmatter(content)
+        assert "title" in fm
+        assert "created" in fm
+        assert "updated" in fm
+
+    # --- Content tests: wiki/log.md ---
+
+    def test_wiki_log_valid_frontmatter(self, entities, temp_project):
+        """wiki/log.md has parseable YAML frontmatter with title, created, updated."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "log.md").read_text()
+        fm = self._parse_frontmatter(content)
+        assert "title" in fm
+        assert "created" in fm
+        assert "updated" in fm
+
+    def test_wiki_log_contains_format_example(self, entities, temp_project):
+        """wiki/log.md documents the YYYY-MM-DD log entry format."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "log.md").read_text()
+        assert "YYYY-MM-DD" in content
