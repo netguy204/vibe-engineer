@@ -1,12 +1,28 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/worktree.py
 - src/entity_repo.py
 - tests/test_entity_worktree.py
-code_references: []
+code_references:
+- ref: src/entity_repo.py#init_entity_submodules_in_worktree
+  implements: "Initialize entity submodules in orchestrator worktree and checkout working branch"
+- ref: src/entity_repo.py#merge_entity_worktree_branches
+  implements: "Merge entity worktree branches back to entity main after chunk merges"
+- ref: src/orchestrator/worktree.py#WorktreeManager::_create_single_repo_worktree
+  implements: "Calls init_entity_submodules_in_worktree after worktree creation"
+- ref: src/orchestrator/worktree.py#WorktreeManager::recreate_worktree_from_branch
+  implements: "Calls init_entity_submodules_in_worktree on recreated worktrees"
+- ref: src/orchestrator/worktree.py#WorktreeManager::_create_task_context_worktrees
+  implements: "Calls init_entity_submodules_in_worktree per-repo in multi-repo task contexts"
+- ref: src/orchestrator/worktree.py#WorktreeManager::_merge_to_base_single_repo
+  implements: "Calls merge_entity_worktree_branches after single-repo chunk merge"
+- ref: src/orchestrator/worktree.py#WorktreeManager::_merge_to_base_multi_repo
+  implements: "Calls merge_entity_worktree_branches per-repo after multi-repo chunk merge"
+- ref: tests/test_entity_worktree.py
+  implements: "Tests for entity submodule init, merge, and WorktreeManager integration"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

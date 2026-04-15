@@ -4,7 +4,8 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/worktree.py
-- tests/test_orchestrator_worktree.py
+- tests/test_orchestrator_worktree_operations.py
+- tests/test_orchestrator_worktree_persistence.py
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::get_work_directory
     implements: "Get work directory path for task context mode"

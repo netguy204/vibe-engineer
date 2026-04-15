@@ -190,6 +190,4 @@ Update chunk GOAL.md frontmatter with the files touched:
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
--->
+**Step 7 (ve orch inject)**: The plan proposed modifying `src/ve.py` to detect task context when resolving chunk location. Instead, the implementation placed task context chunk resolution in the API layer (`src/orchestrator/api/common.py#get_chunk_directory` and `src/orchestrator/api/scheduling.py#inject_endpoint`). The CLI (`src/cli/orch.py`) makes an HTTP call to the inject endpoint, so the context detection is centralized server-side rather than duplicated in the CLI. `src/ve.py` was removed from code_paths as it is a thin entry point with no task detection logic.

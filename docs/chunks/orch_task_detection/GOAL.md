@@ -8,7 +8,8 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/state.py
 - src/orchestrator/worktree.py
-- src/ve.py
+- src/orchestrator/api/common.py
+- src/orchestrator/api/scheduling.py
 - tests/test_orch_task_context.py
 code_references:
   - ref: src/orchestrator/models.py#TaskContextInfo
