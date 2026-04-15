@@ -660,6 +660,62 @@ def migrate(
     click.echo(f"  Unclassified:       {result.unclassified_count} (review manually)")
 
 
+# Chunk: docs/chunks/entity_from_transcript - from-transcript CLI command
+@entity.command("from-transcript")
+@click.argument("name")
+@click.argument("jsonl_paths", nargs=-1, required=True, type=click.Path(path_type=pathlib.Path))
+@click.option("--role", default=None, help="Seed the entity's role description")
+@click.option(
+    "--project-context",
+    default=None,
+    help="Context about the project the transcripts came from",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=pathlib.Path),
+    default=None,
+    help="Where to create the entity repo (default: current directory)",
+)
+def from_transcript(
+    name: str,
+    jsonl_paths: tuple[pathlib.Path, ...],
+    role: str | None,
+    project_context: str | None,
+    output_dir: pathlib.Path | None,
+) -> None:
+    """Create a new wiki-based entity from one or more Claude Code session transcripts.
+
+    NAME is the entity identifier (lowercase letters, digits, underscores, or hyphens).
+    JSONL_PATHS are one or more paths to Claude Code session JSONL files, processed in order.
+
+    Examples:
+
+        ve entity from-transcript my-specialist session.jsonl
+
+        ve entity from-transcript my-specialist s1.jsonl s2.jsonl s3.jsonl --role "Infrastructure specialist"
+    """
+    import entity_from_transcript as _eft
+
+    if output_dir is None:
+        output_dir = pathlib.Path.cwd()
+
+    try:
+        result = _eft.create_entity_from_transcript(
+            name=name,
+            jsonl_paths=list(jsonl_paths),
+            output_dir=output_dir,
+            role=role,
+            project_context=project_context,
+        )
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Created entity '{result.entity_name}' at {result.entity_path}")
+    click.echo(f"  Transcripts processed: {result.transcripts_processed}")
+    click.echo(f"  Sessions archived:     {result.sessions_archived}")
+    click.echo("Entity repo ready for attach/push.")
+
+
 # Chunk: docs/chunks/entity_push_pull - CLI push command
 @entity.command("push")
 @click.argument("name")
