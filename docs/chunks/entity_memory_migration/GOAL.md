@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -7,7 +7,27 @@ code_paths:
 - src/entity_migration.py
 - tests/test_entity_migration.py
 - tests/test_entity_migrate_cli.py
-code_references: []
+code_references:
+- ref: src/entity_migration.py#LegacyMemory
+  implements: "Data model for a single legacy memory file"
+- ref: src/entity_migration.py#ClassifiedMemories
+  implements: "Grouped memory buckets (identity/domain/techniques/relationships/log/unclassified)"
+- ref: src/entity_migration.py#MigrationResult
+  implements: "Migration summary returned to caller and printed by CLI"
+- ref: src/entity_migration.py#read_legacy_entity
+  implements: "Reads legacy .entities/<name>/ structure into structured data"
+- ref: src/entity_migration.py#classify_memories
+  implements: "Routes each LegacyMemory into the appropriate wiki bucket"
+- ref: src/entity_migration.py#format_log_page
+  implements: "Mechanically converts journal-tier memories to wiki/log.md (no LLM)"
+- ref: src/entity_migration.py#synthesize_identity_page
+  implements: "LLM synthesis of core/correction/autonomy memories into wiki/identity.md"
+- ref: src/entity_migration.py#synthesize_knowledge_pages
+  implements: "LLM grouping of domain/skill memories into focused wiki pages"
+- ref: src/entity_migration.py#migrate_entity
+  implements: "Full migration orchestration: read → classify → create repo → synthesize wiki → copy memories → commit"
+- ref: src/cli/entity.py#migrate
+  implements: "ve entity migrate CLI command: resolves paths, calls migrate_entity, prints summary"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
