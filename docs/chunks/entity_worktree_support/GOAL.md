@@ -1,21 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/agent.py
-  - src/orchestrator/daemon.py
-  - src/cli/entity.py
+- src/orchestrator/worktree.py
+- src/entity_repo.py
+- tests/test_entity_worktree.py
 code_references: []
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_attach_detach", "entity_shutdown_wiki"]
-created_after: ["board_watch_reconnect_fix"]
+depends_on:
+- entity_attach_detach
+- entity_shutdown_wiki
+created_after:
+- board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal

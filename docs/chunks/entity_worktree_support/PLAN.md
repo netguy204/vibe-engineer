@@ -10,170 +10,285 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds entity submodule support to the orchestrator's worktree lifecycle. The work is
+additive — no existing orchestrator behavior changes, we insert entity-aware steps into the
+worktree creation and merge flows.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Data flow**:
+1. `WorktreeManager._create_single_repo_worktree()` calls `git worktree add` — we add an
+   `_init_entity_submodules(worktree_path, chunk)` call immediately after, which runs
+   `git submodule update --init` in the worktree then checks out a `ve-worktree-<chunk>`
+   branch in each entity submodule (leaving it off detached HEAD).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. The agent runs in the worktree. Any entity-startup/shutdown within the session commits
+   entity changes to `ve-worktree-<chunk>`. The orchestrator's existing `commit_changes()`
+   (which runs `git add -A`) automatically picks up the updated entity submodule pointer
+   and includes it in the chunk commit.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_worktree_support/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. `WorktreeManager._merge_to_base_single_repo()` merges the chunk branch to main — we add
+   a call to `merge_entity_worktree_branches(project_dir, chunk)` after the merge succeeds.
+   This merges each entity's `ve-worktree-<chunk>` branch into the entity's `main` branch
+   (without checkout, using git plumbing), then deletes the worktree branch.
+
+The entity git operations live in `src/entity_repo.py` (they're entity-lifecycle concerns) and
+are called from `src/orchestrator/worktree.py` (the worktree lifecycle orchestrator).
+
+**No decision to add**: This approach (no-op when no entities attached, best-effort entity
+merge with logged warnings on conflict) is consistent with the existing orchestrator's
+design of isolating chunk work and not surfacing entity merge conflicts as hard errors during
+the main chunk finalization.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+**docs/subsystems/orchestrator** (DOCUMENTED): This chunk IMPLEMENTS new behavior in the
+orchestrator's worktree lifecycle. The entity submodule init and merge steps are orthogonal
+to the existing scheduling and agent dispatch logic. No deviation from orchestrator patterns.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Correct GOAL.md code_paths
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+The chunk's GOAL.md lists `src/orchestrator/agent.py` and `src/orchestrator/daemon.py` as
+code_paths. Based on investigation, the actual changes land in:
+- `src/orchestrator/worktree.py` (worktree creation and merge hooks)
+- `src/entity_repo.py` (entity-specific git operations)
+- `tests/test_entity_worktree.py` (new test file)
 
-Example:
+Update `docs/chunks/entity_worktree_support/GOAL.md` code_paths accordingly.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add `init_entity_submodules_in_worktree()` to `entity_repo.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a module-level function:
 
-Location: src/segment/format.rs
+```python
+# Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules in orchestrator worktree
+def init_entity_submodules_in_worktree(worktree_path: Path, chunk: str) -> None:
+    """Initialize entity submodules in an orchestrator worktree.
 
-### Step 2: Implement header serialization
+    After `git worktree add`, the worktree directory exists but entity
+    submodules have not been initialized. This function:
+    1. Runs `git submodule update --init` in the worktree to populate
+       .entities/<name>/ directories.
+    2. For each entity, checks out a working branch `ve-worktree-<chunk>`
+       from the detached HEAD state left by submodule init.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+    This ensures agents running in the worktree can commit entity changes
+    without affecting the main checkout or other worktrees.
 
-### Step 3: ...
+    No-op if .entities/ doesn't exist or contains no submodule-based entities.
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Args:
+        worktree_path: Absolute path to the orchestrator-created worktree.
+        chunk: Chunk name used to derive the entity working branch name.
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implementation notes:
+- Check `(worktree_path / ".entities").exists()` first; return early if not.
+- Run `git submodule update --init` via `subprocess.run(cwd=worktree_path)`.
+  Log a warning and return if it fails (don't raise — entity support is additive).
+- Iterate entities: for each dir in `.entities/` where `.git` is a file (submodule marker),
+  run `git checkout -b ve-worktree-{chunk}` in the entity dir.
+  If the branch already exists (rare but possible), just `git checkout ve-worktree-{chunk}`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/entity_repo.py` near the end of the submodule operations section.
+
+### Step 3: Add `merge_entity_worktree_branches()` to `entity_repo.py`
+
+Add a module-level function:
+
+```python
+# Chunk: docs/chunks/entity_worktree_support - Merge entity worktree branches to main after chunk merge
+def merge_entity_worktree_branches(project_dir: Path, chunk: str) -> None:
+    """Merge entity worktree branches to entity main after chunk merges to base.
+
+    After the orchestrator merges orch/<chunk> to main (which includes the
+    updated entity submodule pointer), this function merges each entity's
+    `ve-worktree-<chunk>` branch into the entity's `main` branch and deletes
+    the worktree branch. This keeps the entity's main branch current.
+
+    Uses a no-checkout merge (git merge-base + git merge-tree + git commit-tree)
+    mirroring how the orchestrator merges chunk branches without disturbing the
+    user's working directory. If a merge conflict occurs (e.g., two worktrees
+    modified the same entity), logs a warning and skips that entity — it is not
+    a fatal error for the chunk finalization.
+
+    No-op if .entities/ doesn't exist or no entities have a ve-worktree-<chunk>
+    branch.
+
+    Args:
+        project_dir: Root project directory where .entities/ lives.
+        chunk: Chunk name matching the ve-worktree-<chunk> branch.
+    """
+```
+
+Implementation notes:
+- Return early if `(project_dir / ".entities").exists()` is False.
+- For each entity submodule dir (`.git` is a file):
+  - Check if `ve-worktree-{chunk}` branch exists via `git rev-parse --verify`; skip if not.
+  - Perform a no-checkout merge of `ve-worktree-{chunk}` into `main` using the same
+    `merge_without_checkout` helper already imported from `orchestrator.merge` in worktree.py.
+    Since we're in `entity_repo.py`, use `subprocess` directly or inline the plumbing steps:
+    - `git merge-base main ve-worktree-{chunk}` → merge_base sha
+    - `git merge-tree merge_base main ve-worktree-{chunk}` → tree sha (or conflict)
+    - If tree sha (no conflict): create commit via `git commit-tree` and update `main` ref
+    - If conflict: log warning, skip this entity
+  - On success, delete the worktree branch: `git branch -d ve-worktree-{chunk}`.
+- Do not push the entity — that's the operator's job via `ve entity push`.
+
+> **Design note**: Alternatively, reuse `merge_without_checkout` from `orchestrator.merge`
+> by importing it. Evaluate during implementation whether the import path is clean
+> (entity_repo → orchestrator.merge creates a cross-layer dependency). If awkward,
+> inline the git plumbing steps (~10 lines) directly in `merge_entity_worktree_branches`.
+
+Location: `src/entity_repo.py` near `merge_entity_worktree_branches`.
+
+### Step 4: Call `init_entity_submodules_in_worktree()` from `WorktreeManager._create_single_repo_worktree()`
+
+In `src/orchestrator/worktree.py`, import the new function at the top of the file (near other
+`entity_repo` imports — check if any already exist, or add new import):
+
+```python
+from entity_repo import init_entity_submodules_in_worktree, merge_entity_worktree_branches
+```
+
+In `_create_single_repo_worktree()`, after the `git worktree add` block succeeds (before
+`_lock_worktree`):
+
+```python
+# Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules in worktree
+init_entity_submodules_in_worktree(worktree_path, chunk)
+```
+
+Also call in `recreate_worktree_from_branch()` after the worktree is recreated (so recovered
+worktrees also have entity support).
+
+For task context (`_create_task_context_worktrees()`): after each per-repo `git worktree add`
+loop iteration, call `init_entity_submodules_in_worktree(repo_worktree_path, chunk)`. This
+handles multi-repo task contexts where each repo worktree may have its own entities.
+
+### Step 5: Call `merge_entity_worktree_branches()` from `WorktreeManager._merge_to_base_single_repo()`
+
+In `_merge_to_base_single_repo()`, after the `self._merge_without_checkout(...)` call succeeds
+and before the branch deletion:
+
+```python
+# Chunk: docs/chunks/entity_worktree_support - Merge entity worktree branches after chunk merge
+merge_entity_worktree_branches(self.project_dir, chunk)
+```
+
+For multi-repo merges (`_merge_to_base_multi_repo()`): call
+`merge_entity_worktree_branches(repo_path, chunk)` for each repo after its merge succeeds.
+If the entity merge logs a warning (conflict), the chunk merge should still proceed — entity
+merge conflicts are surfaced via log, not as exceptions.
+
+### Step 6: Write tests in `tests/test_entity_worktree.py`
+
+Create a new test file. Use `conftest.py` helpers (`make_ve_initialized_git_repo`) and helpers
+from `test_entity_submodule.py` (`make_entity_origin`). Check conftest first for reusable
+fixtures; extract anything needed in multiple test files to conftest.
+
+**Test classes and methods**:
+
+```
+class TestInitEntitySubmodulesInWorktree:
+    def test_no_op_when_no_entities_dir(...)
+        # worktree with no .entities/ — function returns without error
+    def test_no_op_when_entities_dir_empty(...)
+        # .entities/ exists but empty — function returns without error
+    def test_initializes_entity_submodule(...)
+        # project with attached entity, worktree created, entity dir populated
+    def test_entity_on_working_branch_after_init(...)
+        # entity in worktree is on ve-worktree-<chunk> branch (not detached HEAD)
+    def test_multiple_entities_all_initialized(...)
+        # two entities attached; both initialized in worktree on working branches
+    def test_worktree_entity_independent_from_main_checkout(...)
+        # commit in worktree entity doesn't affect main checkout entity
+
+class TestMergeEntityWorktreeBranches:
+    def test_no_op_when_no_entities_dir(...)
+        # function is no-op
+    def test_no_op_when_no_worktree_branch(...)
+        # entity exists but no ve-worktree-<chunk> branch — skip silently
+    def test_merges_entity_changes_to_main(...)
+        # entity has commits on worktree branch; after merge, entity main has those commits
+    def test_deletes_worktree_branch_after_merge(...)
+        # ve-worktree-<chunk> branch deleted after successful merge
+    def test_conflict_logs_warning_does_not_raise(...)
+        # conflicting edits in entity main and worktree branch — no exception, warning logged
+
+class TestWorktreeManagerEntityIntegration:
+    def test_create_worktree_initializes_entities(...)
+        # WorktreeManager.create_worktree() on project with entity → entity initialized
+    def test_finalize_includes_entity_submodule_pointer(...)
+        # finalize_work_unit() includes entity submodule pointer in commit
+    def test_merge_to_base_merges_entity_branches(...)
+        # full end-to-end: create worktree, entity commits, finalize, merge to base,
+        # entity main has the changes
+```
+
+Each test uses real git repos (via tmp_path) — consistent with the existing worktree test
+pattern. No mocking.
+
+### Step 7: Run tests and fix issues
+
+```bash
+uv run pytest tests/test_entity_worktree.py -v
+uv run pytest tests/ -x  # full suite to catch regressions
+```
+
+Fix any issues discovered. Common pitfall: `git submodule update --init` in a worktree
+requires that the parent repo's submodule registration is committed (not just staged). Tests
+should commit `.gitmodules` and the entity submodule entry before creating the worktree.
+
+### Step 8: Add backreference comments
+
+Add `# Chunk: docs/chunks/entity_worktree_support` comments at method level for all new
+and modified methods in `entity_repo.py` and `worktree.py`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `entity_attach_detach` (DONE): provides `attach_entity()`, the submodule attach mechanism
+  that `git submodule update --init` depends on being committed.
+- `entity_shutdown_wiki` (DONE): entity-shutdown commits wiki changes to entity repo —
+  this chunk assumes that behavior works correctly within worktrees.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Import direction**: `entity_repo.py` importing from `orchestrator.merge` creates a
+  cross-layer dependency (entity module importing orchestrator module). Evaluate during
+  implementation; if awkward, inline the git plumbing (merge-base + merge-tree +
+  commit-tree) directly in `merge_entity_worktree_branches`.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Submodule init in task context**: Task context worktrees use `_create_task_context_worktrees()`;
+  the entity call needs to be added per-repo. The investigation only tested single-repo worktrees.
+  Verify the task context path works or note it as a future extension.
+
+- **`git submodule update --init` requires committed submodule**: The submodule must be committed
+  in the parent repo (not just staged) for the worktree to initialize it. Tests must commit
+  `.gitmodules` before creating the worktree. Document this constraint.
+
+- **`commit_changes()` and entity pointer staging**: `git add -A` in the worktree stages
+  modified submodule pointers if the entity has new commits. The existing comment in
+  `commit_changes()` notes an edge case where submodule entries appear in `git status` but
+  aren't staged. Verify entity pointer changes pass through cleanly in integration tests.
+
+- **Concurrent worktrees with same entity**: The GOAL.md lists this as a success criterion.
+  The test `test_worktree_entity_independent_from_main_checkout` covers isolation.
+  The `merge_entity_worktree_branches` conflict handling (warn + skip) covers the merge case.
+  Document this as a known limitation: when two worktrees modify the same entity, only the
+  first to merge will succeed cleanly; the second requires manual resolution.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Step 3 — `merge_entity_worktree_branches` signature change**: Added an optional
+  `worktree_path: Path` parameter. The plan called for operating on the project entity
+  directly, but testing revealed that `git submodule update --init` in an orchestrator
+  worktree creates a **separate git module** at a worktree-specific path
+  (`project/.git/worktrees/<wt>/modules/.entities/<name>`), not a linked worktree of
+  the main module (`project/.git/modules/.entities/<name>`). The two module repos do
+  not share a ref namespace, so the `ve-worktree-<chunk>` branch created in the worktree
+  entity was invisible from the project entity. The fix: fetch the branch from the
+  worktree entity into the project entity using `git fetch <worktree-entity-path>` before
+  merging. Callers pass the worktree path explicitly; it defaults to
+  `project_dir/.ve/chunks/<chunk>/worktree` for the single-repo case.
