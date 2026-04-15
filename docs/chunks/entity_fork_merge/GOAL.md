@@ -1,12 +1,40 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - src/cli/entity.py
 - src/entity_repo.py
 - src/entity_merge.py
-code_references: []
+code_references:
+  - ref: src/entity_repo.py#EntityRepoMetadata
+    implements: "Fork lineage tracking via forked_from field"
+  - ref: src/entity_repo.py#ForkResult
+    implements: "Result type for fork_entity operation"
+  - ref: src/entity_repo.py#MergeResult
+    implements: "Result type for a clean merge_entity operation"
+  - ref: src/entity_repo.py#ConflictResolution
+    implements: "LLM-resolved conflict pending operator approval"
+  - ref: src/entity_repo.py#MergeConflictsPending
+    implements: "Result type when merge halts due to conflicts requiring resolution"
+  - ref: src/entity_repo.py#fork_entity
+    implements: "Clones entity repo with updated name and fork lineage metadata"
+  - ref: src/entity_repo.py#merge_entity
+    implements: "Fetches and merges learnings from source entity with LLM conflict resolution"
+  - ref: src/entity_repo.py#commit_resolved_merge
+    implements: "Writes resolved conflict content and completes the merge commit"
+  - ref: src/entity_repo.py#abort_merge
+    implements: "Aborts an in-progress merge and restores pre-merge state"
+  - ref: src/entity_merge.py#ConflictHunk
+    implements: "Parsed git conflict hunk (ours/theirs)"
+  - ref: src/entity_merge.py#parse_conflict_markers
+    implements: "Parses git conflict markers from file content"
+  - ref: src/entity_merge.py#resolve_wiki_conflict
+    implements: "LLM-assisted synthesis of conflicting wiki page versions via Anthropic API"
+  - ref: src/cli/entity.py#fork
+    implements: "CLI command: ve entity fork <name> <new-name>"
+  - ref: src/cli/entity.py#merge
+    implements: "CLI command: ve entity merge <name> <source> with operator approval gate"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
