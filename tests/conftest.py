@@ -198,3 +198,53 @@ def scheduler(state_store, mock_worktree_manager, mock_agent_runner, orchestrato
         config=orchestrator_config,
         project_dir=tmp_path,
     )
+
+
+# ---------------------------------------------------------------------------
+# Entity test helpers
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/entity_fork_merge - Shared entity test helpers extracted from test_entity_push_pull.py
+
+
+def _entity_git(path, *args):
+    """Run a git command in the given path (for entity test helpers)."""
+    import subprocess as _subprocess
+    return _subprocess.run(
+        ["git", "-C", str(path), *args],
+        capture_output=True, text=True,
+    )
+
+
+def make_entity_with_origin(tmp_path, name="my-entity"):
+    """Create an entity repo with a bare clone as remote origin.
+
+    Returns:
+        (entity_path, bare_origin) where entity_path has origin pointing at bare_origin.
+    """
+    import subprocess as _subprocess
+    from entity_repo import create_entity_repo
+
+    entity_path = create_entity_repo(tmp_path / "entity", name)
+    _entity_git(entity_path, "config", "user.email", "test@test.com")
+    _entity_git(entity_path, "config", "user.name", "Test User")
+
+    bare_origin = tmp_path / f"{name}-origin.git"
+    result = _subprocess.run(
+        ["git", "clone", "--bare", str(entity_path), str(bare_origin)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"bare clone failed: {result.stderr}"
+
+    _entity_git(entity_path, "remote", "add", "origin", str(bare_origin))
+
+    return entity_path, bare_origin
+
+
+def make_entity_no_origin(tmp_path, name="my-entity"):
+    """Create a standalone entity repo with no remote configured."""
+    from entity_repo import create_entity_repo
+
+    entity_path = create_entity_repo(tmp_path / "entity", name)
+    _entity_git(entity_path, "config", "user.email", "test@test.com")
+    _entity_git(entity_path, "config", "user.name", "Test User")
+    return entity_path
