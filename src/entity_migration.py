@@ -9,7 +9,7 @@ Messages API (following the pattern from `entity_shutdown.py`) to synthesize
 memories into coherent wiki pages.
 
 Legacy entity structure (migrated FROM):
-    .entities/<uuid>/
+    .entities/<name>/
     ├── identity.md                # YAML frontmatter: name, role, created
     ├── memories/
     │   ├── journal/*.md           # tier 0 — session-level memories
@@ -123,7 +123,7 @@ def read_legacy_entity(
     """Read legacy entity structure into structured types.
 
     Args:
-        entity_dir: Path to the legacy entity directory (e.g. `.entities/<uuid>/`).
+        entity_dir: Path to the legacy entity directory (e.g. `.entities/palette/`).
 
     Returns:
         Tuple of (EntityIdentity|None, identity_body_text, list[LegacyMemory]).
@@ -573,7 +573,7 @@ def migrate_entity(
     Args:
         source_dir: Path to the legacy entity directory.
         dest_parent: Parent directory where the new entity repo will be created.
-        new_name: Human-readable name for the new entity repo (kebab-case).
+        new_name: Name for the new entity repo. Typically the same as the existing entity name.
         role: Override entity role. If None, reads from identity.md.
 
     Returns:

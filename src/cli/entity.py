@@ -603,7 +603,7 @@ def ingest(name: str, path: tuple[str, ...], project_dir: pathlib.Path | None) -
 # Chunk: docs/chunks/entity_memory_migration - Migration CLI command
 @entity.command("migrate")
 @click.argument("entity_name")
-@click.option("--name", required=True, help="New human-readable entity name for the migrated repo")
+@click.option("--name", default=None, help="Override entity name for the migrated repo (default: use existing name)")
 @click.option("--role", default=None, help="Override entity role (default: read from identity.md)")
 @click.option(
     "--entity-dir",
@@ -619,18 +619,19 @@ def ingest(name: str, path: tuple[str, ...], project_dir: pathlib.Path | None) -
 )
 def migrate(
     entity_name: str,
-    name: str,
+    name: str | None,
     role: str | None,
     entity_dir: pathlib.Path | None,
     output_dir: pathlib.Path | None,
 ) -> None:
     """Migrate a legacy entity to the wiki-based git repo structure.
 
-    ENTITY_NAME is the legacy entity identifier (UUID or name).
-    --name is the new human-readable name for the migrated entity repo.
+    ENTITY_NAME is the existing entity name (e.g. palette, steward, creator).
+    The migrated repo uses the same name by default.
 
-    Example:
-        ve entity migrate 58d36632-bf65-4ba3-8f34-481cf64e9701 --name slack-watcher
+    Examples:
+        ve entity migrate palette
+        ve entity migrate palette --name palette-v2
     """
     import entity_migration
 
@@ -639,16 +640,19 @@ def migrate(
         project_dir = resolve_entity_project_dir(None)
         entity_dir = project_dir / ".entities" / entity_name
 
+    # Default to existing entity name
+    repo_name = name if name is not None else entity_name
+
     # Resolve output_dir
     if output_dir is None:
         output_dir = pathlib.Path.cwd()
 
     try:
-        result = entity_migration.migrate_entity(entity_dir, output_dir, name, role=role)
+        result = entity_migration.migrate_entity(entity_dir, output_dir, repo_name, role=role)
     except (ValueError, RuntimeError) as e:
         raise click.ClickException(str(e))
 
-    click.echo(f"Migrated entity '{entity_name}' \u2192 '{name}'")
+    click.echo(f"Migrated entity '{entity_name}' \u2192 '{repo_name}'")
     click.echo(f"  New repo:           {result.dest_dir}")
     click.echo(f"  Wiki pages created: {len(result.wiki_pages_created)}")
     click.echo(f"  Memories preserved: {result.memories_preserved}")

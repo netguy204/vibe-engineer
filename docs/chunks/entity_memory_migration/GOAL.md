@@ -114,12 +114,12 @@ The investigation's H4 prototype demonstrated that wikis can be constructed from
 - **Non-destructive**: Keep original `.entities/<name>/` intact until migration is verified. The new repo is created alongside, not in-place.
 - **LLM-assisted**: Use the Agent SDK to synthesize memories into wiki pages — don't just dump raw memory text into wiki files. The LLM should organize, cross-reference, and structure the content.
 - **One-time cost**: Migration runs once per entity. It's acceptable for this to take a few minutes and cost some API usage.
-- **UUID to name**: Existing entities use UUIDs. The migration should ask the operator for a human-readable name for the new entity repo.
+- **Preserve existing name**: Existing entities already have human-readable names (e.g., `steward`, `creator`, `palette`). The migration should use the existing directory name as the entity repo name.
 - **Preserve episodic**: If episodic transcripts exist, copy them into the new structure's `episodic/` directory.
 
 ## Success Criteria
 
-- `ve entity migrate 58d36632-bf65-4ba3-8f34-481cf64e9701 --name slack-watcher` creates a wiki-based entity from the legacy format
+- `ve entity migrate palette` creates a wiki-based entity repo from the existing `.entities/palette/` directory
 - Wiki pages are coherent and well-structured (not raw memory dumps)
 - Core memories map to identity.md values/lessons
 - Consolidated memories map to domain and technique pages
