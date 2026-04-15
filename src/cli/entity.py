@@ -511,6 +511,62 @@ def ingest(name: str, path: tuple[str, ...], project_dir: pathlib.Path | None) -
         click.echo(f"  ⚠ {msg}", err=True)
 
 
+# Chunk: docs/chunks/entity_memory_migration - Migration CLI command
+@entity.command("migrate")
+@click.argument("entity_name")
+@click.option("--name", required=True, help="New human-readable entity name for the migrated repo")
+@click.option("--role", default=None, help="Override entity role (default: read from identity.md)")
+@click.option(
+    "--entity-dir",
+    type=click.Path(path_type=pathlib.Path),
+    default=None,
+    help="Path to legacy entity directory (default: .entities/<entity_name>/)",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=pathlib.Path),
+    default=None,
+    help="Parent directory for new entity repo (default: current directory)",
+)
+def migrate(
+    entity_name: str,
+    name: str,
+    role: str | None,
+    entity_dir: pathlib.Path | None,
+    output_dir: pathlib.Path | None,
+) -> None:
+    """Migrate a legacy entity to the wiki-based git repo structure.
+
+    ENTITY_NAME is the legacy entity identifier (UUID or name).
+    --name is the new human-readable name for the migrated entity repo.
+
+    Example:
+        ve entity migrate 58d36632-bf65-4ba3-8f34-481cf64e9701 --name slack-watcher
+    """
+    import entity_migration
+
+    # Resolve entity_dir
+    if entity_dir is None:
+        project_dir = resolve_entity_project_dir(None)
+        entity_dir = project_dir / ".entities" / entity_name
+
+    # Resolve output_dir
+    if output_dir is None:
+        output_dir = pathlib.Path.cwd()
+
+    try:
+        result = entity_migration.migrate_entity(entity_dir, output_dir, name, role=role)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Migrated entity '{entity_name}' \u2192 '{name}'")
+    click.echo(f"  New repo:           {result.dest_dir}")
+    click.echo(f"  Wiki pages created: {len(result.wiki_pages_created)}")
+    click.echo(f"  Memories preserved: {result.memories_preserved}")
+    click.echo(f"  Sessions migrated:  {result.sessions_migrated}")
+    click.echo(f"  Unclassified:       {result.unclassified_count} (review manually)")
+
+
 # Chunk: docs/chunks/entity_episodic_search
 @entity.command("episodic")
 @click.option("--entity", "entity_name", required=True, help="Entity name")
