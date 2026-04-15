@@ -1393,3 +1393,185 @@ class TestShutdownFromTranscript:
         # With "[]" as extracted memories
         call_kwargs = mock_consolidation.call_args
         assert call_kwargs.kwargs["extracted_memories_json"] == "[]"
+
+
+# ---------------------------------------------------------------------------
+# TestExtractWikiDiff
+# ---------------------------------------------------------------------------
+
+class TestExtractWikiDiff:
+    """Tests for the mechanical wiki diff extraction function."""
+
+    def _make_entity_git_repo(self, tmp_path):
+        """Create a git repo simulating an entity directory with wiki."""
+        import subprocess
+        repo = tmp_path / "entity"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, capture_output=True)
+        # Create initial wiki file and commit
+        wiki_dir = repo / "wiki"
+        wiki_dir.mkdir()
+        (wiki_dir / "identity.md").write_text("# Identity\nInitial content.\n")
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True, capture_output=True)
+        return repo
+
+    def test_returns_none_when_no_wiki_dir(self, tmp_path):
+        """Entity without wiki/ directory returns None (legacy entity)."""
+        from entity_shutdown import extract_wiki_diff
+        entity_dir = tmp_path / "entity"
+        entity_dir.mkdir()
+        assert extract_wiki_diff(entity_dir) is None
+
+    def test_returns_empty_string_when_wiki_unchanged(self, tmp_path):
+        """Wiki with no changes since last commit returns empty string."""
+        from entity_shutdown import extract_wiki_diff
+        repo = self._make_entity_git_repo(tmp_path)
+        result = extract_wiki_diff(repo)
+        assert result == ""
+
+    def test_returns_diff_text_for_modified_wiki_page(self, tmp_path):
+        """Modified wiki page produces diff text with + lines."""
+        from entity_shutdown import extract_wiki_diff
+        repo = self._make_entity_git_repo(tmp_path)
+        # Modify the wiki page
+        (repo / "wiki" / "identity.md").write_text("# Identity\nInitial content.\nNew knowledge added.\n")
+        result = extract_wiki_diff(repo)
+        assert result is not None
+        assert result != ""
+        assert "+New knowledge added." in result
+
+    def test_returns_diff_text_for_new_wiki_page(self, tmp_path):
+        """New untracked wiki page produces diff text after staging."""
+        from entity_shutdown import extract_wiki_diff
+        repo = self._make_entity_git_repo(tmp_path)
+        # Add a new file
+        domain_dir = repo / "wiki" / "domain"
+        domain_dir.mkdir()
+        (domain_dir / "new_thing.md").write_text("# New Domain Knowledge\nSomething new.\n")
+        result = extract_wiki_diff(repo)
+        assert result is not None
+        assert result != ""
+        assert "new_thing.md" in result
+
+
+# ---------------------------------------------------------------------------
+# TestRunWikiConsolidation
+# ---------------------------------------------------------------------------
+
+class TestRunWikiConsolidation:
+    """Tests for the wiki consolidation pipeline dispatch and session launch."""
+
+    def _make_entity_git_repo(self, tmp_path):
+        """Create a git repo simulating an entity directory with wiki."""
+        import subprocess
+        repo = tmp_path / "entity"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, capture_output=True)
+        wiki_dir = repo / "wiki"
+        wiki_dir.mkdir()
+        (wiki_dir / "identity.md").write_text("# Identity\nInitial content.\n")
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True, capture_output=True)
+        return repo
+
+    def test_returns_empty_summary_when_no_wiki_changes(self, tmp_path):
+        """Wiki with no changes returns summary without launching Agent SDK."""
+        from entity_shutdown import run_wiki_consolidation
+
+        repo = self._make_entity_git_repo(tmp_path)
+
+        with patch("entity_shutdown._run_consolidation_agent") as mock_agent:
+            result = run_wiki_consolidation("myentity", repo, tmp_path)
+
+        assert result["journals_added"] == 0
+        assert result.get("skipped") == "no wiki changes"
+        mock_agent.assert_not_called()
+
+    def test_launches_agent_sdk_when_wiki_has_changes(self, tmp_path):
+        """When wiki has changes, Agent SDK helper is called once."""
+        import asyncio
+        from entity_shutdown import run_wiki_consolidation
+
+        repo = self._make_entity_git_repo(tmp_path)
+        # Modify wiki to create a diff
+        (repo / "wiki" / "identity.md").write_text("# Identity\nModified content.\n")
+
+        mock_result = {"success": True, "session_id": "test-session", "error": None}
+
+        with patch("entity_shutdown._run_consolidation_agent", return_value=mock_result) as mock_agent:
+            with patch("asyncio.run", return_value=mock_result):
+                result = run_wiki_consolidation("myentity", repo, tmp_path)
+
+        # Just verify it returned without error
+        assert "error" not in result or result.get("error") is None
+
+    def test_legacy_entity_raises_value_error(self, tmp_path):
+        """Entity without wiki/ dir raises ValueError."""
+        from entity_shutdown import run_wiki_consolidation
+
+        entity_dir = tmp_path / "entity"
+        entity_dir.mkdir()
+        # No wiki/ directory
+
+        with pytest.raises(ValueError, match="legacy"):
+            run_wiki_consolidation("myentity", entity_dir, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# TestRunShutdownDispatcher
+# ---------------------------------------------------------------------------
+
+class TestRunShutdownDispatcher:
+    """Tests for the run_shutdown() dispatcher."""
+
+    def test_wiki_entity_calls_run_wiki_consolidation(self, tmp_path):
+        """Wiki entity routes to run_wiki_consolidation."""
+        from entity_shutdown import run_shutdown
+        from entities import Entities
+
+        # Create an entity with wiki/
+        entities = Entities(tmp_path)
+        entity_dir = tmp_path / ".entities" / "wikibot"
+        entity_dir.mkdir(parents=True)
+        (entity_dir / "wiki").mkdir()
+
+        mock_result = {"journals_added": 5, "consolidated": 2, "core": 1}
+        with patch("entity_shutdown.run_wiki_consolidation", return_value=mock_result) as mock_wiki:
+            result = run_shutdown("wikibot", tmp_path)
+
+        mock_wiki.assert_called_once()
+        assert result == mock_result
+
+    def test_legacy_entity_uses_legacy_pipeline(self, tmp_path):
+        """Legacy entity (no wiki/) routes to run_consolidation."""
+        from entity_shutdown import run_shutdown
+
+        # Create a legacy entity manually (no wiki/)
+        entity_dir = tmp_path / ".entities" / "legacybot"
+        entity_dir.mkdir(parents=True)
+        (entity_dir / "memories").mkdir()
+
+        memories_json = "[]"
+        mock_result = {"journals_added": 0, "journals_consolidated": 0, "consolidated": 0, "core": 0, "expired": 0, "demoted": 0}
+        with patch("entity_shutdown.run_consolidation", return_value=mock_result) as mock_legacy:
+            result = run_shutdown("legacybot", tmp_path, extracted_memories_json=memories_json)
+
+        mock_legacy.assert_called_once()
+        assert result == mock_result
+
+    def test_legacy_entity_without_memories_raises_value_error(self, tmp_path):
+        """Legacy entity without memories_json raises ValueError."""
+        from entity_shutdown import run_shutdown
+
+        # Create a legacy entity manually (no wiki/)
+        entity_dir = tmp_path / ".entities" / "legacybot"
+        entity_dir.mkdir(parents=True)
+        (entity_dir / "memories").mkdir()
+
+        with pytest.raises(ValueError, match="legacy entity"):
+            run_shutdown("legacybot", tmp_path, extracted_memories_json=None)

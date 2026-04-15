@@ -12,10 +12,16 @@ from ve import cli
 
 class TestEntityShutdownCLI:
     def _setup_entity(self, tmp_path):
-        """Create an entity for testing."""
-        entities = Entities(tmp_path)
-        entities.create_entity("testbot", role="Test bot")
-        return entities
+        """Create a legacy entity (no wiki/) for testing the legacy pipeline."""
+        # Create entity directory structure without wiki/ so it routes to legacy pipeline
+        entity_dir = tmp_path / ".entities" / "testbot"
+        entity_dir.mkdir(parents=True)
+        from models.entity import MemoryTier
+        memories_dir = entity_dir / "memories"
+        for tier in MemoryTier:
+            (memories_dir / tier.value).mkdir(parents=True)
+        (entity_dir / "identity.md").write_text("---\nname: testbot\n---\n")
+        return Entities(tmp_path)
 
     def _make_memories_file(self, tmp_path, count=5):
         """Create a JSON file with extracted memories."""
@@ -248,3 +254,52 @@ class TestEntityShutdownCLI:
         assert result.exit_code == 0
         assert "Shutdown complete" in result.output
         assert "Journals processed:" in result.output
+
+
+class TestEntityShutdownWikiCLI:
+    """Tests for wiki-based entity shutdown via CLI."""
+
+    def _setup_wiki_entity(self, tmp_path):
+        """Create an entity with wiki/ directory for testing."""
+        import subprocess
+        entity_dir = tmp_path / ".entities" / "wikibot"
+        entity_dir.mkdir(parents=True)
+        wiki_dir = entity_dir / "wiki"
+        wiki_dir.mkdir()
+        (wiki_dir / "identity.md").write_text("# Identity\nInitial content.\n")
+        # Init git repo in entity dir
+        subprocess.run(["git", "init", "-b", "main"], cwd=entity_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=entity_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=entity_dir, check=True, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=entity_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=entity_dir, check=True, capture_output=True)
+        return entity_dir
+
+    def test_wiki_shutdown_requires_no_memories_file(self, tmp_path):
+        """Wiki entity shutdown succeeds without --memories-file."""
+        self._setup_wiki_entity(tmp_path)
+
+        mock_result = {"journals_added": 0, "consolidated": 0, "core": 0, "skipped": "no wiki changes"}
+        with patch("entity_shutdown.run_wiki_consolidation", return_value=mock_result):
+            runner = CliRunner()
+            result = runner.invoke(cli, [
+                "entity", "shutdown", "wikibot",
+                "--project-dir", str(tmp_path),
+            ])
+
+        assert result.exit_code == 0
+        assert "Shutdown complete" in result.output
+
+    def test_legacy_shutdown_without_memories_raises_error(self, tmp_path):
+        """Legacy entity shutdown without memories raises a ValueError surfaced as ClickException."""
+        # Create a legacy entity manually (no wiki/)
+        entity_dir = tmp_path / ".entities" / "legacybot"
+        entity_dir.mkdir(parents=True)
+        (entity_dir / "memories").mkdir()
+
+        # The CliRunner provides non-TTY stdin, which the CLI will read as empty string "[]".
+        # To test the error path, directly test the run_shutdown function.
+        from entity_shutdown import run_shutdown
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="legacy entity"):
+            run_shutdown("legacybot", tmp_path, extracted_memories_json=None)

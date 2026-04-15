@@ -1,21 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/entity_shutdown.py
-  - src/cli/entity.py
-  - src/templates/commands/entity-shutdown.md.jinja2
+- src/entity_shutdown.py
+- src/cli/entity.py
+- src/templates/commands/entity-shutdown.md.jinja2
 code_references: []
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_wiki_schema", "entity_startup_wiki"]
-created_after: ["board_watch_reconnect_fix"]
+depends_on:
+- entity_wiki_schema
+- entity_startup_wiki
+created_after:
+- board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal

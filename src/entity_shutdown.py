@@ -13,9 +13,12 @@ The consolidation happens here via API call (structured data transform).
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +27,17 @@ try:
     import anthropic
 except ModuleNotFoundError:
     anthropic = None
+
+# Chunk: docs/chunks/entity_shutdown_wiki - Guard claude_agent_sdk import
+try:
+    from claude_agent_sdk import ClaudeSDKClient
+    from claude_agent_sdk.types import ClaudeAgentOptions, ResultMessage
+except ModuleNotFoundError:
+    ClaudeSDKClient = None
+    ClaudeAgentOptions = None
+    ResultMessage = None
+
+logger = logging.getLogger(__name__)
 
 from entity_decay import apply_decay
 from entity_transcript import SessionTranscript
@@ -719,3 +733,244 @@ def run_consolidation(
         "expired": expired_count,
         "demoted": demoted_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Wiki-based shutdown pipeline
+# Chunk: docs/chunks/entity_shutdown_wiki - Wiki-based consolidation pipeline
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_shutdown_wiki - Mechanical wiki diff extraction
+def extract_wiki_diff(entity_dir: Path) -> str | None:
+    """Extract a git diff of the wiki/ directory in the entity repo.
+
+    Returns:
+        None if no wiki/ directory exists (legacy entity).
+        "" if wiki exists but has no staged/unstaged changes vs HEAD.
+        Diff text string if wiki has changes.
+    """
+    wiki_dir = entity_dir / "wiki"
+    if not wiki_dir.exists():
+        return None
+
+    # Stage all wiki changes
+    stage_result = subprocess.run(
+        ["git", "-C", str(entity_dir), "add", "wiki/"],
+        capture_output=True,
+        text=True,
+    )
+    if stage_result.returncode != 0:
+        logger.warning(
+            "git add wiki/ failed in %s: %s", entity_dir, stage_result.stderr
+        )
+        return ""
+
+    # Get diff of staged wiki changes vs HEAD
+    diff_result = subprocess.run(
+        ["git", "-C", str(entity_dir), "diff", "--cached", "HEAD", "--", "wiki/"],
+        capture_output=True,
+        text=True,
+    )
+    if diff_result.returncode != 0:
+        logger.warning(
+            "git diff --cached HEAD failed in %s: %s", entity_dir, diff_result.stderr
+        )
+        return ""
+
+    return diff_result.stdout
+
+
+def _build_consolidation_prompt(entity_name: str, wiki_diff: str) -> str:
+    """Build the Agent SDK prompt for wiki-based memory consolidation.
+
+    Chunk: docs/chunks/entity_shutdown_wiki - Consolidation prompt builder
+    """
+    return f"""\
+You are performing a session consolidation for entity '{entity_name}'.
+
+## What this entity learned this session
+
+The following git diff shows changes made to the wiki/ knowledge base during this session:
+
+```diff
+{wiki_diff}
+```
+
+## Your task
+
+1. Read the existing memories in `memories/consolidated/` and `memories/core/`.
+2. Integrate the new learning from the wiki diff into the memory tiers.
+3. Update or create memory files as needed.
+
+### Memory file schema
+
+Each memory file uses this YAML frontmatter:
+
+```yaml
+---
+title: "..."
+category: correction|skill|domain|confirmation|coordination|autonomy
+valence: positive|negative|neutral
+salience: 1-5
+tier: consolidated|core
+last_reinforced: "ISO 8601 timestamp"
+recurrence_count: 0
+source_memories: []
+---
+```
+
+The file body (after frontmatter) is the memory content in plain text.
+
+### Guidelines
+
+**Core memories are NOT wiki summaries.** They are identity-level abstractions —
+who I am, what I value, hard-won judgment. When deciding what to write to core/,
+ask: "What has this work taught me about who I am?" Not: "What happened today?"
+
+- Write updated memories to `memories/consolidated/` and `memories/core/`.
+- Overwrite existing files when updating, create new files when adding.
+- Use lowercase-with-hyphens for filenames (e.g., `memories/consolidated/check-pr-state.md`).
+- After writing memories, stage them: `git add memories/`
+- Commit: `git commit -m "Session consolidation: <one-line description>"`
+- Quality over quantity: if this session was thin, writing zero or one memory is fine.
+- Salience 1-5: 5 = critical identity/principle, 1 = minor tactical detail.
+"""
+
+
+async def _run_consolidation_agent(entity_dir: Path, prompt: str) -> dict:
+    """Run the consolidation agent via Agent SDK.
+
+    Chunk: docs/chunks/entity_shutdown_wiki - Agent SDK consolidation runner
+    """
+    if ClaudeSDKClient is None:
+        raise RuntimeError(
+            "The 'claude_agent_sdk' package is required for wiki consolidation. "
+            "Install it with: pip install claude-agent-sdk"
+        )
+
+    options = ClaudeAgentOptions(
+        cwd=str(entity_dir),
+        permission_mode="bypassPermissions",
+        max_turns=50,
+    )
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(prompt)
+        async for message in client.receive_response():
+            if isinstance(message, ResultMessage):
+                return {
+                    "success": True,
+                    "session_id": getattr(message, "session_id", None),
+                    "error": None,
+                }
+    return {"success": False, "session_id": None, "error": "No result message received"}
+
+
+def run_wiki_consolidation(
+    entity_name: str, entity_dir: Path, project_dir: Path
+) -> dict:
+    """Run the wiki-based consolidation pipeline for an entity.
+
+    Chunk: docs/chunks/entity_shutdown_wiki - Wiki consolidation public entry point
+
+    Args:
+        entity_name: Name of the entity.
+        entity_dir: Path to the entity's directory (must have wiki/).
+        project_dir: Project root directory.
+
+    Returns:
+        Summary dict with journals_added, consolidated, core keys.
+
+    Raises:
+        ValueError: If entity_dir has no wiki/ directory (legacy entity).
+    """
+    wiki_diff = extract_wiki_diff(entity_dir)
+    if wiki_diff is None:
+        raise ValueError(
+            f"Entity '{entity_name}' is a legacy entity (no wiki/ directory). "
+            "Use run_consolidation() for legacy entities."
+        )
+
+    if wiki_diff == "":
+        return {"journals_added": 0, "consolidated": 0, "core": 0, "skipped": "no wiki changes"}
+
+    prompt = _build_consolidation_prompt(entity_name, wiki_diff)
+
+    # Snapshot tiers before modifications (defense in depth)
+    _snapshot_tiers(entity_dir)
+
+    result = asyncio.run(_run_consolidation_agent(entity_dir, prompt))
+
+    if not result.get("success"):
+        logger.error("Consolidation agent failed: %s", result.get("error"))
+        return {
+            "journals_added": 0,
+            "consolidated": 0,
+            "core": 0,
+            "error": result.get("error"),
+        }
+
+    # Count approximate journal lines from diff (lines starting with + or - excluding headers)
+    diff_lines = [
+        line for line in wiki_diff.splitlines()
+        if (line.startswith("+") or line.startswith("-"))
+        and not line.startswith("+++")
+        and not line.startswith("---")
+    ]
+    journals_added = len(diff_lines)
+
+    # Count memory files written back to disk
+    consolidated_dir = entity_dir / "memories" / "consolidated"
+    core_dir = entity_dir / "memories" / "core"
+    consolidated_count = len(list(consolidated_dir.glob("*.md"))) if consolidated_dir.exists() else 0
+    core_count = len(list(core_dir.glob("*.md"))) if core_dir.exists() else 0
+
+    return {
+        "journals_added": journals_added,
+        "consolidated": consolidated_count,
+        "core": core_count,
+    }
+
+
+# Chunk: docs/chunks/entity_shutdown_wiki - Shutdown dispatcher (wiki vs legacy)
+def run_shutdown(
+    entity_name: str,
+    project_dir: Path,
+    extracted_memories_json: str | None = None,
+    api_key: str | None = None,
+    decay_config: DecayConfig | None = None,
+) -> dict:
+    """Dispatch shutdown to wiki or legacy pipeline based on entity type.
+
+    For wiki entities (have wiki/ directory), runs wiki consolidation via
+    Agent SDK — no extracted_memories_json needed.
+
+    For legacy entities, runs the Anthropic API consolidation pipeline.
+    extracted_memories_json is required for legacy entities.
+
+    Args:
+        entity_name: Name of the entity.
+        project_dir: Project root directory.
+        extracted_memories_json: JSON string of extracted memories (legacy only).
+        api_key: Optional Anthropic API key (legacy only).
+        decay_config: Optional decay configuration (legacy only).
+
+    Returns:
+        Summary dict.
+
+    Raises:
+        ValueError: If legacy entity is called without extracted_memories_json.
+    """
+    from entities import Entities
+
+    entities = Entities(project_dir)
+    if entities.has_wiki(entity_name):
+        entity_dir = entities.entity_dir(entity_name)
+        return run_wiki_consolidation(entity_name, entity_dir, project_dir)
+    else:
+        if not extracted_memories_json:
+            raise ValueError(
+                f"Entity '{entity_name}' is a legacy entity (no wiki/). "
+                "Provide --memories-file with extracted memories."
+            )
+        return run_consolidation(entity_name, extracted_memories_json, project_dir, api_key, decay_config)

@@ -252,13 +252,14 @@ def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Pa
 
 
 # Chunk: docs/chunks/entity_shutdown_skill
+# Chunk: docs/chunks/entity_shutdown_wiki - Wiki-aware shutdown routing
 @entity.command("shutdown")
 @click.argument("name")
 @click.option(
     "--memories-file",
     type=click.Path(exists=True, path_type=pathlib.Path),
     default=None,
-    help="JSON file with extracted memories (alternative to stdin)",
+    help="JSON file with extracted memories (for legacy entities without wiki/)",
 )
 @click.option(
     "--project-dir",
@@ -268,12 +269,17 @@ def touch(name: str, memory_id: str, reason: str | None, project_dir: pathlib.Pa
 def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib.Path) -> None:
     """Run the sleep cycle: consolidate extracted memories for an entity.
 
-    Reads extracted journal memories (JSON array) from --memories-file or stdin,
-    then runs incremental consolidation against the entity's existing memory tiers.
+    For wiki-based entities (have wiki/ directory), automatically diffs the wiki
+    and runs Agent SDK consolidation — no --memories-file needed.
+
+    For legacy entities, reads extracted journal memories (JSON array) from
+    --memories-file or stdin.
+
+    # Chunk: docs/chunks/entity_shutdown_wiki - Wiki-aware shutdown routing
 
     NAME is the entity identifier.
     """
-    from entity_shutdown import run_consolidation
+    from entity_shutdown import run_shutdown
 
     project_dir = resolve_entity_project_dir(project_dir)
     entities = Entities(project_dir)
@@ -282,34 +288,41 @@ def shutdown(name: str, memories_file: pathlib.Path | None, project_dir: pathlib
     if not entities.entity_exists(name):
         raise click.ClickException(f"Entity '{name}' not found")
 
-    # Read memories JSON
-    if memories_file is not None:
-        memories_json = memories_file.read_text()
-    elif not sys.stdin.isatty():
-        memories_json = sys.stdin.read()
-    else:
-        raise click.ClickException(
-            "No memories provided. Use --memories-file or pipe JSON to stdin."
-        )
+    # For legacy entities, read memories JSON from file or stdin
+    memories_json: str | None = None
+    if not entities.has_wiki(name):
+        if memories_file is not None:
+            memories_json = memories_file.read_text()
+        elif not sys.stdin.isatty():
+            memories_json = sys.stdin.read()
+        else:
+            memories_json = None  # run_shutdown will raise ValueError
 
-    if not memories_json.strip():
-        memories_json = "[]"  # Treat truly empty input as empty array
+        if memories_json is not None and not memories_json.strip():
+            memories_json = "[]"
 
     try:
-        result = run_consolidation(
+        result = run_shutdown(
             entity_name=name,
-            extracted_memories_json=memories_json,
             project_dir=project_dir,
+            extracted_memories_json=memories_json,
         )
+    except ValueError as e:
+        raise click.ClickException(str(e))
     except Exception as e:
-        raise click.ClickException(f"Consolidation failed: {e}")
+        raise click.ClickException(f"Shutdown failed: {e}")
 
     # Print summary
     click.echo(f"Shutdown complete for entity '{name}':")
-    click.echo(f"  Journals added:  {result['journals_added']}")
-    click.echo(f"  Journals processed: {result['journals_consolidated']}")
-    click.echo(f"  Consolidated:    {result['consolidated']}")
-    click.echo(f"  Core:            {result['core']}")
+    click.echo(f"  Journals added:  {result.get('journals_added', 0)}")
+    if "journals_consolidated" in result:
+        click.echo(f"  Journals processed: {result['journals_consolidated']}")
+    click.echo(f"  Consolidated:    {result.get('consolidated', 0)}")
+    click.echo(f"  Core:            {result.get('core', 0)}")
+    if "skipped" in result:
+        click.echo(f"  Note: {result['skipped']}")
+    if "error" in result:
+        click.echo(f"  Warning: consolidation error: {result['error']}", err=True)
 
 
 # Chunk: docs/chunks/entity_claude_wrapper - Session ID extraction from PID registry
