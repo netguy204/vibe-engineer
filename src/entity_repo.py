@@ -18,10 +18,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel
 
 from frontmatter import parse_frontmatter
 from template_system import render_template
+
+
+# ---------------------------------------------------------------------------
+# Custom exceptions
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_push_pull - Custom exception for diverged histories
+class MergeNeededError(RuntimeError):
+    """Raised when pull cannot fast-forward because histories have diverged."""
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Push/pull result dataclasses
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_push_pull - Push result dataclass
+@dataclass
+class PushResult:
+    """Result of a push_entity operation."""
+    commits_pushed: int
+    has_uncommitted: bool
+
+
+# Chunk: docs/chunks/entity_push_pull - Pull result dataclass
+@dataclass
+class PullResult:
+    """Result of a pull_entity operation."""
+    commits_merged: int
+    up_to_date: bool
 
 
 # Name pattern extends the existing ENTITY_NAME_PATTERN to also allow hyphens
@@ -396,6 +430,186 @@ def detach_entity(project_dir: Path, name: str, force: bool = False) -> None:
     modules_path = project_dir / ".git" / "modules" / ".entities" / name
     if modules_path.exists():
         shutil.rmtree(modules_path)
+
+
+# ---------------------------------------------------------------------------
+# Push / pull / set-origin operations
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_push_pull - Push entity repo to remote origin
+def push_entity(entity_path: Path) -> PushResult:
+    """Push the entity repo's current branch to its remote origin.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+
+    Returns:
+        PushResult with commits_pushed count and has_uncommitted flag.
+
+    Raises:
+        ValueError: If entity_path is not a valid entity repo.
+        RuntimeError: If no remote origin is configured, or if the entity is
+            in detached HEAD state, or if git push fails.
+    """
+    if not is_entity_repo(entity_path):
+        raise ValueError(
+            f"'{entity_path}' is not a valid entity repo (missing ENTITY.md)."
+        )
+
+    # Check for remote origin
+    remote_check = subprocess.run(
+        ["git", "-C", str(entity_path), "remote", "get-url", "origin"],
+        capture_output=True, text=True,
+    )
+    if remote_check.returncode != 0:
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' has no remote origin configured. "
+            "Use 've entity set-origin' to add one."
+        )
+
+    # Check for uncommitted changes
+    status_out = _run_git_output(entity_path, "status", "--porcelain")
+    has_uncommitted = bool(status_out.strip())
+
+    # Determine current branch
+    branch = _run_git_output(entity_path, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if branch == "HEAD":
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' is in detached HEAD state — "
+            "checkout a branch first."
+        )
+
+    # Count commits ahead of origin before pushing
+    try:
+        ahead_out = _run_git_output(
+            entity_path, "rev-list", f"origin/{branch}..HEAD"
+        )
+        commits_pushed = len([l for l in ahead_out.splitlines() if l.strip()])
+    except RuntimeError:
+        # origin/<branch> doesn't exist yet (first push) — count all commits
+        try:
+            all_out = _run_git_output(entity_path, "rev-list", "HEAD")
+            commits_pushed = len([l for l in all_out.splitlines() if l.strip()])
+        except RuntimeError:
+            commits_pushed = 0
+
+    # Push
+    _run_git(entity_path, "push", "origin", branch)
+
+    return PushResult(commits_pushed=commits_pushed, has_uncommitted=has_uncommitted)
+
+
+# Chunk: docs/chunks/entity_push_pull - Pull entity repo from remote origin
+def pull_entity(entity_path: Path) -> PullResult:
+    """Fetch and fast-forward merge the entity repo from its remote origin.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+
+    Returns:
+        PullResult with commits_merged count and up_to_date flag.
+
+    Raises:
+        ValueError: If entity_path is not a valid entity repo.
+        RuntimeError: If no remote origin is configured or if the entity is
+            in detached HEAD state.
+        MergeNeededError: If histories have diverged (fast-forward not possible).
+    """
+    if not is_entity_repo(entity_path):
+        raise ValueError(
+            f"'{entity_path}' is not a valid entity repo (missing ENTITY.md)."
+        )
+
+    # Check for remote origin
+    remote_check = subprocess.run(
+        ["git", "-C", str(entity_path), "remote", "get-url", "origin"],
+        capture_output=True, text=True,
+    )
+    if remote_check.returncode != 0:
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' has no remote origin configured. "
+            "Use 've entity set-origin' to add one."
+        )
+
+    # Determine current branch
+    branch = _run_git_output(entity_path, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if branch == "HEAD":
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' is in detached HEAD state — "
+            "checkout a branch first."
+        )
+
+    # Fetch remote state
+    _run_git(entity_path, "fetch", "origin")
+
+    # Check divergence
+    # Commits on origin not in local (need to merge in)
+    incoming_out = _run_git_output(
+        entity_path, "rev-list", f"HEAD..origin/{branch}"
+    )
+    incoming = [l for l in incoming_out.splitlines() if l.strip()]
+
+    # Commits in local not on origin (local is ahead)
+    local_only_out = _run_git_output(
+        entity_path, "rev-list", f"origin/{branch}..HEAD"
+    )
+    local_only = [l for l in local_only_out.splitlines() if l.strip()]
+
+    if incoming and local_only:
+        raise MergeNeededError(
+            f"Entity '{entity_path.name}' histories have diverged "
+            f"({len(incoming)} incoming, {len(local_only)} local). "
+            "Use 've entity merge' to resolve."
+        )
+
+    if local_only and not incoming:
+        # Local is strictly ahead — also a diverged case (merge needed if we
+        # ever want a rebase, but for now treat as MergeNeeded)
+        raise MergeNeededError(
+            f"Entity '{entity_path.name}' is ahead of origin with {len(local_only)} "
+            "local commit(s). Push first or use 've entity merge'."
+        )
+
+    if not incoming:
+        # Already up to date
+        return PullResult(commits_merged=0, up_to_date=True)
+
+    # Fast-forward possible
+    _run_git(entity_path, "merge", "--ff-only", f"origin/{branch}")
+    return PullResult(commits_merged=len(incoming), up_to_date=False)
+
+
+# Chunk: docs/chunks/entity_push_pull - Set or update entity repo remote origin
+def set_entity_origin(entity_path: Path, url: str) -> None:
+    """Set or update the remote origin URL for an entity's repo.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+        url: Remote URL (GitHub HTTPS/SSH or local path). Must be non-empty.
+
+    Raises:
+        ValueError: If entity_path is not a valid entity repo or url is empty.
+    """
+    if not is_entity_repo(entity_path):
+        raise ValueError(
+            f"'{entity_path}' is not a valid entity repo (missing ENTITY.md)."
+        )
+
+    if not url.strip():
+        raise ValueError("URL must not be empty.")
+
+    # Check if origin already exists
+    remote_check = subprocess.run(
+        ["git", "-C", str(entity_path), "remote"],
+        capture_output=True, text=True,
+    )
+    existing_remotes = remote_check.stdout.splitlines()
+
+    if "origin" in existing_remotes:
+        _run_git(entity_path, "remote", "set-url", "origin", url)
+    else:
+        _run_git(entity_path, "remote", "add", "origin", url)
 
 
 # Chunk: docs/chunks/entity_attach_detach - List attached entity submodules
