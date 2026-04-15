@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 import click
 
+import entity_repo
 from entities import Entities
 
 
@@ -42,20 +43,27 @@ def entity():
 @click.argument("name")
 @click.option("--role", default=None, help="Brief description of entity's purpose")
 @click.option(
-    "--project-dir",
-    type=click.Path(exists=True, path_type=pathlib.Path),
+    "--output-dir",
+    type=click.Path(path_type=pathlib.Path),
     default=None,
+    help="Directory to create entity repo in (default: current directory)",
 )
-def create(name: str, role: str | None, project_dir: pathlib.Path) -> None:
-    """Create a new entity with directory structure and identity file.
+def create(name: str, role: str | None, output_dir: pathlib.Path | None) -> None:
+    """Create a new entity as a standalone git repository.
 
-    NAME is the entity identifier (lowercase, alphanumeric + underscores).
+    # Chunk: docs/chunks/entity_repo_structure - Standalone entity repo creation command
+
+    NAME is the entity identifier (lowercase letters, digits, underscores, or hyphens).
+
+    The entity repo is created as a subdirectory of --output-dir (or the current
+    working directory if not specified). The repo contains ENTITY.md, a wiki/
+    directory with rendered templates, memories/, and episodic/ directories.
     """
-    project_dir = resolve_entity_project_dir(project_dir)
-    entities = Entities(project_dir)
+    if output_dir is None:
+        output_dir = pathlib.Path.cwd()
     try:
-        entity_path = entities.create_entity(name, role=role)
-        click.echo(f"Created entity '{name}' at {entity_path}")
+        repo_path = entity_repo.create_entity_repo(output_dir, name, role=role)
+        click.echo(f"Created entity '{name}' at {repo_path}")
     except ValueError as e:
         raise click.ClickException(str(e))
 

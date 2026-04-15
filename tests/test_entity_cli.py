@@ -37,74 +37,76 @@ def runner():
 
 
 class TestEntityCreate:
-    """Tests for `ve entity create`."""
+    """Tests for `ve entity create` (git-repo-based).
 
-    def test_creates_entity(self, runner, temp_project):
-        """Creates entity with correct directory structure."""
+    These tests verify the updated create command which produces a standalone
+    git repo. See test_entity_create_cli.py for comprehensive coverage.
+    """
+
+    def test_creates_entity_git_repo(self, runner, tmp_path):
+        """Creates a standalone git repo with ENTITY.md."""
         result = runner.invoke(cli, [
             "entity", "create", "mysteward",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code == 0
         assert "mysteward" in result.output
 
-        entity_dir = temp_project / ".entities" / "mysteward"
-        assert entity_dir.is_dir()
-        assert (entity_dir / "identity.md").is_file()
-        assert (entity_dir / "memories" / "journal").is_dir()
-        assert (entity_dir / "memories" / "consolidated").is_dir()
-        assert (entity_dir / "memories" / "core").is_dir()
+        repo_dir = tmp_path / "mysteward"
+        assert repo_dir.is_dir()
+        assert (repo_dir / "ENTITY.md").is_file()
+        assert (repo_dir / "wiki").is_dir()
+        assert (repo_dir / "memories").is_dir()
 
-    def test_creates_entity_with_role(self, runner, temp_project):
-        """Creates entity with role description."""
+    def test_creates_entity_with_role(self, runner, tmp_path):
+        """Creates entity with role description in ENTITY.md."""
         result = runner.invoke(cli, [
             "entity", "create", "mysteward",
             "--role", "Project steward for code reviews",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code == 0
 
-        content = (temp_project / ".entities" / "mysteward" / "identity.md").read_text()
+        content = (tmp_path / "mysteward" / "ENTITY.md").read_text()
         assert "Project steward for code reviews" in content
 
-    def test_duplicate_entity_fails(self, runner, temp_project):
+    def test_duplicate_entity_fails(self, runner, tmp_path):
         """Second creation of same entity fails with error."""
         runner.invoke(cli, [
             "entity", "create", "mysteward",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         result = runner.invoke(cli, [
             "entity", "create", "mysteward",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code != 0
         assert "already exists" in result.output
 
-    def test_invalid_name_fails(self, runner, temp_project):
+    def test_invalid_name_fails(self, runner, tmp_path):
         """Invalid entity name fails with validation error."""
         result = runner.invoke(cli, [
             "entity", "create", "bad name",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code != 0
         assert "Invalid entity name" in result.output
 
-    def test_invalid_name_uppercase_fails(self, runner, temp_project):
+    def test_invalid_name_uppercase_fails(self, runner, tmp_path):
         """Uppercase entity name fails."""
         result = runner.invoke(cli, [
             "entity", "create", "BadName",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code != 0
 
-    def test_output_includes_path(self, runner, temp_project):
-        """Output includes the entity path."""
+    def test_output_includes_path(self, runner, tmp_path):
+        """Output includes the entity name/path."""
         result = runner.invoke(cli, [
             "entity", "create", "mysteward",
-            "--project-dir", str(temp_project),
+            "--output-dir", str(tmp_path),
         ])
         assert result.exit_code == 0
-        assert ".entities" in result.output
         assert "mysteward" in result.output
 
 
@@ -122,14 +124,9 @@ class TestEntityList:
 
     def test_lists_created_entities(self, runner, temp_project):
         """Lists entities after creation."""
-        runner.invoke(cli, [
-            "entity", "create", "alpha",
-            "--project-dir", str(temp_project),
-        ])
-        runner.invoke(cli, [
-            "entity", "create", "beta",
-            "--project-dir", str(temp_project),
-        ])
+        entities = Entities(temp_project)
+        entities.create_entity("alpha")
+        entities.create_entity("beta")
 
         result = runner.invoke(cli, [
             "entity", "list",
@@ -141,11 +138,8 @@ class TestEntityList:
 
     def test_lists_with_roles(self, runner, temp_project):
         """Lists entities with their roles."""
-        runner.invoke(cli, [
-            "entity", "create", "mysteward",
-            "--role", "Code reviewer",
-            "--project-dir", str(temp_project),
-        ])
+        entities = Entities(temp_project)
+        entities.create_entity("mysteward", role="Code reviewer")
 
         result = runner.invoke(cli, [
             "entity", "list",
@@ -161,11 +155,7 @@ class TestEntityStartup:
 
     def test_startup_outputs_payload(self, runner, temp_project):
         """Exit code 0, output contains entity name and Core Memories section."""
-        runner.invoke(cli, [
-            "entity", "create", "mysteward",
-            "--role", "Project steward",
-            "--project-dir", str(temp_project),
-        ])
+        Entities(temp_project).create_entity("mysteward", role="Project steward")
         result = runner.invoke(cli, [
             "entity", "startup", "mysteward",
             "--project-dir", str(temp_project),
@@ -234,10 +224,7 @@ class TestEntityRecall:
 
     def test_recall_no_match(self, runner, temp_project):
         """Outputs 'No memories matching' message."""
-        runner.invoke(cli, [
-            "entity", "create", "agent",
-            "--project-dir", str(temp_project),
-        ])
+        Entities(temp_project).create_entity("agent")
         result = runner.invoke(cli, [
             "entity", "recall", "agent", "nonexistent",
             "--project-dir", str(temp_project),

@@ -1,0 +1,16 @@
+{#- Chunk: docs/chunks/entity_repo_structure - ENTITY.md identity file template -#}
+---
+name: {{ name }}
+created: "{{ created }}"
+specialization: null
+origin: null
+role: {% if role %}{{ role }}{% else %}null{% endif %}
+
+---
+
+# {{ name }}
+
+{% if role %}**Role:** {{ role }}
+
+{% endif %}This entity was created with `ve entity create`. It is a standalone git repository
+that can be hosted on GitHub and attached to projects via `ve entity attach`.

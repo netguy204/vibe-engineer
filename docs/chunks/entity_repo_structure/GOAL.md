@@ -1,20 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/entity.py
-  - src/entity_repo.py
+- src/cli/entity.py
+- src/entity_repo.py
+- src/templates/entity/entity_md.jinja2
+- tests/test_entity_repo.py
+- tests/test_entity_create_cli.py
 code_references: []
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_wiki_schema"]
-created_after: ["board_watch_reconnect_fix"]
+depends_on:
+- entity_wiki_schema
+created_after:
+- board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal
