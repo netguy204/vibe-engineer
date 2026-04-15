@@ -12,6 +12,7 @@ import entity_repo
 from entity_repo import (
     EntityRepoMetadata,
     create_entity_repo,
+    derive_entity_name_from_url,
     is_entity_repo,
     read_entity_metadata,
 )
@@ -237,3 +238,52 @@ class TestReadEntityMetadata:
         (d / "ENTITY.md").write_text("---\nfoo: bar\n---\n# Nothing\n")
         with pytest.raises(ValueError):
             read_entity_metadata(d)
+
+
+# ---------------------------------------------------------------------------
+# derive_entity_name_from_url
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveEntityNameFromUrl:
+    """Tests for derive_entity_name_from_url()."""
+
+    def test_https_url_with_git_suffix(self):
+        """HTTPS URL with .git suffix: strips suffix and entity- prefix."""
+        assert derive_entity_name_from_url(
+            "https://github.com/user/entity-slack-watcher.git"
+        ) == "slack-watcher"
+
+    def test_https_url_without_git_suffix(self):
+        """HTTPS URL without .git: last component returned as-is."""
+        assert derive_entity_name_from_url(
+            "https://github.com/user/my-specialist"
+        ) == "my-specialist"
+
+    def test_ssh_url(self):
+        """SSH URL: last component after / minus .git suffix."""
+        assert derive_entity_name_from_url(
+            "git@github.com:user/my-entity.git"
+        ) == "my-entity"
+
+    def test_local_relative_path(self):
+        """Local relative path: last component."""
+        assert derive_entity_name_from_url("../local-entity") == "local-entity"
+
+    def test_local_absolute_path(self):
+        """Local absolute path: last component."""
+        assert derive_entity_name_from_url("/some/path/to/my-entity") == "my-entity"
+
+    def test_trailing_slash_stripped(self):
+        """Trailing slash is stripped before extraction."""
+        assert derive_entity_name_from_url("../my-agent/") == "my-agent"
+
+    def test_generic_name_without_entity_prefix(self):
+        """Generic name without entity- prefix returned as-is."""
+        assert derive_entity_name_from_url("https://github.com/user/ops-specialist") == "ops-specialist"
+
+    def test_entity_prefix_stripped(self):
+        """Name starting with entity- has prefix stripped."""
+        assert derive_entity_name_from_url(
+            "https://github.com/user/entity-ops-specialist"
+        ) == "ops-specialist"

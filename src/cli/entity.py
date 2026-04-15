@@ -75,21 +75,97 @@ def create(name: str, role: str | None, output_dir: pathlib.Path | None) -> None
     default=None,
 )
 def list_entities(project_dir: pathlib.Path) -> None:
-    """List all entities in the current project."""
+    """List all entities in the current project.
+
+    # Chunk: docs/chunks/entity_attach_detach - Enhanced list with submodule status
+    """
     project_dir = resolve_entity_project_dir(project_dir)
-    entities = Entities(project_dir)
-    names = entities.list_entities()
 
-    if not names:
+    found_any = False
+
+    # List submodule-based entities
+    attached = entity_repo.list_attached_entities(project_dir)
+    submodule_names: set[str] = set()
+    for info in attached:
+        submodule_names.add(info.name)
+        specialization_str = f"  {info.specialization}" if info.specialization else ""
+        remote_str = f"  {info.remote_url}" if info.remote_url else ""
+        click.echo(f"  {info.name}  [{info.status}]{specialization_str}{remote_str}")
+        found_any = True
+
+    # Legacy plain-directory entities (not submodules)
+    entities_dir = project_dir / ".entities"
+    if entities_dir.exists():
+        entities_obj = Entities(project_dir)
+        for name in entities_obj.list_entities():
+            if name in submodule_names:
+                continue
+            # Check it's not a submodule (no .git file)
+            entity_path = entities_dir / name
+            if (entity_path / ".git").is_file():
+                continue
+            identity = entities_obj.parse_identity(name)
+            if identity and identity.role:
+                click.echo(f"  {name}  ({identity.role})")
+            else:
+                click.echo(f"  {name}")
+            found_any = True
+
+    if not found_any:
         click.echo("No entities found")
-        return
 
-    for name in names:
-        identity = entities.parse_identity(name)
-        if identity and identity.role:
-            click.echo(f"  {name}  ({identity.role})")
-        else:
-            click.echo(f"  {name}")
+
+# Chunk: docs/chunks/entity_attach_detach - CLI attach command
+@entity.command("attach")
+@click.argument("repo_url")
+@click.option("--name", default=None, help="Override derived entity name")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def attach(repo_url: str, name: str | None, project_dir: pathlib.Path | None) -> None:
+    """Attach an entity repository to this project as a git submodule.
+
+    REPO_URL is the URL or path to the entity's git repository.
+    The entity is cloned into .entities/<name>/.
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    if name is None:
+        name = entity_repo.derive_entity_name_from_url(repo_url)
+    try:
+        entity_repo.attach_entity(project_dir, repo_url, name)
+        metadata = entity_repo.read_entity_metadata(project_dir / ".entities" / name)
+        click.echo(f"Attached entity '{name}' from {repo_url}")
+        if metadata.specialization:
+            click.echo(f"  Specialization: {metadata.specialization}")
+        click.echo("Review changes with git status, then commit when ready.")
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+
+# Chunk: docs/chunks/entity_attach_detach - CLI detach command
+@entity.command("detach")
+@click.argument("name")
+@click.option("--force", is_flag=True, default=False, help="Remove even if entity has uncommitted changes")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def detach(name: str, force: bool, project_dir: pathlib.Path | None) -> None:
+    """Detach an entity repository from this project.
+
+    NAME is the entity identifier (subdirectory under .entities/).
+    Removes the git submodule cleanly. Refuses if the entity has
+    uncommitted changes unless --force is given.
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    try:
+        entity_repo.detach_entity(project_dir, name, force=force)
+        click.echo(f"Detached entity '{name}'")
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
 
 
 @entity.command("startup")
