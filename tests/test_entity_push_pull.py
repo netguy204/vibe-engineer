@@ -17,6 +17,7 @@ from entity_repo import (
     push_entity,
     set_entity_origin,
 )
+from conftest import make_entity_with_origin, make_entity_no_origin
 
 
 # ---------------------------------------------------------------------------
@@ -31,36 +32,6 @@ def _git(path: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def make_entity_with_origin(tmp_path: Path, name: str = "my-entity") -> tuple[Path, Path]:
-    """Create an entity repo with a bare clone as remote origin.
-
-    Returns:
-        (entity_path, bare_origin) where entity_path has origin pointing at bare_origin.
-    """
-    entity_path = create_entity_repo(tmp_path / "entity", name)
-    _git(entity_path, "config", "user.email", "test@test.com")
-    _git(entity_path, "config", "user.name", "Test User")
-
-    bare_origin = tmp_path / f"{name}-origin.git"
-    result = subprocess.run(
-        ["git", "clone", "--bare", str(entity_path), str(bare_origin)],
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0, f"bare clone failed: {result.stderr}"
-
-    _git(entity_path, "remote", "add", "origin", str(bare_origin))
-
-    return entity_path, bare_origin
-
-
-def make_entity_no_origin(tmp_path: Path, name: str = "my-entity") -> Path:
-    """Create a standalone entity repo with no remote configured."""
-    entity_path = create_entity_repo(tmp_path / "entity", name)
-    _git(entity_path, "config", "user.email", "test@test.com")
-    _git(entity_path, "config", "user.name", "Test User")
-    return entity_path
 
 
 # ---------------------------------------------------------------------------
