@@ -58,6 +58,43 @@ class PullResult:
     up_to_date: bool
 
 
+# Chunk: docs/chunks/entity_fork_merge - Fork result dataclass
+@dataclass
+class ForkResult:
+    """Result of a fork_entity operation."""
+    source_name: str
+    new_name: str
+    dest_path: Path
+
+
+# Chunk: docs/chunks/entity_fork_merge - Merge result dataclass
+@dataclass
+class MergeResult:
+    """Result of a clean merge_entity operation."""
+    source: str
+    commits_merged: int
+    new_pages: int
+    updated_pages: int
+
+
+# Chunk: docs/chunks/entity_fork_merge - Conflict resolution dataclass
+@dataclass
+class ConflictResolution:
+    """A single LLM-resolved conflict, pending operator approval."""
+    relative_path: str
+    synthesized: str
+    is_wiki: bool
+
+
+# Chunk: docs/chunks/entity_fork_merge - Merge conflicts pending dataclass
+@dataclass
+class MergeConflictsPending:
+    """Merge halted at conflicts; operator must approve before committing."""
+    source: str
+    resolutions: list[ConflictResolution]
+    unresolvable: list[str]
+
+
 # Name pattern extends the existing ENTITY_NAME_PATTERN to also allow hyphens
 # (kebab-case), matching the investigation's my-specialist example.
 ENTITY_REPO_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -71,6 +108,7 @@ class EntityRepoMetadata(BaseModel):
     specialization: Optional[str] = None
     origin: Optional[str] = None
     role: Optional[str] = None
+    forked_from: Optional[str] = None   # NEW: name of source entity if forked
 
 
 def create_entity_repo(
@@ -610,6 +648,275 @@ def set_entity_origin(entity_path: Path, url: str) -> None:
         _run_git(entity_path, "remote", "set-url", "origin", url)
     else:
         _run_git(entity_path, "remote", "add", "origin", url)
+
+
+# Chunk: docs/chunks/entity_fork_merge - Fork entity repo implementation
+def fork_entity(
+    source_path: Path,
+    dest_dir: Path,
+    new_name: str,
+) -> ForkResult:
+    """Clone an entity repo to a new location with an updated name and lineage.
+
+    Creates a full (non-shallow) clone of source_path at dest_dir/new_name,
+    updates ENTITY.md with the new name and fork origin, and makes an initial
+    commit recording the fork.
+
+    Args:
+        source_path: Path to the source entity repo directory.
+        dest_dir: Parent directory where the fork will be created.
+        new_name: Name for the new fork (must match ENTITY_REPO_NAME_PATTERN).
+
+    Returns:
+        ForkResult with source_name, new_name, and dest_path.
+
+    Raises:
+        ValueError: If source_path is not an entity repo, new_name is invalid,
+                    or dest_dir/new_name already exists.
+    """
+    from frontmatter import update_frontmatter_field
+
+    if not is_entity_repo(source_path):
+        raise ValueError(
+            f"'{source_path}' is not a valid entity repo (missing ENTITY.md)."
+        )
+    if not ENTITY_REPO_NAME_PATTERN.match(new_name):
+        raise ValueError(
+            f"Invalid entity name '{new_name}'. "
+            "Name must start with a lowercase letter and contain only "
+            "lowercase letters, digits, underscores, or hyphens."
+        )
+    dest_path = dest_dir / new_name
+    if dest_path.exists():
+        raise ValueError(
+            f"Destination '{dest_path}' already exists. "
+            "Choose a different name or remove the existing directory."
+        )
+
+    source_metadata = read_entity_metadata(source_path)
+
+    # Ensure dest_dir exists
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clone with full history
+    _run_git(
+        dest_dir,
+        "clone", str(source_path), new_name,
+        extra_env={
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "protocol.file.allow",
+            "GIT_CONFIG_VALUE_0": "always",
+        },
+    )
+
+    # Update ENTITY.md in the clone
+    entity_md = dest_path / "ENTITY.md"
+    update_frontmatter_field(entity_md, "name", new_name)
+    update_frontmatter_field(entity_md, "forked_from", source_metadata.name)
+
+    # Commit the metadata update
+    _git_commit_all(dest_path, f"Forked from {source_metadata.name}")
+
+    return ForkResult(
+        source_name=source_metadata.name,
+        new_name=new_name,
+        dest_path=dest_path,
+    )
+
+
+# Chunk: docs/chunks/entity_fork_merge - Merge entity repo implementation
+def merge_entity(
+    entity_path: Path,
+    source: str,
+    resolve_conflicts: bool = True,
+) -> "MergeResult | MergeConflictsPending":
+    """Fetch and merge learnings from a source entity into entity_path.
+
+    Adds source as a temporary remote 've-merge-source', fetches it, and
+    attempts a merge with --no-commit --no-ff. On clean merge, commits
+    automatically. On conflicts in wiki markdown files, uses LLM-assisted
+    synthesis. Non-wiki conflicts go to unresolvable list.
+
+    Args:
+        entity_path: Path to the target entity repo directory.
+        source: URL or local path to the source entity repo.
+        resolve_conflicts: If False, abort and raise on conflicts.
+
+    Returns:
+        MergeResult for a clean merge, or MergeConflictsPending if conflicts
+        remain and need operator approval.
+
+    Raises:
+        ValueError: If entity_path is not a valid entity repo.
+        RuntimeError: If entity has uncommitted changes, or merge fails for a
+                      non-conflict reason, or resolve_conflicts=False with conflicts.
+    """
+    import os
+    import entity_merge as _entity_merge
+
+    if not is_entity_repo(entity_path):
+        raise ValueError(
+            f"'{entity_path}' is not a valid entity repo (missing ENTITY.md)."
+        )
+
+    # Require clean working tree
+    status_out = _run_git_output(entity_path, "status", "--porcelain")
+    if status_out.strip():
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' has uncommitted changes. "
+            "Commit or stash changes before merging."
+        )
+
+    _file_protocol_env = {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "protocol.file.allow",
+        "GIT_CONFIG_VALUE_0": "always",
+    }
+
+    # Add temp remote
+    _run_git(entity_path, "remote", "add", "ve-merge-source", source,
+             extra_env=_file_protocol_env)
+
+    try:
+        # Fetch source
+        _run_git(entity_path, "fetch", "ve-merge-source",
+                 extra_env=_file_protocol_env)
+
+        # Count commits to merge before the merge changes HEAD
+        commits_out = _run_git_output(
+            entity_path, "rev-list", "HEAD..ve-merge-source/main"
+        )
+        commits_merged = len([l for l in commits_out.splitlines() if l.strip()])
+
+        # Attempt merge (don't use _run_git — conflicts return exit code 1)
+        env = {**os.environ, **_GIT_ENV}
+        merge_proc = subprocess.run(
+            ["git", "-C", str(entity_path), "merge",
+             "ve-merge-source/main", "--no-commit", "--no-ff",
+             "--allow-unrelated-histories"],
+            capture_output=True, text=True, env=env,
+        )
+
+        # Inspect staged status for conflicts or clean changes
+        status_out = _run_git_output(entity_path, "status", "--porcelain")
+
+        # Detect conflict lines
+        _CONFLICT_XY = {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
+        conflict_files: list[str] = []
+        for line in status_out.splitlines():
+            if len(line) >= 2 and line[:2] in _CONFLICT_XY:
+                conflict_files.append(line[3:])
+
+        if not conflict_files and merge_proc.returncode != 0:
+            # Unexpected failure
+            raise RuntimeError(
+                f"git merge failed (non-conflict): {merge_proc.stderr.strip()}"
+            )
+
+        if not conflict_files:
+            # Clean merge (or already up to date)
+            new_pages = 0
+            updated_pages = 0
+            for line in status_out.splitlines():
+                if len(line) >= 3:
+                    x = line[0]
+                    filepath = line[3:]
+                    if filepath.startswith("wiki/") and filepath.endswith(".md"):
+                        if x == "A":
+                            new_pages += 1
+                        elif x == "M":
+                            updated_pages += 1
+
+            if commits_merged > 0:
+                _run_git(entity_path, "add", "-A")
+                _run_git(
+                    entity_path, "commit",
+                    "-m", f"Merge learnings from {source}"
+                )
+
+            return MergeResult(
+                source=source,
+                commits_merged=commits_merged,
+                new_pages=new_pages,
+                updated_pages=updated_pages,
+            )
+
+        # Conflicts present
+        if not resolve_conflicts:
+            try:
+                _run_git(entity_path, "merge", "--abort")
+            except RuntimeError:
+                pass
+            raise RuntimeError(
+                f"Merge conflicts in: {', '.join(conflict_files)}"
+            )
+
+        resolutions: list[ConflictResolution] = []
+        unresolvable: list[str] = []
+
+        for filepath in conflict_files:
+            full_path = entity_path / filepath
+            is_wiki = filepath.startswith("wiki/") and filepath.endswith(".md")
+            if full_path.exists() and is_wiki:
+                content = full_path.read_text()
+                try:
+                    synthesized = _entity_merge.resolve_wiki_conflict(
+                        filepath, content, entity_path.name
+                    )
+                    resolutions.append(ConflictResolution(
+                        relative_path=filepath,
+                        synthesized=synthesized,
+                        is_wiki=True,
+                    ))
+                except RuntimeError:
+                    unresolvable.append(filepath)
+            else:
+                unresolvable.append(filepath)
+
+        return MergeConflictsPending(
+            source=source,
+            resolutions=resolutions,
+            unresolvable=unresolvable,
+        )
+
+    finally:
+        # Always remove temp remote to avoid state leakage
+        try:
+            _run_git(entity_path, "remote", "remove", "ve-merge-source")
+        except RuntimeError:
+            pass
+
+
+# Chunk: docs/chunks/entity_fork_merge - Commit resolved merge
+def commit_resolved_merge(
+    entity_path: Path,
+    resolutions: list[ConflictResolution],
+    source_name: str,
+) -> None:
+    """Write resolved conflict content, stage all files, and complete the merge commit.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+        resolutions: List of resolved conflicts (each with synthesized content).
+        source_name: Source identifier to use in the commit message.
+    """
+    for resolution in resolutions:
+        dest = entity_path / resolution.relative_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(resolution.synthesized)
+
+    _run_git(entity_path, "add", "-A")
+    _run_git(entity_path, "commit", "-m", f"Merge learnings from {source_name}")
+
+
+# Chunk: docs/chunks/entity_fork_merge - Abort in-progress merge
+def abort_merge(entity_path: Path) -> None:
+    """Abort an in-progress merge, restoring the entity to pre-merge state.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+    """
+    _run_git(entity_path, "merge", "--abort")
 
 
 # Chunk: docs/chunks/entity_attach_detach - List attached entity submodules

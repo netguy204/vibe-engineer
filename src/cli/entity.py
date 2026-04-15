@@ -834,3 +834,178 @@ def episodic(
                 f"Session '{expand_session}' chunk {expand_chunk_id} not found"
             )
         click.echo(expanded)
+
+
+# Chunk: docs/chunks/entity_fork_merge - Fork entity CLI command
+@entity.command("fork")
+@click.argument("name")
+@click.argument("new_name")
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=pathlib.Path),
+    default=None,
+    help="Directory to create fork in (default: same parent as source entity)",
+)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def fork(
+    name: str,
+    new_name: str,
+    output_dir: pathlib.Path | None,
+    project_dir: pathlib.Path | None,
+) -> None:
+    """Fork an entity to create an independent specialist clone.
+
+    NAME is the source entity identifier (subdirectory under .entities/).
+    NEW_NAME is the name for the new fork.
+
+    The fork is a fully independent entity with its own history going forward.
+    Original remote origin is preserved — use 've entity set-origin' to point
+    the fork at a new remote.
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    entity_path = project_dir / ".entities" / name
+
+    if not entity_path.exists():
+        raise click.ClickException(f"Entity '{name}' not found at '{entity_path}'")
+
+    if output_dir is None:
+        output_dir = entity_path.parent
+
+    try:
+        result = entity_repo.fork_entity(entity_path, output_dir, new_name)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Forked '{result.source_name}' → '{result.new_name}' at {result.dest_path}")
+
+    # Show original origin (if any) so operator knows to update it
+    import subprocess as _subprocess
+    origin_check = _subprocess.run(
+        ["git", "-C", str(result.dest_path), "remote", "get-url", "origin"],
+        capture_output=True, text=True,
+    )
+    if origin_check.returncode == 0 and origin_check.stdout.strip():
+        click.echo(
+            f"Original origin: {origin_check.stdout.strip()} "
+            f"(use 've entity set-origin' to point fork at a new remote)"
+        )
+
+
+# Chunk: docs/chunks/entity_fork_merge - Merge entity CLI command
+@entity.command("merge")
+@click.argument("name")
+@click.argument("source")
+@click.option(
+    "--yes", "-y",
+    is_flag=True,
+    default=False,
+    help="Auto-approve all LLM conflict resolutions without prompting",
+)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def merge(
+    name: str,
+    source: str,
+    yes: bool,
+    project_dir: pathlib.Path | None,
+) -> None:
+    """Merge learnings from a source entity into a target entity.
+
+    NAME is the target entity identifier (subdirectory under .entities/).
+    SOURCE can be a repo URL, local path, or the name of another attached entity.
+
+    Clean merges complete automatically with a summary. Conflicting wiki pages
+    trigger LLM-assisted resolution with operator approval (use --yes to skip
+    prompts and approve all resolutions automatically).
+    """
+    project_dir = resolve_entity_project_dir(project_dir)
+    entity_path = project_dir / ".entities" / name
+
+    if not entity_path.exists():
+        raise click.ClickException(f"Entity '{name}' not found at '{entity_path}'")
+
+    # Resolve source: check if it's an attached entity name first
+    candidate = project_dir / ".entities" / source
+    resolved_source = str(candidate) if candidate.exists() else source
+
+    try:
+        result = entity_repo.merge_entity(entity_path, resolved_source)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    if isinstance(result, entity_repo.MergeResult):
+        if result.commits_merged == 0:
+            click.echo("Already up to date")
+        else:
+            click.echo(
+                f"Merged {result.commits_merged} commit(s) — "
+                f"{result.new_pages} new page(s), {result.updated_pages} updated page(s)"
+            )
+        return
+
+    # MergeConflictsPending: show resolutions and prompt
+    assert isinstance(result, entity_repo.MergeConflictsPending)
+
+    if result.unresolvable:
+        click.echo(
+            f"Warning: {len(result.unresolvable)} file(s) could not be auto-resolved "
+            f"(resolve manually): {', '.join(result.unresolvable)}",
+            err=True,
+        )
+
+    if not result.resolutions:
+        click.echo(
+            "No resolvable conflicts found. Aborting merge. "
+            "Resolve unresolvable conflicts manually and commit.",
+            err=True,
+        )
+        try:
+            entity_repo.abort_merge(entity_path)
+        except RuntimeError:
+            pass
+        raise click.ClickException("Merge aborted — manual resolution required")
+
+    all_approved = True
+    for resolution in result.resolutions:
+        click.echo(f"\n--- Resolution for: {resolution.relative_path} ---")
+        click.echo(resolution.synthesized)
+        click.echo("---")
+
+        if not yes:
+            response = click.prompt(
+                "Approve this resolution? [y/N]",
+                default="N",
+                show_default=False,
+            )
+            if response.strip().lower() != "y":
+                all_approved = False
+                break
+
+    if all_approved:
+        try:
+            entity_repo.commit_resolved_merge(
+                entity_path, result.resolutions, result.source
+            )
+        except (RuntimeError, Exception) as e:
+            raise click.ClickException(f"Failed to commit resolved merge: {e}")
+        click.echo(
+            f"Merge committed — {len(result.resolutions)} conflict(s) resolved"
+        )
+        if result.unresolvable:
+            click.echo(
+                f"Note: {len(result.unresolvable)} file(s) still need manual resolution: "
+                f"{', '.join(result.unresolvable)}"
+            )
+    else:
+        try:
+            entity_repo.abort_merge(entity_path)
+        except RuntimeError as e:
+            click.echo(f"Warning: could not abort merge cleanly: {e}", err=True)
+        raise click.ClickException("Merge aborted — resolution rejected by operator")
