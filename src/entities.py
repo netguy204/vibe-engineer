@@ -79,6 +79,11 @@ class Entities:
         """Check if an entity exists."""
         return self.entity_dir(name).is_dir()
 
+    # Chunk: docs/chunks/entity_startup_wiki - Wiki format detection
+    def has_wiki(self, name: str) -> bool:
+        """Return True if the entity has a wiki/ directory (new wiki-based format)."""
+        return (self.entity_dir(name) / "wiki").is_dir()
+
     def list_entities(self) -> list[str]:
         """List all entity names."""
         if not self.entities_dir.exists():
@@ -315,12 +320,14 @@ class Entities:
         except Exception:
             return None, text
 
+    # Chunk: docs/chunks/entity_startup_wiki - Wiki-aware startup payload
     # Chunk: docs/chunks/entity_startup_skill - Entity startup/wake payload
     def startup_payload(self, name: str) -> str:
         """Assemble the complete startup text payload for a named entity.
 
         This is the core "wake" logic — produces the context payload an agent
         needs to resume as a named entity, including identity, core memories,
+        (for wiki entities) wiki index and maintenance protocol,
         consolidated memory index, and the touch protocol instruction.
 
         Args:
@@ -352,7 +359,6 @@ class Entities:
 
         # --- Core Memories ---
         index = self.memory_index(name)
-        core_dir = self.entity_dir(name) / "memories" / MemoryTier.CORE.value
         sections.append("## Core Memories")
         sections.append("")
         if index["core"]:
@@ -367,6 +373,48 @@ class Entities:
                 sections.append("")
         else:
             sections.append("*No core memories yet.*")
+            sections.append("")
+
+        # --- Wiki (wiki entities only) ---
+        if self.has_wiki(name):
+            wiki_index_content = self._wiki_index_content(name)
+            sections.append(f"## Wiki: {name}")
+            sections.append("")
+            sections.append(
+                f"*Your structured knowledge base. Read specific pages during the session with "
+                f"`cat .entities/{name}/wiki/<path>` or `grep`.*"
+            )
+            sections.append("")
+            if wiki_index_content:
+                sections.append(wiki_index_content)
+                sections.append("")
+
+            sections.append("## Wiki Maintenance Protocol")
+            sections.append("")
+            sections.append(
+                "Maintain your wiki **during the session, not after**. When you learn something, "
+                "update the relevant page immediately — the wiki is a natural byproduct of working."
+            )
+            sections.append("")
+            sections.append("Key triggers:")
+            sections.append(
+                "- New concept encountered → create/update `wiki/domain/` page"
+            )
+            sections.append(
+                "- Technique applied → create/update `wiki/techniques/` page"
+            )
+            sections.append(
+                "- Something was wrong → update relevant page + add to `wiki/identity.md` Hard-Won Lessons"
+            )
+            sections.append(
+                "- Significant decision made → update `wiki/projects/` page"
+            )
+            sections.append("- Session ends → add entry to `wiki/log.md`")
+            sections.append("- New page created → update `wiki/index.md`")
+            sections.append("")
+            sections.append(
+                "Full schema and conventions: `wiki/wiki_schema.md`"
+            )
             sections.append("")
 
         # --- Consolidated Memory Index ---
@@ -414,6 +462,20 @@ class Entities:
         sections.append("")
 
         return "\n".join(sections)
+
+    def _wiki_index_content(self, name: str) -> str:
+        """Read wiki/index.md and return its full text, or empty string if absent.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            Full text of wiki/index.md, or empty string if the file does not exist.
+        """
+        index_path = self.entity_dir(name) / "wiki" / "index.md"
+        if not index_path.exists():
+            return ""
+        return index_path.read_text().strip()
 
     # Chunk: docs/chunks/entity_startup_skill - Helper to extract markdown body content after frontmatter for identity loading
     def _read_body(self, file_path: Path) -> str:

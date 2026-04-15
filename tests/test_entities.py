@@ -1091,3 +1091,83 @@ class TestCreateEntityWiki:
         entities.create_entity("agent")
         content = (temp_project / ".entities" / "agent" / "wiki" / "log.md").read_text()
         assert "YYYY-MM-DD" in content
+
+
+class TestHasWiki:
+    """Tests for Entities.has_wiki()."""
+
+    def test_has_wiki_true_for_wiki_entity(self, entities):
+        """Entity created with create_entity() has a wiki/ directory — returns True."""
+        entities.create_entity("agent")
+        assert entities.has_wiki("agent") is True
+
+    def test_has_wiki_false_for_legacy_entity(self, entities, temp_project):
+        """Manually created entity directory without wiki/ returns False."""
+        # Simulate a pre-wiki entity by hand
+        legacy_dir = temp_project / ".entities" / "legacy"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "identity.md").write_text("---\nrole: null\n---\n")
+        (legacy_dir / "memories" / "core").mkdir(parents=True)
+        (legacy_dir / "memories" / "consolidated").mkdir(parents=True)
+        (legacy_dir / "memories" / "journal").mkdir(parents=True)
+
+        assert entities.has_wiki("legacy") is False
+
+
+class TestStartupPayloadWiki:
+    """Tests for wiki-aware startup_payload()."""
+
+    def _make_wiki_entity(self, entities, temp_project, name: str = "agent") -> None:
+        """Create a wiki entity and write known content to wiki/index.md."""
+        entities.create_entity(name)
+        # Overwrite wiki/index.md with a known sentinel string
+        wiki_index = temp_project / ".entities" / name / "wiki" / "index.md"
+        wiki_index.write_text("# Index\n\nSentinel wiki index content for testing.\n")
+
+    def _make_legacy_entity(self, entities, temp_project, name: str = "legacy") -> None:
+        """Create a legacy entity directory without wiki/."""
+        legacy_dir = temp_project / ".entities" / name
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "identity.md").write_text("---\nrole: null\n---\nLegacy identity.\n")
+        for tier in ["core", "consolidated", "journal"]:
+            (legacy_dir / "memories" / tier).mkdir(parents=True)
+
+    def test_wiki_payload_includes_wiki_index_content(self, entities, temp_project):
+        """Payload for a wiki entity contains the text from wiki/index.md."""
+        self._make_wiki_entity(entities, temp_project)
+        payload = entities.startup_payload("agent")
+        assert "Sentinel wiki index content for testing." in payload
+
+    def test_wiki_payload_includes_maintenance_reminder(self, entities, temp_project):
+        """Payload contains a Wiki Maintenance Protocol heading."""
+        self._make_wiki_entity(entities, temp_project)
+        payload = entities.startup_payload("agent")
+        assert "Wiki Maintenance Protocol" in payload
+
+    def test_wiki_payload_references_wiki_schema(self, entities, temp_project):
+        """Payload mentions wiki/wiki_schema.md so the entity knows where the full schema is."""
+        self._make_wiki_entity(entities, temp_project)
+        payload = entities.startup_payload("agent")
+        assert "wiki/wiki_schema.md" in payload
+
+    def test_wiki_payload_section_order(self, entities, temp_project):
+        """Core memories appear before wiki index, which appears before consolidated index."""
+        self._make_wiki_entity(entities, temp_project)
+        payload = entities.startup_payload("agent")
+
+        core_pos = payload.index("## Core Memories")
+        wiki_pos = payload.index("## Wiki:")
+        consolidated_pos = payload.index("## Consolidated Memory Index")
+
+        assert core_pos < wiki_pos < consolidated_pos, (
+            f"Expected Core ({core_pos}) < Wiki ({wiki_pos}) < Consolidated ({consolidated_pos})"
+        )
+
+    def test_legacy_entity_payload_unchanged(self, entities, temp_project):
+        """Legacy entity payload does NOT contain any Wiki heading sections."""
+        self._make_legacy_entity(entities, temp_project)
+        payload = entities.startup_payload("legacy")
+
+        assert "## Wiki:" not in payload
+        assert "Wiki Maintenance Protocol" not in payload
+        assert "wiki/wiki_schema.md" not in payload

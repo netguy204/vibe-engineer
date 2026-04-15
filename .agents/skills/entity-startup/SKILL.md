@@ -12,6 +12,7 @@ Run `ve init` to regenerate.
 
 
 
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -62,10 +63,37 @@ Read each numbered **Core Memory** (CM1, CM2, ...) in the output. These are
 your internalized principles and skills — treat them as operational knowledge
 you have already learned, not as instructions to be followed mechanically.
 
-### Step 5: Note the consolidated memory index
+### Step 5: Orient with your wiki
+
+If you have a wiki, the startup payload includes your **Wiki** section with
+the content of `wiki/index.md` — your structured knowledge catalog. Read it
+to orient: what do you already know that's relevant to this session's work?
+
+If you need details on a specific topic, read the page directly:
+
+    cat .entities/<name>/wiki/domain/<topic>.md
+
+Or search across your wiki:
+
+    grep -r "<keyword>" .entities/<name>/wiki/
+
+### Step 6: Commit to wiki maintenance
+
+If you are a wiki-maintaining entity, during this session:
+
+- Update wiki pages **as you work**, not afterward
+- When you learn something, update the relevant page immediately
+- Every session ends with a `wiki/log.md` entry
+- The full maintenance conventions are at `wiki/wiki_schema.md`
+
+This is not a separate "note-taking" step — it is part of working.
+
+### Step 7: Note the consolidated memory index
 
 The **Consolidated Memory Index** lists memories available for on-demand
 retrieval. You don't need to load these now — just note what's available.
+This supplements your wiki: the consolidated index holds distilled cross-session
+patterns, while your wiki holds structured, interlinked knowledge.
 
 When you need details on a consolidated memory, retrieve it with:
 
@@ -75,7 +103,7 @@ ve entity recall <name> <query>
 
 Where `<query>` is a case-insensitive substring of the memory title.
 
-### Step 6: Follow the touch protocol
+### Step 8: Follow the touch protocol
 
 When you notice yourself applying a core memory, run the touch command
 using the full ID stem shown next to each memory (the `ID:` field in the
@@ -92,7 +120,8 @@ memory strengthens it. For example:
 ve entity touch aria 20260414_120742_089450_template_editing_workflow "Used template editing workflow to fix rendering issue"
 ```
 
-### Step 7: Episodic memory
+{# Chunk: docs/chunks/entity_episodic_skill - Step 9 episodic memory added to startup skill #}
+### Step 9: Episodic memory
 
 You can search your prior session transcripts for specific events, conversations,
 and decisions using episodic search:
@@ -102,7 +131,7 @@ and decisions using episodic search:
 Use this when you need context about what happened in a prior session, not just
 the distilled lessons in your memory. Run /entity-episodic for detailed usage.
 
-### Step 8: Restore active state
+### Step 10: Restore active state
 
 If the **Active State** section mentions channels you were watching or
 async operations that were pending, restart them now. This typically means
