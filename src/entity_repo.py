@@ -12,6 +12,7 @@ gets populated with knowledge over time.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -221,3 +222,248 @@ def _git_commit_all(path: Path, message: str) -> None:
     """Stage all files and create a commit."""
     _run_git(path, "add", "-A")
     _run_git(path, "commit", "-m", message)
+
+
+def _run_git_output(path: Path, *args: str, extra_env: dict | None = None) -> str:
+    """Run a git command and return stdout. Raises RuntimeError on failure."""
+    import os
+
+    env = {**os.environ, **_GIT_ENV}
+    if extra_env:
+        env.update(extra_env)
+    result = subprocess.run(
+        ["git", "-C", str(path), *args],
+        capture_output=True, text=True, env=env,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed in {path}:\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+    return result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Name derivation
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_attach_detach - Name derivation for entity attach
+def derive_entity_name_from_url(url: str) -> str:
+    """Derive an entity name from a repo URL or local path.
+
+    Algorithm:
+    1. Strip trailing slash
+    2. Take the last path component (after the last '/' — works for URLs, SSH, paths)
+    3. Strip '.git' suffix if present
+    4. Strip 'entity-' prefix if present
+    5. Return the result
+    """
+    # Strip trailing slash
+    url = url.rstrip("/")
+    # Last component after '/'
+    last = url.rsplit("/", 1)[-1]
+    # Strip .git suffix
+    if last.endswith(".git"):
+        last = last[:-4]
+    # Strip entity- prefix
+    if last.startswith("entity-"):
+        last = last[len("entity-"):]
+    return last
+
+
+# ---------------------------------------------------------------------------
+# Attached entity model
+# ---------------------------------------------------------------------------
+
+
+class AttachedEntityInfo(BaseModel):
+    """Info about an entity attached as a git submodule."""
+
+    name: str
+    remote_url: Optional[str]       # None if not a submodule or no remote
+    specialization: Optional[str]   # From ENTITY.md frontmatter
+    status: str                     # "clean" | "uncommitted" | "ahead" | "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Submodule operations
+# ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_attach_detach - Submodule attach implementation
+def attach_entity(project_dir: Path, repo_url: str, name: str) -> Path:
+    """Attach an entity repository to a project as a git submodule.
+
+    Args:
+        project_dir: Path to the project git repository.
+        repo_url: URL or local path to the entity's git repository.
+        name: Name to use for the entity (subdirectory under .entities/).
+
+    Returns:
+        Path to the attached entity directory (.entities/<name>).
+
+    Raises:
+        RuntimeError: If project_dir is not a git repo or submodule add fails.
+        ValueError: If the cloned repo is not a valid entity repo.
+    """
+    # Validate project_dir is a git repo
+    check = subprocess.run(
+        ["git", "-C", str(project_dir), "rev-parse", "--git-dir"],
+        capture_output=True, text=True,
+    )
+    if check.returncode != 0:
+        raise RuntimeError(
+            f"'{project_dir}' is not a git repository"
+        )
+
+    # Ensure .entities/ exists
+    entities_dir = project_dir / ".entities"
+    entities_dir.mkdir(exist_ok=True)
+
+    # Run git submodule add
+    # Allow local file:// protocol (needed when repo_url is a local path)
+    submodule_path = f".entities/{name}"
+    try:
+        _run_git(
+            project_dir,
+            "submodule", "add", repo_url, submodule_path,
+            extra_env={"GIT_CONFIG_COUNT": "1",
+                       "GIT_CONFIG_KEY_0": "protocol.file.allow",
+                       "GIT_CONFIG_VALUE_0": "always"},
+        )
+    except RuntimeError as e:
+        raise RuntimeError(f"Failed to attach entity '{name}': {e}") from e
+
+    # Validate the cloned repo is an entity repo
+    entity_path = project_dir / ".entities" / name
+    if not is_entity_repo(entity_path):
+        # Cleanup the partial submodule
+        subprocess.run(
+            ["git", "-C", str(project_dir), "submodule", "deinit", "-f", submodule_path],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(project_dir), "rm", "-f", submodule_path],
+            capture_output=True,
+        )
+        modules_path = project_dir / ".git" / "modules" / ".entities" / name
+        if modules_path.exists():
+            shutil.rmtree(modules_path)
+        raise ValueError("Attached repo is not a valid entity repo — missing ENTITY.md")
+
+    return entity_path
+
+
+# Chunk: docs/chunks/entity_attach_detach - Submodule detach implementation
+def detach_entity(project_dir: Path, name: str, force: bool = False) -> None:
+    """Detach an entity repository from a project.
+
+    Args:
+        project_dir: Path to the project git repository.
+        name: Name of the entity to detach (subdirectory under .entities/).
+        force: If True, detach even if the entity has uncommitted changes.
+
+    Raises:
+        ValueError: If the entity is not found.
+        RuntimeError: If the entity has uncommitted changes and force=False.
+    """
+    entity_path = project_dir / ".entities" / name
+    if not entity_path.exists():
+        raise ValueError(f"Entity '{name}' not found at '{entity_path}'")
+
+    # Check for uncommitted changes
+    status_result = subprocess.run(
+        ["git", "-C", str(entity_path), "status", "--porcelain"],
+        capture_output=True, text=True,
+    )
+    if status_result.stdout.strip() and not force:
+        raise RuntimeError(
+            f"Entity '{name}' has uncommitted changes. Use force=True to override."
+        )
+
+    submodule_path = f".entities/{name}"
+
+    # Full removal sequence
+    subprocess.run(
+        ["git", "-C", str(project_dir), "submodule", "deinit", "-f", submodule_path],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project_dir), "rm", "-f", submodule_path],
+        capture_output=True,
+    )
+    modules_path = project_dir / ".git" / "modules" / ".entities" / name
+    if modules_path.exists():
+        shutil.rmtree(modules_path)
+
+
+# Chunk: docs/chunks/entity_attach_detach - List attached entity submodules
+def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
+    """List all entities attached as git submodules.
+
+    Args:
+        project_dir: Path to the project git repository.
+
+    Returns:
+        List of AttachedEntityInfo for each attached entity submodule.
+    """
+    entities_dir = project_dir / ".entities"
+    if not entities_dir.exists():
+        return []
+
+    results = []
+    for d in sorted(entities_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        # Detect submodule: submodule checkout has .git as a file, not directory
+        git_marker = d / ".git"
+        if not git_marker.is_file():
+            continue
+
+        # Get remote URL
+        remote_url: Optional[str] = None
+        url_result = subprocess.run(
+            ["git", "-C", str(d), "remote", "get-url", "origin"],
+            capture_output=True, text=True,
+        )
+        if url_result.returncode == 0:
+            remote_url = url_result.stdout.strip() or None
+
+        # Get specialization from ENTITY.md
+        specialization: Optional[str] = None
+        try:
+            metadata = read_entity_metadata(d)
+            specialization = metadata.specialization
+        except Exception:
+            pass
+
+        # Get status
+        status = "unknown"
+        try:
+            porcelain = subprocess.run(
+                ["git", "-C", str(d), "status", "--porcelain"],
+                capture_output=True, text=True,
+            )
+            if porcelain.stdout.strip():
+                status = "uncommitted"
+            else:
+                ahead = subprocess.run(
+                    ["git", "-C", str(d), "log", "@{u}..", "--oneline"],
+                    capture_output=True, text=True,
+                )
+                if ahead.returncode == 0 and ahead.stdout.strip():
+                    status = "ahead"
+                else:
+                    status = "clean"
+        except Exception:
+            status = "unknown"
+
+        results.append(AttachedEntityInfo(
+            name=d.name,
+            remote_url=remote_url,
+            specialization=specialization,
+            status=status,
+        ))
+
+    return results
