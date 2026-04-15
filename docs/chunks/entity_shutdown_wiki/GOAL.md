@@ -1,12 +1,26 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - src/entity_shutdown.py
 - src/cli/entity.py
 - src/templates/commands/entity-shutdown.md.jinja2
-code_references: []
+code_references:
+- ref: src/entity_shutdown.py#extract_wiki_diff
+  implements: "Mechanical git diff extraction from entity's wiki/ directory — zero-LLM journal creation"
+- ref: src/entity_shutdown.py#_build_consolidation_prompt
+  implements: "Builds Agent SDK prompt with wiki diff + identity/values constraint for consolidation"
+- ref: src/entity_shutdown.py#_run_consolidation_agent
+  implements: "Async Agent SDK consolidation runner (bypassPermissions, no timeout)"
+- ref: src/entity_shutdown.py#run_wiki_consolidation
+  implements: "Public sync entry point for wiki-based consolidation pipeline"
+- ref: src/entity_shutdown.py#run_shutdown
+  implements: "Dispatcher routing wiki entities to wiki pipeline and legacy entities to legacy pipeline"
+- ref: src/cli/entity.py#shutdown
+  implements: "CLI shutdown command with optional --memories-file and wiki-aware routing"
+- ref: src/templates/commands/entity-shutdown.md.jinja2
+  implements: "Skill template with branching flow for wiki vs legacy entity shutdown"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
