@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -7,7 +7,25 @@ code_paths:
 - src/entity_from_transcript.py
 - tests/test_entity_from_transcript.py
 - tests/test_entity_from_transcript_cli.py
-code_references: []
+code_references:
+- ref: src/entity_from_transcript.py#create_entity_from_transcript
+  implements: "Main entry point orchestrating the full from-transcript pipeline"
+- ref: src/entity_from_transcript.py#FromTranscriptResult
+  implements: "Result dataclass returned after entity creation"
+- ref: src/entity_from_transcript.py#format_transcript_text
+  implements: "Converts SessionTranscript into readable prose for the wiki agent"
+- ref: src/entity_from_transcript.py#_wiki_creation_prompt
+  implements: "Prompt for the first-transcript Agent SDK wiki-construction session"
+- ref: src/entity_from_transcript.py#_wiki_update_prompt
+  implements: "Prompt for subsequent-transcript Agent SDK wiki-update sessions"
+- ref: src/entity_from_transcript.py#_run_wiki_agent
+  implements: "Agent SDK runner for wiki construction/update sessions"
+- ref: src/entity_from_transcript.py#_process_first_transcript
+  implements: "Processes the first transcript: creates wiki from scratch and commits"
+- ref: src/entity_from_transcript.py#_process_subsequent_transcript
+  implements: "Processes subsequent transcripts: updates wiki, consolidates, archives"
+- ref: src/cli/entity.py#from_transcript
+  implements: "CLI command 've entity from-transcript' entry point"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
