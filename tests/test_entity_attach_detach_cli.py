@@ -31,11 +31,14 @@ def _git(path: Path, *args: str) -> subprocess.CompletedProcess:
 def make_bare_entity_origin(tmp_path: Path, name: str = "my-entity") -> tuple[Path, Path]:
     """Create an entity repo and a bare clone.
 
+    The bare clone is named after the entity (e.g., 'my-entity.git') so that
+    derive_entity_name_from_url produces the expected name.
+
     Returns:
         (entity_src, bare_origin) where bare_origin is used as the URL.
     """
     entity_src = create_entity_repo(tmp_path / f"{name}-src", name)
-    bare_origin = tmp_path / f"{name}-origin.git"
+    bare_origin = tmp_path / f"{name}.git"
     result = subprocess.run(
         ["git", "clone", "--bare", str(entity_src), str(bare_origin)],
         capture_output=True, text=True,

@@ -5,6 +5,8 @@ parent_chunk: null
 code_paths:
 - src/cli/entity.py
 - src/entity_repo.py
+- tests/test_entity_submodule.py
+- tests/test_entity_attach_detach_cli.py
 code_references: []
 narrative: null
 investigation: entity_wiki_memory
