@@ -244,7 +244,7 @@ class Entities:
                         "memory_id": f.stem,
                     })
 
-        # Consolidated memories: title + category
+        # Consolidated memories: title + category + memory_id
         consolidated_dir = memories_dir / MemoryTier.CONSOLIDATED.value
         if consolidated_dir.exists():
             for f in sorted(consolidated_dir.glob("*.md")):
@@ -253,6 +253,7 @@ class Entities:
                     index["consolidated"].append({
                         "title": fm.title,
                         "category": fm.category.value if fm.category else None,
+                        "memory_id": f.stem,
                     })
 
         return index
@@ -359,6 +360,8 @@ class Entities:
             sections.append(f"**Role:** {identity.role}")
         sections.append("")
         if identity_body:
+            sections.append(f"*Source: `.entities/{name}/identity.md`*")
+            sections.append("")
             sections.append(identity_body)
             sections.append("")
 
@@ -372,7 +375,10 @@ class Entities:
                 content = entry["content"]
                 memory_id = entry.get("memory_id", f"CM{i}")
                 sections.append(f"### CM{i}: {fm['title']}")
-                sections.append(f"*Category: {fm['category']} | ID: `{memory_id}`*")
+                sections.append(
+                    f"*Category: {fm['category']} | ID: `{memory_id}` | "
+                    f"Source: `.entities/{name}/memories/core/{memory_id}.md`*"
+                )
                 sections.append("")
                 sections.append(content)
                 sections.append("")
@@ -388,17 +394,22 @@ class Entities:
             sections.append(f"## Wiki: {name}")
             sections.append("")
             sections.append(
-                f"*Your structured knowledge base. Read specific pages during the session with "
-                f"`cat .entities/{name}/wiki/<path>` or `grep`.*"
+                f"*Your structured knowledge base at `.entities/{name}/wiki/`. "
+                f"These are real files — read specific pages with `cat .entities/{name}/wiki/<path>.md`, "
+                f"search with `rg <term> .entities/{name}/wiki`, and edit them directly as you work.*"
             )
             sections.append("")
             if wiki_index_content:
+                sections.append(f"*Source: `.entities/{name}/wiki/index.md`*")
+                sections.append("")
                 sections.append(wiki_index_content)
                 sections.append("")
 
             sections.append("## Wiki Schema")
             sections.append("")
             if wiki_schema:
+                sections.append(f"*Source: `.entities/{name}/wiki/wiki_schema.md`*")
+                sections.append("")
                 sections.append(wiki_schema)
             else:
                 # Graceful fallback if wiki_schema.md is absent (e.g. manually constructed entity)
@@ -415,17 +426,19 @@ class Entities:
         sections.append("")
         if index["consolidated"]:
             sections.append(
-                "The following memories are available for on-demand retrieval "
-                "via `ve entity recall`:"
+                f"The following memories live at `.entities/{name}/memories/consolidated/` "
+                "and are available for on-demand retrieval via `ve entity recall`:"
             )
             sections.append("")
             for entry in index["consolidated"]:
                 title = entry["title"]
                 category = entry["category"]
-                if category:
-                    sections.append(f"- {title} ({category})")
+                memory_id = entry.get("memory_id")
+                category_suffix = f" ({category})" if category else ""
+                if memory_id:
+                    sections.append(f"- {title}{category_suffix} — `{memory_id}.md`")
                 else:
-                    sections.append(f"- {title}")
+                    sections.append(f"- {title}{category_suffix}")
             sections.append("")
         else:
             sections.append("*No consolidated memories yet.*")
@@ -450,6 +463,8 @@ class Entities:
         sop_content = self._sop_content(name)
         if sop_content:
             sections.append("## Standard Operating Procedures")
+            sections.append("")
+            sections.append(f"*Source: `.entities/{name}/wiki/SOP.md`*")
             sections.append("")
             sections.append(sop_content)
             sections.append("")
