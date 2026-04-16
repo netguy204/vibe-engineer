@@ -189,6 +189,10 @@ def create_entity_repo(
     (wiki_dir / "log.md").write_text(
         render_template("entity", "wiki/log.md.jinja2", created=created)
     )
+    # Chunk: docs/chunks/entity_sop_file - SOP file for role-specific startup procedures
+    (wiki_dir / "SOP.md").write_text(
+        render_template("entity", "wiki/SOP.md.jinja2", created=created)
+    )
 
     # Git init + initial commit
     _git_init(repo_path)

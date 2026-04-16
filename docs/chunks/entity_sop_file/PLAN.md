@@ -1,179 +1,185 @@
 
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Replace the generic "Active State" hardcoded reminder in `startup_payload()` with a role-specific `wiki/SOP.md` file. The payload reads SOP.md at startup time and includes its content verbatim if non-empty; the section is entirely omitted for entities with an empty or absent SOP.md — zero noise by default.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The implementation follows the exact same pattern already used for `wiki/index.md` and `wiki/wiki_schema.md`: a `_sop_content()` helper reads the file, and the payload builds a section only if content is non-empty. New entity creation renders the SOP.md template alongside the other wiki templates. The entity-startup skill template is updated to reference SOP.md rather than the removed section.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_sop_file/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per TESTING_PHILOSOPHY.md, tests are written first (TDD), covering: SOP.md loaded when present and non-empty, section omitted when empty, section omitted when absent (missing file), and new entity creation produces the SOP.md file.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for SOP payload behavior
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `tests/test_entities.py`, add a new `TestStartupPayloadSOP` class (parallel to the existing `TestStartupPayloadWiki` and `TestStartupPayloadWikiSchema` classes) with tests:
 
-Example:
+1. `test_sop_content_included_when_present` — create an entity, write non-empty content to `wiki/SOP.md`, call `startup_payload()`, assert the section heading `"## Standard Operating Procedures"` and the SOP content appear in the payload.
+2. `test_sop_section_omitted_when_empty` — create an entity, write an empty `wiki/SOP.md` (blank or just whitespace), call `startup_payload()`, assert `"## Standard Operating Procedures"` does NOT appear.
+3. `test_sop_section_omitted_when_absent` — create an entity without a `wiki/SOP.md` (manually construct a wiki entity missing SOP.md, or just verify a freshly-created entity with an empty-default SOP doesn't emit the section), call `startup_payload()`, assert the section is absent.
 
-### Step 1: Define the SegmentHeader struct
+Also add a structural test in `TestCreateEntityWiki` (or new `TestCreateEntitySOP` class):
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+4. `test_create_entity_creates_sop_md` — call `entities.create_entity("agent")`, assert `wiki/SOP.md` exists in the entity directory.
 
-Location: src/segment/format.rs
+Run `uv run pytest tests/test_entities.py -k "SOP"` — all four tests must **fail** before proceeding.
 
-### Step 2: Implement header serialization
+### Step 2: Create the SOP.md Jinja2 template
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Create `src/templates/entity/wiki/SOP.md.jinja2` with minimal content:
 
-### Step 3: ...
-
+```markdown
 ---
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
+title: Standard Operating Procedures
+created: {{ created }}
+updated: {{ created }}
+---
+# Standard Operating Procedures
 
 <!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+  Capture role-specific startup and recurring actions here.
+  Empty by default — populate this file as you learn your role's rhythms.
 
-If there are no dependencies, delete this section.
+  Examples:
+  ## On Startup
+  - Run /steward-watch to begin the watch-respond loop
+
+  ## Ongoing
+  - Triage inbound messages and create FUTURE chunks when appropriate
 -->
+```
+
+The template uses a `created` variable consistent with the other wiki templates.
+
+### Step 3: Render SOP.md in `create_entity_repo()`
+
+In `src/entity_repo.py`, in the "Render wiki pages" block of `create_entity_repo()`, add a render call for SOP.md after the existing wiki pages:
+
+```python
+(wiki_dir / "SOP.md").write_text(
+    render_template("entity", "wiki/SOP.md.jinja2", created=created)
+)
+```
+
+This placement mirrors the `log.md` and `identity.md` renders immediately above it.
+
+At this point, the structural test (`test_create_entity_creates_sop_md`) should pass; the payload tests still fail because `startup_payload()` doesn't read SOP.md yet.
+
+### Step 4: Add `_sop_content()` helper to `Entities`
+
+In `src/entities.py`, add a private helper method modeled exactly after `_wiki_index_content()`:
+
+```python
+# Chunk: docs/chunks/entity_sop_file - Load SOP.md into startup payload
+def _sop_content(self, name: str) -> str:
+    """Read wiki/SOP.md and return its full text, or empty string if absent or empty.
+
+    Args:
+        name: Entity name.
+
+    Returns:
+        Full text of wiki/SOP.md, stripped, or empty string if the file
+        does not exist or contains only whitespace.
+    """
+    sop_path = self.entity_dir(name) / "wiki" / "SOP.md"
+    if not sop_path.exists():
+        return ""
+    return sop_path.read_text().strip()
+```
+
+### Step 5: Update `startup_payload()` — replace Active State with SOP section
+
+In `src/entities.py`, within the wiki-entity branch of `startup_payload()`, **after** the Wiki Schema section and **before** the `return "\n".join(sections)`, replace the hardcoded "Active State" block (lines ~443-450) with a conditional SOP section:
+
+**Remove:**
+```python
+# --- Active State Reminders ---
+sections.append("## Active State")
+sections.append("")
+sections.append(
+    "If you were previously watching channels or had pending async "
+    "operations, restart them now."
+)
+sections.append("")
+```
+
+**Add (placed after the Touch Protocol section, before the final return):**
+```python
+# Chunk: docs/chunks/entity_sop_file - SOP section replaces hardcoded Active State
+# --- Standard Operating Procedures ---
+sop_content = self._sop_content(name)
+if sop_content:
+    sections.append("## Standard Operating Procedures")
+    sections.append("")
+    sections.append(sop_content)
+    sections.append("")
+```
+
+This placement puts the SOP section at the end of the payload, after Touch Protocol — where role-specific startup guidance is most naturally consumed.
+
+Note: The SOP section is gated on `self.has_wiki(name)` implicitly — non-wiki entities won't have `wiki/SOP.md`, so `_sop_content()` returns `""` and the section is omitted. The existing `has_wiki()` guard is NOT required around this call; the file check handles it.
+
+At this point the payload tests should pass. Run `uv run pytest tests/test_entities.py -k "SOP"`.
+
+### Step 6: Update entity-startup skill template
+
+In `src/templates/commands/entity-startup.md.jinja2`, replace the "Step 10: Restore active state" section (lines ~151-155) with SOP-aware guidance:
+
+**Remove:**
+```
+### Step 10: Restore active state
+
+If the **Active State** section mentions channels you were watching or
+async operations that were pending, restart them now. This typically means
+re-running watch commands or resuming monitoring loops.
+```
+
+**Replace with:**
+```
+### Step 10: Follow your Standard Operating Procedures
+
+If the startup payload contains a **Standard Operating Procedures** section,
+follow any startup actions it specifies. This is your role-specific checklist —
+it may tell you to run `/steward-watch`, resume a monitoring loop, or take other
+actions appropriate to your role. If SOP.md is empty, there is nothing to do here.
+```
+
+### Step 7: Update wiki_schema.md template
+
+In `src/templates/entity/wiki_schema.md.jinja2`, add `SOP.md` to:
+
+1. The **Directory Structure** code block — add a line for `SOP.md` after `index.md`:
+   ```
+   ├── SOP.md            # Standard Operating Procedures — role-specific startup actions
+   ```
+
+2. The **What Goes Where** section — add a bullet:
+   ```
+   - **`SOP.md`** — Standard Operating Procedures: role-specific startup and recurring actions. Empty by default; populate it as you learn your role's rhythms. Owned by the entity.
+   ```
+
+### Step 8: Verify migration compatibility
+
+Existing entities will not have `wiki/SOP.md`. Verify the behavior is already graceful: `_sop_content()` returns `""` for a missing file, the section is omitted from the payload, and everything works normally.
+
+Optionally, add SOP.md rendering to `entity_migration.py`'s `migrate_entity()` function, writing an empty SOP.md alongside the other wiki pages (so migrated entities have the file scaffold for future use). Check if `create_entity_repo()` is called by migration (it is, in `entity_migration.py:631`) — this means migrated entities created via `ve entity migrate` already get SOP.md from Step 3. No additional migration code is required.
+
+### Step 9: Run full test suite
+
+```bash
+uv run pytest tests/
+```
+
+All existing tests must pass. The new SOP tests added in Step 1 must now pass.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **SOP.md template content**: The template's comment block uses HTML-style comments (`<!-- -->`). This is consistent with other wiki templates in this project. Confirm this renders correctly when read back by the payload (it will — the file is read verbatim, comments and all). If the section heading check in tests becomes noisy due to the default comment content, the test can check for the sentinel string after writing custom SOP content to the file.
+- **Placement of SOP in payload**: The SOP section is placed after Touch Protocol, at the end of the payload. This is consistent with "last thing before you act" placement. If ordering tests exist that check payload section order, they may need updating to account for the new section.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

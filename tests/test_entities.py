@@ -1205,3 +1205,68 @@ class TestStartupPayloadWikiSchema:
         self._make_legacy_entity(entities, temp_project)
         payload = entities.startup_payload("legacy")
         assert "# Wiki Schema" not in payload
+
+
+class TestStartupPayloadSOP:
+    """Tests for SOP.md loading in startup_payload()."""
+
+    def _make_wiki_entity(self, entities, name: str = "agent") -> None:
+        """Create a wiki entity."""
+        entities.create_entity(name)
+
+    def _make_legacy_entity(self, entities, temp_project, name: str = "legacy") -> None:
+        """Create a legacy entity directory without wiki/."""
+        legacy_dir = temp_project / ".entities" / name
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "identity.md").write_text("---\nrole: null\n---\nLegacy identity.\n")
+        for tier in ["core", "consolidated", "journal"]:
+            (legacy_dir / "memories" / tier).mkdir(parents=True)
+
+    def test_sop_content_included_when_present(self, entities, temp_project):
+        """Payload includes SOP content when wiki/SOP.md is non-empty."""
+        self._make_wiki_entity(entities)
+        sop_path = temp_project / ".entities" / "agent" / "wiki" / "SOP.md"
+        sop_path.write_text(
+            "# Standard Operating Procedures\n\n## On Startup\n- Run /steward-watch\n"
+        )
+        payload = entities.startup_payload("agent")
+        assert "## Standard Operating Procedures" in payload
+        assert "Run /steward-watch" in payload
+
+    def test_sop_section_omitted_when_empty(self, entities, temp_project):
+        """Payload does NOT include SOP section when wiki/SOP.md is blank/whitespace."""
+        self._make_wiki_entity(entities)
+        sop_path = temp_project / ".entities" / "agent" / "wiki" / "SOP.md"
+        sop_path.write_text("   \n\n  ")
+        payload = entities.startup_payload("agent")
+        assert "## Standard Operating Procedures" not in payload
+
+    def test_sop_section_omitted_when_absent(self, entities, temp_project):
+        """Payload does NOT include SOP section when wiki/SOP.md does not exist."""
+        # Create entity manually without SOP.md
+        entity_dir = temp_project / ".entities" / "no_sop"
+        wiki_dir = entity_dir / "wiki"
+        wiki_dir.mkdir(parents=True)
+        (entity_dir / "identity.md").write_text("---\nrole: null\n---\nIdentity.\n")
+        for tier in ["core", "consolidated", "journal"]:
+            (entity_dir / "memories" / tier).mkdir(parents=True)
+        # wiki/SOP.md intentionally not created
+        payload = entities.startup_payload("no_sop")
+        assert "## Standard Operating Procedures" not in payload
+
+    def test_active_state_section_removed(self, entities, temp_project):
+        """Payload no longer contains the old hardcoded Active State section."""
+        self._make_wiki_entity(entities)
+        payload = entities.startup_payload("agent")
+        assert "## Active State" not in payload
+        assert "restart them now" not in payload
+
+
+class TestCreateEntitySOP:
+    """Tests for SOP.md creation in create_entity()."""
+
+    def test_create_entity_creates_sop_md(self, entities, temp_project):
+        """create_entity creates wiki/SOP.md in the entity directory."""
+        entities.create_entity("agent")
+        sop_path = temp_project / ".entities" / "agent" / "wiki" / "SOP.md"
+        assert sop_path.is_file(), "wiki/SOP.md should exist after create_entity()"

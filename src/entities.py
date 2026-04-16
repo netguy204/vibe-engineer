@@ -157,6 +157,11 @@ class Entities:
             )
             output_path.write_text(content)
 
+        # Chunk: docs/chunks/entity_sop_file - SOP file for role-specific startup procedures
+        (wiki_dir / "SOP.md").write_text(
+            render_template("entity", "wiki/SOP.md.jinja2", created=created)
+        )
+
         return entity_path
 
     def parse_identity(self, name: str) -> EntityIdentity | None:
@@ -440,14 +445,14 @@ class Entities:
         )
         sections.append("")
 
-        # --- Active State Reminders ---
-        sections.append("## Active State")
-        sections.append("")
-        sections.append(
-            "If you were previously watching channels or had pending async "
-            "operations, restart them now."
-        )
-        sections.append("")
+        # Chunk: docs/chunks/entity_sop_file - SOP section replaces hardcoded Active State
+        # --- Standard Operating Procedures ---
+        sop_content = self._sop_content(name)
+        if sop_content:
+            sections.append("## Standard Operating Procedures")
+            sections.append("")
+            sections.append(sop_content)
+            sections.append("")
 
         return "\n".join(sections)
 
@@ -479,6 +484,22 @@ class Entities:
         if not schema_path.exists():
             return ""
         return schema_path.read_text().strip()
+
+    # Chunk: docs/chunks/entity_sop_file - Load SOP.md into startup payload
+    def _sop_content(self, name: str) -> str:
+        """Read wiki/SOP.md and return its full text, or empty string if absent or empty.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            Full text of wiki/SOP.md, stripped, or empty string if the file
+            does not exist or contains only whitespace.
+        """
+        sop_path = self.entity_dir(name) / "wiki" / "SOP.md"
+        if not sop_path.exists():
+            return ""
+        return sop_path.read_text().strip()
 
     # Chunk: docs/chunks/entity_startup_skill - Helper to extract markdown body content after frontmatter for identity loading
     def _read_body(self, file_path: Path) -> str:
