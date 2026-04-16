@@ -5,7 +5,15 @@ parent_chunk: null
 code_paths:
 - src/entity_from_transcript.py
 - src/entity_migration.py
-code_references: []
+code_references:
+  - ref: src/entity_from_transcript.py#_wiki_creation_prompt
+    implements: "Strengthened first-transcript wiki construction with compounding-artifact framing, adversity emphasis, and explicit post-construction lint pass"
+  - ref: src/entity_from_transcript.py#_wiki_update_prompt
+    implements: "Strengthened subsequent-transcript incremental wiki update with compounding framing, cross-reference reinforcement, and explicit lint operation"
+  - ref: src/entity_migration.py#_IDENTITY_SYNTHESIS_PROMPT
+    implements: "Strengthened identity page synthesis to produce structured content with cross-references matching LLM Wiki quality bar"
+  - ref: src/entity_migration.py#_KNOWLEDGE_PAGES_PROMPT
+    implements: "Strengthened knowledge page synthesis to group legacy memories into coherent domain/technique pages with cross-references and post-synthesis lint pass"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
