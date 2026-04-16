@@ -660,6 +660,68 @@ def migrate(
     click.echo(f"  Unclassified:       {result.unclassified_count} (review manually)")
 
 
+# Chunk: docs/chunks/entity_ingest_transcript - Wiki-aware transcript ingest CLI
+@entity.command("ingest-transcript")
+@click.argument("name")
+@click.argument("jsonl_paths", nargs=-1, required=True, type=click.Path(path_type=pathlib.Path))
+@click.option(
+    "--project-context",
+    default=None,
+    help="Context about the project the transcripts came from",
+)
+@click.option(
+    "--skip-consolidation",
+    is_flag=True,
+    default=False,
+    help="Update wiki only, skip memory consolidation (useful for batch imports)",
+)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=None,
+)
+def ingest_transcript(
+    name: str,
+    jsonl_paths: tuple[pathlib.Path, ...],
+    project_context: str | None,
+    skip_consolidation: bool,
+    project_dir: pathlib.Path | None,
+) -> None:
+    """Ingest session transcripts into an existing wiki-based entity.
+
+    NAME is the entity identifier.
+    JSONL_PATHS are Claude Code session transcript files, processed in order.
+
+    Unlike 've entity ingest' (episodic-only), this command updates the entity's
+    wiki and runs the full consolidation pipeline for each transcript — as if the
+    entity had been active during those sessions.
+
+    Use --skip-consolidation to update the wiki without running memory
+    consolidation (useful when batch-importing many transcripts; run
+    've entity shutdown' afterwards to consolidate once).
+    """
+    import entity_from_transcript as _eft
+
+    project_dir = resolve_entity_project_dir(project_dir)
+
+    try:
+        result = _eft.ingest_transcripts_into_entity(
+            name=name,
+            jsonl_paths=list(jsonl_paths),
+            project_dir=project_dir,
+            project_context=project_context,
+            skip_consolidation=skip_consolidation,
+        )
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Ingested {result.transcripts_processed} transcript(s) into entity '{result.entity_name}':")
+    click.echo(f"  Sessions archived: {result.sessions_archived}")
+    click.echo(f"  Wiki pages total:  {result.wiki_pages_total}")
+    if skip_consolidation:
+        click.echo("  Note: consolidation skipped — run 've entity shutdown' to consolidate.")
+
+
 # Chunk: docs/chunks/entity_from_transcript - from-transcript CLI command
 @entity.command("from-transcript")
 @click.argument("name")
