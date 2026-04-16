@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -7,7 +7,21 @@ code_paths:
 - src/templates/commands/entity-startup.md.jinja2
 - src/templates/entity/wiki_schema.md.jinja2
 - src/templates/entity/wiki/SOP.md.jinja2
-code_references: []
+code_references:
+  - ref: src/entities.py#Entities::_sop_content
+    implements: "Read wiki/SOP.md and return its text, or empty string if absent or empty"
+  - ref: src/entities.py#Entities::startup_payload
+    implements: "Include SOP.md content in startup payload under ## Standard Operating Procedures, omit section when empty/absent"
+  - ref: src/entities.py#Entities::create_entity
+    implements: "Render and write wiki/SOP.md from template during entity creation"
+  - ref: src/entity_repo.py#create_entity_repo
+    implements: "Render and write wiki/SOP.md from template during entity repo creation"
+  - ref: src/templates/entity/wiki/SOP.md.jinja2
+    implements: "Empty-default SOP.md template with placeholder comment for role-specific startup procedures"
+  - ref: src/templates/entity/wiki_schema.md.jinja2
+    implements: "Document SOP.md in wiki directory structure and What Goes Where sections"
+  - ref: src/templates/commands/entity-startup.md.jinja2
+    implements: "Replace Active State guidance with SOP.md-aware startup instructions"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
