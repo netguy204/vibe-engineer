@@ -1,20 +1,30 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/entity.py
-  - src/entity_from_transcript.py
-code_references: []
+- src/cli/entity.py
+- src/entity_from_transcript.py
+code_references:
+- ref: src/entity_from_transcript.py#IngestTranscriptResult
+  implements: "Result dataclass summarizing transcripts processed, sessions archived, and wiki pages after ingest"
+- ref: src/entity_from_transcript.py#ingest_transcripts_into_entity
+  implements: "Public function that validates entity is wiki-based, determines session numbering, and processes each transcript through the incremental wiki update + consolidation pipeline"
+- ref: src/entity_from_transcript.py#_process_subsequent_transcript
+  implements: "Core incremental update function extended with skip_consolidation parameter to optionally bypass the wiki diff consolidation step"
+- ref: src/cli/entity.py#ingest_transcript
+  implements: "CLI command 've entity ingest-transcript <name> <jsonl-paths...>' wiring the public ingest function with --project-context, --skip-consolidation, and --project-dir flags"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["entity_from_transcript", "entity_shutdown_wiki"]
-created_after: ["board_watch_reconnect_fix"]
+depends_on:
+- entity_from_transcript
+- entity_shutdown_wiki
+created_after:
+- board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal

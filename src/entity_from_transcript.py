@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from entities import Entities
 from entity_repo import ENTITY_REPO_NAME_PATTERN, _run_git, create_entity_repo
 from entity_shutdown import _build_consolidation_prompt, _run_consolidation_agent
 from entity_transcript import SessionTranscript, is_substantive_turn, parse_session_jsonl
@@ -42,6 +43,18 @@ class FromTranscriptResult:
     transcripts_processed: int
     wiki_pages_written: int   # approximate: count of *.md files under wiki/
     sessions_archived: int
+
+
+# Chunk: docs/chunks/entity_ingest_transcript - Ingest transcripts into existing entity
+@dataclass
+class IngestTranscriptResult:
+    """Result of an ingest_transcripts_into_entity call."""
+
+    entity_name: str
+    entity_path: Path
+    transcripts_processed: int
+    sessions_archived: int
+    wiki_pages_total: int   # count of *.md files under wiki/ after processing
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +265,7 @@ def _process_subsequent_transcript(
     jsonl_path: Path,
     session_n: int,
     project_context: str | None,
+    skip_consolidation: bool = False,
 ) -> None:
     """Process a subsequent transcript: update wiki, consolidate, archive.
 
@@ -306,8 +320,8 @@ def _process_subsequent_transcript(
         f"Session {session_n}: wiki update from transcript",
     )
 
-    # 7. Consolidation (if wiki changed)
-    if wiki_diff.strip():
+    # 7. Consolidation (if wiki changed and not skipped)
+    if wiki_diff.strip() and not skip_consolidation:
         consolidation_prompt = _build_consolidation_prompt(entity_name, wiki_diff)
         asyncio.run(_run_consolidation_agent(entity_dir, consolidation_prompt))
 
@@ -406,4 +420,97 @@ def create_entity_from_transcript(
         transcripts_processed=len(jsonl_paths),
         wiki_pages_written=wiki_pages,
         sessions_archived=len(jsonl_paths),
+    )
+
+
+# Chunk: docs/chunks/entity_ingest_transcript - Ingest transcripts into existing entity
+def ingest_transcripts_into_entity(
+    name: str,
+    jsonl_paths: list[Path],
+    project_dir: Path,
+    project_context: str | None = None,
+    skip_consolidation: bool = False,
+) -> IngestTranscriptResult:
+    """Ingest session transcripts into an existing wiki-based entity.
+
+    Processes each transcript through the incremental update pipeline:
+    wiki update → diff → consolidation (unless skipped) → archive → commit.
+
+    This is the wiki-aware counterpart to `ve entity ingest` (which only
+    archives transcripts for episodic search).  Use this command to
+    retroactively import productive sessions into an entity that already exists.
+
+    Args:
+        name: Entity identifier (must already exist under project_dir/.entities/).
+        jsonl_paths: One or more Claude Code session JSONL files, processed in order.
+        project_dir: Project root containing .entities/<name>/.
+        project_context: Optional description of the project these transcripts came from.
+        skip_consolidation: If True, update wiki only, skip memory consolidation.
+            Useful when batch-importing many transcripts; run `ve entity shutdown`
+            afterwards to consolidate once.
+
+    Returns:
+        IngestTranscriptResult with summary of what was processed.
+
+    Raises:
+        FileNotFoundError: If any path in jsonl_paths does not exist.
+        RuntimeError: If claude_agent_sdk is not installed or an Agent SDK session fails.
+        ValueError: If the entity does not exist or is not wiki-based.
+    """
+    # 1. Validate all JSONL paths exist
+    for path in jsonl_paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Transcript file not found: {path}")
+
+    # 2. Validate Agent SDK is available
+    if ClaudeSDKClient is None:
+        raise RuntimeError(
+            "The 'claude_agent_sdk' package is required for transcript ingestion. "
+            "Install it with: pip install claude-agent-sdk"
+        )
+
+    # 3. Resolve entity directory
+    entities = Entities(project_dir)
+
+    # 4. Validate entity exists
+    if not entities.entity_exists(name):
+        raise ValueError(f"Entity '{name}' not found")
+
+    # 5. Validate wiki-based format
+    if not entities.has_wiki(name):
+        raise ValueError(
+            f"Entity '{name}' has no wiki/ directory (legacy format). "
+            "Run 've entity migrate' to convert it to the wiki-based format first."
+        )
+
+    entity_dir = entities.entity_dir(name)
+
+    # 6. Determine starting session_n by counting existing archived JSONL files
+    episodic_dir = entity_dir / "episodic"
+    existing_count = len(list(episodic_dir.glob("*.jsonl"))) if episodic_dir.exists() else 0
+    session_n = existing_count + 1
+
+    # 7. Process each transcript
+    for jsonl_path in jsonl_paths:
+        _process_subsequent_transcript(
+            entity_dir,
+            name,
+            jsonl_path,
+            session_n,
+            project_context,
+            skip_consolidation,
+        )
+        session_n += 1
+
+    # 8. Compute wiki page count
+    wiki_dir = entity_dir / "wiki"
+    wiki_pages_total = len(list(wiki_dir.glob("**/*.md"))) if wiki_dir.exists() else 0
+
+    # 9. Return result
+    return IngestTranscriptResult(
+        entity_name=name,
+        entity_path=entity_dir,
+        transcripts_processed=len(jsonl_paths),
+        sessions_archived=len(jsonl_paths),
+        wiki_pages_total=wiki_pages_total,
     )
