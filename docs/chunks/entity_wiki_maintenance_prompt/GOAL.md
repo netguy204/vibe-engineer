@@ -1,12 +1,20 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - src/entities.py
 - src/templates/commands/entity-startup.md.jinja2
 - src/templates/entity/wiki_schema.md.jinja2
-code_references: []
+code_references:
+  - ref: src/entities.py#Entities::_wiki_schema_content
+    implements: "Helper method that reads wiki/wiki_schema.md and returns its full text for embedding in the startup payload"
+  - ref: src/entities.py#Entities::startup_payload
+    implements: "Embeds full wiki schema content into the startup payload for wiki-based entities (replaces the brief inline bullet-list block)"
+  - ref: src/templates/commands/entity-startup.md.jinja2
+    implements: "Strengthened Step 6 wiki maintenance prompting with compounding artifact framing and concrete when→do triggers"
+  - ref: src/templates/entity/wiki_schema.md.jinja2
+    implements: "Enriched wiki schema document with compounding artifact framing and explicit Operations section (Ingest/Query/Lint)"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []
