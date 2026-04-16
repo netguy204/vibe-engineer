@@ -79,14 +79,38 @@ Or search across your wiki:
 
 ### Step 6: Commit to wiki maintenance
 
-If you are a wiki-maintaining entity, during this session:
+If you are a wiki-maintaining entity, read this carefully — it is the operating
+contract for how you work in this session.
 
-- Update wiki pages **as you work**, not afterward
-- When you learn something, update the relevant page immediately
-- Every session ends with a `wiki/log.md` entry
-- The full maintenance conventions are at `wiki/wiki_schema.md`
+**Your wiki is a persistent, compounding artifact.** Most agents rediscover
+knowledge from scratch each session. You don't. When you learn something, you
+integrate it here — not so you can retrieve it later (though you can), but so
+that future knowledge builds on current knowledge rather than replacing it.
 
-This is not a separate "note-taking" step — it is part of working.
+**The cross-references are the value.** A page that links to three related pages
+is worth more than three isolated pages. Connections compound. Orphaned pages
+decay. When you create or update a page, always ask: what other pages does this
+connect to? Add the wikilinks.
+
+**Concrete triggers — when X happens, do Y:**
+
+- New concept encountered → create or update a `wiki/domain/` page; add a wikilink from any related page
+- Technique applied → create or update a `wiki/techniques/` page
+- Something was wrong or surprising → update the relevant page **and** add to `wiki/identity.md` Hard-Won Lessons
+- Significant decision made → update the relevant `wiki/projects/` page
+- Session ends → add an entry to `wiki/log.md`
+- New page created → update `wiki/index.md` immediately
+
+**Adversity produces the most valuable content.** Failures, unexpected behaviors,
+corrected assumptions, and hard-won insights are what make your wiki valuable
+across sessions. Treat every failure as a wiki update trigger — not at the end of
+the session, but the moment it happens.
+
+**Reframe**: wiki maintenance is not a separate step. It is part of working. When
+you solve a problem, you've done half the work — filing the solution is the other half.
+
+Your wiki schema is in the startup payload above — it is your operational reference
+for this session.
 
 ### Step 7: Note the consolidated memory index
 

@@ -378,6 +378,8 @@ class Entities:
         # --- Wiki (wiki entities only) ---
         if self.has_wiki(name):
             wiki_index_content = self._wiki_index_content(name)
+            # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Embed full schema in payload
+            wiki_schema = self._wiki_schema_content(name)
             sections.append(f"## Wiki: {name}")
             sections.append("")
             sections.append(
@@ -389,32 +391,18 @@ class Entities:
                 sections.append(wiki_index_content)
                 sections.append("")
 
-            sections.append("## Wiki Maintenance Protocol")
+            sections.append("## Wiki Schema")
             sections.append("")
-            sections.append(
-                "Maintain your wiki **during the session, not after**. When you learn something, "
-                "update the relevant page immediately — the wiki is a natural byproduct of working."
-            )
-            sections.append("")
-            sections.append("Key triggers:")
-            sections.append(
-                "- New concept encountered → create/update `wiki/domain/` page"
-            )
-            sections.append(
-                "- Technique applied → create/update `wiki/techniques/` page"
-            )
-            sections.append(
-                "- Something was wrong → update relevant page + add to `wiki/identity.md` Hard-Won Lessons"
-            )
-            sections.append(
-                "- Significant decision made → update `wiki/projects/` page"
-            )
-            sections.append("- Session ends → add entry to `wiki/log.md`")
-            sections.append("- New page created → update `wiki/index.md`")
-            sections.append("")
-            sections.append(
-                "Full schema and conventions: `wiki/wiki_schema.md`"
-            )
+            if wiki_schema:
+                sections.append(wiki_schema)
+            else:
+                # Graceful fallback if wiki_schema.md is absent (e.g. manually constructed entity)
+                sections.append(
+                    "Maintain your wiki **during the session, not after**. When you learn something, "
+                    "update the relevant page immediately — the wiki is a natural byproduct of working."
+                )
+                sections.append("")
+                sections.append("Full schema and conventions: `wiki/wiki_schema.md`")
             sections.append("")
 
         # --- Consolidated Memory Index ---
@@ -476,6 +464,21 @@ class Entities:
         if not index_path.exists():
             return ""
         return index_path.read_text().strip()
+
+    # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Load full schema into startup payload
+    def _wiki_schema_content(self, name: str) -> str:
+        """Read wiki/wiki_schema.md and return its full text, or empty string if absent.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            Full text of wiki/wiki_schema.md, or empty string if the file does not exist.
+        """
+        schema_path = self.entity_dir(name) / "wiki" / "wiki_schema.md"
+        if not schema_path.exists():
+            return ""
+        return schema_path.read_text().strip()
 
     # Chunk: docs/chunks/entity_startup_skill - Helper to extract markdown body content after frontmatter for identity loading
     def _read_body(self, file_path: Path) -> str:

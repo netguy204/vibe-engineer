@@ -1,5 +1,3 @@
-{#- Chunk: docs/chunks/entity_wiki_schema - Wiki schema instruction document for entity self-maintenance -#}
-{#- Chunk: docs/chunks/entity_wiki_maintenance_prompt - Compounding artifact framing and Operations section -#}
 # Wiki Schema
 
 This document is the schema for your personal wiki — your persistent, compounding knowledge base.

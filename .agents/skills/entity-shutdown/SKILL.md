@@ -20,8 +20,11 @@ search for it - run it directly via Bash.
 ## Instructions
 
 
-Run the sleep cycle for a named entity. This extracts memory-worthy events from
-your current session and consolidates them into the entity's persistent memory.
+Run the sleep cycle for a named entity. This consolidates what was learned this
+session into the entity's persistent memory tiers.
+
+The exact steps depend on whether this is a **wiki-based entity** (has a `wiki/`
+directory) or a **legacy entity** (memory-only, no wiki).
 
 ### Step 1: Identify the entity
 
@@ -33,94 +36,104 @@ Verify the entity exists by running:
 ve entity list --project-dir .
 ```
 
-### Step 2: Extract memories from this session
+Check whether the entity is wiki-based:
+```bash
+ls .entities/<entity_name>/wiki 2>/dev/null && echo "wiki entity" || echo "legacy entity"
+```
+
+---
+
+## Wiki-based entities (have `wiki/` directory)
+
+For wiki entities, the shutdown pipeline uses Agent SDK to automatically diff
+the wiki and consolidate new knowledge. No manual memory extraction is needed.
+
+### Step 2 (wiki): Update the wiki
+
+During the session, you should have updated the wiki pages in
+`.entities/<entity_name>/wiki/` to reflect what was learned. If you haven't done
+so yet, update the relevant wiki pages now.
+
+Use git to check what changed:
+```bash
+git -C .entities/<entity_name> status
+```
+
+### Step 3 (wiki): Run the shutdown
+
+```bash
+ve entity shutdown <entity_name>
+```
+
+This command will:
+1. Diff the wiki/ changes since last commit
+2. Launch an Agent SDK session that reads existing memories and integrates new learning
+3. The agent writes updated memory files and commits them
+4. Report a summary of journals, consolidated, and core memory counts
+
+### Step 4 (wiki): Report results
+
+After the command completes, tell the operator:
+- How many wiki diff lines were processed (journals_added)
+- How many consolidated memories exist
+- How many core memories exist
+- Any notable changes to identity-level memories
+
+---
+
+## Legacy entities (no `wiki/` directory)
+
+For legacy entities, you extract memories manually from the session, then run
+the consolidation via the Anthropic API.
+
+### Step 2 (legacy): Extract memories from this session
 
 Review your entire conversation in this session. Identify moments worth
-REMEMBERING across session boundaries — things that would prevent the operator
-from having to retrain you.
+REMEMBERING across session boundaries.
 
 **Categories of memory-worthy events** (in priority order):
 
 1. **correction**: The operator corrected your behavior or approach.
-   Extract WHAT you were doing wrong and WHAT you should do instead.
-
-2. **skill**: You learned a workflow, procedure, or pattern through
-   interaction. Extract the skill as a reusable instruction.
-
-3. **domain**: The operator taught you something about the problem domain
-   — how entities relate, what distinctions matter, invariant rules.
-
-4. **confirmation**: The operator validated your approach. Extract what
-   was confirmed so you don't drift away from it.
-
-5. **coordination**: You learned something about how to coordinate with
-   other agents or async processes.
-
-6. **autonomy**: The operator calibrated when you should act vs ask,
-   take initiative vs wait.
+2. **skill**: You learned a workflow, procedure, or pattern.
+3. **domain**: The operator taught you something about the problem domain.
+4. **confirmation**: The operator validated your approach.
+5. **coordination**: You learned something about coordinating with other agents.
+6. **autonomy**: The operator calibrated when you should act vs ask.
 
 **For each memory, provide:**
 - **title**: 3-8 word summary
-- **content**: 1-3 sentences capturing what was learned (NOT what happened —
-  frame as knowledge/skill, not narrative)
-- **valence**: "positive" (something that worked), "negative" (something to avoid),
-  or "neutral" (factual knowledge)
+- **content**: 1-3 sentences (frame as knowledge/skill, not narrative)
+- **valence**: "positive" / "negative" / "neutral"
 - **category**: one of the categories above
-- **salience**: 1-5 (5 = critical skill you keep forgetting, 1 = minor detail)
+- **salience**: 1-5 (5 = critical)
 
-**Important guidelines:**
-- Extract the LESSON, not the story. "Always check PR state before acting on it"
-  not "On March 14th, the operator pointed out the PR was already merged."
-- Be specific enough to be actionable. "Use exact-match keys instead of prefix
-  matching" not "Be careful with matching."
-- If the operator explicitly says "remember this" or "update your SOP", that's
-  salience 5.
-- Confirmation memories are important too — they anchor what's working.
-- Aim for 5-20 memories per session. Not every message is memory-worthy.
-
-### Step 3: Write memories to a temp file
-
-Format the extracted memories as a JSON array and write to a temporary file:
+### Step 3 (legacy): Write memories to a temp file
 
 ```json
 [
   {
     "title": "Check PR state before acting",
-    "content": "Before taking action on a PR, always verify its current state. PRs may have been merged or closed while working on something else.",
+    "content": "Before taking action on a PR, always verify its current state.",
     "valence": "negative",
     "category": "correction",
     "salience": 4
-  },
-  {
-    "title": "Verification query after data reload",
-    "content": "After triggering a data reload, always run the verification query to confirm the new data looks correct before proceeding.",
-    "valence": "positive",
-    "category": "skill",
-    "salience": 3
   }
 ]
 ```
 
-Write this JSON to a temporary file (e.g., `/tmp/entity_memories.json`).
+Write this JSON to `/tmp/entity_memories.json`.
 
-### Step 4: Run the consolidation
+### Step 4 (legacy): Run the consolidation
 
 ```bash
 ve entity shutdown <entity_name> --memories-file /tmp/entity_memories.json
 ```
 
-This command will:
-1. Store each extracted memory as a journal entry (tier 0)
-2. Load existing consolidated (tier 1) and core (tier 2) memories
-3. Run incremental consolidation to merge new memories into existing tiers
-4. Write updated memory files to the entity's memory directory
-
-### Step 5: Report results
+### Step 5 (legacy): Report results
 
 After the command completes, tell the operator:
 - How many journal memories were extracted
 - How many consolidated memories were created/updated
 - How many core memories exist
-- Any notable promotions (journal → consolidated → core)
 
 Clean up the temporary file when done.

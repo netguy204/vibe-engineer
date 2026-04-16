@@ -1,11 +1,11 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/entities.py
-  - src/templates/commands/entity-startup.md.jinja2
-  - src/templates/entity/wiki_schema.md.jinja2
+- src/entities.py
+- src/templates/commands/entity-startup.md.jinja2
+- src/templates/entity/wiki_schema.md.jinja2
 code_references: []
 narrative: null
 investigation: entity_wiki_memory
@@ -13,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["board_watch_reconnect_fix"]
+created_after:
+- board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal

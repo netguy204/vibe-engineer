@@ -1138,17 +1138,17 @@ class TestStartupPayloadWiki:
         payload = entities.startup_payload("agent")
         assert "Sentinel wiki index content for testing." in payload
 
-    def test_wiki_payload_includes_maintenance_reminder(self, entities, temp_project):
-        """Payload contains a Wiki Maintenance Protocol heading."""
+    def test_wiki_payload_includes_wiki_schema_heading(self, entities, temp_project):
+        """Payload contains the Wiki Schema section heading."""
         self._make_wiki_entity(entities, temp_project)
         payload = entities.startup_payload("agent")
-        assert "Wiki Maintenance Protocol" in payload
+        assert "## Wiki Schema" in payload
 
-    def test_wiki_payload_references_wiki_schema(self, entities, temp_project):
-        """Payload mentions wiki/wiki_schema.md so the entity knows where the full schema is."""
+    def test_wiki_payload_embeds_wiki_schema(self, entities, temp_project):
+        """Payload embeds the full wiki schema content (not just a reference to it)."""
         self._make_wiki_entity(entities, temp_project)
         payload = entities.startup_payload("agent")
-        assert "wiki/wiki_schema.md" in payload
+        assert "## Wiki Schema" in payload
 
     def test_wiki_payload_section_order(self, entities, temp_project):
         """Core memories appear before wiki index, which appears before consolidated index."""
@@ -1169,5 +1169,39 @@ class TestStartupPayloadWiki:
         payload = entities.startup_payload("legacy")
 
         assert "## Wiki:" not in payload
-        assert "Wiki Maintenance Protocol" not in payload
+        assert "## Wiki Schema" not in payload
         assert "wiki/wiki_schema.md" not in payload
+
+
+class TestStartupPayloadWikiSchema:
+    """Tests that startup_payload() embeds the full wiki schema for wiki entities."""
+
+    def _make_wiki_entity(self, entities, name: str = "agent") -> None:
+        """Create a wiki entity (wiki_schema.md is rendered by create_entity)."""
+        entities.create_entity(name)
+
+    def _make_legacy_entity(self, entities, temp_project, name: str = "legacy") -> None:
+        """Create a legacy entity directory without wiki/."""
+        legacy_dir = temp_project / ".entities" / name
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "identity.md").write_text("---\nrole: null\n---\nLegacy identity.\n")
+        for tier in ["core", "consolidated", "journal"]:
+            (legacy_dir / "memories" / tier).mkdir(parents=True)
+
+    def test_wiki_entity_payload_includes_schema_heading(self, entities, temp_project):
+        """Payload for a wiki entity contains the wiki schema heading from wiki/wiki_schema.md."""
+        self._make_wiki_entity(entities)
+        payload = entities.startup_payload("agent")
+        assert "# Wiki Schema" in payload
+
+    def test_wiki_entity_payload_includes_schema_content(self, entities, temp_project):
+        """Payload for a wiki entity contains 'compounding artifact' from wiki/wiki_schema.md."""
+        self._make_wiki_entity(entities)
+        payload = entities.startup_payload("agent")
+        assert "compounding artifact" in payload
+
+    def test_legacy_entity_payload_excludes_schema_content(self, entities, temp_project):
+        """Payload for a legacy entity (no wiki/) does NOT contain the wiki schema heading."""
+        self._make_legacy_entity(entities, temp_project)
+        payload = entities.startup_payload("legacy")
+        assert "# Wiki Schema" not in payload

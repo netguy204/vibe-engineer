@@ -10,153 +10,146 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Three files change; all changes are self-contained with no new dependencies:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`src/entities.py`** — add `_wiki_schema_content()` helper (mirrors the existing `_wiki_index_content()` pattern), call it inside `startup_payload()` to embed the full schema text directly into the wiki section of the context payload. This eliminates the "go read this file later" gap for wiki entities.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **`src/templates/commands/entity-startup.md.jinja2`** — strengthen Step 6. The current step is brief and easy to skim past. Expand it to borrow the motivational framing from the LLM Wiki prompt: compounding artifact, cross-references as the primary value, concrete triggers, adversity as the richest source. The goal is that an entity reading Step 6 internalizes the *why*, not just the mechanics.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_wiki_maintenance_prompt/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **`src/templates/entity/wiki_schema.md.jinja2`** — enrich the schema document itself. The content is already good; it needs the compounding artifact framing at the top, and an explicit **Operations** section (Ingest / Query / Lint) borrowed from the LLM Wiki prompt. These operations give the entity a concrete vocabulary for self-directed wiki work rather than just reactive updates.
 
-## Subsystem Considerations
+Both template changes are pure prose edits — no new template variables, no rendering logic changes.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Following the project's TDD practice, tests for the `startup_payload()` changes are written first (Step 1) before the implementation (Step 2).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for `startup_payload()` schema inclusion
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add tests to `tests/test_entities.py` (in a new `TestStartupPayloadWikiSchema` class) that cover the two success criteria:
 
-Example:
+- **Wiki entity**: Call `startup_payload()` on an entity that has a `wiki/` directory. Assert that the returned payload contains a key phrase from `wiki/wiki_schema.md` — specifically, something that would only appear if the schema file content was loaded (e.g. the heading `# Wiki Schema` or the phrase `compounding artifact`). Use `entities.create_entity()` to set up the fixture; `create_entity()` already writes `wiki/wiki_schema.md` from the template.
 
-### Step 1: Define the SegmentHeader struct
+- **Legacy entity**: Call `startup_payload()` on an entity created without `wiki/` (manually remove the wiki dir after creation, or write a minimal entity by hand). Assert the payload does **not** contain the schema heading. This confirms the change is backward-compatible.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Run `uv run pytest tests/test_entities.py -k TestStartupPayloadWikiSchema` — both tests should **fail** at this point (schema content is not yet in the payload).
 
-Location: src/segment/format.rs
+### Step 2: Extend `startup_payload()` to load and embed the wiki schema
 
-### Step 2: Implement header serialization
+**File**: `src/entities.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. Add a new private helper method `_wiki_schema_content(name: str) -> str` directly below `_wiki_index_content`. It reads `wiki/wiki_schema.md` and returns its full text, or an empty string if the file is absent. Pattern is identical to `_wiki_index_content`:
 
-### Step 3: ...
+   ```python
+   # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Load full schema into startup payload
+   def _wiki_schema_content(self, name: str) -> str:
+       schema_path = self.entity_dir(name) / "wiki" / "wiki_schema.md"
+       if not schema_path.exists():
+           return ""
+       return schema_path.read_text().strip()
+   ```
 
----
+2. Inside `startup_payload()`, in the `if self.has_wiki(name):` branch (around line 379), replace the brief "Wiki Maintenance Protocol" block with the full schema content. The updated structure for the wiki section should be:
 
-**BACKREFERENCE COMMENTS**
+   ```
+   ## Wiki: <name>
+   <navigation hint about cat/grep>
+   <wiki/index.md content>
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+   ## Wiki Schema
+   <full wiki/wiki_schema.md content>
+   ```
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+   Drop the inline bullet-list triggers (they are now fully covered by the embedded schema). Keep the `Full schema` reference line only if the schema file fails to load (graceful fallback to the old brief block).
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+3. Add a backreference comment at the method call site:
+   ```python
+   # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Embed full schema in payload
+   ```
 
-Format (place immediately before the symbol):
+Run `uv run pytest tests/test_entities.py -k TestStartupPayloadWikiSchema` — both tests should now **pass**.
+
+Run the full test suite to confirm no regressions: `uv run pytest tests/`.
+
+### Step 3: Strengthen Step 6 in the startup skill template
+
+**File**: `src/templates/commands/entity-startup.md.jinja2`
+
+Replace the current Step 6 block (lines 73–82) with an expanded version that:
+
+- Opens with the **compounding artifact** frame: contrast "rediscovering knowledge each session" (RAG-style) with the wiki that accumulates and stays current.
+- States clearly that **the cross-references are the value** — connections between pages compound over time and degrade when orphaned.
+- Provides concrete **when → do** triggers (not just a list of nouns):
+  - New concept encountered → create/update `domain/` page, add wikilink from any related page
+  - Technique applied → create/update `techniques/` page
+  - Something was wrong or surprising → update the page **and** add to `identity.md` Hard-Won Lessons
+  - Significant decision made → update `projects/` page
+  - Session ends → add entry to `log.md`
+  - New page created → update `index.md` immediately
+- States that **adversity produces the most valuable content** — failures, surprises, corrections are the richest update triggers.
+- Reframes wiki maintenance as **part of working, not separate from it** — the schema is already loaded into the startup payload (not a separate read step).
+
+The schema is now embedded in the payload, so the closing line can simply reference "Your wiki schema is in the startup payload above — it is your operational reference for this session."
+
+### Step 4: Strengthen the wiki schema document template
+
+**File**: `src/templates/entity/wiki_schema.md.jinja2`
+
+Two additions to the existing well-structured document:
+
+**A. Add compounding-artifact framing at the top** (after the opening paragraph, before Directory Structure):
+
+```markdown
+## Why This Wiki Exists
+
+Most agents rediscover knowledge from scratch each session. This wiki is different:
+it is a **persistent, compounding artifact**. When you learn something, integrate it
+here — not so you can retrieve it later (though you can), but so that future knowledge
+builds on current knowledge rather than replacing it.
+
+**The cross-references are the value.** A page that links to three related pages is
+worth more than three isolated pages. Connections compound. Orphaned pages decay.
+Maintaining the links is not bookkeeping — it is the primary work of wiki maintenance.
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+**B. Add an explicit Operations section** (after Maintenance Workflow, before Index Maintenance):
+
+```markdown
+## Operations
+
+**Ingest.** When something new happens — a new concept, a failure, a decision —
+integrate it into the wiki. Read the relevant pages first, then update them with
+new knowledge positioned relative to what you already knew. A single event may
+touch 3–5 pages. Each update should include or update at least one wikilink.
+
+**Query.** When you need to recall something, read `index.md` first to find
+relevant pages, then drill in. Good answers discovered during query — comparisons,
+analyses, connections — should be filed back as new or updated pages.
+Explorations compound in the wiki just like ingested knowledge does.
+
+**Lint.** Periodically health-check your wiki:
+- Pages that reference a concept but lack a corresponding page → create the page
+- Pages with no inbound links (orphans) → link from related pages or `index.md`
+- Stale claims that later sessions have superseded → update or flag
+- Missing cross-references between clearly related pages → add the links
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 5: Verify the full test suite passes
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+```
+uv run pytest tests/
+```
 
-## Dependencies
+All tests should pass. Spot-check the startup payload manually with a test entity to confirm the schema content appears in output:
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+```
+uv run ve entity startup <any-wiki-entity>
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Payload size**: The full schema is ~150 lines. This was explicitly assessed as acceptable in the GOAL.md ("Keep the startup payload reasonable size — full schema is ~150 lines, this is fine"). No risk here.
+- **Template re-rendering**: The CLAUDE.md notes that rendered files must be regenerated with `ve init` after template edits. The startup skill template and wiki schema template are source files; run `uv run ve init` after editing them to verify rendering succeeds cleanly.
 
 ## Deviations
 
@@ -171,9 +164,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
