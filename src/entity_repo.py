@@ -391,13 +391,20 @@ def attach_entity(project_dir: Path, repo_url: str, name: str) -> Path:
     entities_dir = project_dir / ".entities"
     entities_dir.mkdir(exist_ok=True)
 
+    # Resolve relative local paths to absolute so git doesn't interpret them
+    # relative to the project's remote URL.
+    repo_url_resolved = repo_url
+    candidate = Path(repo_url).expanduser()
+    if candidate.exists() and candidate.is_dir():
+        repo_url_resolved = str(candidate.resolve())
+
     # Run git submodule add
     # Allow local file:// protocol (needed when repo_url is a local path)
     submodule_path = f".entities/{name}"
     try:
         _run_git(
             project_dir,
-            "submodule", "add", repo_url, submodule_path,
+            "submodule", "add", repo_url_resolved, submodule_path,
             extra_env={"GIT_CONFIG_COUNT": "1",
                        "GIT_CONFIG_KEY_0": "protocol.file.allow",
                        "GIT_CONFIG_VALUE_0": "always"},
