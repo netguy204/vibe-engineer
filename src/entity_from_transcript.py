@@ -105,31 +105,47 @@ def _wiki_creation_prompt(
     return f"""\
 You are constructing a wiki-based knowledge base for a new entity named '{entity_name}'.{role_section}{context_section}
 
-## Your task
+## What this wiki is
 
-A Claude Code session transcript has been written to `_transcript_incoming.txt`
-in this directory. Read it to understand the conversation, then construct a
-comprehensive wiki from the knowledge and patterns you discover.
+This wiki is a **compounding knowledge artifact**. Cross-references ARE the value —
+they are not decoration. A page in isolation is a note; a page connected to five
+other pages through wikilinks is knowledge. Every link you add now pays compound
+interest as the wiki grows across future sessions.
+
+You are not summarizing a conversation. You are **integrating the transcript's
+knowledge into a structured, interlinked wiki**. Apply the Ingest operation from
+`wiki/wiki_schema.md`: extract what this session taught, structure it into durable
+pages, and wire those pages together.
 
 ## Instructions
 
 1. Read `_transcript_incoming.txt` — the full session transcript.
-2. Read `wiki/wiki_schema.md` — the wiki page conventions and structure.
-3. Construct the wiki by writing these pages (write as many as warranted):
+2. Read `wiki/wiki_schema.md` — the wiki conventions, page types, and Ingest/Lint
+   operations that govern this wiki.
+3. Construct the wiki by writing pages (write as many as warranted):
    - `wiki/index.md` — catalog of all wiki pages
-   - `wiki/identity.md` — entity identity: role, working style, values, lessons learned
+   - `wiki/identity.md` — entity identity: role, working style, values, hard-won lessons
    - `wiki/log.md` — session log with this session as the first entry
    - `wiki/domain/` — domain knowledge pages (one file per concept/area)
    - `wiki/techniques/` — technique and procedure pages
    - `wiki/projects/` — project-specific knowledge pages
    - `wiki/relationships/` — relationship and collaboration pages
+4. **Lint pass** (not optional — this is part of construction, not cleanup):
+   - Any concept mentioned in a page that lacks its own page → create it
+   - Any page with no outbound `[[wikilinks]]` to related pages → add the links
+   - Any two pages that clearly relate to each other but don't link → connect them
+   - Verify that `wiki/index.md` includes every page written
 
 ## Quality bar
 
-- **Rich identity page**: capture role, working style, values, and lessons from this session
+- **Rich identity page**: role, working style, values, and lessons from this session
 - **Domain pages**: extract substantive knowledge, NOT just conversation summaries
 - **Technique pages**: concrete procedures and patterns that could be reused
-- **Cross-references**: link related pages using relative paths
+- **Cross-references are primary**: they make this a knowledge base rather than a
+  collection of notes — every page should link to related pages
+- **Adversity is the richest source material**: failures, surprises, corrections,
+  and unexpected behaviors from the transcript contain the most valuable knowledge —
+  flag these explicitly in domain pages and capture them in `identity.md` Hard-Won Lessons
 - **Follow wiki_schema.md conventions**: consistent frontmatter, headings, and structure
 
 ## Important
@@ -152,26 +168,47 @@ def _wiki_update_prompt(
     return f"""\
 You are updating the wiki for entity '{entity_name}' with learnings from session {session_n}.{context_section}
 
-## Your task
+## What this update is
 
-A new session transcript has been written to `_transcript_incoming.txt`.
-Read it, then update the wiki with new knowledge gained in this session.
+This transcript is **compounding** onto existing knowledge. The goal is not to
+add new pages alongside old ones — it is to **deepen existing understanding**,
+revise pages where new evidence changes the picture, and connect new knowledge
+to old knowledge via cross-references. Each session makes the wiki richer.
 
 ## Instructions
 
 1. Read `_transcript_incoming.txt` — the new session transcript.
 2. Read `wiki/index.md` — understand the existing wiki structure.
-3. Read and update relevant wiki pages with new knowledge:
-   - Update `wiki/identity.md` if new values/styles/lessons emerged
+3. Read and update relevant wiki pages:
+   - **Revise existing pages** where new session evidence deepens or changes
+     understanding (don't just append; rewrite relevant sections when the
+     new evidence improves on the old)
+   - **Cross-reference** between new pages/sections and existing pages they
+     relate to — add `[[wikilinks]]` in both directions where relevant
+   - **Note contradictions**: if new evidence conflicts with an existing claim,
+     update that page and resolve the contradiction (or flag it as open)
    - Update or create domain pages for new concepts covered
    - Update or create technique pages for new procedures learned
    - Append a new entry to `wiki/log.md` for session {session_n}
-   - Update `wiki/index.md` — add any new pages you created
+   - Update `wiki/index.md` for any new pages created
+4. **Identity evolution**: if the entity's self-model shifted during this session
+   (new values surfaced, existing assumptions corrected, working style changed),
+   update `wiki/identity.md` to reflect it. Identity evolution is as important
+   as domain knowledge.
+5. **Lint pass**:
+   - Any new concept from this session that lacks a page → create it
+   - Any existing page that needs an update given new context → update it
+   - Any cross-reference between a new page and an existing page that is
+     missing → add it in both pages
+   - Update `wiki/index.md` for any new pages
 
 ## Quality bar
 
-- **Integrate, don't just append**: update existing pages with refined understanding
-- **New pages only when genuinely new**: don't fragment knowledge across too many pages
+- **Compound, don't just append**: revise existing pages with refined understanding
+- **Adversity first**: failures and corrections from this session are the most
+  valuable content — update domain/technique pages and add to `identity.md`
+  Hard-Won Lessons if the lesson generalizes
+- **New pages only when genuinely new**: don't fragment knowledge into micro-pages
 - **Session log entry**: a concise 2-4 sentence summary of what was covered
 
 ## Important

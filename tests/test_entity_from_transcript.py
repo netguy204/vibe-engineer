@@ -13,6 +13,8 @@ import pytest
 
 from entity_from_transcript import (
     FromTranscriptResult,
+    _wiki_creation_prompt,
+    _wiki_update_prompt,
     create_entity_from_transcript,
     format_transcript_text,
 )
@@ -367,3 +369,59 @@ class TestCreateEntityMultiTranscript:
         )
         assert (result.entity_path / "episodic" / "s1.jsonl").exists()
         assert (result.entity_path / "episodic" / "s2.jsonl").exists()
+
+
+# ---------------------------------------------------------------------------
+# Wiki prompt content tests
+# ---------------------------------------------------------------------------
+
+
+class TestWikiPromptContent:
+    """Tests that wiki construction prompts include required framing.
+
+    These functions are pure string-returning functions — no mocking needed.
+    Tests call them with simple args and assert on the returned string content.
+    """
+
+    def test_creation_prompt_includes_compounding_framing(self) -> None:
+        """Creation prompt should include compounding-artifact framing."""
+        result = _wiki_creation_prompt("test-entity", None, None)
+        assert "compound" in result.lower()
+
+    def test_creation_prompt_includes_lint_step(self) -> None:
+        """Creation prompt should include an explicit lint operation."""
+        result = _wiki_creation_prompt("test-entity", None, None)
+        assert any(
+            kw in result.lower()
+            for kw in ("cross-reference", "orphan", "lint")
+        )
+
+    def test_creation_prompt_emphasizes_adversity(self) -> None:
+        """Creation prompt should frame adversity as the richest source material."""
+        result = _wiki_creation_prompt("test-entity", None, None)
+        assert any(
+            kw in result.lower()
+            for kw in ("adversity", "failure", "failures")
+        )
+
+    def test_update_prompt_includes_cross_reference_guidance(self) -> None:
+        """Update prompt should require connecting new knowledge to existing pages."""
+        result = _wiki_update_prompt("test-entity", 2, None)
+        assert "cross-reference" in result.lower()
+
+    def test_update_prompt_includes_lint_step(self) -> None:
+        """Update prompt should include an explicit lint operation."""
+        result = _wiki_update_prompt("test-entity", 2, None)
+        assert any(
+            kw in result.lower()
+            for kw in ("lint", "missing", "cross-reference")
+        )
+
+    def test_update_prompt_includes_identity_evolution(self) -> None:
+        """Update prompt should reference identity evolution across sessions."""
+        result = _wiki_update_prompt("test-entity", 2, None)
+        assert "identity.md" in result
+        assert any(
+            kw in result.lower()
+            for kw in ("evolved", "shifted", "update", "evolution")
+        )

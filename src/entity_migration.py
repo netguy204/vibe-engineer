@@ -375,10 +375,19 @@ updated: {updated_date}
 ```
 
 Requirements:
-- Use wikilinks `[[page_name]]` to reference concepts that should have their own pages.
-- Keep the page focused — distill the essence of the entity, not a dump of raw memories.
-- The "Hard-Won Lessons" section should capture failures, surprising discoveries, and corrected assumptions.
-- Synthesize and organize — do not simply list memories verbatim.
+- **Cross-references are essential**: use `[[page_name]]` wikilinks to reference
+  relevant domain, technique, and relationship pages. The identity page should
+  connect to the rest of the wiki, not stand in isolation. Every concept that
+  deserves its own page should be linked.
+- **Hard-Won Lessons is the most important section**: it captures what could only
+  be learned by doing — failures, surprises, corrected assumptions, moments where
+  the entity's model of the world turned out to be wrong. This is where the
+  entity's memory earns its value. Do not minimize or skip this section.
+- **Capture who the entity is, not just what it knows**: the best identity pages
+  synthesize memories into a coherent self-model with character — a narrative that
+  would read meaningfully to someone meeting this entity for the first time.
+  Core memories are raw material; this page should integrate them into identity.
+- Synthesize and organize — do not list memories verbatim.
 - Return ONLY the markdown content for identity.md. No extra explanation.
 """
 
@@ -459,8 +468,21 @@ a JSON array of objects. Each object must have:
 Page content requirements:
 - YAML frontmatter with `title`, `created: {created_date}`, `updated: {updated_date}`
 - Clear, focused content synthesizing related memories
-- Use wikilinks `[[page_name]]` for cross-references
-- Keep each page to one concept or closely related cluster
+- Use wikilinks `[[page_name]]` for cross-references — both within this batch
+  and to pages in other directories (e.g., `[[techniques/name]]`, `[[domain/name]]`)
+- **One concept per page**: if a concept appears in multiple memories, those
+  memories belong on the same page — do not fragment them into micro-pages
+
+Cross-reference requirements:
+- **Intra-batch links**: after drafting all pages, review them as a set. Any two
+  pages in this batch that relate to each other must link to each other. The
+  pages should form a connected subgraph, not an isolated list.
+- **Cross-directory links**: where a domain page references a concept that belongs
+  in a techniques page (or vice versa), add the wikilink even across directories.
+- **Cross-reference audit**: after generating all page content, review the full
+  set and add any missing cross-references before finalizing. Include a brief
+  comment in the JSON (as a trailing field "xref_audit") listing links you added
+  during the audit — or omit the field if no links were missing.
 
 If there are very few memories (1-3), it is fine to produce a single page.
 Return ONLY the JSON array. No other text.
@@ -470,7 +492,8 @@ Example output format:
 [
   {{
     "filename": "proving_model.md",
-    "content": "---\\ntitle: Proving Model\\ncreated: {created_date}\\nupdated: {updated_date}\\n---\\n\\n# Proving Model\\n\\n..."
+    "content": "---\\ntitle: Proving Model\\ncreated: {created_date}\\nupdated: {updated_date}\\n---\\n\\n# Proving Model\\n\\n...",
+    "xref_audit": "added [[heartbeat]] link in section 2"
   }}
 ]
 ```

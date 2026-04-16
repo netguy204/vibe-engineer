@@ -18,6 +18,8 @@ from entity_migration import (
     ClassifiedMemories,
     LegacyMemory,
     MigrationResult,
+    _IDENTITY_SYNTHESIS_PROMPT,
+    _KNOWLEDGE_PAGES_PROMPT,
     classify_memories,
     format_log_page,
     migrate_entity,
@@ -592,3 +594,36 @@ class TestMigrateEntityEdgeCases:
                 tmp_path / "output",
                 "valid-name",
             )
+
+
+# ---------------------------------------------------------------------------
+# TestMigrationPromptContent
+# ---------------------------------------------------------------------------
+
+
+class TestMigrationPromptContent:
+    """Tests that migration synthesis prompts include required framing.
+
+    The prompt constants are pure strings — no mocking needed.
+    """
+
+    def test_identity_prompt_includes_cross_reference_requirement(self) -> None:
+        """Identity synthesis prompt should require wikilinks to related pages."""
+        assert any(
+            kw in _IDENTITY_SYNTHESIS_PROMPT.lower()
+            for kw in ("wikilink", "cross-reference")
+        )
+
+    def test_identity_prompt_emphasizes_hard_won_lessons(self) -> None:
+        """Identity synthesis prompt should elevate Hard-Won Lessons section."""
+        assert any(
+            kw in _IDENTITY_SYNTHESIS_PROMPT.lower()
+            for kw in ("most important", "failures", "failure")
+        )
+
+    def test_knowledge_pages_prompt_includes_cross_reference_requirement(self) -> None:
+        """Knowledge pages prompt should require intra-batch cross-references."""
+        assert any(
+            kw in _KNOWLEDGE_PAGES_PROMPT.lower()
+            for kw in ("cross-reference", "wikilink")
+        )
