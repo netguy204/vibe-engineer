@@ -494,27 +494,40 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
             )
 
         if shutdown_method == "none":
-            # Strategy B: extract from archived transcript via API
-            from entity_shutdown import shutdown_from_transcript
-            from entity_transcript import parse_session_jsonl, resolve_session_jsonl_path
+            # Strategy B: wiki entities use run_shutdown (wiki diff + Agent SDK);
+            # legacy entities fall back to transcript extraction via Anthropic API.
+            from entity_shutdown import run_shutdown, shutdown_from_transcript
 
-            jsonl_path = resolve_session_jsonl_path(str(project_dir.resolve()), session_id)
-            if jsonl_path is not None:
-                transcript = parse_session_jsonl(jsonl_path)
+            if entities.has_wiki(entity_name):
                 try:
-                    shutdown_result = shutdown_from_transcript(
+                    click.echo("Running wiki-based shutdown...")
+                    shutdown_result = run_shutdown(
                         entity_name=entity_name,
-                        transcript=transcript,
                         project_dir=project_dir,
                     )
-                    shutdown_method = "transcript fallback"
+                    shutdown_method = "wiki consolidation"
                 except Exception as e:
-                    click.echo(f"Warning: transcript extraction failed: {e}", err=True)
+                    click.echo(f"Warning: wiki shutdown failed: {e}", err=True)
             else:
-                click.echo(
-                    "Warning: transcript not found; skipping memory extraction",
-                    err=True,
-                )
+                from entity_transcript import parse_session_jsonl, resolve_session_jsonl_path
+
+                jsonl_path = resolve_session_jsonl_path(str(project_dir.resolve()), session_id)
+                if jsonl_path is not None:
+                    transcript = parse_session_jsonl(jsonl_path)
+                    try:
+                        shutdown_result = shutdown_from_transcript(
+                            entity_name=entity_name,
+                            transcript=transcript,
+                            project_dir=project_dir,
+                        )
+                        shutdown_method = "transcript fallback"
+                    except Exception as e:
+                        click.echo(f"Warning: transcript extraction failed: {e}", err=True)
+                else:
+                    click.echo(
+                        "Warning: transcript not found; skipping memory extraction",
+                        err=True,
+                    )
 
     # --- Phase 5: Log session and print summary ---
     if session_id is not None:

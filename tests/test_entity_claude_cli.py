@@ -220,7 +220,7 @@ class TestTranscriptFallback:
     @patch("entity_shutdown.shutdown_from_transcript")
     @patch("entity_transcript.resolve_session_jsonl_path")
     @patch("entity_transcript.parse_session_jsonl")
-    def test_falls_back_to_transcript_extraction_on_resume_failure(
+    def test_wiki_entity_uses_wiki_shutdown_on_resume_failure(
         self,
         mock_parse,
         mock_resolve,
@@ -230,7 +230,7 @@ class TestTranscriptFallback:
         mock_popen,
         tmp_path,
     ):
-        """When resume returns non-zero, falls back to transcript extraction."""
+        """When resume fails for a wiki entity, uses wiki consolidation (not transcript)."""
         _setup_entity(tmp_path)
 
         session_id = "def-456-uuid"
@@ -246,18 +246,12 @@ class TestTranscriptFallback:
         mock_popen.side_effect = [main_proc, resume_proc]
         mock_archive.return_value = True
 
-        fake_jsonl_path = tmp_path / "fake.jsonl"
-        fake_jsonl_path.touch()
-        mock_resolve.return_value = fake_jsonl_path
-        mock_parse.return_value = MagicMock()
-        mock_shutdown_from_transcript.return_value = {
-            "journals_added": 3,
-            "journals_consolidated": 3,
-            "consolidated": 1,
-            "core": 0,
-        }
-
-        with patch("cli.entity._read_session_id_from_pid_file", return_value=session_id):
+        with patch("cli.entity._read_session_id_from_pid_file", return_value=session_id), \
+             patch("entity_shutdown.run_shutdown", return_value={
+                 "journals_added": 2,
+                 "consolidated": 1,
+                 "core": 0,
+             }) as mock_run_shutdown:
             runner = CliRunner()
             result = runner.invoke(cli, [
                 "entity", "claude",
@@ -266,8 +260,9 @@ class TestTranscriptFallback:
             ])
 
         assert result.exit_code == 0, f"exit={result.exit_code}\noutput={result.output}\nexc={result.exception}"
-        assert "Shutdown method:     transcript fallback" in result.output
-        mock_shutdown_from_transcript.assert_called_once()
+        assert "Shutdown method:     wiki consolidation" in result.output
+        mock_run_shutdown.assert_called_once()
+        mock_shutdown_from_transcript.assert_not_called()
 
     @patch("subprocess.Popen")
     @patch("entities.Entities.archive_transcript")
@@ -275,7 +270,7 @@ class TestTranscriptFallback:
     @patch("entity_shutdown.shutdown_from_transcript")
     @patch("entity_transcript.resolve_session_jsonl_path")
     @patch("entity_transcript.parse_session_jsonl")
-    def test_resume_timeout_triggers_fallback(
+    def test_resume_timeout_triggers_wiki_shutdown(
         self,
         mock_parse,
         mock_resolve,
@@ -285,7 +280,7 @@ class TestTranscriptFallback:
         mock_popen,
         tmp_path,
     ):
-        """When resume times out, kills process and falls back to transcript extraction."""
+        """When resume times out for wiki entity, kills process and uses wiki shutdown."""
         _setup_entity(tmp_path)
 
         session_id = "ghi-789-uuid"
@@ -305,18 +300,12 @@ class TestTranscriptFallback:
         mock_popen.side_effect = [main_proc, resume_proc]
         mock_archive.return_value = True
 
-        fake_jsonl_path = tmp_path / "fake.jsonl"
-        fake_jsonl_path.touch()
-        mock_resolve.return_value = fake_jsonl_path
-        mock_parse.return_value = MagicMock()
-        mock_shutdown_from_transcript.return_value = {
-            "journals_added": 2,
-            "journals_consolidated": 2,
-            "consolidated": 1,
-            "core": 0,
-        }
-
-        with patch("cli.entity._read_session_id_from_pid_file", return_value=session_id):
+        with patch("cli.entity._read_session_id_from_pid_file", return_value=session_id), \
+             patch("entity_shutdown.run_shutdown", return_value={
+                 "journals_added": 2,
+                 "consolidated": 1,
+                 "core": 0,
+             }) as mock_run_shutdown:
             runner = CliRunner()
             result = runner.invoke(cli, [
                 "entity", "claude",
@@ -327,6 +316,7 @@ class TestTranscriptFallback:
         assert result.exit_code == 0, f"exit={result.exit_code}\noutput={result.output}\nexc={result.exception}"
         # Resume process was killed
         resume_proc.kill.assert_called_once()
-        # Fallback used
-        assert "Shutdown method:     transcript fallback" in result.output
-        mock_shutdown_from_transcript.assert_called_once()
+        # Wiki shutdown used (not transcript fallback)
+        assert "Shutdown method:     wiki consolidation" in result.output
+        mock_run_shutdown.assert_called_once()
+        mock_shutdown_from_transcript.assert_not_called()

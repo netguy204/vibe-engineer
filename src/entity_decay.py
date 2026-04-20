@@ -17,7 +17,7 @@ out. The caller (run_consolidation) applies the decisions to disk.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from models.entity import DecayConfig, DecayEvent, MemoryFrontmatter, MemoryTier
@@ -60,6 +60,17 @@ def apply_decay(
     """
     result = DecayResult()
 
+    # Ensure current_cycle is timezone-aware for safe datetime subtraction
+    if current_cycle.tzinfo is None:
+        current_cycle = current_cycle.replace(tzinfo=timezone.utc)
+
+    def _days_since_reinforced(fm: MemoryFrontmatter) -> int:
+        """Compute days since last reinforcement, handling naive datetimes."""
+        lr = fm.last_reinforced
+        if lr.tzinfo is None:
+            lr = lr.replace(tzinfo=timezone.utc)
+        return (current_cycle - lr).days
+
     # Partition by tier for processing
     tier0: list[tuple[MemoryFrontmatter, str, Path]] = []
     tier1: list[tuple[MemoryFrontmatter, str, Path]] = []
@@ -78,7 +89,7 @@ def apply_decay(
 
     # Tier 0: expire after tier0_expiry_cycles days without reinforcement
     for fm, content, path in tier0:
-        days_since = (current_cycle - fm.last_reinforced).days
+        days_since = _days_since_reinforced(fm)
         if days_since >= config.tier0_expiry_cycles:
             result.expirations.append((fm, content, path))
             result.events.append(
@@ -97,7 +108,7 @@ def apply_decay(
 
     # Tier 1: reduce salience at half the decay threshold, expire at full threshold
     for fm, content, path in tier1:
-        days_since = (current_cycle - fm.last_reinforced).days
+        days_since = _days_since_reinforced(fm)
         if days_since >= config.tier1_decay_cycles:
             result.expirations.append((fm, content, path))
             result.events.append(
@@ -137,7 +148,7 @@ def apply_decay(
     # Tier 2: demote to tier 1 after tier2_demote_cycles without reinforcement
     surviving_tier2: list[tuple[MemoryFrontmatter, str, Path]] = []
     for fm, content, path in tier2:
-        days_since = (current_cycle - fm.last_reinforced).days
+        days_since = _days_since_reinforced(fm)
         if days_since >= config.tier2_demote_cycles:
             demoted_fm = fm.model_copy(update={"tier": MemoryTier.CONSOLIDATED})
             result.demotions.append((demoted_fm, content, path, MemoryTier.CONSOLIDATED))
