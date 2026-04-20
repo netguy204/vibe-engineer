@@ -11,9 +11,9 @@ code_paths:
 - tests/test_entities.py
 code_references:
 - ref: src/templates/entity/wiki_schema.md.jinja2
-  implements: "Wiki schema instruction document — the CLAUDE.md for the wiki, describing directory structure, page conventions, and maintenance workflow"
+  implements: "Wiki schema instruction document — the CLAUDE.md for the wiki, describing directory structure, page conventions, maintenance workflow, Decision Rubric for routing findings to the correct wiki section, Operations (Ingest/Query/Lint), Identity.md Health Check, and Page Operations table"
 - ref: src/templates/entity/wiki/identity.md.jinja2
-  implements: "Initial identity page template for entity wiki (role, working style, values, hard-won lessons)"
+  implements: "Initial identity page template for entity wiki (role, working style, values, hard-won lessons with routing guidance: principle-level entries that survive codebase changes, each ending with a See: link to mechanics pages)"
 - ref: src/templates/entity/wiki/index.md.jinja2
   implements: "Initial index page template for entity wiki (content catalog with category tables and wikilinks)"
 - ref: src/templates/entity/wiki/log.md.jinja2
