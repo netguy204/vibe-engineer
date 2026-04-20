@@ -1,5 +1,5 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: entity_wiki_maintenance_prompt
 code_paths:
@@ -12,9 +12,22 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["entity_attach_detach", "entity_creation_wiki_prompts", "entity_fork_merge", "entity_from_transcript", "entity_ingest_transcript", "entity_memory_migration", "entity_push_pull", "entity_repo_structure", "entity_shutdown_wiki", "entity_sop_file", "entity_startup_wiki", "entity_wiki_maintenance_prompt", "entity_wiki_schema", "entity_worktree_support"]
+created_after:
+- entity_attach_detach
+- entity_creation_wiki_prompts
+- entity_fork_merge
+- entity_from_transcript
+- entity_ingest_transcript
+- entity_memory_migration
+- entity_push_pull
+- entity_repo_structure
+- entity_shutdown_wiki
+- entity_sop_file
+- entity_startup_wiki
+- entity_wiki_maintenance_prompt
+- entity_wiki_schema
+- entity_worktree_support
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
