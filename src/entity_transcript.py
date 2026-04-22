@@ -247,7 +247,8 @@ def resolve_session_jsonl_path(project_path: str, session_id: str) -> Path | Non
         return match
 
     # 2. Fall back to Claude Code's location
-    encoded = "-" + project_path.strip("/").replace("/", "-")
+    # Chunk: docs/chunks/transcript_dot_encoding_fix - Claude Code encodes both '/' and '.' as '-'
+    encoded = "-" + project_path.strip("/").replace("/", "-").replace(".", "-")
     fallback = Path.home() / ".claude" / "projects" / encoded / f"{session_id}.jsonl"
     if fallback.exists():
         return fallback

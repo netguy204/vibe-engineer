@@ -362,7 +362,8 @@ def _find_most_recent_session(
     """
     if claude_home is None:
         claude_home = pathlib.Path.home() / ".claude"
-    encoded = "-" + project_path.strip("/").replace("/", "-")
+    # Chunk: docs/chunks/transcript_dot_encoding_fix - Claude Code encodes both '/' and '.' as '-'
+    encoded = "-" + project_path.strip("/").replace("/", "-").replace(".", "-")
     sessions_dir = claude_home / "projects" / encoded
     if not sessions_dir.exists():
         return None

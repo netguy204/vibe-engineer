@@ -419,7 +419,7 @@ class TestResolveSessionJsonlPath:
         archived = entity_dir / "sess1.jsonl"
         archived.write_text("{}")
 
-        encoded = "-" + str(tmp_path).lstrip("/").replace("/", "-")
+        encoded = "-" + str(tmp_path).lstrip("/").replace("/", "-").replace(".", "-")
         claude_dir = fake_home / ".claude" / "projects" / encoded
         claude_dir.mkdir(parents=True)
         fallback = claude_dir / "sess1.jsonl"

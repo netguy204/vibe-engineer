@@ -768,8 +768,9 @@ class Entities:
         import shutil
 
         # Encode project_path to Claude Code's directory convention:
-        # replace every '/' with '-' (the leading '/' becomes the leading '-')
-        encoded = project_path.replace("/", "-")
+        # replace every '/' and '.' with '-' (the leading '/' becomes the leading '-')
+        # Chunk: docs/chunks/transcript_dot_encoding_fix - Claude Code encodes both '/' and '.' as '-'
+        encoded = project_path.replace("/", "-").replace(".", "-")
         if claude_home is None:
             claude_home = Path.home() / ".claude"
         source = claude_home / "projects" / encoded / f"{session_id}.jsonl"

@@ -904,7 +904,7 @@ class TestArchiveTranscript:
     def _make_fake_claude_home(self, tmp_path, project_path: str, session_id: str, content: str) -> "Path":
         """Create a fake ~/.claude directory tree with a transcript file."""
         from pathlib import Path
-        encoded = project_path.replace("/", "-")
+        encoded = project_path.replace("/", "-").replace(".", "-")
         source_dir = tmp_path / "claude_home" / "projects" / encoded
         source_dir.mkdir(parents=True)
         source_file = source_dir / f"{session_id}.jsonl"
@@ -975,6 +975,26 @@ class TestArchiveTranscript:
         assert result is True
         dest = temp_project / ".entities" / "agent" / "sessions" / f"{session_id}.jsonl"
         assert dest.read_text() == "transcript data\n"
+
+    def test_archive_handles_dot_in_project_path(self, entities, tmp_path, temp_project):
+        """archive_transcript encodes '.' as '-' in project paths (e.g. .entities/ dirs)."""
+        entities.create_entity("skippy")
+        project_path = "/Users/btaylor/Projects/world-model/.entities/skippy"
+        session_id = "dot-path-session"
+        transcript_content = '{"role": "user", "content": "dot test"}\n'
+
+        claude_home = self._make_fake_claude_home(
+            tmp_path, project_path, session_id, transcript_content
+        )
+
+        result = entities.archive_transcript(
+            "skippy", session_id, project_path, claude_home=claude_home
+        )
+
+        assert result is True
+        dest = temp_project / ".entities" / "skippy" / "sessions" / f"{session_id}.jsonl"
+        assert dest.exists()
+        assert dest.read_text() == transcript_content
 
     def test_sessions_dir_not_created_at_entity_creation(self, entities, temp_project):
         """The sessions/ directory is NOT created by create_entity."""
