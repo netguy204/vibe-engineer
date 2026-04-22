@@ -13,10 +13,16 @@ Supports two modes:
 2. Task context mode: Creates worktrees for multiple repos under .ve/chunks/<chunk>/work/<repo-name>/
 """
 
+import logging
+import os
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
+
+import psutil
 
 from orchestrator.git_utils import GitError, get_current_branch
 # Chunk: docs/chunks/worktree_merge_extract - Import from merge module and re-export for backward compatibility
@@ -30,6 +36,8 @@ if TYPE_CHECKING:
 
 # Re-export WorktreeError and is_merge_conflict_error for backward compatibility
 __all__ = ["WorktreeError", "WorktreeManager", "is_merge_conflict_error"]
+
+logger = logging.getLogger(__name__)
 
 
 class WorktreeManager:
@@ -757,6 +765,69 @@ class WorktreeManager:
             if link_path.is_symlink():
                 link_path.unlink()
 
+    # Chunk: docs/chunks/orch_worktree_process_reap - Kill stray child processes before worktree removal
+    def _reap_worktree_processes(self, worktree_path: Path) -> None:
+        """Terminate processes whose cwd or cmdline is inside worktree_path.
+
+        Sends SIGTERM first, waits up to 5 seconds, then SIGKILL for any
+        remaining processes.  All reaped PIDs are logged at WARNING level.
+
+        Args:
+            worktree_path: Absolute path to the worktree being removed.
+        """
+        worktree_str = str(worktree_path)
+        own_pid = os.getpid()
+        candidates: list[psutil.Process] = []
+
+        try:
+            for proc in psutil.process_iter(["pid", "cwd", "cmdline"]):
+                try:
+                    if proc.pid == own_pid:
+                        continue
+                    proc_cwd = proc.info.get("cwd") or ""
+                    proc_cmdline = proc.info.get("cmdline") or []
+                    in_cwd = proc_cwd.startswith(worktree_str)
+                    in_cmdline = any(worktree_str in arg for arg in proc_cmdline)
+                    if in_cwd or in_cmdline:
+                        candidates.append(proc)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+        except Exception as e:
+            logger.debug("psutil scan skipped: %s", e)
+            return
+
+        if not candidates:
+            return
+
+        pids = [p.pid for p in candidates]
+        logger.warning(
+            "Reaping %d process(es) in worktree %s: PIDs %s",
+            len(candidates),
+            worktree_path,
+            pids,
+        )
+
+        # Send SIGTERM to all candidates
+        for proc in candidates:
+            try:
+                proc.send_signal(signal.SIGTERM)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        # Grace period
+        time.sleep(5)
+
+        # SIGKILL any survivors
+        for proc in candidates:
+            try:
+                if proc.is_running():
+                    proc.send_signal(signal.SIGKILL)
+                    logger.warning(
+                        "PID %d did not exit after SIGTERM; sent SIGKILL", proc.pid
+                    )
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
     def _remove_worktree_from_repo(self, worktree_path: Path, repo_path: Path) -> None:
         """Remove a worktree from a repository.
 
@@ -764,6 +835,8 @@ class WorktreeManager:
             worktree_path: Path to the worktree to remove
             repo_path: Path to the repository that owns the worktree
         """
+        # Chunk: docs/chunks/orch_worktree_process_reap - Reap stray processes before removal
+        self._reap_worktree_processes(worktree_path)
         # Chunk: docs/chunks/orch_merge_safety - Unlock worktree before removal
         self._unlock_worktree(worktree_path, repo_path)
 

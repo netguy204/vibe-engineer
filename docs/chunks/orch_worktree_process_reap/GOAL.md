@@ -1,5 +1,5 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
@@ -13,9 +13,9 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["wiki_identity_routing"]
+created_after:
+- wiki_identity_routing
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
