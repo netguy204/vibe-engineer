@@ -200,6 +200,11 @@ too many leading dashes. The correct Claude Code convention is simply
 produces `-Users-btaylor-Projects-foo` as shown in the GOAL.md example. The test
 `test_archive_encoded_path_convention` caught this.
 
+Subsequently, the `transcript_dot_encoding_fix` chunk (docs/chunks/transcript_dot_encoding_fix)
+discovered that Claude Code also encodes `.` as `-`. The implementation was updated to
+`project_path.replace("/", "-").replace(".", "-")` to handle project paths containing dots
+(e.g. `/Users/btaylor/Projects/my.project` → `-Users-btaylor-Projects-my-project`).
+
 ### `claude_home` optional parameter added to `archive_transcript`
 
 As anticipated in the Risks section, `claude_home` was exposed as an optional
