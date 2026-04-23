@@ -1117,6 +1117,7 @@ class TestCreateEntityWiki:
         assert "YYYY-MM-DD" in content
 
 
+# Chunk: docs/chunks/entity_startup_wiki - Tests for has_wiki() covering wiki and legacy entity paths
 class TestHasWiki:
     """Tests for Entities.has_wiki()."""
 
@@ -1138,6 +1139,7 @@ class TestHasWiki:
         assert entities.has_wiki("legacy") is False
 
 
+# Chunk: docs/chunks/entity_startup_wiki - Tests for wiki startup payload: content, ordering, maintenance reminder, legacy backward compatibility
 class TestStartupPayloadWiki:
     """Tests for wiki-aware startup_payload()."""
 
