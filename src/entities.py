@@ -328,6 +328,7 @@ class Entities:
 
     # Chunk: docs/chunks/entity_startup_wiki - Wiki-aware startup payload
     # Chunk: docs/chunks/entity_startup_skill - Entity startup/wake payload
+    # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Embeds full wiki schema content into the startup payload
     def startup_payload(self, name: str) -> str:
         """Assemble the complete startup text payload for a named entity.
 
@@ -474,6 +475,7 @@ class Entities:
 
         return "\n".join(sections)
 
+    # Chunk: docs/chunks/entity_startup_wiki - Helper to read wiki/index.md for startup payload
     def _wiki_index_content(self, name: str) -> str:
         """Read wiki/index.md and return its full text, or empty string if absent.
 
