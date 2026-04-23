@@ -13,7 +13,7 @@ code_references:
 - ref: src/entity_shutdown.py#shutdown_from_transcript
   implements: "Full fallback shutdown pipeline: extract memories via API then run consolidation"
 - ref: tests/test_entity_shutdown.py
-  implements: "Tests for _format_transcript_text, extract_memories_from_transcript, and shutdown_from_transcript"
+  implements: "Tests for _format_transcript_text, extract_memories_from_transcript, and shutdown_from_transcript; module also covers strip_code_fences, parse_extracted_memories, format_consolidation_prompt, parse_consolidation_response, run_consolidation, wiki diff/consolidation, and timezone normalization regression tests (TestTimezoneNormalization, added by shutdown_tz_normalization)"
 narrative: null
 investigation: entity_session_harness
 subsystems: []
