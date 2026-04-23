@@ -1613,12 +1613,12 @@ def reindex_wiki(wiki_dir: Path, entity_name: str | None = None) -> WikiReindexR
 # Wiki lint helpers and main function
 # ---------------------------------------------------------------------------
 
-_WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+_LINT_WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 
 
 def _extract_wikilinks(content: str) -> list[str]:
     """Return all [[target]] link targets found in content."""
-    return _WIKILINK_RE.findall(content)
+    return _LINT_WIKILINK_RE.findall(content)
 
 
 def _resolve_wikilink(wiki_dir: Path, target: str) -> Path | None:
