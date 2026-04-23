@@ -93,6 +93,13 @@ offer sensible defaults where applicable.
      `board.toml`, present it as the default and let the operator confirm or
      override
 
+7. **Post-push deploy command** (optional) — A shell command to run after
+   `git push` completes. Leave blank if this project has no deploy step.
+   - Example: `cd workers/my-worker && npm run deploy`
+   - Example: `./scripts/deploy.sh`
+   - If provided, this command will be embedded in the steward's STEWARD.md
+     so the steward runs it automatically after each push.
+
 ### Write the SOP
 
 After collecting all answers, create `docs/trunk/STEWARD.md` with the following
@@ -153,11 +160,10 @@ When a message arrives:
    `git push` to publish the merged work to the remote before posting the
    changelog entry.
 
-6. **Deploy Durable Object worker** (conditional) — After pushing, check
-   whether the completed chunk's `code_paths` (in its GOAL.md frontmatter)
-   include files under `workers/`. If so, run
-   `cd workers/leader-board && npm run deploy` and verify it succeeds. If
-   the deploy fails, include the error in the changelog entry.
+6. **Deploy** (conditional) — If the operator provided a post-push deploy
+   command during setup, run it now and verify it succeeds. If the deploy
+   fails, include the error in the changelog entry. If no deploy command
+   was provided, skip this step.
 
 7. **Publish to changelog** — Write a concise summary of what was done and
    publish it to the changelog channel so the requester and any observers can
@@ -166,6 +172,11 @@ When a message arrives:
    - A stuck chunk is resolved (include what went wrong and how it was fixed)
    - A question is answered
 ```
+
+> **When writing the STEWARD.md**: If the operator provided a deploy command
+> in question 7, replace "run it now" in step 6 with the actual command.
+> If the operator left question 7 blank, omit step 6 entirely and renumber
+> step 7 to step 6.
 
 #### Queue mode suggested behavior section
 

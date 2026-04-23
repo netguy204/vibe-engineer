@@ -1,5 +1,5 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
@@ -11,9 +11,9 @@ subsystems: []
 friction_entries: []
 bug_type: implementation
 depends_on: []
-created_after: ["shutdown_tz_normalization"]
+created_after:
+- shutdown_tz_normalization
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

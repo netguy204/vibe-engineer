@@ -10,170 +10,113 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The fix lives entirely in `src/templates/commands/steward-setup.md.jinja2`. The
+autonomous mode behavior section is wrapped in `{% raw %}...{% endraw %}`, so
+its content is emitted verbatim as prose instructions to the agent that runs
+`/steward-setup`. The conditional deploy logic does not need Jinja2
+conditionals — instead, we update the prose to:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Add a new interview question asking for an optional post-push deploy command.
+2. Rewrite step 6 of the autonomous behavior template to be instruction-driven:
+   if the operator provided a command, include it; if not, omit the step
+   entirely.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+After editing the template, re-render with `uv run ve init` to regenerate
+`.claude/commands/steward-setup.md` and verify the hardcoded strings are gone.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/steward_setup_deploy_generic/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new Python code is needed — this is a template-only change. Testing is
+verification-by-inspection: confirm the rendered output no longer contains
+`workers/leader-board` or `npm run deploy`, and does contain the new interview
+question.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add interview question 7 for optional deploy command
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/templates/commands/steward-setup.md.jinja2`, inside the
+`### Interview the operator` section (which is inside `{% raw %}`), add a new
+question after the existing question 6 (Server URL):
 
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+7. **Post-push deploy command** (optional) — A shell command to run after
+   `git push` completes. Leave blank if this project has no deploy step.
+   - Example: `cd workers/my-worker && npm run deploy`
+   - Example: `./scripts/deploy.sh`
+   - If provided, this command will be embedded in the steward's STEWARD.md
+     so the steward runs it automatically after each push.
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 2: Rewrite step 6 of the autonomous mode behavior template
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Still inside `{% raw %}`, in the `#### Autonomous mode suggested behavior
+section`, replace the current step 6:
 
-## Dependencies
+**Before:**
+```
+6. **Deploy Durable Object worker** (conditional) — After pushing, check
+   whether the completed chunk's `code_paths` (in its GOAL.md frontmatter)
+   include files under `workers/`. If so, run
+   `cd workers/leader-board && npm run deploy` and verify it succeeds. If
+   the deploy fails, include the error in the changelog entry.
+```
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+**After:**
+```
+6. **Deploy** (conditional) — If the operator provided a post-push deploy
+   command during setup, run it now and verify it succeeds. If the deploy
+   fails, include the error in the changelog entry. If no deploy command
+   was provided, skip this step.
+```
 
-If there are no dependencies, delete this section.
--->
+Also update the instructions that follow the behavior template to tell the
+agent: when writing STEWARD.md, include step 6 only if the operator provided
+a deploy command; otherwise omit it and renumber step 7 to 6. The placeholder
+for the command in the generated STEWARD.md should use the operator-supplied
+value verbatim.
+
+Specifically, after the closing ` ``` ` of the autonomous mode behavior block,
+add a clarifying note:
+
+```
+> **When writing the STEWARD.md**: If the operator provided a deploy command
+> in question 7, replace "run it now" in step 6 with the actual command.
+> If the operator left question 7 blank, omit step 6 entirely and renumber
+> step 7 to step 6.
+```
+
+### Step 3: Re-render the command file
+
+Run:
+
+```
+uv run ve init
+```
+
+This regenerates `.claude/commands/steward-setup.md` from the updated template.
+
+### Step 4: Verify the rendered output
+
+Read `.claude/commands/steward-setup.md` and confirm:
+
+1. The strings `workers/leader-board` and `npm run deploy` are absent.
+2. The new interview question 7 (post-push deploy command) is present.
+3. Step 6 of the autonomous behavior template is the generic conditional form.
+4. The clarifying note about conditional inclusion is present.
+5. All other content is unchanged.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Existing STEWARD.md files**: The goal explicitly notes that
+  `leader-board`'s already-generated STEWARD.md is unaffected — this is
+  correct since we're only changing the generation template, not patching
+  existing files.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Renumbering**: If a deploy command is omitted, the agent writing STEWARD.md
+  must renumber step 7 → 6. The prose instructions handle this. The
+  clarifying note (Step 2 above) makes this explicit.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

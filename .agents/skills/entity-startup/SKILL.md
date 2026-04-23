@@ -13,6 +13,8 @@ Run `ve init` to regenerate.
 
 
 
+
+
 ## Tips
 
 - The ve command is an installed CLI tool, not a file in the repository. Do not
@@ -138,12 +140,20 @@ ve entity touch <name> <memory_id> <reason>
 ```
 
 This enables retrieval-as-reinforcement — the act of noticing you used a
-memory strengthens it. For example:
+memory strengthens it.
+
+The `memory_id` is whatever the `ID:` field shows next to each core memory in
+the startup payload above. The format varies by entity type:
 
 ```
+# Tiered-memory entity (timestamp-prefixed ID):
 ve entity touch aria 20260414_120742_089450_template_editing_workflow "Used template editing workflow to fix rendering issue"
+
+# Wiki-based entity (slug ID):
+ve entity touch aria trust-the-canonical-synthesis "Applied synthesis principle when resolving conflicting signals"
 ```
 
+{# Chunk: docs/chunks/touch_docs_wiki_ids - Touch Protocol examples cover both ID formats #}
 {# Chunk: docs/chunks/entity_episodic_skill - Step 9 episodic memory added to startup skill #}
 ### Step 9: Episodic memory
 
@@ -155,9 +165,10 @@ and decisions using episodic search:
 Use this when you need context about what happened in a prior session, not just
 the distilled lessons in your memory. Run /entity-episodic for detailed usage.
 
-### Step 10: Restore active state
+### Step 10: Follow your Standard Operating Procedures
 
-If the **Active State** section mentions channels you were watching or
-async operations that were pending, restart them now. This typically means
-re-running watch commands or resuming monitoring loops.
+If the startup payload contains a **Standard Operating Procedures** section,
+follow any startup actions it specifies. This is your role-specific checklist —
+it may tell you to run `/steward-watch`, resume a monitoring loop, or take other
+actions appropriate to your role. If SOP.md is empty, there is nothing to do here.
 
