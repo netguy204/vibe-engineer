@@ -1313,6 +1313,197 @@ def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
 
 
 # ---------------------------------------------------------------------------
+# Wiki reindex
+# ---------------------------------------------------------------------------
+
+# Chunk: docs/chunks/wiki_reindex_command - Result of wiki reindex operation
+@dataclass
+class WikiReindexResult:
+    pages_total: int          # total pages written to index
+    directories_scanned: int  # number of subdirectories scanned
+
+
+def _parse_existing_summaries(index_path: Path) -> dict[str, str]:
+    """Extract page→summary mapping from existing index.md.
+
+    Parses markdown table rows of the form:
+        | [[page_stem]] | summary text |
+    Returns a dict mapping page stem to summary string.
+    Returns empty dict if index doesn't exist or has no table rows.
+    """
+    if not index_path.exists():
+        return {}
+    summaries: dict[str, str] = {}
+    pattern = re.compile(r"\|\s*\[\[([^\]]+)\]\]\s*\|\s*(.*?)\s*\|")
+    for line in index_path.read_text().splitlines():
+        m = pattern.search(line)
+        if m:
+            stem, summary = m.group(1), m.group(2)
+            summaries[stem] = summary
+    return summaries
+
+
+def _scan_wiki_pages(wiki_dir: Path) -> dict[str, list[dict]]:
+    """Scan wiki directory and return pages grouped by section.
+
+    Returns:
+        {
+            "core": [{"stem": ..., "title": ..., "path": ...}, ...],
+            "domain": [...],
+            "techniques": [...],
+            "projects": [...],
+            "relationships": [...],
+        }
+    Keys always present; values are lists (may be empty).
+    """
+    import yaml as _yaml
+
+    _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+    _EXCLUDE_CORE = {"index.md", "wiki_schema.md", "SOP.md"}
+
+    def _get_title(md_path: Path) -> str:
+        try:
+            content = md_path.read_text()
+            m = _FRONTMATTER_RE.match(content)
+            if m:
+                data = _yaml.safe_load(m.group(1)) or {}
+                if isinstance(data, dict) and data.get("title"):
+                    return str(data["title"])
+        except Exception:
+            pass
+        return md_path.stem.replace("_", " ").title()
+
+    def _pages_in(directory: Path) -> list[dict]:
+        if not directory.is_dir():
+            return []
+        pages = []
+        for f in directory.glob("*.md"):
+            pages.append({"stem": f.stem, "title": _get_title(f), "path": f})
+        pages.sort(key=lambda p: p["title"].lower())
+        return pages
+
+    # Core pages: root-level .md files, excluding reserved names
+    core_pages = []
+    for f in wiki_dir.glob("*.md"):
+        if f.name not in _EXCLUDE_CORE:
+            core_pages.append({"stem": f.stem, "title": _get_title(f), "path": f})
+    core_pages.sort(key=lambda p: p["title"].lower())
+
+    return {
+        "core": core_pages,
+        "domain": _pages_in(wiki_dir / "domain"),
+        "techniques": _pages_in(wiki_dir / "techniques"),
+        "projects": _pages_in(wiki_dir / "projects"),
+        "relationships": _pages_in(wiki_dir / "relationships"),
+    }
+
+
+def _generate_index_md(
+    sections: dict[str, list[dict]],
+    summaries: dict[str, str],
+    entity_name: str,
+    created: str | None = None,
+) -> str:
+    """Render the full index.md content from scanned pages."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    fm_lines = [f"title: Wiki Index — {entity_name}", f"updated: {now_iso}"]
+    if created:
+        fm_lines.insert(1, f"created: {created}")
+    frontmatter = "---\n" + "\n".join(fm_lines) + "\n---"
+
+    def _table(pages: list[dict]) -> str:
+        lines = ["| Page | Summary |", "|------|---------|"]
+        for page in pages:
+            summary = summaries.get(page["stem"], "")
+            lines.append(f"| [[{page['stem']}]] | {summary} |")
+        return "\n".join(lines)
+
+    section_map = [
+        ("Core", sections["core"]),
+        ("Domain Knowledge", sections["domain"]),
+        ("Projects", sections["projects"]),
+        ("Techniques", sections["techniques"]),
+        ("Relationships", sections["relationships"]),
+    ]
+
+    parts = [
+        frontmatter,
+        "",
+        "# Wiki Index",
+        "",
+        f"Personal knowledge base for `{entity_name}`.",
+        "",
+        "<!-- Keep this index current. Every page you create should appear here. One-line summaries only. -->",
+        "",
+    ]
+
+    for heading, pages in section_map:
+        parts.append(f"## {heading}")
+        parts.append("")
+        parts.append(_table(pages))
+        parts.append("")
+
+    return "\n".join(parts)
+
+
+# Chunk: docs/chunks/wiki_reindex_command - Regenerate index.md from page frontmatter
+def reindex_wiki(wiki_dir: Path, entity_name: str | None = None) -> WikiReindexResult:
+    """Regenerate wiki/index.md from page frontmatter.
+
+    Scans all wiki pages, reads their frontmatter, and overwrites
+    index.md with a fresh table grouped by directory. Existing
+    summaries are preserved for pages that still exist.
+
+    Args:
+        wiki_dir: Path to the entity's wiki/ directory.
+        entity_name: Optional entity name for the index title.
+                     Falls back to wiki_dir.parent.name.
+
+    Raises:
+        FileNotFoundError: If wiki_dir does not exist.
+    """
+    import yaml as _yaml
+
+    if not wiki_dir.exists():
+        raise FileNotFoundError(f"Wiki directory not found: {wiki_dir}")
+
+    if entity_name is None:
+        entity_name = wiki_dir.parent.name
+
+    index_path = wiki_dir / "index.md"
+
+    # Preserve summaries and created date from existing index
+    summaries = _parse_existing_summaries(index_path)
+    created: str | None = None
+    if index_path.exists():
+        _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+        m = _FRONTMATTER_RE.match(index_path.read_text())
+        if m:
+            try:
+                data = _yaml.safe_load(m.group(1)) or {}
+                if isinstance(data, dict):
+                    created = data.get("created")
+                    if created is not None:
+                        created = str(created)
+            except Exception:
+                pass
+
+    sections = _scan_wiki_pages(wiki_dir)
+    content = _generate_index_md(sections, summaries, entity_name, created=created)
+    index_path.write_text(content)
+
+    pages_total = sum(len(v) for v in sections.values())
+    # Count subdirectories that exist (not counting core)
+    directories_scanned = sum(
+        1 for key in ("domain", "techniques", "projects", "relationships")
+        if (wiki_dir / key).is_dir()
+    )
+
+    return WikiReindexResult(pages_total=pages_total, directories_scanned=directories_scanned)
+
+
+# ---------------------------------------------------------------------------
 # Wiki lint helpers and main function
 # ---------------------------------------------------------------------------
 

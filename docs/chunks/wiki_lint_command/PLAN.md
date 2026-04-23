@@ -358,4 +358,10 @@ uv run pytest tests/ -x -q
 
 ## Deviations
 
-<!-- POPULATE DURING IMPLEMENTATION, not at planning time. -->
+### Deviation 1: lint command moved to src/cli/wiki.py (not entity.py)
+
+The original plan placed the `wiki` click group and `lint` subcommand in `src/cli/entity.py`. After review feedback (iteration 1), this was corrected: the `lint` subcommand was added to the existing `wiki` group in `src/cli/wiki.py` (established by the `wiki_reindex_command` chunk), keeping all wiki CLI commands in one dedicated module. The `wiki` group added to `entity.py` was removed, and `src/cli/__init__.py` was reverted to import `wiki` from `cli.wiki`.
+
+### Deviation 2: reindex_wiki added to entity_repo.py
+
+The merge into this worktree omitted `reindex_wiki`, `WikiReindexResult`, and related helpers from `entity_repo.py` (present in main from the `wiki_reindex_command` chunk). These were re-added to restore `ve wiki reindex` functionality, which `src/cli/wiki.py` depends on.
