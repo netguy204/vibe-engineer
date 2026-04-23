@@ -4,7 +4,7 @@
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Optional
 
@@ -60,6 +60,20 @@ class MemoryFrontmatter(BaseModel):
         default_factory=list,
         description="Titles of memories this was consolidated from (empty for tier 0)",
     )
+
+    # Chunk: docs/chunks/shutdown_tz_normalization - Normalize naive datetimes to UTC
+    @field_validator("last_reinforced", mode="after")
+    @classmethod
+    def normalize_last_reinforced_tz(cls, v: datetime) -> datetime:
+        """Ensure last_reinforced is always timezone-aware (UTC).
+
+        Memory files written by older code versions may omit timezone info.
+        Normalizing here prevents TypeError when subtracting or comparing
+        naive and aware datetimes during decay and consolidation.
+        """
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class EntityIdentity(BaseModel):

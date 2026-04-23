@@ -10,153 +10,87 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Fix at the model layer: add a Pydantic `field_validator` on
+`MemoryFrontmatter.last_reinforced` that normalizes naive datetimes to
+UTC-aware on construction. This ensures every caller — `entity_shutdown.py`,
+`entity_decay.py`, and any future consumer — always gets timezone-aware
+datetimes without per-call guards.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+`entity_decay.py` already has a per-call guard (`_days_since_reinforced`), but
+it doesn't cover the `surviving_tier2.sort(key=lambda m: m[0].last_reinforced)`
+comparison on line 172, which can also fail when mixing naive and aware
+datetimes. Fixing at the model layer covers all sites.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The model-layer fix is the canonical pattern here: constrain the type more
+strictly so invariants don't need to be re-asserted throughout the codebase.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/shutdown_tz_normalization/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Per `docs/trunk/TESTING_PHILOSOPHY.md`, tests are written first (TDD): write
+the failing tests, then write the fix, then verify the tests pass.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add two tests to `tests/test_entity_shutdown.py`:
 
-Example:
+**Test A — model-level validator:**
+- Construct `MemoryFrontmatter` with a naive `last_reinforced` datetime (no
+  `tzinfo`).
+- Assert that after construction `fm.last_reinforced.tzinfo` is not None (i.e.,
+  the validator normalized it to UTC).
+- This test verifies the validator's behavior directly.
 
-### Step 1: Define the SegmentHeader struct
+**Test B — full pipeline regression:**
+- Create a temp entity directory with existing consolidated memory files whose
+  YAML frontmatter contains naive ISO 8601 timestamps (e.g.,
+  `last_reinforced: "2026-01-01T10:00:00"`).
+- Also create a core memory file with a UTC-aware timestamp to confirm mixed
+  naive/aware handling works.
+- Mock the Anthropic API client (`anthropic.Anthropic`) to return a valid
+  consolidation response that includes both consolidated and core memories.
+- Call `run_consolidation(entity_name, extracted_json, project_dir)`.
+- Assert it returns the summary dict without raising `TypeError`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Both tests should **fail** before Step 2 because Pydantic parses
+`"2026-01-01T10:00:00"` as a naive datetime and no normalization is applied.
 
-Location: src/segment/format.rs
+### Step 2: Add Pydantic validator to `MemoryFrontmatter`
 
-### Step 2: Implement header serialization
+In `src/models/entity.py`:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. Add `timezone` to the `datetime` import: `from datetime import datetime, timezone`
+2. Add a `field_validator` on `last_reinforced` to the `MemoryFrontmatter` class:
 
-### Step 3: ...
+```python
+# Chunk: docs/chunks/shutdown_tz_normalization - Normalize naive datetimes to UTC
+@field_validator("last_reinforced", mode="after")
+@classmethod
+def normalize_last_reinforced_tz(cls, v: datetime) -> datetime:
+    """Ensure last_reinforced is always timezone-aware (UTC).
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Memory files written by older code versions may omit timezone info.
+    Normalizing here prevents TypeError when subtracting or comparing
+    naive and aware datetimes during decay and consolidation.
+    """
+    if v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+The `mode="after"` validator runs after Pydantic's built-in datetime parsing,
+so it receives a `datetime` object regardless of whether the input was a string
+or already a datetime.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Run tests and verify
 
-## Dependencies
+Run `uv run pytest tests/test_entity_shutdown.py -x` and confirm:
+- Test A (model-level) passes: validator normalizes naive datetimes.
+- Test B (pipeline regression) passes: `run_consolidation` no longer crashes.
+- All pre-existing entity shutdown tests still pass.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+### Step 4: Run the full test suite
 
-If there are no dependencies, delete this section.
--->
-
-## Risks and Open Questions
-
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+Run `uv run pytest tests/` and confirm all tests pass.
 
 ## Deviations
 
@@ -171,9 +105,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

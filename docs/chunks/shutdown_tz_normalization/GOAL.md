@@ -1,5 +1,5 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
@@ -14,9 +14,11 @@ subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["wiki_lint_command", "wiki_reindex_command", "wiki_rename_command"]
+created_after:
+- wiki_lint_command
+- wiki_reindex_command
+- wiki_rename_command
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

@@ -1575,3 +1575,160 @@ class TestRunShutdownDispatcher:
 
         with pytest.raises(ValueError, match="legacy entity"):
             run_shutdown("legacybot", tmp_path, extracted_memories_json=None)
+
+
+# ---------------------------------------------------------------------------
+# Timezone normalization regression tests
+# Chunk: docs/chunks/shutdown_tz_normalization
+# ---------------------------------------------------------------------------
+
+
+class TestTimezoneNormalization:
+    """Regression tests for mixed naive/aware datetime handling.
+
+    Long-running entities accumulate memory files written by different code
+    versions — some timestamps include timezone info, some do not. These tests
+    guard against TypeError when subtracting or comparing those datetimes.
+    """
+
+    def test_memory_frontmatter_normalizes_naive_last_reinforced(self):
+        """MemoryFrontmatter validator should convert naive datetimes to UTC-aware.
+
+        Constructing with a naive datetime (no tzinfo) should produce a
+        timezone-aware datetime on the model instance.
+        """
+        naive_dt = datetime(2026, 1, 1, 10, 0, 0)  # no tzinfo
+        assert naive_dt.tzinfo is None, "precondition: naive_dt must be naive"
+
+        fm = MemoryFrontmatter(
+            title="Test memory",
+            category=MemoryCategory.SKILL,
+            valence=MemoryValence.NEUTRAL,
+            salience=3,
+            tier=MemoryTier.CONSOLIDATED,
+            last_reinforced=naive_dt,
+            recurrence_count=1,
+            source_memories=[],
+        )
+
+        assert fm.last_reinforced.tzinfo is not None, (
+            "MemoryFrontmatter.last_reinforced should be timezone-aware after construction"
+        )
+        assert fm.last_reinforced == naive_dt.replace(tzinfo=timezone.utc)
+
+    def test_run_consolidation_succeeds_with_mixed_naive_aware_timestamps(self, tmp_path):
+        """run_consolidation should not raise TypeError with mixed naive/aware timestamps.
+
+        Simulates a long-running entity whose memory files were written by older
+        code versions (no timezone suffix in stored timestamps).
+        """
+        # Build entity directory with consolidated memory files using naive timestamps
+        entity_dir = tmp_path / ".entities" / "savings_instruments"
+        consolidated_dir = entity_dir / "memories" / "consolidated"
+        core_dir = entity_dir / "memories" / "core"
+        consolidated_dir.mkdir(parents=True)
+        core_dir.mkdir(parents=True)
+
+        # Write a consolidated memory with a NAIVE timestamp (old code path)
+        naive_memory_content = """\
+---
+title: Check balances before transferring
+category: skill
+valence: positive
+salience: 3
+tier: consolidated
+last_reinforced: "2026-01-15T10:00:00"
+recurrence_count: 2
+source_memories: []
+---
+Always verify account balances before initiating a transfer.
+"""
+        (consolidated_dir / "check-balances.md").write_text(naive_memory_content)
+
+        # Write a core memory with an AWARE timestamp (newer code path)
+        aware_memory_content = """\
+---
+title: Verify state before acting
+category: correction
+valence: negative
+salience: 5
+tier: core
+last_reinforced: "2026-03-20T14:00:00+00:00"
+recurrence_count: 5
+source_memories: []
+---
+Always verify current state before taking action on assumptions.
+"""
+        (core_dir / "verify-state.md").write_text(aware_memory_content)
+
+        # New journal memories to consolidate (none on disk yet)
+        extracted_json = json.dumps([
+            {
+                "title": "New skill learned",
+                "content": "A new skill was learned this session.",
+                "valence": "positive",
+                "category": "skill",
+                "salience": 3,
+            }
+        ])
+
+        # Build a valid API response for the consolidation step
+        api_response = json.dumps({
+            "consolidated": [
+                {
+                    "title": "Check balances before transferring",
+                    "content": "Always verify account balances before initiating a transfer.",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 3,
+                    "tier": "consolidated",
+                    "source_memories": [],
+                    "recurrence_count": 3,
+                    "last_reinforced": "2026-04-23T10:00:00+00:00",
+                },
+                {
+                    "title": "New skill learned",
+                    "content": "A new skill was learned this session.",
+                    "valence": "positive",
+                    "category": "skill",
+                    "salience": 3,
+                    "tier": "consolidated",
+                    "source_memories": ["New skill learned"],
+                    "recurrence_count": 1,
+                    "last_reinforced": "2026-04-23T10:00:00+00:00",
+                },
+            ],
+            "core": [
+                {
+                    "title": "Verify state before acting",
+                    "content": "Always verify current state before taking action on assumptions.",
+                    "valence": "negative",
+                    "category": "correction",
+                    "salience": 5,
+                    "tier": "core",
+                    "source_memories": [],
+                    "recurrence_count": 5,
+                    "last_reinforced": "2026-04-23T10:00:00+00:00",
+                }
+            ],
+            "unconsolidated": [],
+        })
+
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=api_response)]
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.messages.create.return_value = mock_message
+
+        with patch("entity_shutdown.anthropic") as mock_anthropic:
+            mock_anthropic.Anthropic.return_value = mock_client_instance
+            # Should not raise TypeError: can't subtract offset-naive and offset-aware datetimes
+            result = run_consolidation(
+                entity_name="savings_instruments",
+                extracted_memories_json=extracted_json,
+                project_dir=tmp_path,
+            )
+
+        assert isinstance(result, dict)
+        assert "consolidated" in result
+        assert "core" in result
