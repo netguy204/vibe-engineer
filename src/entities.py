@@ -328,6 +328,7 @@ class Entities:
 
     # Chunk: docs/chunks/entity_startup_wiki - Wiki-aware startup payload
     # Chunk: docs/chunks/entity_startup_skill - Entity startup/wake payload
+    # Chunk: docs/chunks/entity_wiki_maintenance_prompt - Embeds full wiki schema content into the startup payload
     def startup_payload(self, name: str) -> str:
         """Assemble the complete startup text payload for a named entity.
 
@@ -445,14 +446,17 @@ class Entities:
             sections.append("")
 
         # Chunk: docs/chunks/entity_touch_protocol_docs - Fix Touch Protocol command signature
+        # Chunk: docs/chunks/touch_docs_wiki_ids - Touch Protocol examples cover both ID formats
         # --- Touch Protocol ---
         sections.append("## Touch Protocol")
         sections.append("")
         sections.append(
             "When you notice yourself applying a core memory, "
             "run `ve entity touch <name> <memory_id> \"<reason>\"` to reinforce it. "
-            "Use the ID shown next to each core memory above (e.g., "
-            "`ve entity touch <name> 20260319_core_memory \"applied this insight\"`). "
+            "Use the ID shown in the `ID:` field next to each core memory above — "
+            "the format varies by entity type: timestamp-prefixed "
+            "(e.g., `20260319_core_memory`) for tiered-memory entities, "
+            "or a slug (e.g., `trust-the-canonical-synthesis`) for wiki-based entities. "
             "This enables retrieval-as-reinforcement — the act of noticing "
             "you used a memory strengthens it."
         )
@@ -471,6 +475,7 @@ class Entities:
 
         return "\n".join(sections)
 
+    # Chunk: docs/chunks/entity_startup_wiki - Helper to read wiki/index.md for startup payload
     def _wiki_index_content(self, name: str) -> str:
         """Read wiki/index.md and return its full text, or empty string if absent.
 
