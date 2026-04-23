@@ -69,7 +69,7 @@ code_references:
   - ref: src/cli/entity.py#entity
     implements: "Entity management command group"
   - ref: src/cli/wiki.py#wiki
-    implements: "Wiki command group with reindex and related subcommands"
+    implements: "Wiki command group with reindex and rename subcommands"
 narrative: null
 investigation: null
 subsystems: []

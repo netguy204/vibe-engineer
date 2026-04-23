@@ -114,6 +114,15 @@ class WikiLintResult:
         return len(self.issues) == 0
 
 
+# Chunk: docs/chunks/wiki_rename_command - Result of a wiki page rename operation
+@dataclass
+class WikiRenameResult:
+    """Result of a wiki_rename operation."""
+    files_updated: int  # Number of wiki files that had wikilinks rewritten
+    old_path: str
+    new_path: str
+
+
 # Name pattern extends the existing ENTITY_NAME_PATTERN to also allow hyphens
 # (kebab-case), matching the investigation's my-specialist example.
 ENTITY_REPO_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -1310,6 +1319,103 @@ def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
         ))
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Wiki rename
+# ---------------------------------------------------------------------------
+
+# Chunk: docs/chunks/wiki_rename_command - Wikilink pattern for rewriting references
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]+?)(\|[^\]]+?)?\]\]")
+
+
+def _rewrite_wikilinks(
+    filepath: Path,
+    old_path: str,
+    new_path: str,
+    old_stem: str,
+    new_stem: str,
+) -> bool:
+    """Rewrite wikilinks in a markdown file. Returns True if the file was modified.
+
+    Matches [[old_path]] and [[old_stem]] (bare filename without directory),
+    replacing with [[new_path]] and [[new_stem]] respectively.
+    Display text (e.g., [[target|Display]]) is preserved.
+    """
+    content = filepath.read_text(encoding="utf-8")
+
+    def _replace(m: re.Match) -> str:
+        target = m.group(1).strip()
+        display = m.group(2) or ""  # includes the leading "|" if present
+        if target == old_path:
+            return f"[[{new_path}{display}]]"
+        if target == old_stem and old_stem != new_stem:
+            return f"[[{new_stem}{display}]]"
+        return m.group(0)
+
+    new_content = _WIKILINK_RE.sub(_replace, content)
+    if new_content != content:
+        filepath.write_text(new_content, encoding="utf-8")
+        return True
+    return False
+
+
+# Chunk: docs/chunks/wiki_rename_command - Rename a wiki page and rewrite inbound wikilinks
+def wiki_rename(entity_path: Path, old_path: str, new_path: str) -> WikiRenameResult:
+    """Rename a wiki page and update all inbound wikilinks.
+
+    Moves the page from old_path to new_path within the entity's wiki
+    directory, then rewrites all [[wikilinks]] across every wiki .md file
+    that referenced the old path or its bare filename stem.
+
+    Args:
+        entity_path: Root of the entity repo (must contain a wiki/ directory).
+        old_path: Relative path to the current page within wiki/, without the
+                  .md extension (e.g., "domain/world-model").
+        new_path: Relative path for the renamed page within wiki/, without the
+                  .md extension (e.g., "domain/world-model-v2").
+
+    Returns:
+        WikiRenameResult with count of wiki files that had wikilinks rewritten.
+
+    Raises:
+        ValueError: If wiki/ doesn't exist, old_path doesn't exist, or
+                    new_path already exists.
+    """
+    wiki_dir = entity_path / "wiki"
+    if not wiki_dir.is_dir():
+        raise ValueError(f"Entity at '{entity_path}' has no wiki/ directory")
+
+    old_file = wiki_dir / f"{old_path}.md"
+    new_file = wiki_dir / f"{new_path}.md"
+
+    if not old_file.exists():
+        raise ValueError(f"Wiki page '{old_path}' not found")
+
+    if new_file.exists():
+        raise ValueError(f"Wiki page '{new_path}' already exists")
+
+    # Create parent directory for the destination if needed
+    new_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Move the file
+    old_file.rename(new_file)
+
+    # Derive stems for matching bare-stem wikilinks (e.g., [[world-model]])
+    old_stem = Path(old_path).name
+    new_stem = Path(new_path).name
+
+    # Rewrite wikilinks across all wiki .md files (including the renamed file)
+    files_updated = 0
+    for md_file in sorted(wiki_dir.rglob("*.md")):
+        if _rewrite_wikilinks(md_file, old_path, new_path, old_stem, new_stem):
+            files_updated += 1
+
+    return WikiRenameResult(
+        files_updated=files_updated,
+        old_path=old_path,
+        new_path=new_path,
+    )
 
 
 # ---------------------------------------------------------------------------
