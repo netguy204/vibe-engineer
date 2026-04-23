@@ -1,9 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-- src/cli/entity.py
+- src/cli/wiki.py
+- src/cli/__init__.py
 - src/entity_repo.py
 - tests/test_entity_wiki_rename.py
 code_references: []
@@ -13,9 +14,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["orch_worktree_process_reap"]
+created_after:
+- orch_worktree_process_reap
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
