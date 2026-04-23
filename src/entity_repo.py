@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -93,6 +94,25 @@ class MergeConflictsPending:
     source: str
     resolutions: list[ConflictResolution]
     unresolvable: list[str]
+
+# Chunk: docs/chunks/wiki_lint_command - Wiki integrity lint result types
+@dataclass
+class WikiLintIssue:
+    """A single wiki integrity issue found during linting."""
+    file: str       # relative to wiki root, e.g. "domain/foo.md"
+    issue_type: str  # "dead_wikilink" | "frontmatter_error" | "missing_from_index" | "orphan_page"
+    detail: str     # human-readable description
+
+
+@dataclass
+class WikiLintResult:
+    """Aggregated result of a wiki lint run."""
+    issues: list[WikiLintIssue]
+
+    @property
+    def ok(self) -> bool:
+        return len(self.issues) == 0
+
 
 # Name pattern extends the existing ENTITY_NAME_PATTERN to also allow hyphens
 # (kebab-case), matching the investigation's my-specialist example.
@@ -1290,3 +1310,130 @@ def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
         ))
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Wiki lint helpers and main function
+# ---------------------------------------------------------------------------
+
+_WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+
+
+def _extract_wikilinks(content: str) -> list[str]:
+    """Return all [[target]] link targets found in content."""
+    return _WIKILINK_RE.findall(content)
+
+
+def _resolve_wikilink(wiki_dir: Path, target: str) -> Path | None:
+    """Resolve a wikilink target to an absolute Path, or None if not found.
+
+    Resolution rules:
+    - If target contains '/' → look for wiki_dir / target (with .md appended if needed)
+    - If no '/' → Obsidian shortest-path: search all .md files recursively for <target>.md
+    """
+    if not target.endswith(".md"):
+        target_with_ext = target + ".md"
+    else:
+        target_with_ext = target
+
+    if "/" in target:
+        candidate = wiki_dir / target_with_ext
+        return candidate if candidate.exists() else None
+    else:
+        # Obsidian shortest-path: find any file named <target>.md in the wiki tree
+        for candidate in wiki_dir.rglob(target_with_ext):
+            return candidate  # return first match
+        return None
+
+
+def _get_index_references(index_content: str) -> set[str]:
+    """Return the set of bare stem names referenced via wikilinks in index.md."""
+    targets = _extract_wikilinks(index_content)
+    return {t.split("/")[-1] for t in targets}  # bare name only (no dir prefix)
+
+
+# Chunk: docs/chunks/wiki_lint_command - Wiki integrity linting
+def lint_wiki(wiki_dir: Path) -> WikiLintResult:
+    """Lint a wiki directory for integrity issues.
+
+    Checks dead wikilinks, frontmatter errors, pages missing from the index,
+    and orphan pages (no inbound wikilinks from any page).
+
+    Args:
+        wiki_dir: Path to the entity's wiki/ directory.
+
+    Returns:
+        WikiLintResult with zero or more issues.
+    """
+    from frontmatter import _FRONTMATTER_PATTERN  # reuse existing regex
+
+    issues: list[WikiLintIssue] = []
+
+    # Structural pages that live at the wiki root and are exempt from content checks.
+    STRUCTURAL_NAMES = {"index.md", "wiki_schema.md", "identity.md", "log.md", "SOP.md"}
+    # Pages exempt from the frontmatter check (no frontmatter by design)
+    NO_FRONTMATTER = {"wiki_schema.md"}
+
+    all_pages = list(wiki_dir.rglob("*.md"))
+
+    # Build inbound link map: rel_path_str -> set of source rel_path_strs
+    inbound: dict[str, set[str]] = {
+        str(p.relative_to(wiki_dir)): set() for p in all_pages
+    }
+
+    # --- Pass 1: per-page checks + populate inbound map ---
+    for page in all_pages:
+        rel = str(page.relative_to(wiki_dir))
+        content = page.read_text(encoding="utf-8", errors="replace")
+
+        # 1. Frontmatter check
+        if page.name not in NO_FRONTMATTER:
+            fm_match = _FRONTMATTER_PATTERN.search(content)
+            if not fm_match:
+                issues.append(WikiLintIssue(rel, "frontmatter_error", "missing frontmatter"))
+            else:
+                try:
+                    yaml.safe_load(fm_match.group(1))
+                except yaml.YAMLError as exc:
+                    issues.append(
+                        WikiLintIssue(rel, "frontmatter_error", f"invalid YAML: {exc}")
+                    )
+
+        # 2. Wikilink extraction → dead link check + inbound map population
+        for target in _extract_wikilinks(content):
+            resolved = _resolve_wikilink(wiki_dir, target)
+            if resolved is None:
+                issues.append(WikiLintIssue(rel, "dead_wikilink", f"[[{target}]] not found"))
+            else:
+                target_rel = str(resolved.relative_to(wiki_dir))
+                if target_rel in inbound:
+                    inbound[target_rel].add(rel)
+
+    # --- Pass 2: index coverage check ---
+    index_path = wiki_dir / "index.md"
+    if index_path.exists():
+        index_refs = _get_index_references(
+            index_path.read_text(encoding="utf-8", errors="replace")
+        )
+        for page in all_pages:
+            if page.name in STRUCTURAL_NAMES:
+                continue
+            if page.parent == wiki_dir:
+                # Root-level non-structural files (unusual) — skip silently
+                continue
+            # Content pages are those in subdirectories (domain/, projects/, etc.)
+            rel = str(page.relative_to(wiki_dir))
+            if page.stem not in index_refs:
+                issues.append(
+                    WikiLintIssue(rel, "missing_from_index", "no entry in index.md")
+                )
+
+    # --- Pass 3: orphan check ---
+    for page in all_pages:
+        if page.name in STRUCTURAL_NAMES or page.parent == wiki_dir:
+            continue  # exempt structural + root-level pages
+        rel = str(page.relative_to(wiki_dir))
+        if not inbound.get(rel):
+            issues.append(WikiLintIssue(rel, "orphan_page", "no inbound wikilinks"))
+
+    return WikiLintResult(issues=issues)
