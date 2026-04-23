@@ -18,6 +18,9 @@ code_paths:
 - src/cli/friction.py
 - src/cli/migration.py
 - src/cli/reviewer.py
+- src/cli/board.py
+- src/cli/entity.py
+- src/cli/wiki.py
 code_references:
   - ref: src/ve.py#main
     implements: "Thin entry point delegating to cli package"
@@ -61,6 +64,12 @@ code_references:
     implements: "Decision file subgroup under reviewer"
   - ref: src/cli/reviewer.py#decisions
     implements: "Decisions management subgroup with list/review commands"
+  - ref: src/cli/board.py#board
+    implements: "Board messaging command group"
+  - ref: src/cli/entity.py#entity
+    implements: "Entity management command group"
+  - ref: src/cli/wiki.py#wiki
+    implements: "Wiki command group with reindex and related subcommands"
 narrative: null
 investigation: null
 subsystems: []
