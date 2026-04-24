@@ -1,9 +1,10 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: wiki_identity_routing
 code_paths:
 - src/templates/entity/wiki_schema.md.jinja2
+- tests/test_entities.py
 code_references: []
 narrative: null
 investigation: null
@@ -11,9 +12,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["watch_idle_reconnect_budget"]
+created_after:
+- watch_idle_reconnect_budget
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

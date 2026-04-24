@@ -133,6 +133,29 @@ One page per person, team, or entity. Capture:
 - Communication patterns and preferences
 - Anything that has surprised you
 
+### Snapshot files vs. log files
+
+A wiki page is one of two shapes — they do not mix.
+
+**Snapshot** — reflects current state only. When an item is resolved or
+removed, its entry is deleted. A reader sees exactly what is active right now
+by reading the page once.
+
+**Log** — append-only chronological record. Entries are never deleted; new
+entries are appended. The page is a history, not a current-state view.
+
+**Simple test:** Can a reader answer "what's the current state?" by reading
+the active section and nothing before it? Yes → snapshot. No → log.
+
+**Common trap:** Files named `active_*`, `in_flight_*`, `pending_*`, or
+`open_*` advertise snapshot shape, but agents often mark entries as
+"resolved" or "archived" and keep them in place, producing a log with a
+snapshot name. If a page has snapshot semantics, state the maintenance
+discipline explicitly in its header:
+
+> **Maintenance:** This is a snapshot page. Remove entries when they are
+> resolved; do not archive them here.
+
 ### `log.md` — Session Log Format
 
 Add an entry at the end of every session using this format:
@@ -242,6 +265,7 @@ Keep summaries to one line. Update the index immediately when creating a new pag
 | Concept referenced from multiple places | Use wikilinks rather than duplicating content |
 | identity.md Hard-Won Lessons entry fails the routing test | Move mechanics to domain/ or techniques/; replace with principle + `See:` link |
 | identity.md Hard-Won Lessons exceeds 15 entries | Run the Identity.md Health Check |
+| Snapshot page entry is resolved or removed | Delete the entry; do not archive in place |
 
 ## Cross-Reference Conventions
 

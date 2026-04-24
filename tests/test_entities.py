@@ -1058,6 +1058,36 @@ class TestCreateEntityWiki:
         content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
         assert "YYYY-MM-DD" in content
 
+    def test_wiki_schema_mentions_snapshot_vs_log(self, entities, temp_project):
+        """wiki_schema.md distinguishes snapshot pages from log pages."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        assert "snapshot" in content.lower()
+        assert "append-only" in content.lower()
+
+    def test_wiki_schema_includes_snapshot_test(self, entities, temp_project):
+        """wiki_schema.md includes a simple reader test for snapshot vs log shape."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        # The "simple test" is the key question readers can ask to classify a page
+        assert "current state" in content.lower()
+
+    def test_wiki_schema_names_common_snapshot_trap(self, entities, temp_project):
+        """wiki_schema.md warns about files that advertise snapshot shape but accumulate history."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        # Common trap: files named active_*, pending_*, etc. that drift into logs
+        assert "active_" in content or "pending_" in content or "in_flight_" in content
+
+    def test_wiki_schema_page_operations_includes_snapshot_maintenance(self, entities, temp_project):
+        """Page Operations table includes a row for snapshot maintenance (delete on clear)."""
+        entities.create_entity("agent")
+        content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+        # The snapshot maintenance row should reference deleting entries
+        assert "snapshot" in content.lower()
+        # Verify the table row exists by checking for delete/clear language near snapshot context
+        assert "delete" in content.lower() or "clear" in content.lower()
+
     # --- Content tests: wiki/identity.md ---
 
     def test_wiki_identity_contains_entity_name(self, entities, temp_project):

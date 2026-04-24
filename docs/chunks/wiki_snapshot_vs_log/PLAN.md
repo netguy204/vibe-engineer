@@ -10,170 +10,137 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is a pure template prose edit — no Python logic changes. The single
+file to modify is `src/templates/entity/wiki_schema.md.jinja2`. Two surgical
+additions are required:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. A new "Snapshot files vs. log files" section inserted after the existing
+   "What to Capture" subsections (after the `relationships/` section and before
+   the `log.md` section, keeping the conceptual flow: what types of content
+   exist → how snapshot vs log shapes differ → log entry format).
+2. A new row in the **Page Operations** table covering the snapshot maintenance
+   pattern (delete entries on clear, not mark-and-keep).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Tests go in `tests/test_entities.py` alongside the existing `wiki_schema.md`
+content assertions. Per TESTING_PHILOSOPHY.md, we check for structural markers
+(key terms and distinguishing phrases) rather than exact prose.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/wiki_snapshot_vs_log/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new DECISIONS.md entry is needed — this is schema guidance propagation, not
+an architectural decision.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write tests first (TDD)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `tests/test_entities.py`, add tests to the existing
+`TestCreateEntityWikiScaffold` class after the `test_wiki_schema_mentions_log_format`
+test (around line 1059). Add four new tests:
 
-Example:
+```python
+def test_wiki_schema_mentions_snapshot_vs_log(self, entities, temp_project):
+    """wiki_schema.md distinguishes snapshot pages from log pages."""
+    entities.create_entity("agent")
+    content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+    assert "snapshot" in content.lower()
+    assert "append-only" in content.lower()
 
-### Step 1: Define the SegmentHeader struct
+def test_wiki_schema_includes_snapshot_test(self, entities, temp_project):
+    """wiki_schema.md includes a simple reader test for snapshot vs log shape."""
+    entities.create_entity("agent")
+    content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+    # The "simple test" is the key question readers can ask to classify a page
+    assert "current state" in content.lower()
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+def test_wiki_schema_names_common_snapshot_trap(self, entities, temp_project):
+    """wiki_schema.md warns about files that advertise snapshot shape but accumulate history."""
+    entities.create_entity("agent")
+    content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+    # Common trap: files named active_*, pending_*, etc. that drift into logs
+    assert "active_" in content or "pending_" in content or "in_flight_" in content
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+def test_wiki_schema_page_operations_includes_snapshot_maintenance(self, entities, temp_project):
+    """Page Operations table includes a row for snapshot maintenance (delete on clear)."""
+    entities.create_entity("agent")
+    content = (temp_project / ".entities" / "agent" / "wiki" / "wiki_schema.md").read_text()
+    # The snapshot maintenance row should reference deleting entries
+    assert "snapshot" in content.lower()
+    # Verify the table row exists by checking for delete/clear language near snapshot context
+    assert "delete" in content.lower() or "clear" in content.lower()
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Run `uv run pytest tests/test_entities.py -k "snapshot"` — all four tests
+should **fail** (red phase).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Add the "Snapshot files vs. log files" section to the template
 
-## Dependencies
+Edit `src/templates/entity/wiki_schema.md.jinja2`. Insert the new section
+between the `relationships/` subsection and the `log.md` subsection (between
+line ~134 and the `### \`log.md\` — Session Log Format` heading).
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+The section content should be:
 
-If there are no dependencies, delete this section.
--->
+```markdown
+### Snapshot files vs. log files
 
-## Risks and Open Questions
+A wiki page is one of two shapes — they do not mix.
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+**Snapshot** — reflects current state only. When an item is resolved or
+removed, its entry is deleted. A reader sees exactly what is active right now
+by reading the page once.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+**Log** — append-only chronological record. Entries are never deleted; new
+entries are appended. The page is a history, not a current-state view.
+
+**Simple test:** Can a reader answer "what's the current state?" by reading
+the active section and nothing before it? Yes → snapshot. No → log.
+
+**Common trap:** Files named `active_*`, `in_flight_*`, `pending_*`, or
+`open_*` advertise snapshot shape, but agents often mark entries as
+"resolved" or "archived" and keep them in place, producing a log with a
+snapshot name. If a page has snapshot semantics, state the maintenance
+discipline explicitly in its header:
+
+```
+> **Maintenance:** This is a snapshot page. Remove entries when they are
+> resolved; do not archive them here.
+```
+
+```
+
+(Note: the inner fenced code block uses backtick-less formatting or an
+indented block in Jinja2 to avoid conflicting with the outer fence — use
+a `>` blockquote for the example as shown.)
+
+### Step 3: Add the snapshot maintenance row to the Page Operations table
+
+Edit `src/templates/entity/wiki_schema.md.jinja2`. In the **Page Operations**
+table (currently ending with the `identity.md Hard-Won Lessons exceeds 15
+entries` row), append a new row:
+
+```markdown
+| Snapshot page entry is resolved or removed | Delete the entry; do not archive in place |
+```
+
+This row goes at the end of the table, before the `## Cross-Reference
+Conventions` heading.
+
+### Step 4: Run tests (green phase)
+
+```bash
+uv run pytest tests/test_entities.py -k "snapshot or wiki_schema"
+```
+
+All four new tests must pass, and all pre-existing `wiki_schema` tests must
+continue to pass. Then run the full suite:
+
+```bash
+uv run pytest tests/
+```
+
+No regressions.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
