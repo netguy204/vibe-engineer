@@ -44,6 +44,15 @@ class BoardError(Exception):
         super().__init__(f"{code}: {message}")
 
 
+# Chunk: docs/chunks/watch_idle_reconnect_budget - Idle timeout sentinel
+class StaleWatchError(ConnectionError):
+    """Raised when a watch re-registration cycle times out with no message.
+
+    Distinct from genuine connection failures: the server is reachable but the
+    channel is idle. Used to suppress budget accounting in reconnect wrappers.
+    """
+
+
 class BoardClient:
     """Async WebSocket client for the Leader Board protocol.
 
@@ -180,6 +189,7 @@ class BoardClient:
     # Chunk: docs/chunks/websocket_keepalive - Reconnect wrapper for watch()
     # Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset and keepalive tuning
     # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
+    # Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
     async def watch_with_reconnect(
         self,
         channel: str,
@@ -215,6 +225,8 @@ class BoardClient:
         attempt = 0
         backoff = 1.0
         max_backoff = 60.0
+        idle_reconnects = 0
+        current_stale_timeout = stale_timeout
 
         while True:
             try:
@@ -234,7 +246,7 @@ class BoardClient:
                 while True:
                     try:
                         raw = await asyncio.wait_for(
-                            self._ws.recv(), timeout=stale_timeout
+                            self._ws.recv(), timeout=current_stale_timeout
                         )
                     except asyncio.TimeoutError:
                         reregister_count += 1
@@ -246,11 +258,11 @@ class BoardClient:
                                 channel,
                                 cursor,
                             )
-                            raise ConnectionError("Watch connection stale")
+                            raise StaleWatchError("Watch connection stale")
                         logger.info(
                             "Watch re-registering: no message in %ds, "
                             "channel=%s cursor=%d",
-                            stale_timeout,
+                            current_stale_timeout,
                             channel,
                             cursor,
                         )
@@ -264,11 +276,35 @@ class BoardClient:
                             "protocol_error",
                             f"Expected message, got {response.get('type')}",
                         )
+                    # Message received — reset idle tracking
+                    idle_reconnects = 0
+                    current_stale_timeout = stale_timeout
                     return {
                         "position": response["position"],
                         "body": response["body"],
                         "sent_at": response["sent_at"],
                     }
+            except StaleWatchError:
+                # Idle timeout — reconnect without counting against the failure budget.
+                idle_reconnects += 1
+                if idle_reconnects >= 3:
+                    # Back off re-register interval to reduce churn on very quiet channels.
+                    current_stale_timeout = min(current_stale_timeout * 2, 600.0)
+                    logger.info(
+                        "Idle reconnect #%d, increasing stale_timeout to %.0fs channel=%s",
+                        idle_reconnects, current_stale_timeout, channel,
+                    )
+                logger.info(
+                    "Idle reconnect (not counted against budget) channel=%s cursor=%d",
+                    channel, cursor,
+                )
+                # Reconnect without backoff sleep — the network is fine.
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                await self.connect()
+                backoff = 1.0  # reset failure backoff too
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS as exc:
                 attempt += 1
@@ -421,7 +457,7 @@ class BoardClient:
                         reregister_count,
                         list(active_channels),
                     )
-                    raise ConnectionError("Watch connection stale")
+                    raise StaleWatchError("Watch connection stale")
                 logger.info(
                     "Watch re-registering: no message in %ds, channels=%s",
                     stale_timeout,
@@ -495,6 +531,7 @@ class BoardClient:
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited reconnect wrapper
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
+    # Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
     async def watch_multi_with_reconnect(
         self,
         channels: dict[str, int],
@@ -534,6 +571,8 @@ class BoardClient:
         backoff = 1.0
         max_backoff = 60.0
         delivered = 0
+        idle_reconnects = 0
+        current_stale_timeout = stale_timeout
 
         while True:
             try:
@@ -541,19 +580,39 @@ class BoardClient:
                 # reconnect wrapper manages the overall message cap so that
                 # reconnects don't reset the count.
                 async for msg in self.watch_multi(
-                    cursors, count=0, auto_ack=auto_ack, stale_timeout=stale_timeout
+                    cursors, count=0, auto_ack=auto_ack, stale_timeout=current_stale_timeout
                 ):
                     # Update cursor for the channel that delivered a message
                     cursors[msg["channel"]] = msg["position"]
-                    # Reset backoff on successful message receipt
+                    # Reset backoff and idle tracking on successful message receipt
                     attempt = 0
                     backoff = 1.0
+                    idle_reconnects = 0
+                    current_stale_timeout = stale_timeout
                     yield msg
                     delivered += 1
                     if count > 0 and delivered >= count:
                         return
                 # Generator exhausted (all channels errored) — stop
                 return
+            except StaleWatchError:
+                # Idle timeout — reconnect without counting against the failure budget.
+                idle_reconnects += 1
+                if idle_reconnects >= 3:
+                    current_stale_timeout = min(current_stale_timeout * 2, 600.0)
+                    logger.info(
+                        "Idle reconnect #%d, increasing stale_timeout to %.0fs channels=%s",
+                        idle_reconnects, current_stale_timeout, list(cursors),
+                    )
+                logger.info(
+                    "Idle reconnect (not counted against budget) channels=%s", list(cursors)
+                )
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                await self.connect()
+                backoff = 1.0
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS:
                 attempt += 1

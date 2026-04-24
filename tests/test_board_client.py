@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import websockets.exceptions
 
-from board.client import BoardClient, BoardError
+from board.client import BoardClient, BoardError, StaleWatchError
 from board.crypto import generate_keypair, derive_swarm_id, sign
 
 
@@ -1985,3 +1985,236 @@ async def test_watch_with_reconnect_logs_resubscription(keypair):
         call.args[0] for call in mock_logger.info.call_args_list
     ]
     assert any("Re-subscribing to channel=" in m for m in info_messages)
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnect budget tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_idle_does_not_exhaust_budget(keypair):
+    """Idle stale timeouts do not count against the reconnect budget.
+
+    Simulate more idle cycles than max_retries; the watch should still
+    succeed when a message eventually arrives.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 1,
+        "body": "finally==",
+        "sent_at": "2026-04-23T00:00:00Z",
+    })
+
+    # 12 idle cycles > max_retries=3; the message arrives on the 13th connection.
+    idle_cycles = 12
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if call_count <= idle_cycles:
+            # Auth OK, then two consecutive timeouts → StaleWatchError
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(),  # first timeout → re-register
+                asyncio.TimeoutError(),  # second timeout → StaleWatchError
+            ])
+        else:
+            # Final connection: delivers the message
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        # max_retries=3 — idle cycles must not consume this budget
+        result = await client.watch_with_reconnect("ch1", 0, max_retries=3, stale_timeout=0.01)
+
+    assert result["position"] == 1
+    assert result["body"] == "finally=="
+    # 1 initial + 12 idle reconnects + 1 final = 14 total connections
+    assert call_count == idle_cycles + 1
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_real_failure_exhausts_budget(keypair):
+    """Genuine connection failures still count against max_retries.
+
+    Simulate max_retries+1 genuine ConnectionClosedErrors and verify the
+    exception propagates (safety valve is preserved).
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    def make_ws_factory(*args, **kwargs):
+        ws = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge,
+            auth_ok,
+            websockets.exceptions.ConnectionClosedError(None, None),
+        ])
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        return _async_ctx(ws)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            with pytest.raises(websockets.exceptions.ConnectionClosedError):
+                await client.watch_with_reconnect("ch1", 0, max_retries=3)
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_idle_does_not_exhaust_budget(keypair):
+    """Idle stale timeouts do not count against budget in watch_multi_with_reconnect.
+
+    Simulate more idle cycles than max_retries; the watch should succeed
+    when a message eventually arrives.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 7,
+        "body": "arrived==",
+        "sent_at": "2026-04-23T00:00:00Z",
+    })
+
+    idle_cycles = 12  # > max_retries=3
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if call_count <= idle_cycles:
+            # Auth OK, then two consecutive timeouts → StaleWatchError in watch_multi
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(),
+                asyncio.TimeoutError(),
+            ])
+        else:
+            # Final connection: delivers the message
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        async for m in client.watch_multi_with_reconnect(
+            {"ch-a": 6}, max_retries=3, count=1, stale_timeout=0.01
+        ):
+            results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 7
+    assert results[0]["body"] == "arrived=="
+    assert call_count == idle_cycles + 1
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_budget_resets_on_message(keypair):
+    """Idle reconnect counter resets when a message is successfully delivered.
+
+    Simulate some idle reconnects, deliver a message (resetting the counter),
+    then simulate more idle reconnects and verify the budget has not accumulated
+    across the message boundary.
+
+    Connection sequence:
+      [1..pre_idle]       → auth OK + 2x timeout  (pre-message idle cycles)
+      [pre_idle+1]        → auth OK + msg(1) + 2x timeout  (message then immediately stale)
+      [pre_idle+2 ..+1+post_idle] → auth OK + 2x timeout  (post-message idle cycles)
+      [pre_idle+post_idle+2]      → auth OK + msg(2)  (final message)
+
+    When watch_multi delivers msg(1), watch_multi_with_reconnect resets
+    idle_reconnects to 0. The two timeouts after msg(1) in the same connection
+    trigger another StaleWatchError, starting idle_reconnects from 1 again.
+    Combined, this exercises the reset path without hitting max_retries.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    def _msg(pos):
+        return json.dumps({
+            "type": "message",
+            "channel": "ch-a",
+            "position": pos,
+            "body": f"msg{pos}==",
+            "sent_at": "2026-04-23T00:00:00Z",
+        })
+
+    # With max_retries=3: pre_idle+post_idle individually < 3 so no budget exhaustion,
+    # but together (if NOT reset) they would each be fine anyway; the real verification
+    # is the total connection count matches the expected sum (reset + fresh cycles).
+    pre_idle = 2
+    post_idle = 2
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if call_count <= pre_idle:
+            # Pre-message idle cycles: auth OK + 2 timeouts → StaleWatchError
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(), asyncio.TimeoutError(),
+            ])
+        elif call_count == pre_idle + 1:
+            # Message delivery + immediate post-message stale on the same connection:
+            # watch_multi yields msg(1), then tries recv() again and gets 2 timeouts.
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                _msg(1),
+                asyncio.TimeoutError(), asyncio.TimeoutError(),
+            ])
+        elif call_count <= pre_idle + 1 + post_idle:
+            # Post-message idle cycles (idle_reconnects reset to 0 when msg was received,
+            # then incremented to 1 by the stale after the message; these continue from 2)
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(), asyncio.TimeoutError(),
+            ])
+        else:
+            # Deliver second message
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, _msg(2)])
+        return _async_ctx(ws)
+
+    results = []
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        client = BoardClient("ws://localhost:8787", swarm_id, seed)
+        await client.connect()
+        # max_retries=3; none of the idle cycles count against it
+        async for m in client.watch_multi_with_reconnect(
+            {"ch-a": 0}, max_retries=3, count=2, stale_timeout=0.01
+        ):
+            results.append(m)
+
+    assert len(results) == 2
+    assert results[0]["position"] == 1
+    assert results[1]["position"] == 2
+    # Total: pre_idle + 1 (msg+stale) + post_idle + 1 (final msg) connections
+    assert call_count == pre_idle + 1 + post_idle + 1

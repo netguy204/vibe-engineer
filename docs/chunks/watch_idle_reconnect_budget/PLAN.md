@@ -10,170 +10,265 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The root cause is that both `watch_with_reconnect` and `watch_multi_with_reconnect`
+use a single `attempt` counter for two semantically different conditions:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Genuine network failure** — WebSocket dropped, handshake failed, etc.
+   Should count against the 10-attempt reconnect budget (safety valve).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Idle stale timeout** — no messages arrived in `stale_timeout` seconds,
+   so the client re-registers and—if that also times out—forces a full reconnect.
+   Should NOT count against budget; this is expected behavior on quiet channels.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/watch_idle_reconnect_budget/GOAL.md)
-with references to the files that you expect to touch.
--->
+Both paths currently raise/catch `ConnectionError`, which lives in `_RETRYABLE_ERRORS`.
+Python's `except` clause sees them identically, so `attempt` increments on every
+idle reconnect, exhausting the budget in ~90 minutes of silence.
 
-## Subsystem Considerations
+**Fix strategy**: introduce `StaleWatchError(ConnectionError)` as a sentinel for
+idle-triggered reconnects. Because Python exception handling is ordered, placing an
+`except StaleWatchError` branch *before* `except _RETRYABLE_ERRORS` routes idle
+reconnects to a budget-free path while genuine failures continue to count.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+Additionally, implement **adaptive stale-timeout backoff**: after 3 consecutive idle
+reconnects, double the re-register interval (capped at 600 s). This reduces
+unnecessary churn on very quiet channels. The interval resets when a message arrives.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new external dependencies. All changes are confined to `src/board/client.py`
+and `tests/test_board_client.py`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `StaleWatchError` exception class
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/board/client.py`, immediately after `BoardError`, add:
 
-Example:
+```python
+# Chunk: docs/chunks/watch_idle_reconnect_budget - Idle timeout sentinel
+class StaleWatchError(ConnectionError):
+    """Raised when a watch re-registration cycle times out with no message.
 
-### Step 1: Define the SegmentHeader struct
+    Distinct from genuine connection failures: the server is reachable but the
+    channel is idle. Used to suppress budget accounting in reconnect wrappers.
+    """
+```
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
+This subclasses `ConnectionError` so it remains retryable if it ever leaks out
+of a handler that doesn't know about it, but is distinguishable by name.
 
 ---
 
-**BACKREFERENCE COMMENTS**
+### Step 2: Raise `StaleWatchError` from both stale paths
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+**In `watch_with_reconnect`** (inner timeout handler, ~line 248):
+```python
+# Before:
+raise ConnectionError("Watch connection stale")
+# After:
+raise StaleWatchError("Watch connection stale")
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+**In `watch_multi`** (timeout handler, ~line 424):
+```python
+# Before:
+raise ConnectionError("Watch connection stale")
+# After:
+raise StaleWatchError("Watch connection stale")
+```
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+---
 
-## Dependencies
+### Step 3: Update `watch_with_reconnect` — separate idle handler
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+At the top of the `while True` loop, add tracking variables before `attempt`:
 
-If there are no dependencies, delete this section.
--->
+```python
+attempt = 0
+idle_reconnects = 0
+backoff = 1.0
+max_backoff = 60.0
+current_stale_timeout = stale_timeout  # may grow on repeated idle
+```
+
+Pass `current_stale_timeout` (not `stale_timeout`) into `asyncio.wait_for`.
+
+Add a `StaleWatchError` branch **before** `except _RETRYABLE_ERRORS`:
+
+```python
+except StaleWatchError:
+    # Idle timeout — reconnect without counting against the failure budget.
+    idle_reconnects += 1
+    if idle_reconnects >= 3:
+        # Back off re-register interval to reduce churn on very quiet channels.
+        current_stale_timeout = min(current_stale_timeout * 2, 600.0)
+        logger.info(
+            "Idle reconnect #%d, increasing stale_timeout to %.0fs channel=%s",
+            idle_reconnects, current_stale_timeout, channel,
+        )
+    logger.info(
+        "Idle reconnect (not counted against budget) channel=%s cursor=%d",
+        channel, cursor,
+    )
+    # Reconnect without backoff sleep — the network is fine.
+    try:
+        await self.close()
+    except Exception:
+        pass
+    await self.connect()
+    backoff = 1.0  # reset failure backoff too
+```
+
+Reset idle state on successful message delivery — add before `return`:
+
+```python
+idle_reconnects = 0
+current_stale_timeout = stale_timeout
+```
+
+Add backreference comment at method level:
+```python
+# Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
+```
+
+---
+
+### Step 4: Update `watch_multi_with_reconnect` — separate idle handler
+
+At the top of the `while True` loop, add tracking variables:
+
+```python
+attempt = 0
+idle_reconnects = 0
+backoff = 1.0
+max_backoff = 60.0
+current_stale_timeout = stale_timeout
+```
+
+Pass `current_stale_timeout` to `watch_multi` (replace `stale_timeout=stale_timeout`
+with `stale_timeout=current_stale_timeout` in the inner call).
+
+Add a `StaleWatchError` branch **before** `except _RETRYABLE_ERRORS`:
+
+```python
+except StaleWatchError:
+    idle_reconnects += 1
+    if idle_reconnects >= 3:
+        current_stale_timeout = min(current_stale_timeout * 2, 600.0)
+        logger.info(
+            "Idle reconnect #%d, increasing stale_timeout to %.0fs channels=%s",
+            idle_reconnects, current_stale_timeout, list(cursors),
+        )
+    logger.info(
+        "Idle reconnect (not counted against budget) channels=%s", list(cursors)
+    )
+    try:
+        await self.close()
+    except Exception:
+        pass
+    await self.connect()
+    backoff = 1.0
+```
+
+Reset idle state when a message is delivered — the existing `attempt = 0; backoff = 1.0`
+block already resets failure state; add alongside it:
+
+```python
+idle_reconnects = 0
+current_stale_timeout = stale_timeout
+```
+
+Add backreference comment at method level:
+```python
+# Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
+```
+
+---
+
+### Step 5: Write tests (TDD — write failing tests first)
+
+Following the project's TDD philosophy: write these tests, run them to confirm they
+fail, then implement Steps 1–4.
+
+**Test 1 — Idle does not exhaust budget in `watch_with_reconnect`**
+
+Simulate N idle stale cycles (N > max_retries), then deliver a real message.
+Assert the message is returned successfully rather than raising. This directly
+verifies the primary success criterion.
+
+```python
+async def test_watch_with_reconnect_idle_does_not_exhaust_budget(keypair):
+    """Idle stale timeouts do not count against the reconnect budget."""
+    ...
+```
+
+**Test 2 — Real failures still exhaust budget in `watch_with_reconnect`**
+
+Simulate max_retries+1 genuine `ConnectionClosedError`s. Assert the exception
+propagates (budget is preserved as a safety valve).
+
+```python
+async def test_watch_with_reconnect_real_failure_exhausts_budget(keypair):
+    """Genuine connection failures still count against max_retries."""
+    ...
+```
+
+**Test 3 — Idle does not exhaust budget in `watch_multi_with_reconnect`**
+
+Same scenario as Test 1 but using the multi-channel wrapper.
+
+```python
+async def test_watch_multi_with_reconnect_idle_does_not_exhaust_budget(keypair):
+    """Idle stale timeouts do not count against budget in watch_multi_with_reconnect."""
+    ...
+```
+
+**Test 4 — Counter resets on message delivery in `watch_multi_with_reconnect`**
+
+Simulate some idle reconnects, deliver a message (resetting counters), simulate
+more idle reconnects. Verify the budget hasn't accumulated across the boundary.
+
+```python
+async def test_watch_multi_with_reconnect_budget_resets_on_message(keypair):
+    """Idle reconnect counter resets when a message is successfully delivered."""
+    ...
+```
+
+All tests use the existing `_make_mock_ws` / `_async_ctx` helpers from
+`tests/test_board_client.py`. No new conftest entries needed.
+
+---
+
+### Step 6: Run tests
+
+```bash
+uv run pytest tests/test_board_client.py -v -k "idle or budget"
+```
+
+All four new tests should pass. Then confirm no regressions:
+
+```bash
+uv run pytest tests/test_board_client.py -v
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **`StaleWatchError` leaking past callers that don't handle it**: Since it
+  subclasses `ConnectionError`, any outer retry loop that catches `ConnectionError`
+  will still handle it — just as if it were a real failure. This is acceptable
+  fallback behavior and is better than silently swallowing the error.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Adaptive backoff and the stale_timeout parameter**: Callers that set a
+  custom `stale_timeout` will see it grow after 3 idle reconnects. This is
+  intentional but could surprise callers who expected a fixed interval. The
+  behavior is documented in the updated docstrings.
+
+- **Connect failure during idle reconnect**: The stale handler calls `connect()`
+  without a retry loop. If the connect itself fails (e.g., brief network blip),
+  it will raise a `_RETRYABLE_ERRORS` exception which will be caught by the outer
+  handler and counted against the budget — which is correct, since this is now a
+  real failure.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
