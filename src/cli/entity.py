@@ -409,6 +409,15 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
     started_at = datetime.now(timezone.utc)
     launch_timestamp = started_at.timestamp()
 
+    # Chunk: docs/chunks/wiki_diff_baseline_ref - Record baseline before session
+    # Capture entity repo HEAD before the agent session starts so that
+    # extract_wiki_diff can diff baseline_ref..HEAD at shutdown time, picking up
+    # wiki changes the agent committed during the session.
+    from entity_shutdown import _capture_baseline_ref
+    _baseline_ref: str | None = None
+    if entities.has_wiki(entity_name):
+        _baseline_ref = _capture_baseline_ref(entities.entity_dir(entity_name))
+
     # --- Megaclaude environment ---
     mega_env = {**os.environ, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "true"} if megaclaude else None
 
@@ -505,6 +514,7 @@ def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeou
                     shutdown_result = run_shutdown(
                         entity_name=entity_name,
                         project_dir=project_dir,
+                        baseline_ref=_baseline_ref,
                     )
                     shutdown_method = "wiki consolidation"
                 except Exception as e:

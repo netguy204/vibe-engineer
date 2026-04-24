@@ -139,8 +139,9 @@ class TestHappyPathResumeShutdown:
     @patch("subprocess.Popen")
     @patch("entities.Entities.archive_transcript")
     @patch("entities.Entities.append_session")
+    @patch("entity_shutdown._capture_baseline_ref", return_value=None)
     def test_happy_path_resume_shutdown(
-        self, mock_append, mock_archive, mock_popen, tmp_path
+        self, mock_capture, mock_append, mock_archive, mock_popen, tmp_path
     ):
         """Full lifecycle succeeds with resume-based shutdown."""
         _setup_entity(tmp_path)
@@ -177,8 +178,9 @@ class TestHappyPathResumeShutdown:
     @patch("subprocess.Popen")
     @patch("entities.Entities.archive_transcript")
     @patch("entities.Entities.append_session")
+    @patch("entity_shutdown._capture_baseline_ref", return_value=None)
     def test_summary_shows_skipped_when_no_transcript(
-        self, mock_append, mock_archive, mock_popen, tmp_path
+        self, mock_capture, mock_append, mock_archive, mock_popen, tmp_path
     ):
         """When archive_transcript returns False, summary says '(skipped)'."""
         _setup_entity(tmp_path)
@@ -220,8 +222,10 @@ class TestTranscriptFallback:
     @patch("entity_shutdown.shutdown_from_transcript")
     @patch("entity_transcript.resolve_session_jsonl_path")
     @patch("entity_transcript.parse_session_jsonl")
+    @patch("entity_shutdown._capture_baseline_ref", return_value=None)
     def test_wiki_entity_uses_wiki_shutdown_on_resume_failure(
         self,
+        mock_capture,
         mock_parse,
         mock_resolve,
         mock_shutdown_from_transcript,
@@ -270,8 +274,10 @@ class TestTranscriptFallback:
     @patch("entity_shutdown.shutdown_from_transcript")
     @patch("entity_transcript.resolve_session_jsonl_path")
     @patch("entity_transcript.parse_session_jsonl")
+    @patch("entity_shutdown._capture_baseline_ref", return_value=None)
     def test_resume_timeout_triggers_wiki_shutdown(
         self,
+        mock_capture,
         mock_parse,
         mock_resolve,
         mock_shutdown_from_transcript,

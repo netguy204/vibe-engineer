@@ -741,20 +741,53 @@ def run_consolidation(
 # ---------------------------------------------------------------------------
 
 
+# Chunk: docs/chunks/wiki_diff_baseline_ref - Capture entity HEAD before session
+def _capture_baseline_ref(entity_dir: Path) -> str | None:
+    """Return the current HEAD SHA of the entity repo, or None on failure.
+
+    This is a best-effort helper: any failure (missing git, empty repo, etc.)
+    returns None, which causes extract_wiki_diff to fall back to its legacy
+    --cached HEAD behaviour.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(entity_dir), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "Could not capture baseline_ref in %s: %s", entity_dir, result.stderr
+            )
+            return None
+        return result.stdout.strip() or None
+    except Exception as exc:
+        logger.warning("Could not capture baseline_ref in %s: %s", entity_dir, exc)
+        return None
+
+
 # Chunk: docs/chunks/entity_shutdown_wiki - Mechanical wiki diff extraction
-def extract_wiki_diff(entity_dir: Path) -> str | None:
+# Chunk: docs/chunks/wiki_diff_baseline_ref - Diff against pre-session baseline
+def extract_wiki_diff(entity_dir: Path, baseline_ref: str | None = None) -> str | None:
     """Extract a git diff of the wiki/ directory in the entity repo.
+
+    Args:
+        entity_dir: Path to the entity repo root.
+        baseline_ref: Optional SHA recorded before the agent session started.
+            When provided, diffs baseline_ref..HEAD (capturing committed changes)
+            plus any staged-but-uncommitted changes. When absent, falls back to
+            the existing behaviour: diff --cached HEAD.
 
     Returns:
         None if no wiki/ directory exists (legacy entity).
-        "" if wiki exists but has no staged/unstaged changes vs HEAD.
+        "" if wiki exists but has no changes relative to the reference point.
         Diff text string if wiki has changes.
     """
     wiki_dir = entity_dir / "wiki"
     if not wiki_dir.exists():
         return None
 
-    # Stage all wiki changes
+    # Stage all wiki changes (committed or not, we want the full picture)
     stage_result = subprocess.run(
         ["git", "-C", str(entity_dir), "add", "wiki/"],
         capture_output=True,
@@ -766,7 +799,31 @@ def extract_wiki_diff(entity_dir: Path) -> str | None:
         )
         return ""
 
-    # Get diff of staged wiki changes vs HEAD
+    if baseline_ref is not None:
+        # Path A: diff everything since baseline_ref
+        # 1. Committed changes: baseline_ref..HEAD
+        committed_result = subprocess.run(
+            ["git", "-C", str(entity_dir), "diff", baseline_ref, "HEAD", "--", "wiki/"],
+            capture_output=True,
+            text=True,
+        )
+        if committed_result.returncode != 0:
+            logger.warning(
+                "git diff %s HEAD failed in %s: %s; falling back to --cached",
+                baseline_ref, entity_dir, committed_result.stderr,
+            )
+            # Fall through to the existing --cached path below
+        else:
+            # 2. Staged-but-uncommitted changes on top of HEAD
+            staged_result = subprocess.run(
+                ["git", "-C", str(entity_dir), "diff", "--cached", "HEAD", "--", "wiki/"],
+                capture_output=True,
+                text=True,
+            )
+            staged_text = staged_result.stdout if staged_result.returncode == 0 else ""
+            return committed_result.stdout + staged_text
+
+    # Path B (fallback): staged changes vs HEAD (original behaviour)
     diff_result = subprocess.run(
         ["git", "-C", str(entity_dir), "diff", "--cached", "HEAD", "--", "wiki/"],
         capture_output=True,
@@ -867,16 +924,20 @@ async def _run_consolidation_agent(entity_dir: Path, prompt: str) -> dict:
 
 
 def run_wiki_consolidation(
-    entity_name: str, entity_dir: Path, project_dir: Path
+    entity_name: str, entity_dir: Path, project_dir: Path,
+    baseline_ref: str | None = None,
 ) -> dict:
     """Run the wiki-based consolidation pipeline for an entity.
 
     Chunk: docs/chunks/entity_shutdown_wiki - Wiki consolidation public entry point
+    Chunk: docs/chunks/wiki_diff_baseline_ref - baseline_ref threading
 
     Args:
         entity_name: Name of the entity.
         entity_dir: Path to the entity's directory (must have wiki/).
         project_dir: Project root directory.
+        baseline_ref: Optional SHA recorded before the agent session started.
+            Passed through to extract_wiki_diff; see that function for details.
 
     Returns:
         Summary dict with journals_added, consolidated, core keys.
@@ -884,7 +945,7 @@ def run_wiki_consolidation(
     Raises:
         ValueError: If entity_dir has no wiki/ directory (legacy entity).
     """
-    wiki_diff = extract_wiki_diff(entity_dir)
+    wiki_diff = extract_wiki_diff(entity_dir, baseline_ref=baseline_ref)
     if wiki_diff is None:
         raise ValueError(
             f"Entity '{entity_name}' is a legacy entity (no wiki/ directory). "
@@ -939,6 +1000,7 @@ def run_shutdown(
     extracted_memories_json: str | None = None,
     api_key: str | None = None,
     decay_config: DecayConfig | None = None,
+    baseline_ref: str | None = None,
 ) -> dict:
     """Dispatch shutdown to wiki or legacy pipeline based on entity type.
 
@@ -954,6 +1016,8 @@ def run_shutdown(
         extracted_memories_json: JSON string of extracted memories (legacy only).
         api_key: Optional Anthropic API key (legacy only).
         decay_config: Optional decay configuration (legacy only).
+        baseline_ref: Optional SHA recorded before the agent session started
+            (wiki entities only). Passed through to extract_wiki_diff.
 
     Returns:
         Summary dict.
@@ -966,7 +1030,7 @@ def run_shutdown(
     entities = Entities(project_dir)
     if entities.has_wiki(entity_name):
         entity_dir = entities.entity_dir(entity_name)
-        return run_wiki_consolidation(entity_name, entity_dir, project_dir)
+        return run_wiki_consolidation(entity_name, entity_dir, project_dir, baseline_ref=baseline_ref)
     else:
         if not extracted_memories_json:
             raise ValueError(

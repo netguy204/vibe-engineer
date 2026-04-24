@@ -1456,6 +1456,91 @@ class TestExtractWikiDiff:
         assert result != ""
         assert "new_thing.md" in result
 
+    # Chunk: docs/chunks/wiki_diff_baseline_ref - baseline_ref tests
+
+    def test_baseline_ref_captures_committed_changes(self, tmp_path):
+        """baseline_ref path captures wiki changes even when committed during session."""
+        import subprocess
+        from entity_shutdown import extract_wiki_diff
+
+        repo = self._make_entity_git_repo(tmp_path)
+        # Record baseline before the "agent session" (simulates ve entity claude capturing HEAD)
+        baseline_ref = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        # Agent commits a wiki change during the session
+        (repo / "wiki" / "session_knowledge.md").write_text("# Learned\nSomething new.\n")
+        subprocess.run(["git", "add", "wiki/"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "wiki: add session knowledge"],
+            cwd=repo, check=True, capture_output=True
+        )
+
+        # baseline_ref path should see the committed change
+        result = extract_wiki_diff(repo, baseline_ref=baseline_ref)
+        assert result is not None
+        assert result != ""
+        assert "session_knowledge.md" in result or "Something new." in result
+
+    def test_baseline_ref_captures_uncommitted_changes_too(self, tmp_path):
+        """baseline_ref path captures both committed and uncommitted wiki changes."""
+        import subprocess
+        from entity_shutdown import extract_wiki_diff
+
+        repo = self._make_entity_git_repo(tmp_path)
+        baseline_ref = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        # Agent commits one wiki change
+        (repo / "wiki" / "committed.md").write_text("# Committed\nContent A.\n")
+        subprocess.run(["git", "add", "wiki/"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "wiki: committed change"],
+            cwd=repo, check=True, capture_output=True
+        )
+
+        # Agent also leaves an uncommitted (unstaged) wiki change
+        (repo / "wiki" / "uncommitted.md").write_text("# Uncommitted\nContent B.\n")
+
+        result = extract_wiki_diff(repo, baseline_ref=baseline_ref)
+        assert result is not None
+        assert result != ""
+        # Both changes should appear in the combined diff
+        assert "committed.md" in result or "Content A." in result
+        assert "uncommitted.md" in result or "Content B." in result
+
+    def test_baseline_ref_fallback_no_changes(self, tmp_path):
+        """When baseline_ref equals current HEAD and no changes, diff is empty string."""
+        import subprocess
+        from entity_shutdown import extract_wiki_diff
+
+        repo = self._make_entity_git_repo(tmp_path)
+        baseline_ref = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        # No changes at all since baseline
+        result = extract_wiki_diff(repo, baseline_ref=baseline_ref)
+        assert result == ""
+
+    def test_no_baseline_ref_uses_cached_diff(self, tmp_path):
+        """Without baseline_ref, staged changes vs HEAD are returned (existing behaviour)."""
+        from entity_shutdown import extract_wiki_diff
+
+        repo = self._make_entity_git_repo(tmp_path)
+        # Add unstaged wiki changes (no commit)
+        (repo / "wiki" / "identity.md").write_text("# Identity\nInitial content.\nExtra line.\n")
+
+        result = extract_wiki_diff(repo)
+        assert result is not None
+        assert result != ""
+        assert "+Extra line." in result
+
 
 # ---------------------------------------------------------------------------
 # TestRunWikiConsolidation

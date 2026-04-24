@@ -10,170 +10,200 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Thread a `baseline_ref` (the entity repo's HEAD SHA at session start) from
+`ve entity claude` all the way down into `extract_wiki_diff`. When present, diff
+`baseline_ref..HEAD` (committed wiki changes) plus any staged-but-uncommitted
+changes. When absent, retain the existing `--cached HEAD` behaviour.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Key invariant: `extract_wiki_diff` must continue to work when called directly
+(e.g. `ve entity shutdown`) without a baseline_ref. The fallback to
+`diff --cached HEAD` handles that case.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/wiki_diff_baseline_ref/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow TESTING_PHILOSOPHY.md: write a failing test first that exercises
+the new behaviour, then implement to make it pass.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests for the baseline_ref path
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Before touching any implementation, add tests to `tests/test_entity_shutdown.py`
+that express the desired behaviour and will fail today.
 
-Example:
+**Tests to add:**
 
-### Step 1: Define the SegmentHeader struct
+1. `TestExtractWikiDiff::test_baseline_ref_captures_committed_changes`
+   - Create a temp git repo with a `wiki/` directory
+   - Record `baseline_ref = git rev-parse HEAD`
+   - Add a new wiki file and commit it (simulating agent committing during session)
+   - Call `extract_wiki_diff(entity_dir, baseline_ref=baseline_ref)`
+   - Assert the diff is non-empty and contains the committed file's content
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+2. `TestExtractWikiDiff::test_baseline_ref_captures_uncommitted_changes_too`
+   - Same setup, but also leave an additional wiki file untracked/modified
+   - Assert the diff includes both the committed change and the uncommitted one
 
-Location: src/segment/format.rs
+3. `TestExtractWikiDiff::test_baseline_ref_fallback_no_changes`
+   - Provide a baseline_ref that equals the current HEAD with no changes
+   - Assert the diff is `""`
 
-### Step 2: Implement header serialization
+4. `TestExtractWikiDiff::test_no_baseline_ref_uses_cached_diff` (existing-style)
+   - Confirm the no-baseline_ref path still works as before (staged vs HEAD)
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Verify all four tests fail (or that tests 1–3 fail) before proceeding.
 
-### Step 3: ...
+### Step 2: Add `_capture_baseline_ref` helper in `entity_shutdown.py`
 
----
+Add a small helper near the top of the wiki-based shutdown section:
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Chunk: docs/chunks/wiki_diff_baseline_ref - Capture entity HEAD before session
+def _capture_baseline_ref(entity_dir: Path) -> str | None:
+    """Return the current HEAD SHA of the entity repo, or None on failure."""
+    result = subprocess.run(
+        ["git", "-C", str(entity_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "Could not capture baseline_ref in %s: %s", entity_dir, result.stderr
+        )
+        return None
+    return result.stdout.strip() or None
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/entity_shutdown.py`, immediately before `extract_wiki_diff`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Update `extract_wiki_diff` signature and logic
 
-## Dependencies
+Change the function signature to accept an optional `baseline_ref`:
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+```python
+# Chunk: docs/chunks/wiki_diff_baseline_ref - Diff against pre-session baseline
+def extract_wiki_diff(entity_dir: Path, baseline_ref: str | None = None) -> str | None:
+```
 
-If there are no dependencies, delete this section.
--->
+New logic when `baseline_ref` is provided:
+
+1. Stage any unstaged wiki changes: `git -C entity_dir add wiki/`
+2. Get committed diff since baseline:
+   `git -C entity_dir diff <baseline_ref> HEAD -- wiki/`
+3. Get any staged-but-uncommitted diff:
+   `git -C entity_dir diff --cached HEAD -- wiki/`
+4. Combine both diff strings (concatenate; the agent prompt tolerates receiving
+   two separate diff blocks)
+5. Return the combined string (empty string if both are empty)
+
+Existing logic (no `baseline_ref`) remains unchanged.
+
+**Error handling**: if `git diff baseline_ref HEAD` fails (e.g. invalid ref),
+log a warning and fall back to the existing `--cached HEAD` path.
+
+### Step 4: Thread `baseline_ref` through `run_wiki_consolidation`
+
+Update the signature:
+
+```python
+def run_wiki_consolidation(
+    entity_name: str, entity_dir: Path, project_dir: Path,
+    baseline_ref: str | None = None
+) -> dict:
+```
+
+Pass it through to `extract_wiki_diff`:
+
+```python
+wiki_diff = extract_wiki_diff(entity_dir, baseline_ref=baseline_ref)
+```
+
+Add a backreference comment to the function:
+
+```python
+# Chunk: docs/chunks/wiki_diff_baseline_ref - baseline_ref threading
+```
+
+### Step 5: Thread `baseline_ref` through `run_shutdown`
+
+Update the signature:
+
+```python
+def run_shutdown(
+    entity_name: str,
+    project_dir: Path,
+    extracted_memories_json: str | None = None,
+    api_key: str | None = None,
+    decay_config: DecayConfig | None = None,
+    baseline_ref: str | None = None,
+) -> dict:
+```
+
+Pass it to `run_wiki_consolidation`:
+
+```python
+return run_wiki_consolidation(entity_name, entity_dir, project_dir, baseline_ref=baseline_ref)
+```
+
+### Step 6: Capture `baseline_ref` in `ve entity claude` before launching Claude
+
+In `claude_cmd` (`src/cli/entity.py`), after resolving `entity_dir` and
+confirming the entity exists, capture the baseline before launching the
+subprocess:
+
+```python
+from entity_shutdown import _capture_baseline_ref
+
+# Capture entity repo HEAD before the agent session starts
+entity_dir_path = entities.entity_dir(entity_name)
+baseline_ref = _capture_baseline_ref(entity_dir_path) if entities.has_wiki(entity_name) else None
+```
+
+Add a backreference comment:
+
+```python
+# Chunk: docs/chunks/wiki_diff_baseline_ref - Record baseline before session
+```
+
+Pass `baseline_ref` to `run_shutdown` in the wiki-shutdown fallback branch:
+
+```python
+shutdown_result = run_shutdown(
+    entity_name=entity_name,
+    project_dir=project_dir,
+    baseline_ref=baseline_ref,
+)
+```
+
+(This is the `if entities.has_wiki(entity_name)` branch inside the
+`if shutdown_method == "none":` block, around line 505.)
+
+### Step 7: Run tests and confirm all pass
+
+```bash
+uv run pytest tests/test_entity_shutdown.py -v
+uv run pytest tests/ -v
+```
+
+All four new tests should now pass. Ensure no regressions in the existing suite.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **Empty repo (no commits yet)**: `git rev-parse HEAD` will fail if the entity
+  repo has no commits. `_capture_baseline_ref` returns `None` in that case,
+  gracefully falling back to the existing behaviour.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Diff duplication**: Combining `diff baseline_ref HEAD` and
+  `diff --cached HEAD` may produce overlapping context in edge cases (e.g.
+  if the agent staged a change but didn't commit). The consolidation agent
+  processes the diff as prose, so minor duplication is tolerable. If it becomes
+  a problem, we can deduplicate in a follow-up.
+
+- **`_capture_baseline_ref` is a private function**: It's exported to
+  `src/cli/entity.py`. This is acceptable — the CLI module is a peer, not a
+  plugin. If this pattern recurs, we may want to move it to a shared entity
+  utilities module.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
