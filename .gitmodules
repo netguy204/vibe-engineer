@@ -1,0 +1,3 @@
+[submodule ".entities/documentor"]
+	path = .entities/documentor
+	url = /Users/btaylor/Projects/vibe-engineer/documentor
