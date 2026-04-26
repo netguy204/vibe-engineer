@@ -291,8 +291,10 @@ Releases are published to [PyPI](https://pypi.org/project/vibe-engineer/) automa
 
 1. Update the version in `pyproject.toml`
 2. Commit the version bump: `git commit -am "chore: bump version to 0.2.0"`
-3. Tag the release: `git tag v0.2.0`
-4. Push the tag: `git push origin v0.2.0`
+3. Tag the release: `git tag releases/v0.2.0`
+4. Push the tag: `git push origin releases/v0.2.0`
+
+Tags follow the `releases/v*` pattern; the publish workflow triggers on tags matching that prefix.
 
 GitHub Actions will build the package and publish it to PyPI using trusted publishing (OIDC).
 
