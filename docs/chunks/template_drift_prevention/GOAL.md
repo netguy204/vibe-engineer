@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 superseded_by: template_lang_agnostic
 ticket: null
 parent_chunk: null

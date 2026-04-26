@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 ticket: null
 parent_chunk: null
 code_paths:
@@ -24,6 +24,7 @@ created_after:
 ---
 
 # Chunk Goal
+<!-- HISTORICAL: Template content was substantially refactored in commit a465762. Chunk Relationships and Consolidation Chunks sections were removed from the subsystem template. The planning template's Subsystem Considerations section persists. -->
 
 ## Minor Goal
 

@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 superseded_by: websocket_hibernation_compat
 ticket: null
 parent_chunk: null
