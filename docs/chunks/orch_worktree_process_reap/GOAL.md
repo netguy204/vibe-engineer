@@ -26,57 +26,63 @@ created_after:
 
 ## Minor Goal
 
-Reap child processes spawned inside orchestrator worktrees during finalization,
-preventing long-lived zombie processes that hog memory and break external
-token-based services.
+Worktree finalization in the orchestrator reaps any child processes still
+rooted in the worktree path, so torn-down worktrees do not leave behind
+long-lived zombies that hog memory or hold external tokens.
 
-### The bug
+### The hazard being closed
 
 When the orchestrator tears down a worktree (merge, force-remove, branch
 delete), child processes spawned during phase execution (PLAN/IMPLEMENT/REVIEW)
-— particularly claude-agent-sdk bundled Claude Code subprocesses — continue
-running indefinitely. Observed: 7 zombie processes with ~100-220MB RSS each,
-running 5+ hours after the chunk was marked DONE and its worktree removed.
+— particularly claude-agent-sdk bundled Claude Code subprocesses — can
+continue running indefinitely after the worktree directory is removed. The
+motivating incident: 7 zombie processes at ~100-220MB RSS each, running 5+
+hours after the chunk was marked DONE and its worktree removed.
 
-Real-world harm: one of those zombies held a Slack App-Level Token, causing
-the operator's fresh Slack adapter to churn ("session established / session
-abandoned" every ~125ms) and silently drop all inbound DMs. Only
-`pkill -f "\.ve/chunks/.*worktree"` resolved it.
+The downstream harm is shaped by what the zombies hold. In the motivating
+incident one held a Slack App-Level Token, causing the operator's fresh
+Slack adapter to churn ("session established / session abandoned" every
+~125ms) and silently drop all inbound DMs. Only
+`pkill -f "\.ve/chunks/.*worktree"` resolved it. The same shape applies to
+any external resource (file locks, network connections, tokens) a phase
+agent might hold.
 
 ### Reproducer
 
-Inject any chunk whose phases exercise claude-agent-sdk, let the orchestrator
-complete it, then:
+Inject any chunk whose phases exercise claude-agent-sdk, let the
+orchestrator complete it, then:
 
 ```bash
 ps aux | grep '.ve/chunks/.*/worktree' | grep -v grep
 ```
 
-If processes remain, the bug is present.
+If processes remain, the worktree teardown failed to reap them.
 
-### Implementation approach
+### Implementation shape
 
-In `WorktreeManager.remove_worktree()` (`src/orchestrator/worktree.py`),
-before removing the worktree directory:
+`WorktreeManager._remove_worktree_from_repo` calls
+`_reap_worktree_processes(worktree_path)` before invoking
+`git worktree remove` (`src/orchestrator/worktree.py`).
+`_reap_worktree_processes`:
 
-1. **Scan for child processes** — use `psutil` (or `ps aux` parsing as
-   fallback) to find processes whose cwd or exe path is inside the worktree
-   path being removed.
-2. **SIGTERM → grace period → SIGKILL** — send SIGTERM to found processes,
-   wait briefly (e.g., 5 seconds), then SIGKILL any remaining.
-3. **Log** — log at WARNING level which PIDs were reaped and why.
+1. **Scans for child processes** — uses `psutil.process_iter` to find
+   processes whose `cwd` or any `cmdline` arg is inside the worktree path
+   being removed. The orchestrator's own PID is excluded.
+2. **SIGTERM → grace period → SIGKILL** — sends SIGTERM to all candidates,
+   waits 5 seconds, then SIGKILL for any survivors.
+3. **Logs** — emits WARNING-level log entries naming the reaped PIDs and
+   any that required SIGKILL.
 
-Additionally, consider running phase agents in their own process group
-(`os.setpgrp()`) during `_run_phase()` in the scheduler, so the entire
-group can be terminated cleanly at teardown. This is a more robust long-term
-solution but requires changes to how the scheduler spawns agents.
+Running phase agents in their own process group (`os.setpgrp()`) inside the
+scheduler is a possible future hardening, but is not part of this chunk —
+the path-based scan covers the observed cases.
 
 ### Cross-project context
 
 Reported by the world-model project. The impact was amplified because zombie
-processes held external tokens (Slack), but the underlying bug affects any
-project using the orchestrator — zombies consume memory and may hold file
-locks, network connections, or other resources.
+processes held external tokens (Slack), but the underlying hazard affects
+any project using the orchestrator — zombies consume memory and may hold
+file locks, network connections, or other resources.
 
 ## Success Criteria
 

@@ -2,7 +2,7 @@
 status: ACTIVE
 ticket: null
 parent_chunk: landing_page_veng_dev
-code_paths: ["site/src/pages/index.astro", "site/src/layouts/Layout.astro"]
+code_paths: ["site/src/pages/index.astro", "site/src/layouts/BaseLayout.astro"]
 code_references: []
 narrative: null
 investigation: null
@@ -17,16 +17,18 @@ created_after: ["landing_page_analytics_redirect"]
 
 ## Minor Goal
 
-Update the Umami analytics script tag on the veng.dev landing page to load from
-our own domain. Replace the current Umami script tag with:
+The veng.dev landing page loads its Umami analytics script from the
+project's own domain (`analytics.veng.dev`) rather than a third-party host.
+The single script tag lives in the shared layout so every page picks it up:
 
 ```html
 <script defer src="https://analytics.veng.dev/script.js" data-website-id="45c5153f-764f-4e64-8ae3-21a8db285393"></script>
 ```
 
-Find all analytics script tags across the site templates and pages. Ensure all
-scripts load from `analytics.veng.dev`, not the old host. The script tag may be
-in a layout file (e.g., `Layout.astro`) rather than individual pages.
+The script tag belongs in the shared layout (`BaseLayout.astro`) rather
+than individual pages so any new page automatically inherits analytics.
+Site-wide search for analytics script tags must return only the
+`analytics.veng.dev` host — no third-party references.
 
 ## Success Criteria
 

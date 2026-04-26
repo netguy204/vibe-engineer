@@ -40,28 +40,43 @@ created_after:
 
 ## Minor Goal
 
-Implement `ve entity attach <repo-url>` and `ve entity detach <name>` to manage the submodule lifecycle that makes entities portable across projects.
+`ve entity attach <repo-url>` and `ve entity detach <name>` manage the
+submodule lifecycle that makes entities portable across projects.
 
-Attaching an entity to a project is the core interaction that enables entity portability. It uses `git submodule add` to clone the entity's repo into `.entities/<name>/` within the project, making the entity's wiki and memories accessible. Detaching cleanly removes the submodule.
+Attaching an entity to a project is the core interaction that enables entity
+portability. It uses `git submodule add` to clone the entity's repo into
+`.entities/<name>/` within the project, making the entity's wiki and memories
+accessible. Detaching cleanly removes the submodule.
 
-### Context for implementing agent
+### Context
 
-**Read the investigation first**: `docs/investigations/entity_wiki_memory/OVERVIEW.md` — especially the H2 exploration log where the full submodule lifecycle was prototyped.
+**Investigation reference**: `docs/investigations/entity_wiki_memory/OVERVIEW.md`
+— see the H2 exploration log for the prototyped submodule lifecycle.
 
-**The big picture**: Entities are portable specialists that move across the platform. "Attaching" an entity to a project is the core interaction — it makes a specialist's accumulated knowledge (wiki, memories, episodic transcripts) available in a new project context. The entity works in that project, maintains its wiki during the session, and at shutdown commits its updated knowledge back to its repo. The same entity can be attached to multiple projects, shared with team members, forked for divergent training, and merged to combine learnings.
+**The big picture**: Entities are portable specialists that move across the
+platform. "Attaching" an entity to a project is the core interaction — it
+makes a specialist's accumulated knowledge (wiki, memories, episodic
+transcripts) available in a new project context. The entity works in that
+project, maintains its wiki during the session, and at shutdown commits its
+updated knowledge back to its repo. The same entity can be attached to
+multiple projects, shared with team members, forked for divergent training,
+and merged to combine learnings.
 
-**Existing entity code**: Currently, entities live as plain directories under `.entities/<name>/` created by `src/entities.py:create_entity()`. There is no submodule management. The existing `src/cli/entity.py` has `ve entity create` and `ve entity list` commands. This chunk adds `attach`, `detach`, and enhances `list` to show submodule status.
+**Surrounding entity code**: Plain entities live as directories under
+`.entities/<name>/` created by `src/entities.py:create_entity()`. The
+attach/detach lifecycle layered on top of that uses git submodules so the
+same entity repo can live inside multiple projects. `src/cli/entity.py`
+hosts `create`, `list`, `attach`, and `detach` together.
 
-The submodule lifecycle was fully tested in the investigation's H2 experiment — attach, work, push/pull, fork/merge all verified.
-
-Key findings from the prototype:
+Submodule lifecycle properties verified in the investigation's H2 experiment
+and reflected in the implementation:
 - `git submodule add <url> .entities/<name>` works correctly
 - Both GitHub URLs and local paths work as entity repo sources
 - The submodule creates a `.gitmodules` entry and a gitlink in `.entities/`
 - After attach, the entity's wiki is immediately accessible at `.entities/<name>/wiki/`
-- Detach requires: remove from `.gitmodules`, remove from `.git/config`, remove the directory, update the index
+- Detach unwinds the full sequence: remove from `.gitmodules`, remove from `.git/config`, remove the directory, update the index
 
-### What to build
+### Behavior
 
 1. **`ve entity attach <repo-url> [--name <name>]`**:
    - Validates the current directory is a git repo
@@ -69,7 +84,7 @@ Key findings from the prototype:
    - If `--name` not provided, derives name from the repo URL (e.g., `entity-slack-watcher.git` → `slack-watcher`)
    - Validates the cloned repo is an entity repo (`is_entity_repo`)
    - Prints confirmation with the entity's name and specialization from ENTITY.md
-   - Does NOT auto-commit — lets the user review and commit when ready
+   - Does NOT auto-commit — leaves the staged submodule for the user to review and commit when ready
 
 2. **`ve entity detach <name>`**:
    - Validates the entity exists at `.entities/<name>/`
@@ -83,10 +98,10 @@ Key findings from the prototype:
 
 ### Design constraints
 
-- Must work with both HTTPS and SSH GitHub URLs, and local file paths
-- The `.entities/` directory is the canonical location — don't allow customization
-- Detach should be safe by default — refuse if uncommitted entity changes exist unless `--force`
-- Should work even if the project has no `.entities/` directory yet (create it)
+- Works with both HTTPS and SSH GitHub URLs, and local file paths
+- The `.entities/` directory is the canonical location — no customization
+- Detach is safe by default — refuses if uncommitted entity changes exist unless `--force`
+- Works even if the project has no `.entities/` directory yet (creates it)
 
 ## Success Criteria
 
