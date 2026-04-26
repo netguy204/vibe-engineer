@@ -31,11 +31,9 @@ created_after:
 
 ## Minor Goal
 
-Make `ve entity shutdown` consolidate existing journal memories even when no new memories are provided.
+`ve entity shutdown` consolidates existing journal memories even when no new memories are provided.
 
-Currently, `ve entity shutdown` only consolidates memories passed in via `--memories-file` or stdin. If you pass an empty array, it's a no-op — it doesn't look at the journals already on disk. This means journal entries written directly (e.g., by a steward that couldn't run consolidation due to a missing API key) sit unconsolidated with no way to promote them.
-
-The shutdown command should read existing journal entries from the entity's `memories/journal/` directory and include them in the consolidation pass alongside any new memories from the input. When called with an empty input (`echo '[]' | ve entity shutdown`), it should still consolidate whatever journals exist on disk.
+The shutdown command reads existing journal entries from the entity's `memories/journal/` directory and includes them in the consolidation pass alongside any new memories from the input. When called with empty input (`echo '[]' | ve entity shutdown`), it still consolidates whatever journals exist on disk — so journal entries written directly (e.g., by a steward that couldn't run consolidation due to a missing API key) can be promoted later without re-supplying them as new input.
 
 ## Success Criteria
 

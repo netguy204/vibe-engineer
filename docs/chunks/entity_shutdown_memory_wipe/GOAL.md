@@ -24,19 +24,15 @@ created_after:
 
 ## Minor Goal
 
-CRITICAL: Fix `ve entity shutdown` deleting existing consolidated and core memories instead of merging new journals into them.
+`ve entity shutdown` merges newly consolidated memories into the existing consolidated and core tiers rather than replacing them. Existing memories survive a shutdown that produces no new promotions for their tier.
 
-Running shutdown with new journal memories causes ALL existing consolidated (24) and core (8) memories to be wiped. The command reports "Consolidated: 0, Core: 0" — the consolidation pipeline overwrites the memory directories instead of merging. Core memories with salience 5 and active reinforcement are destroyed on a single consolidation pass.
+The consolidation pipeline in `run_consolidation`:
 
-Root cause hypothesis: The LLM consolidation prompt returns only the newly consolidated memories (or empty set), and the pipeline interprets that as the complete replacement for the tier rather than an incremental addition. When the LLM returns nothing for consolidated/core (because 18 new journals don't warrant immediate promotion), the pipeline deletes all existing files in those directories.
+1. Loads all existing consolidated and core memories from disk before calling the LLM, so they are visible to the consolidation prompt.
+2. Snapshots the consolidated and core directories to `.snapshot_pre_consolidation/` before any modifications, providing single-step recovery if a consolidation pass goes wrong (defense in depth).
+3. For each entry the LLM returns in a tier, looks up an existing file with the same title and overwrites it; entries without a title match are appended. Existing files whose titles are not present in the LLM response are left untouched — an empty LLM result for a tier therefore preserves every existing memory in that tier.
 
-Fix must ensure:
-1. Existing consolidated and core memories are PRESERVED unless explicitly demoted by the decay system
-2. The consolidation pipeline MERGES new promotions into existing tiers, not replaces them
-3. If the LLM consolidation returns empty results, existing memories are untouched
-4. A backup/snapshot mechanism before any tier modification (defense in depth)
-
-Reported by palette/creator entity after losing 8 core memories including foundational product vision and architectural knowledge.
+Demotion of consolidated or core memories is the responsibility of the decay system, never a side effect of consolidation.
 
 ## Success Criteria
 

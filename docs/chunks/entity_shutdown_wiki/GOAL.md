@@ -36,27 +36,26 @@ created_after:
 
 ## Minor Goal
 
-Revise the entity-shutdown skill to use the new wiki-based pipeline: mechanical git diff for journal creation, then Agent SDK consolidation for memory synthesis, then commit to entity repo. This eliminates the fragile timeout-based journal extraction that currently fails silently.
+The entity-shutdown skill uses a wiki-based pipeline for wiki entities: mechanical git diff for journal creation, then Agent SDK consolidation for memory synthesis, then commit to entity repo. The dispatcher routes wiki entities to this pipeline and legacy entities to the prior Messages-API pipeline. This eliminates the fragile timeout-based journal extraction that previously failed silently for wiki-based entities.
 
 ### Context for implementing agent
 
 **Read the investigation first**: `docs/investigations/entity_wiki_memory/OVERVIEW.md` — especially the "Shutdown Sequence" section in the Appendix and the H1 exploration log showing how wiki diffs produce journal entries.
 
-**The big picture**: The wiki maintained during the session (by chunk 3's startup contract) is the source of truth for what the entity learned. At shutdown, `git diff` mechanically extracts what changed — these diffs ARE the journal entries. Then an Agent SDK session (not the Messages API, not a CLI prompt) performs the higher-value consolidation work: merging concrete session changes into abstract cross-session patterns and distilling identity-level core memories. This replaces the current fragile pipeline entirely for wiki-based entities.
+**The big picture**: The wiki maintained during the session (by the startup contract) is the source of truth for what the entity learned. At shutdown, `git diff` mechanically extracts what changed — these diffs ARE the journal entries. An Agent SDK session (not the Messages API, not a CLI prompt) then performs the higher-value consolidation work: merging concrete session changes into abstract cross-session patterns and distilling identity-level core memories. This is the wiki-entity pipeline; legacy entities continue to use the Messages-API pipeline.
 
-**Existing shutdown code** — this is what you're replacing:
-- `src/entity_shutdown.py` (721 lines) — the current pipeline. Key functions:
-  - `run_consolidation()` — main orchestration: calls Anthropic Messages API for both memory extraction and consolidation
-  - `extract_memories_from_transcript()` — uses `anthropic.Anthropic` client to extract memories from session transcript (this is the step that times out)
-  - `shutdown_from_transcript()` — fallback when the in-session extraction fails
-  - Uses `anthropic` SDK directly with API key — costs API rates, no Claude Max pricing
-  - Two API calls: extraction (max_tokens: 4096) then consolidation (max_tokens: 8192)
-- `src/templates/commands/entity-shutdown.md.jinja2` — the `/entity-shutdown` skill. Prompts the entity to extract memories as JSON with categories (correction, skill, domain, confirmation, coordination, autonomy), then calls `ve entity shutdown` CLI
-- `src/cli/entity.py` — `ve entity shutdown <name>` command (line ~171), also `ve entity claude` which wraps the full lifecycle with a configurable 300s timeout for the consolidation step
+**Shutdown code map**:
+- `src/entity_shutdown.py` — both pipelines live here. Key functions:
+  - `run_shutdown()` — dispatcher: routes wiki entities to `run_wiki_consolidation()`, legacy entities to `run_consolidation()`
+  - `extract_wiki_diff()` — mechanical git diff extraction from the entity's `wiki/` directory; zero-LLM journal creation
+  - `_build_consolidation_prompt()` / `_run_consolidation_agent()` / `run_wiki_consolidation()` — Agent SDK consolidation pipeline (bypassPermissions, no timeout, Claude Max pricing)
+  - `run_consolidation()` (legacy) — Messages API extraction + consolidation for entities without `wiki/`
+- `src/templates/commands/entity-shutdown.md.jinja2` — the `/entity-shutdown` skill, with branching flow for wiki vs legacy entities
+- `src/cli/entity.py` — `ve entity shutdown <name>` invokes `run_shutdown()`; also `ve entity claude` wraps the full lifecycle
 
-**Agent SDK integration exists in the codebase**: `src/orchestrator/agent.py` (956 lines) already uses `claude_agent_sdk` with `ClaudeSDKClient`, `@tool` decorator, pre/post-tool hooks, and MCP server integration. Use this as a reference for how to launch Agent SDK sessions in this project. The Agent SDK runs via Claude Max (no API key costs) and has no arbitrary timeout — the session runs to completion.
+**Agent SDK integration**: `src/orchestrator/agent.py` uses `claude_agent_sdk` with `ClaudeSDKClient`, `@tool` decorator, pre/post-tool hooks, and MCP server integration — a reference for how Agent SDK sessions launch in this project. The Agent SDK runs via Claude Max (no API key costs) and has no arbitrary timeout — the session runs to completion.
 
-**Current problem**: When shutting down an entity via `ve entity claude`, the journal writing phase often exceeds the shutdown timeout and falls back to transcript scanning. This fallback is unreliable — it frequently produces zero journal entries. The deeper issue is that consolidation runs as a prompted task inside the restored CLI session with limited observability.
+**Why this pipeline exists**: The legacy shutdown path runs consolidation as a prompted task inside the restored CLI session with a configurable timeout. When the journal-writing phase exceeded the timeout, the fallback transcript scan frequently produced zero journal entries — silent data loss. The wiki-diff approach makes journal creation mechanical and reliable, and the Agent SDK consolidation runs to completion with no arbitrary deadline.
 
 **New pipeline**:
 ```

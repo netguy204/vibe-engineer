@@ -86,8 +86,8 @@ available globally once the script loads.
 
 ## Relationship to Parent
 
-Parent chunk `landing_page_veng_dev` created the site and all interactive
-elements. `landing_page_analytics_domain` set up the Umami script tag.
-`landing_page_analytics_redirect` added analytics redirect URLs for GitHub
-links. This chunk adds event tracking on top of the existing page without
-modifying layout, design, or functionality.
+Parent chunk `landing_page_veng_dev` owns the site and its interactive
+elements. `landing_page_analytics_domain` owns the Umami script tag.
+`landing_page_analytics_redirect` owns the analytics redirect URLs for GitHub
+links. Event tracking layers on top of those elements without modifying
+layout, design, or functionality.

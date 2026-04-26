@@ -38,14 +38,15 @@ created_after:
 
 ## Minor Goal
 
-Add `ve wiki reindex <entity>` command that regenerates `wiki/index.md` from
-page frontmatter, eliminating manual index maintenance toil.
+Provide `ve wiki reindex <entity>`, a command that regenerates `wiki/index.md`
+from page frontmatter and eliminates manual index maintenance toil.
 
-Currently, entities must manually add a row to `index.md` every time they
-create a wiki page. This is mechanical work that drifts — the entity forgets,
-pages go unlisted, and the next startup's wake payload shows an out-of-date
-index. The wiki_schema.md already says "every page you create must have a
-row in the appropriate table" — this command enforces that programmatically.
+The wiki schema asks entities to add a row to `index.md` every time they
+create a wiki page. That mechanical work drifts — entities forget, pages go
+unlisted, and the next startup's wake payload shows an out-of-date index.
+The reindex command enforces the schema's "every page you create must have a
+row in the appropriate table" rule programmatically, regenerating the index
+from page frontmatter on demand.
 
 ### What the command does
 

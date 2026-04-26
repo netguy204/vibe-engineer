@@ -6,10 +6,10 @@ code_paths:
 - src/cli/dotenv_loader.py
 - tests/test_dotenv_loader.py
 code_references:
-- ref: src/cli/dotenv_loader.py#_find_dotenv_walking_parents
-  implements: "Walk parent directories from project root to find .env file"
+- ref: src/cli/dotenv_loader.py#_collect_dotenv_files
+  implements: "Walk parent directories from project root to filesystem root, collecting all .env files found"
 - ref: src/cli/dotenv_loader.py#load_dotenv_from_project_root
-  implements: "Refactored to use parent-walking helper instead of single-directory check"
+  implements: "Loads variables from all .env files at or above project root, with closer files taking precedence"
 narrative: null
 investigation: null
 subsystems: []
@@ -23,16 +23,14 @@ created_after:
 
 ## Minor Goal
 
-Change the CLI `.env` loader (shipped in `cli_dotenv_loading`) to walk up parent directories until it finds a `.env` file, instead of only checking the resolved project root.
+The CLI `.env` loader walks up parent directories from the resolved project root, collecting every `.env` file from project root to filesystem root. A single `~/.env` with `ANTHROPIC_API_KEY` therefore serves all projects without being duplicated into each project root.
 
-Currently, `load_dotenv_from_project_root` only looks in the project root directory. This means a `.env` in `~` (home directory) won't be found when running `ve` from a project subdirectory like `~/Projects/my-project/`. Walking up parents enables a single `~/.env` with `ANTHROPIC_API_KEY` to serve all projects without duplicating the file into each project root.
+Resolution order:
+1. Resolve project root (`.ve-task.yaml` → `.git` → CWD)
+2. Walk from project root toward filesystem root, collecting every `.env` along the way
+3. Load files farthest-first so closer files override farther ones
 
-Resolution order (first found wins):
-1. Project root (`.ve-task.yaml` → `.git` resolution)
-2. Walk up parent directories from project root toward filesystem root
-3. Stop at first `.env` found
-
-More specific `.env` files (closer to project root) take precedence because they're found first. A project-level `.env` overrides `~/.env` naturally.
+More specific `.env` files (closer to project root) take precedence because they are loaded last. A project-level `.env` therefore overrides `~/.env` naturally, and existing environment variables override every `.env` value (no-override semantics).
 
 ## Success Criteria
 

@@ -32,24 +32,24 @@ created_after:
 
 ## Minor Goal
 
-Add a `ve entity ingest <entity> <path>` command that copies external Claude Code
-JSONL session transcripts into an entity's sessions directory so the existing
-episodic indexer picks them up automatically on the next search.
+The `ve entity ingest <entity> <path>` command copies external Claude Code
+JSONL session transcripts into an entity's sessions directory so the episodic
+indexer picks them up automatically on the next search.
 
-These are JSONL files from Claude Code sessions that were NOT run under
-`ve entity claude` — they have the same format (user/assistant turns with
-timestamps) but live outside the entity's `.entities/<name>/sessions/` directory.
-The operator wants to retroactively make old conversations searchable through
-the entity's episodic memory.
+The target files are JSONL transcripts from Claude Code sessions that were not
+run under `ve entity claude` — they share the same format (user/assistant turns
+with timestamps) but live outside the entity's `.entities/<name>/sessions/`
+directory. Ingest makes those older conversations searchable through the
+entity's episodic memory.
 
-The ingest command should:
-- Accept a glob or individual file path
-- Validate that each file is parseable Claude Code JSONL (fail gracefully on bad files)
-- Copy files into `.entities/<name>/sessions/` with a name that won't collide
+The ingest command:
+- Accepts a glob or individual file path
+- Validates that each file is parseable Claude Code JSONL (fails gracefully on bad files)
+- Copies files into `.entities/<name>/sessions/` with a name that won't collide
   with existing session files (e.g., prefix with `ingested_`)
-- Report what was ingested
-- The next `ve entity episodic --query` will automatically index the new files
-  via the existing incremental `build_or_update()` flow
+- Reports what was ingested
+- Relies on the next `ve entity episodic --query` to index the new files via
+  the incremental `build_or_update()` flow
 
 ## Success Criteria
 

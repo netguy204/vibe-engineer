@@ -88,12 +88,15 @@ ve entity episodic --entity steward --query "websocket timeout reconnect"
 - Expanding a hit costs context window space. Be selective — expand the top 1-2
   results, not all of them.
 
-**2. Update `/entity-startup` skill** (`src/templates/commands/entity-startup.md.jinja2`):
+**2. `/entity-startup` skill** (`src/templates/commands/entity-startup.md.jinja2`):
 
-Add a new step after Step 6 (touch protocol) — Step 7: Episodic memory.
+The startup skill includes an episodic-memory step inserted after the touch
+protocol. Its position in the numbered sequence depends on what other steps the
+startup skill carries at the time (currently Step 9, following the touch
+protocol at Step 8):
 
 ```
-### Step 7: Episodic memory
+### Step <N>: Episodic memory
 
 You can search your prior session transcripts for specific events, conversations,
 and decisions using episodic search:
@@ -104,9 +107,9 @@ Use this when you need context about what happened in a prior session, not just
 the distilled lessons in your memory. Run /entity-episodic for detailed usage.
 ```
 
-(Also renumber the current Step 7 "Restore active state" to Step 8.)
+The remaining startup steps are renumbered accordingly.
 
-**3. Run `ve init`** to re-render the templates into `.claude/commands/`.
+**3. Templates render into `.claude/commands/`** via `ve init`.
 
 ## Success Criteria
 

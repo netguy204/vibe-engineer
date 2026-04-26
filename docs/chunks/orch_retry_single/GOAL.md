@@ -23,15 +23,15 @@ created_after:
 
 ## Minor Goal
 
-Add `ve orch retry <chunk_name>` to retry a single NEEDS_ATTENTION work unit by name.
+`ve orch retry <chunk_name>` retries a single NEEDS_ATTENTION work unit by name, alongside the batch `ve orch retry-all` form.
 
-Currently only `ve orch retry-all` exists, which retries every stuck unit. When debugging a single chunk, operators and stewards need to retry just that one without disturbing others that may be intentionally held in NEEDS_ATTENTION for investigation.
+The single-chunk variant exists so operators and stewards can retry one chunk without disturbing other units that may be intentionally held in NEEDS_ATTENTION for investigation.
 
-The command should:
-- Accept a chunk name as argument
-- Validate the chunk exists in the orchestrator and is in NEEDS_ATTENTION state
-- Reset it to READY and requeue it for the next available phase
-- Error clearly if the chunk doesn't exist or isn't in NEEDS_ATTENTION
+The command:
+- Accepts a chunk name as argument
+- Validates the chunk exists in the orchestrator and is in NEEDS_ATTENTION state
+- Resets it to READY and requeues it for the next available phase
+- Errors clearly if the chunk doesn't exist or isn't in NEEDS_ATTENTION
 
 ## Success Criteria
 

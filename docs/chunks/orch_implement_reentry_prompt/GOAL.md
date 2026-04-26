@@ -36,22 +36,13 @@ created_after:
 
 ## Minor Goal
 
-Ensure the orchestrator ALWAYS injects a user prompt when re-entering the IMPLEMENT phase from any transition, and enforce an iteration limit to prevent unbounded cycling.
+The orchestrator always injects a user prompt when re-entering the IMPLEMENT phase from any transition, and enforces an iteration limit so chunks cannot cycle unboundedly.
 
-**Root cause**: The implement phase receives NO user prompt on re-entry from ANY transition path — not just review FEEDBACK (fixed in `orch_review_feedback_fidelity`), but also rebase failures and test failures. The implementer wakes up with only a SystemMessage init and no task, guesses what to do, does busywork, and exits. This cycles indefinitely because the orchestrator also does not enforce the reviewer's `max_iterations` limit.
+Every re-entry to IMPLEMENT carries a contextual user prompt explaining why the chunk was sent back. Review FEEDBACK supplies the specific reviewer issues (the `orch_review_feedback_fidelity` mechanism); rebase conflicts and test failures supply the conflict files and test output; any other transition supplies its own reason. The implementer never wakes up with only a SystemMessage init and no task.
 
-Evidence: `canvas_chat_interface` went through 7 implement cycles with 0 user prompts on runs 2-7, costing $3.97+ in inference doing random cleanup instead of addressing specific issues.
+The work unit tracks `implement_iterations` — the total number of IMPLEMENT phase dispatches — and `reentry_context` — the context string the scheduler hands to the agent on the next dispatch. The scheduler increments `implement_iterations` on every IMPLEMENT run and clears `reentry_context` once it has been consumed. APPROVE in the review router resets `implement_iterations` to 0.
 
-Three fixes needed:
-
-1. **Every re-entry to IMPLEMENT must include a user prompt** explaining WHY the chunk was sent back:
-   - From review FEEDBACK: specific issues (already handled by `orch_review_feedback_fidelity`)
-   - From rebase conflict/failure: the conflict files and test failure output
-   - From any other transition: the reason for re-entry
-
-2. **Track implement iteration count** on the work unit (e.g., `implement_iteration` field) so the orchestrator knows how many times IMPLEMENT has run.
-
-3. **Enforce max_iterations at the orchestrator level**: After N round-trips (configurable, default from reviewer config), escalate to NEEDS_ATTENTION rather than continuing to cycle. The reviewer's `max_iterations: 3` should be the hard ceiling for the entire review-implement loop, not just the reviewer's internal counter.
+The reviewer's `max_iterations` (loaded from reviewer config) is the hard ceiling for the entire review-implement loop, not just the reviewer's internal counter. Once `implement_iterations` exceeds `max_iterations`, the scheduler escalates the work unit to NEEDS_ATTENTION rather than dispatching IMPLEMENT again.
 
 ## Success Criteria
 

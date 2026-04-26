@@ -29,13 +29,9 @@ created_after:
 
 ## Minor Goal
 
-Fix `ve board watch` to re-check for pending messages after a WebSocket reconnect, so messages that arrive during a disconnect window are not silently missed.
+`ve board watch` re-checks for pending messages after a WebSocket reconnect, so messages that arrive during a disconnect window are not silently missed.
 
-Currently, when the WebSocket disconnects and reconnects, the watch resumes listening for new server-push notifications but does not check whether any messages were written to the channel during the disconnect interval. If a message arrived while disconnected, it sits undelivered until the next message triggers a push — or forever if no further messages arrive.
-
-After reconnecting, the watch should re-poll the channel from its current offset to detect and deliver any messages that arrived during the gap. This is the same logic that runs on initial connection — it just needs to run again after each reconnect.
-
-Reported by Database Savings Plans Steward. Workaround: kill and restart the watch with the same `--offset`.
+When the WebSocket disconnects and reconnects, the watch re-polls the channel from its current offset before resuming listening for server-push notifications. Any messages that arrived during the disconnect interval are delivered immediately after reconnect rather than sitting undelivered until the next push triggers them. This re-poll mirrors the initial-connection logic, applied again after every reconnect.
 
 ## Success Criteria
 

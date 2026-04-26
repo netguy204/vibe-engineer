@@ -54,7 +54,7 @@ After an entity works in a project and shuts down (committing wiki + memory upda
 
 **The big picture**: Entities are portable specialists that move across the platform via git submodules. Push/pull is what makes this portability real — after an entity works in project A and accumulates new knowledge (wiki pages, consolidated memories), the operator pushes those changes to the entity's hosted repo. When someone attaches the same entity to project B, they get the latest knowledge. Team members can share specialist entities by pushing/pulling to a common origin (e.g., a GitHub repo).
 
-**Existing code**: `src/cli/entity.py` has the entity CLI group. Currently there are no push/pull commands. The entity submodule is managed by `entity_attach_detach` (chunk 2) — push/pull operates on the submodule's own git repo at `.entities/<name>/`, not the parent project's repo.
+**Existing code**: `src/cli/entity.py` houses the entity CLI group, including the push/pull commands defined by this chunk. The entity submodule is managed by `entity_attach_detach` (chunk 2) — push/pull operates on the submodule's own git repo at `.entities/<name>/`, not the parent project's repo.
 
 The push/pull flow was tested in the investigation's H2 prototype — changes pushed from project-alpha were successfully pulled in project-beta via fast-forward merge. Diverged histories (both sides have new commits) require merge, which is handled by `entity_fork_merge` (chunk 6).
 

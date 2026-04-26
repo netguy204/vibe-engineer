@@ -15,7 +15,7 @@ code_paths:
   - site/src/data/hero-code.ts
   - site/public/CNAME
   - site/public/favicon.svg
-  - site/public/og-image.png
+  - site/public/og-image.svg
   - .github/workflows/deploy-site.yml
   - DESIGN.md
 code_references:

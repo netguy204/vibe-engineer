@@ -60,7 +60,7 @@ Key findings from the investigation:
 - Most valuable wiki content came from failures and adversity — this is where memory matters most
 - Wiki diffs from a second session produced 137 lines of structured journal-quality entries
 
-**Existing entity templates** live at `src/templates/entity/` — currently just `identity.md.jinja2`. The wiki templates will be added alongside it. The existing entity creation flow is in `src/entities.py` (`create_entity` function) and `src/cli/entity.py`.
+**Entity templates** live at `src/templates/entity/`. The wiki templates sit alongside the base `identity.md.jinja2` template. The entity creation flow is in `src/entities.py` (`create_entity` function) and `src/cli/entity.py`.
 
 **The LLM Wiki pattern** (full document at `prototypes/llm_wiki_prompt.md`): The wiki is a persistent, compounding artifact. The entity writes and maintains all of it — creating pages, updating them as new knowledge arrives, maintaining cross-references, flagging where new information contradicts old claims. The human/operator never writes the wiki. Key operations: **Ingest** (integrate new knowledge into existing pages), **Query** (search wiki to answer questions, file good answers back as pages), **Lint** (health-check for contradictions, stale claims, orphan pages, missing cross-references). Two special files: **index.md** (content catalog — the entity reads this first to find relevant pages) and **log.md** (chronological record of sessions and key events). The schema document is "the CLAUDE.md for the wiki" — it tells the entity how the wiki is structured, what conventions to follow, and what workflows to use when maintaining it.
 

@@ -40,21 +40,22 @@ created_after:
 
 ## Minor Goal
 
-Add a `ve task demote` command that moves task-level artifacts down to
-project-level when they only reference a single project. This is the inverse of
-the existing `promote_artifact()` flow (local → external). Demote moves an
-artifact from the external artifact repo into the single project that actually
-uses it, converting it from an external reference to a native local artifact.
+The `ve task demote` command moves task-level artifacts down to project-level
+when they only reference a single project. This is the inverse of the
+`promote_artifact()` flow (local → external). Demote moves an artifact from the
+external artifact repo into the single project that actually uses it,
+converting it from an external reference to a native local artifact.
 
-### The problem
+### Why demotion matters
 
-When working in a task context, all artifacts are created in the external
-artifact repo by default, with `external.yaml` pointers in each participating
-project. In practice, many chunks and investigations end up touching only one
-project's code. These task-level artifacts add indirection without benefit — the
-operator must resolve external references to read what is effectively local work.
+In a task context, all artifacts are created in the external artifact repo by
+default, with `external.yaml` pointers in each participating project. In
+practice, many chunks and investigations end up touching only one project's
+code. Task-level artifacts add indirection without benefit when this happens —
+operators must resolve external references to read what is effectively local
+work. Demotion collapses that indirection back into the owning project.
 
-### What this enables
+### Capabilities
 
 - `ve task demote <artifact>` — Demote a single named artifact. Moves the
   canonical GOAL.md/OVERVIEW.md from the external repo into the single project
@@ -66,10 +67,9 @@ operator must resolve external references to read what is effectively local work
   single project. Report what would be demoted (dry-run by default), then demote
   with `--apply`.
 
-- **Automatic demotion at chunk-complete** — When `ve chunk complete` runs in a
-  task context (currently unsupported — this chunk should also enable it), check
-  whether the completed chunk only references a single project. If so,
-  automatically demote it and log what happened.
+- **Automatic demotion at chunk-complete** — `ve chunk complete` in a task
+  context checks whether the completed chunk only references a single project
+  and, if so, automatically demotes it and logs what happened.
 
 ### Architecture context
 
