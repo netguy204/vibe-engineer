@@ -43,12 +43,15 @@ Each sub-agent gets a self-contained prompt with:
    - **Over-claimed scope tells**: any `code_references[].status: partial`; `implements:` text containing `does NOT implement`, `partial`, `only Step N of M`, `TODO`, `not yet`; success-criteria list count meaningfully exceeding `code_references` count after **filtering generic criteria**. Generic criteria — `tests pass`, `existing X remains correct`, `lint passes`, `no regressions` — are not real implementation claims and inflate the ratio. Subtract them before comparing.
 
 3. **Action rules** —
-   - **Retrospective framing → rewrite in place** to present tense, system-centric framing. Prefer `The schema template now distinguishes X from Y` over `This chunk extends the schema template to add X vs Y`. The goal is a description of the system, not a description of the chunk. Do not change the chunk's intent — only tense and framing change. Success criteria, code_paths, code_references, and architectural claims are off-limits.
+   - **Retrospective framing → rewrite in place** to present tense, system-centric framing. Prefer `The schema template now distinguishes X from Y` over `This chunk extends the schema template to add X vs Y`. The goal is a description of the system, not a description of the chunk. Do not change the chunk's intent — only tense and framing change. Success criteria and architectural claims are off-limits.
    - **Over-claimed scope → write inconsistency entry, log only**. Do not revise the goal. Do not finish the implementation.
+   - **Broken `code_paths` references** (file in `code_paths` doesn't exist, but a clearly-correct alternative is identifiable — same directory, name similarity, content match) → **fix in place**. This is a metadata fix, not an intent change. If the correct target isn't unambiguous, leave it and write an inconsistency entry instead.
+   - **No enduring intent (bug-fix-only chunk)** → **historicalize**. If the chunk's whole purpose was to fix a one-time bug and the goal asserts no constraint, contract, or behavioral invariant that should outlive the fix, set the chunk's status to HISTORICAL and add a brief prose note to the goal explaining the retroactive classification. Bar is high — historicalize ONLY if all of these hold: (a) goal opens with `Fix X`/`Resolve Y` framing or describes a one-time defect; (b) no architectural decisions, constraints, or contracts in success criteria — only `the bug no longer reproduces` style assertions; (c) code references are tactical (one or two functions/lines, not establishing a pattern); (d) `bug_type: implementation` if the field is still present. Miss any of these → default to safer action (rewrite tense, log scope concern, leave status alone). Do not delete the chunk; let a future cleanup pass handle deletion.
+   - **Cross-artifact inconsistencies** discovered during the audit (mismatches NOT inside the chunk being audited — e.g., README contradicting a workflow file, two skill templates disagreeing) → **write an inconsistency entry**. Use slug `<area>_<short-description>` (e.g., `pip_publish_readme_workflow_mismatch`). The audit's job is to capture truth across the project, not just per-chunk; if you tripped over a real inconsistency while verifying, log it.
 
 4. **Veto rule (load-bearing)** — If over-claimed scope is detected, **do not rewrite the prose for tense, even if retrospective framing is also detected.** The two failure modes interact: a chunk that over-claims has no truthful present-tense form available, so any rewrite would substitute one false claim for another. When the veto fires: write the inconsistency entry, leave the GOAL.md prose untouched, set `action_taken: logged` (not `both`), note the veto in the summary.
 
-5. **Symmetric verification (load-bearing)** — Before rewriting any prose to a present-tense claim, **verify the post-state actually exists in the named source files**. Read the `code_references` and grep the implementations. The veto rule catches *declared* over-claim (`status: partial`); this verification catches *undeclared* over-claim (chunk author was honest about success criteria but the code is stale or incomplete relative to what the prose asserts). If the named symbols don't exist or don't behave as described, treat as over-claim: log instead of rewrite.
+5. **Symmetric verification (load-bearing)** — Before rewriting any prose to a present-tense claim, **verify the post-state actually exists in the named source files**. Read the `code_references` and grep the implementations. Also **`ls` every entry in `code_paths`** to catch broken file references (which become fix-in-place candidates per Action rule above). The veto rule catches *declared* over-claim (`status: partial`); this verification catches *undeclared* over-claim (chunk author was honest about success criteria but the code is stale or incomplete relative to what the prose asserts). If the named symbols don't exist or don't behave as described, treat as over-claim: log instead of rewrite.
 
 6. **Filename convention** for inconsistency entries:
    ```
@@ -59,13 +62,15 @@ Each sub-agent gets a self-contained prompt with:
 7. **What to return** — a short structured summary per chunk:
    ```
    ## <chunk_name>
-   - action_taken: rewrote | logged | clean | skipped
+   - action_taken: rewrote | logged | historicalized | clean | skipped
    - evidence: <one-line>
    - entry_filename: <if logged>
-   - veto_fired: true | false  (true if over-claim suppressed a would-be rewrite)
+   - veto_fired: true | false
+   - verification_did: <one-line — what you did to verify the post-state exists, and what you found>
+   - codepath_fixes: <list of broken→fixed code_paths entries, if any>
    - notes: <judgment calls, edge cases>
    ```
-   Plus an overall summary: counts per action, vetoes fired, suggestions for the parent audit's logic.
+   Plus an overall summary: counts per action, vetoes fired, cross-artifact inconsistencies logged, suggestions for the parent audit's logic.
 
 8. **Pointer to the inconsistency log README** at `docs/trunk/INCONSISTENCIES/README.md` so the sub-agent has the entry format reference.
 
