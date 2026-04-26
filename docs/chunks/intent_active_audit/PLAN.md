@@ -37,19 +37,37 @@ Split the ACTIVE chunk list into groups of 5. The last group may be smaller. Rec
 Each sub-agent gets a self-contained prompt with:
 
 1. **Scope** — the 5 chunk names assigned to this sub-agent (full paths under `docs/chunks/`).
+
 2. **Detection criteria** —
-   - Retrospective framing tells: `Currently,`, `was`, `we added`, `this chunk fixes`, `this chunk adds`, `the fix:`, `will change to`. Case-insensitive grep.
-   - Over-claimed scope tells: any `code_references[].status: partial`; `implements:` text containing `does NOT implement`, `partial`, `only Step N of M`, `TODO`, `not yet`; success-criteria list count meaningfully exceeding code_references count.
+   - **Retrospective framing tells** (case-insensitive grep): `Currently,`, `was`, `we added`, `this chunk fixes`, `this chunk adds`, `the fix:`, `will change to`. Plus markdown header forms: `^#+\s+The\s+fix\b`, `^#+\s+The\s+bug\b`, `^#+\s+The\s+problem\b`. The header forms are soft tells — they don't always indicate stale framing, but combined with present-state body content they often signal the prose is narrating a transition rather than describing the system.
+   - **Over-claimed scope tells**: any `code_references[].status: partial`; `implements:` text containing `does NOT implement`, `partial`, `only Step N of M`, `TODO`, `not yet`; success-criteria list count meaningfully exceeding `code_references` count after **filtering generic criteria**. Generic criteria — `tests pass`, `existing X remains correct`, `lint passes`, `no regressions` — are not real implementation claims and inflate the ratio. Subtract them before comparing.
+
 3. **Action rules** —
-   - Retrospective framing → rewrite the prose **in place** to present tense. **Do not change the chunk's intent.** Only the tense and framing change. If the rewrite would alter the goal's claim, leave the prose alone and write an inconsistency entry instead, explaining why a safe rewrite isn't possible.
-   - Over-claimed scope → write an entry to `docs/trunk/INCONSISTENCIES/` per its README. Do not revise the goal. Do not finish the implementation.
-4. **Filename convention** for inconsistency entries:
+   - **Retrospective framing → rewrite in place** to present tense, system-centric framing. Prefer `The schema template now distinguishes X from Y` over `This chunk extends the schema template to add X vs Y`. The goal is a description of the system, not a description of the chunk. Do not change the chunk's intent — only tense and framing change. Success criteria, code_paths, code_references, and architectural claims are off-limits.
+   - **Over-claimed scope → write inconsistency entry, log only**. Do not revise the goal. Do not finish the implementation.
+
+4. **Veto rule (load-bearing)** — If over-claimed scope is detected, **do not rewrite the prose for tense, even if retrospective framing is also detected.** The two failure modes interact: a chunk that over-claims has no truthful present-tense form available, so any rewrite would substitute one false claim for another. When the veto fires: write the inconsistency entry, leave the GOAL.md prose untouched, set `action_taken: logged` (not `both`), note the veto in the summary.
+
+5. **Symmetric verification (load-bearing)** — Before rewriting any prose to a present-tense claim, **verify the post-state actually exists in the named source files**. Read the `code_references` and grep the implementations. The veto rule catches *declared* over-claim (`status: partial`); this verification catches *undeclared* over-claim (chunk author was honest about success criteria but the code is stale or incomplete relative to what the prose asserts). If the named symbols don't exist or don't behave as described, treat as over-claim: log instead of rewrite.
+
+6. **Filename convention** for inconsistency entries:
    ```
    YYYYMMDD_HHMMSS_microseconds_<chunk_name>_<failure_mode>.md
    ```
-   Use `python3 -c "from datetime import datetime; print(datetime.now().strftime('%Y%m%d_%H%M%S_%f'))"` to generate the timestamp. Slug suggestion: `<chunk_name>_<failure_mode>` (e.g., `respect_future_intent_overclaimed`). Chunk name + failure mode is unique per finding.
-5. **What to return** — a short structured summary per chunk: `{chunk_name, action_taken: rewrote|logged|skipped, evidence: <one-line>, entry_filename: <if logged>}`. Plain markdown is fine.
-6. **Pointer to the inconsistency log README** so the sub-agent has the entry format reference.
+   Generate the timestamp with `python3 -c "from datetime import datetime; print(datetime.now().strftime('%Y%m%d_%H%M%S_%f'))"`. Slug: `<chunk_name>_<failure_mode>` (e.g., `respect_future_intent_overclaimed`). Chunk name + failure mode is unique per finding.
+
+7. **What to return** — a short structured summary per chunk:
+   ```
+   ## <chunk_name>
+   - action_taken: rewrote | logged | clean | skipped
+   - evidence: <one-line>
+   - entry_filename: <if logged>
+   - veto_fired: true | false  (true if over-claim suppressed a would-be rewrite)
+   - notes: <judgment calls, edge cases>
+   ```
+   Plus an overall summary: counts per action, vetoes fired, suggestions for the parent audit's logic.
+
+8. **Pointer to the inconsistency log README** at `docs/trunk/INCONSISTENCIES/README.md` so the sub-agent has the entry format reference.
 
 ### Step 4: Spawn sub-agents in parallel
 
@@ -104,6 +122,8 @@ Print a final report:
 - **Concurrency safety on inconsistency entries.** The README documents microsecond-precision timestamps. Sub-agents writing entries at near-identical times *could* collide if both call `datetime.now()` within the same microsecond and pick the same slug. Slug includes chunk name, which is unique per chunk, so two sub-agents writing for different chunks can't collide. Two entries about the same chunk (one per failure mode) include the failure_mode in the slug. Effectively zero collision risk in practice.
 - **Working tree contamination.** Sub-agents might accidentally modify files outside their scope. Mitigation: the parent reviews `git status` before committing; anything unexpected gets investigated.
 - **`intent_principles` and `respect_future_intent` are the only known anchors.** If the detectors run and find *only* the anchors with no other hits across 150+ chunks, that's suspicious — most likely a detector bug. Spot-check a few random chunks manually if the count is suspiciously low.
+- **Veto accuracy depends on chunk authors being honest in `code_references`.** The veto rule fires on declared over-claim (`status: partial`, "does NOT implement" admissions). A chunk that quietly over-claims without flagging it in metadata escapes the veto — only the symmetric verification step (Step 5 of the sub-agent prompt) catches that case. The verification step is therefore not optional; it's the safety net for un-self-aware over-claim.
+- **Imperative-voice prose in template/schema-additions chunks.** Some chunks (e.g., `wiki_snapshot_vs_log`) have bodies written as planning prose ("Content to add: ...") that's neither retrospective nor present-tense in the system-description sense. Sub-agents should leave such bodies alone unless an explicit chunk-centric tell appears in them; the chunk-centric "Relationship to Parent" sentence is fair game. Escalate to the operator if a chunk has substantial planning-prose bodies that feel mis-fit for ACTIVE status — the chunk template may need revision.
 
 ## Deviations
 
