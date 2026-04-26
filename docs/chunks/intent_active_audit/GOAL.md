@@ -257,14 +257,15 @@ The discovery pass is exhaustive. The operator may choose to fix only some candi
 1. The agent enumerates all ACTIVE chunks under `docs/chunks/` and runs both detectors against each.
 2. The retrospective-framing detector catches `orch_activate_on_inject` (anchor case).
 3. The over-claimed-scope detector catches `respect_future_intent` (anchor case).
-4. For each candidate, the agent presents a structured report to the operator: chunk name, failure mode, evidence (the offending text or metadata), recommended fix path.
-5. For each candidate the operator chooses to fix in this run, the agent applies the chosen fix:
+4. For each candidate, the agent writes an entry to `docs/trunk/INCONSISTENCIES/` following the format documented in that directory's README. Entries use the timestamp+slug filename convention (`YYYYMMDD_HHMMSS_microseconds_<slug>.md`) so multiple sub-agents can write in parallel without collision. Each entry names the artifact making the false claim, quotes (or paraphrases) the claim with file/line, describes the reality, and lists fix paths.
+5. For each candidate, the agent presents a structured report to the operator: chunk name, failure mode, evidence (the offending text or metadata), recommended fix path, and the inconsistency entry filename so the operator can drill in.
+6. For each candidate the operator chooses to fix in this run, the agent applies the chosen fix and updates the inconsistency entry's frontmatter to `status: resolved` with `resolved_by:` set to the chunk name or commit SHA:
    - Retrospective framing → rewrite goal text in place.
    - Over-claimed scope, option (a) → revise goal to match implemented behavior.
    - Over-claimed scope, option (b) → finish the implementation (this may itself be a substantial sub-task; if so, surface to operator and consider spinning up a dedicated chunk).
-6. Chunks fixed in this run pass both detectors clean afterward.
-7. Chunks deferred are listed in a follow-up summary at the end of the run so the operator has a record of what's still outstanding.
-8. `uv run pytest tests/` passes; any code changes from option (b) implementations include test updates.
+7. Chunks fixed in this run pass both detectors clean afterward.
+8. Chunks deferred remain as `status: open` entries in `docs/trunk/INCONSISTENCIES/`; the durable log replaces any need for an in-chunk follow-up summary.
+9. `uv run pytest tests/` passes; any code changes from option (b) implementations include test updates.
 
 ## Out of Scope
 
