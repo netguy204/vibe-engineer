@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,122 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk rewrites the `/chunk-complete` skill template (`src/templates/commands/chunk-complete.md.jinja2`) to replace the `bug_type`-based status routing with an intent-test-based approach, and removes the `bug_type` field from the schema and all code paths.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The work has two halves:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Template rewrite** — Replace steps 2 (bug_type guidance for code_references) and 11 (bug_type-based status determination) with three new behaviors: retrospective-framing detection/rewrite, intent-test-based status routing (ACTIVE vs HISTORICAL), and a deletion prompt for HISTORICAL chunks.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/intent_complete_verification/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Schema cleanup** — Remove the `BugType` enum and `bug_type` field from `src/models/chunk.py`, the GOAL.md template, the `__init__.py` re-exports, and tests.
+
+Per DEC-008 (Pydantic for frontmatter models), the schema change is straightforward: drop the field from `ChunkFrontmatter` and remove the enum. The field is optional with a default of `None`, so existing GOAL.md files that still carry `bug_type: null` will be handled gracefully by Pydantic (unknown fields are ignored by default, or we ensure the model allows extra fields during a transition period — but since all existing chunks use `bug_type: null`, removing it from the model should be clean).
+
+Tests follow TESTING_PHILOSOPHY.md: we delete the trivial `TestChunkFrontmatterBugType` class (which tests Pydantic storage, not behavior) and add meaningful tests for the new behavior — specifically, that `ChunkFrontmatter` no longer accepts `bug_type` as a field, and that the GOAL.md template no longer contains it.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk IMPLEMENTS changes to the chunk completion workflow. The template being modified is a core artifact of this subsystem's lifecycle management.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Remove `BugType` enum and `bug_type` field from the model
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Location: `src/models/chunk.py`
 
-Example:
+- Delete the `BugType` class (lines 36-45) and its backreference comment (line 35).
+- Remove the `bug_type: BugType | None = None` field from `ChunkFrontmatter` (line 90).
+- Remove the backreference comment `# Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model` (line 68).
 
-### Step 1: Define the SegmentHeader struct
+Location: `src/models/__init__.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+- Remove `BugType` from the import statement in the chunk domain section (line 77).
+- Remove `"BugType"` from the `__all__` list (line 140).
 
-Location: src/segment/format.rs
+### Step 2: Remove `bug_type` from the GOAL.md template
 
-### Step 2: Implement header serialization
+Location: `src/templates/chunk/GOAL.md.jinja2`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+- Remove the `bug_type: null` line from the frontmatter block (line 11).
+- Remove the entire `BUG_TYPE:` documentation section from the comment block (lines 136-147, the section starting with `BUG_TYPE:` and ending before `CHUNK ARTIFACTS:`).
 
-### Step 3: ...
+### Step 3: Rewrite the chunk-complete skill template
 
----
+Location: `src/templates/commands/chunk-complete.md.jinja2`
 
-**BACKREFERENCE COMMENTS**
+This is the core of the chunk. Replace the current steps 2 and 11 with the new intent-verification workflow. The new template flow is:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+**Replace step 2's "Bug type guidance for code_references" block** (lines 88-95) with nothing — code references are always required under the new model (intent-less work doesn't flow through chunks at all).
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+**Replace step 11** (lines 136-155, the entire "Determine final status based on bug_type" section) with a new three-part completion verification:
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+**New step 11: Retrospective framing rewrite.**
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+Instruct the agent to re-read the chunk's GOAL.md and detect retrospective framing tells: `Currently,`, `was`, `we added`, `this chunk fixes`, `this chunk adds`, `the fix:`, `will change to`. The agent rewrites offending passages into present-tense descriptions of how the system works, using the implemented code as the source of truth.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+- **Proceed silently** when the rewrite is mechanical (e.g., changing `we added X` to `X exists`; replacing `Currently the system does Y, we'll change it to Z` with `The system does Z because...`).
+- **Escalate to the operator** only when: (a) the goal asserts something the agent can't reconcile against the current code, (b) the rewrite would materially change the goal's meaning rather than just its tense, or (c) the agent's confidence in the rewrite is low. When escalating, present a candidate rewrite alongside the specific reason the agent couldn't land it on its own.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Reference: docs/trunk/CHUNKS.md principle 3.
+
+**New step 12: Apply the intent test.**
+
+Instruct the agent to apply the intent test from docs/trunk/CHUNKS.md principle 2: *"Does this code need to remember why it exists?"*
+
+- If yes → status: **ACTIVE** (or **COMPOSITE** if co-owning intent with peers).
+- If no → status: **HISTORICAL**.
+
+**New step 13: HISTORICAL deletion prompt.**
+
+When the agent decides HISTORICAL, instruct it to prompt the operator:
+
+> *"This chunk has no ongoing intent to remember — its job was to coordinate execution. Consider deleting it. The work is preserved in git; the chunk no longer earns its keep in `docs/chunks/`."*
+
+- If the operator chooses **delete**: delete the chunk directory.
+- If the operator chooses **keep**: land the chunk as HISTORICAL with a brief note in the goal explaining why it was retained.
+
+**Renumber subsequent steps** (friction check becomes step 14, etc.).
+
+After the status determination steps, **update the existing status-setting instruction** to use the determined status (ACTIVE, COMPOSITE, or HISTORICAL) instead of the old bug_type-based logic. Remove the comment block as before.
+
+### Step 4: Remove `bug_type` tests and add replacement tests
+
+Location: `tests/test_models.py`
+
+- Delete the entire `TestChunkFrontmatterBugType` class (lines 413-471). These tests are trivial by TESTING_PHILOSOPHY.md standards — they test Pydantic storage, not behavior.
+- Add a new test verifying that `bug_type` is no longer accepted as a field (Pydantic should reject it or ignore it — verify the expected behavior).
+
+Location: `tests/test_reviewer_decision_create.py`
+
+- Remove `bug_type: null` from all inline GOAL.md YAML frontmatter fixtures used in test helpers. There are ~9 occurrences where `bug_type: null` appears in test fixture YAML strings. Remove the line from each.
+
+### Step 5: Handle existing chunks with `bug_type` in frontmatter
+
+The `ChunkFrontmatter` Pydantic model uses `BaseModel` which by default rejects extra fields. When `bug_type` is removed from the model, any existing chunk GOAL.md that still has `bug_type: null` in its frontmatter will fail validation.
+
+Two approaches:
+- **Option A**: Add `model_config = ConfigDict(extra="ignore")` to `ChunkFrontmatter` so unknown fields are silently dropped. Check if the base `ArtifactManager` already handles this.
+- **Option B**: Since all existing chunks have `bug_type: null` (the default), and the field is being removed, we can let validation fail and fix the chunks. But with 290 chunks containing the field, this is impractical in this chunk's scope.
+
+**Decision**: Check the existing Pydantic model configuration. If extra fields are already ignored, no action needed. If not, add `model_config = ConfigDict(extra="ignore")` to `ChunkFrontmatter` so existing chunks parse cleanly. This is the pragmatic choice — the `bug_type: null` lines in existing GOAL.md files are inert and will be cleaned up organically as chunks are completed going forward.
+
+### Step 6: Verify
+
+- Run `uv run ve init` to re-render the templates and confirm no errors.
+- Run `uv run pytest tests/` to confirm all tests pass.
+- Manually verify the rendered `.agents/skills/chunk-complete/SKILL.md` contains the new intent-test workflow and no `bug_type` references.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `intent_principles` (ACTIVE) — docs/trunk/CHUNKS.md must exist with the four principles, which this chunk's template references. Already landed.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Pydantic extra field handling**: If `ChunkFrontmatter` strict-rejects unknown fields, removing `bug_type` will break validation for all ~290 existing chunks that still have `bug_type: null` in their YAML. Step 5 addresses this — check the current model config and add `extra="ignore"` if needed.
+- **Existing chunks with `bug_type: semantic` or `bug_type: implementation`**: Search confirms all existing chunks use `bug_type: null`. No migration needed for non-null values. The `bug_type_field` chunk itself (docs/chunks/bug_type_field/) has `bug_type: null` in its GOAL.md.
+- **Template rendering with Jinja2**: The chunk-complete template uses conditional blocks (`{% if task_context %}`). The new steps must integrate cleanly with these conditionals, particularly the final commit step which is task-context-dependent.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

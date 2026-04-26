@@ -4,7 +4,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from models.friction import FrictionEntryReference
 from models.references import (
@@ -32,19 +32,6 @@ class ChunkStatus(StrEnum):
     HISTORICAL = "HISTORICAL"  # No longer owns intent. Kept for archaeological context.
 
 
-# Chunk: docs/chunks/bug_type_field - BugType enum with SEMANTIC and IMPLEMENTATION values
-class BugType(StrEnum):
-    """Classification of bug fix chunks to guide completion behavior.
-
-    When a chunk is a bug fix, this field distinguishes between:
-    - semantic: The bug revealed new understanding of intended behavior (discovery)
-    - implementation: The bug corrected known-wrong code (we knew how it should work)
-    """
-
-    SEMANTIC = "semantic"  # Bug revealed new understanding; code backreferences required
-    IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
-
-
 # Chunk: docs/chunks/intent_principles - COMPOSITE transitions added; see docs/trunk/CHUNKS.md
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
@@ -65,7 +52,6 @@ class ChunkDependent(BaseModel):
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Pydantic model for chunk GOAL.md frontmatter validation
-# Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
 # Chunk: docs/chunks/investigation_chunk_refs - Optional investigation field in chunk frontmatter schema
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field to chunk frontmatter schema
 # Chunk: docs/chunks/consolidate_ext_refs - Updated dependents field to use ExternalArtifactRef
@@ -74,6 +60,10 @@ class ChunkFrontmatter(BaseModel):
 
     Validates the YAML frontmatter in chunk documentation.
     """
+
+    # Allow extra fields so existing GOAL.md files with removed fields (e.g. bug_type)
+    # parse cleanly during the transition period.
+    model_config = ConfigDict(extra="ignore")
 
     status: ChunkStatus
     ticket: str | None = None
@@ -87,7 +77,6 @@ class ChunkFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []
     friction_entries: list[FrictionEntryReference] = []
-    bug_type: BugType | None = None
     depends_on: list[str] | None = None
 
 
