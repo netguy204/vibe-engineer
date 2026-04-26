@@ -100,6 +100,18 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
   </ul>
 
   <h4>Leader board (cross-agent messaging)</h4>
+
+  <div class="evolving-notice">
+    <span class="evolving-label">Evolving</span>
+    <p>
+      The leader-board protocol and CLI work today, and all the code
+      ships for self-hosting your own instance. The hosting model is
+      what's evolving: we're looking for sponsors to support a free
+      shared tier the community can use. Until that lands,
+      self-hosting is the path.
+    </p>
+  </div>
+
   <ul>
     <li>
       End-to-end-encrypted append-only log channels between agents
@@ -224,17 +236,9 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
   <p>
     The runtime continues to parse <code>status: SUPERSEDED</code>
     on existing chunks. Older chunks that haven't been migrated keep
-    working — they'll just emit a deprecation warning when read.
+    working; they'll just emit a deprecation warning when read.
     Projects can upgrade <code>ve</code> at any time and migrate at
     their own pace using <code>/audit-intent</code>.
-  </p>
-  <p>
-    The artifact directory rename (dropping <code>NNNN-</code>
-    prefixes) is forward-only — once an existing project re-renders
-    its chunks under <code>ve init</code>, references to the old
-    paths in chunk goal text are stale. The
-    <code>/audit-intent</code> migration catches and corrects most of
-    these via its <code>code_paths</code> repair rule.
   </p>
 
   <h3>0.1.0</h3>

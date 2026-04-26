@@ -35,18 +35,11 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
 
   <h3>Prerequisites</h3>
   <p>
-    Before you start, the project needs three things in place. Run
-    <code>/audit-intent</code> and it will check; if any are missing
-    it stops and tells you what to do.
-  </p>
-  <ul>
-    <li><code>docs/trunk/CHUNKS.md</code> declaring the four principles. Installed by <code>ve init</code> on recent ve versions.</li>
-    <li>The chunk <code>GOAL.md</code> template's STATUS VALUES block lists COMPOSITE. Same install path.</li>
-    <li>The runtime accepts COMPOSITE as a chunk status (<code>ChunkStatus</code> enum value). This requires a recent <code>ve</code>.</li>
-  </ul>
-  <p>
-    If any of these are missing, you're on an older version of
-    <code>ve</code>. Upgrade and re-run <code>ve init</code>:
+    You need a recent enough <code>ve</code> to have the four
+    principles and the new status taxonomy. Quick sanity check: open
+    <code>docs/trunk/CHUNKS.md</code> and confirm it declares the
+    four principles. If the file doesn't exist or doesn't list them,
+    upgrade and re-run <code>ve init</code>:
   </p>
   <pre><code>$ uv tool upgrade vibe-engineer
 $ ve init</code></pre>
@@ -54,8 +47,7 @@ $ ve init</code></pre>
     (<code>pip install --upgrade vibe-engineer</code> works too.)
     The upgrade gets you the new runtime; <code>ve init</code>
     refreshes the workflow files. Your chunks and other artifacts
-    are preserved. Re-run <code>/audit-intent</code> to confirm the
-    prerequisites are met.
+    are preserved.
   </p>
   <p>
     The migration assumes your working tree is clean (no uncommitted
