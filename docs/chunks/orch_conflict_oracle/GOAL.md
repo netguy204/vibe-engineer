@@ -85,9 +85,9 @@ created_after:
 
 ## Minor Goal
 
-Implement the **Conflict Oracle** - a progressive analysis system that determines whether chunks can be safely parallelized or must be serialized. The oracle provides goal-level semantic comparison, plan-level file/symbol analysis, and surfaces uncertain conflicts to the operator for judgment via `ve orch resolve`.
+The **Conflict Oracle** is a progressive analysis system that determines whether chunks can be safely parallelized or must be serialized. The oracle provides goal-level semantic comparison, plan-level file/symbol analysis, and surfaces uncertain conflicts to the operator for judgment via `ve orch resolve`.
 
-This chunk enables the orchestrator to make intelligent scheduling decisions about parallel work. Without conflict detection, the orchestrator would either serialize all work (sacrificing throughput) or parallelize blindly (causing merge conflicts). The conflict oracle provides the judgment layer that balances throughput against merge safety.
+The oracle enables the orchestrator to make intelligent scheduling decisions about parallel work. Without conflict detection, the orchestrator would either serialize all work (sacrificing throughput) or parallelize blindly (causing merge conflicts). The conflict oracle provides the judgment layer that balances throughput against merge safety.
 
 ## Success Criteria
 

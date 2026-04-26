@@ -29,24 +29,24 @@ created_after: ["accept_full_artifact_paths", "investigation_chunk_refs", "chunk
 
 ## Minor Goal
 
-Enable chunk commands (`ve chunk validate`, etc.) to resolve external chunks
-and their code references uniformly, whether run from a project context or a
-task context.
+Chunk commands (`ve chunk validate`, etc.) resolve external chunks and their
+code references uniformly, whether invoked from a project context or a task
+context.
 
-Currently, when an agent runs `ve chunk validate <chunk_name>` from a project
-directory, it fails with "Chunk not found" even though the chunk exists in the
-external artifact repo referenced by `external.yaml`. The agent must manually
-`cd` to the external repo and re-run the command. Similarly, code reference
-validation shows spurious "File not found" warnings because it doesn't know
-how to resolve project-prefixed paths like `dotter::xr#symbol`.
+`ve chunk validate <chunk_name>` invoked from a project directory locates
+chunks that live in the external artifact repo referenced by `external.yaml`,
+so an agent does not need to `cd` to the external repo to run validation.
+Code reference validation understands project-prefixed paths like
+`dotter::xr#symbol` and skips (rather than warns about) references it cannot
+resolve from the current vantage point.
 
-The fix is straightforward:
-1. **In project context**: Use `external.yaml` to locate and dereference
-   external chunks. Code references that use project prefixes cannot be
-   validated (no access to other projects), but local references can be.
-2. **In task context**: Use `.ve-task.yaml` to locate the external artifact
-   repo and all project directories. All code references (including
-   cross-project ones) can be fully validated.
+Two resolution modes apply:
+1. **In project context**: `external.yaml` locates and dereferences external
+   chunks. Code references that use project prefixes are not validated (no
+   access to other projects); local references are.
+2. **In task context**: `.ve-task.yaml` locates the external artifact repo
+   and all project directories. All code references (including cross-project
+   ones) are fully validated.
 
 ## Success Criteria
 

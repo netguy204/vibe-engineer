@@ -88,11 +88,11 @@ created_after: ["orch_foundation"]
 
 ## Minor Goal
 
-Implement the scheduling layer of the parallel agent orchestrator - the ability to manage git worktrees as isolated execution environments and spawn agents to execute single phases of chunk work.
+The scheduling layer of the parallel agent orchestrator manages git worktrees as isolated execution environments and spawns agents to execute single phases of chunk work.
 
-This is Phase 2 from the `docs/investigations/parallel_agent_orchestration/design.md`. Building on the daemon foundation (orch_foundation), this chunk brings the "OS analogy" to life: worktrees are processes with their own address space, agents are stateless CPUs that execute a single phase then return the worktree to the ready queue.
+This is Phase 2 from `docs/investigations/parallel_agent_orchestration/design.md`. Building on the daemon foundation (orch_foundation), the scheduling layer realizes the "OS analogy": worktrees are processes with their own address space, agents are stateless CPUs that execute a single phase then return the worktree to the ready queue.
 
-This chunk enables:
+The scheduling layer provides:
 - Parallel chunk execution across multiple worktrees
 - Automatic dispatching of ready work units to available agent slots
 - The `ve orch inject` command to add chunks to the work pool

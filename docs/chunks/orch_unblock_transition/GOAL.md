@@ -35,14 +35,14 @@ created_after:
 
 ## Minor Goal
 
-Fix the orchestrator scheduler bug where work units remain stuck in NEEDS_ATTENTION
-status after their blocking work units complete. When a blocker completes and is
-removed from a work unit's `blocked_by` list, if that list becomes empty, the work
-unit should automatically transition from NEEDS_ATTENTION back to READY status.
-
-Currently, the scheduler correctly clears the `blocked_by` list but fails to update
-the status, leaving work units orphaned in NEEDS_ATTENTION with stale attention
-reasons. This requires manual intervention via `ve orch work-unit status <chunk> READY`.
+The orchestrator scheduler automatically transitions work units back to READY
+when their blockers complete. When a blocker completes and is removed from a
+work unit's `blocked_by` list, an empty list triggers an automatic transition
+from NEEDS_ATTENTION (or BLOCKED) back to READY status, with `attention_reason`
+cleared so `ve orch ps` does not display stale reasons. The scheduler also
+clears `attention_reason` and `blocked_by` whenever a work unit transitions to
+RUNNING, and clears `attention_reason` on any phase advancement to READY, so
+active work units never carry residual blocker metadata.
 
 ## Success Criteria
 

@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/task_utils.py
-- src/ve.py
+- src/models/friction.py
+- src/task/friction.py
+- src/cli/friction.py
 - src/friction.py
 - docs/subsystems/workflow_artifacts/OVERVIEW.md
 - tests/test_task_friction_log.py
@@ -53,9 +53,9 @@ Enable friction logging to participate in task context and implement selective p
 
 ### Part 1: Friction Logging in Task Context
 
-Currently, friction log entries are only recorded in the local project's `docs/trunk/FRICTION.md`. When working in a task context (multi-project work with an external artifact repo), friction should be surfaced as an artifact that links back to the relevant projects—just like chunks, investigations, narratives, and subsystems do.
+In task context (multi-project work with an external artifact repo), friction is surfaced as an artifact that links back to the relevant projects—just like chunks, investigations, narratives, and subsystems do. Friction entries created via `ve friction log` in task context land in the external artifact repo's `docs/trunk/FRICTION.md`, and each linked project's local `FRICTION.md` carries an external reference back to the entry.
 
-**Key design constraint**: Unlike other artifacts which get their own directories, `FRICTION.md` is a singleton file in each project. We cannot use the standard `external.yaml` pattern. Instead, we need a mechanism for embedding external references *within* the singleton friction log—likely via frontmatter that lists external friction sources.
+**Key design constraint**: Unlike other artifacts which get their own directories, `FRICTION.md` is a singleton file in each project. The standard `external.yaml` pattern does not apply. Instead, external references are embedded *within* the singleton friction log via frontmatter that lists external friction sources.
 
 ### Part 2: Selective Project Linking (`--projects` flag)
 

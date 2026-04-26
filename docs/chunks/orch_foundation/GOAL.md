@@ -76,9 +76,9 @@ created_after:
 
 ## Minor Goal
 
-Establish the foundation of the parallel agent orchestrator - a daemon process that manages concurrent chunk work across multiple agents. This chunk implements the core architectural skeleton: daemon lifecycle, SQLite state persistence, and basic work unit tracking.
+The parallel agent orchestrator runs as a daemon process that manages concurrent chunk work across multiple agents. The foundation layer provides the core architectural skeleton: daemon lifecycle, SQLite state persistence, and basic work unit tracking.
 
-This is the first step in the orchestration vision from the parallel_agent_orchestration investigation. The orchestrator functions as an "operating system scheduler" where worktrees are processes, agents are CPUs, and the orchestrator routes operator attention to where it creates the most throughput.
+This is the first layer of the orchestration vision from the parallel_agent_orchestration investigation. The orchestrator functions as an "operating system scheduler" where worktrees are processes, agents are CPUs, and the orchestrator routes operator attention to where it creates the most throughput.
 
 Everything else depends on this foundation:
 - Scheduling (Phase 2) needs the daemon and work unit model
@@ -115,7 +115,7 @@ Everything else depends on this foundation:
 
 ## Design Context
 
-This chunk implements Phase 1 from the design document at `docs/investigations/parallel_agent_orchestration/design.md`. Key architectural decisions from that document:
+The foundation layer implements Phase 1 from the design document at `docs/investigations/parallel_agent_orchestration/design.md`. Key architectural decisions from that document:
 
 - **Stateless agents, stateful orchestrator**: Agents are ephemeral workers; the daemon maintains all durable state
 - **OS analogy**: WorkUnit is like a process (worktree + chunk), daemon is the scheduler
@@ -130,4 +130,4 @@ This chunk implements Phase 1 from the design document at `docs/investigations/p
 - Web dashboard (Phase 5: Dashboard)
 - Worktree management (Phase 2)
 
-This chunk is purely the daemon skeleton - it knows work units exist but doesn't yet do anything with them beyond basic CRUD.
+The foundation layer is purely the daemon skeleton — it knows work units exist but does not act on them beyond basic CRUD.

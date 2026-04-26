@@ -23,9 +23,15 @@ created_after: ["copy_as_external"]
 
 ## Minor Goal
 
-When running `ve chunk list --latest` in a task context (multi-repo mode), the output should explicitly indicate which repository the latest chunk comes from. Currently, the output just shows `docs/chunks/{chunk_name}`, which doesn't tell agents where to find the chunk. Since chunks in task context always come from the external artifact repository, the output should include the repository reference (from `.ve-task.yaml`) to help agents accurately locate and navigate to the chunk.
+`ve chunk list --latest` in a task context (multi-repo mode) explicitly
+indicates which repository the latest chunk comes from. Because chunks in
+task context always come from the external artifact repository, the output
+includes the repository reference (from `.ve-task.yaml`) so agents can
+unambiguously locate and navigate to the chunk.
 
-This improves the workflow documentation's clarity (docs/trunk/GOAL.md) by ensuring agents working in multi-repo task contexts can unambiguously identify where artifacts live.
+This sharpens the workflow documentation in docs/trunk/GOAL.md: agents
+working in multi-repo task contexts can identify where artifacts live
+without having to infer it from context.
 
 ## Success Criteria
 

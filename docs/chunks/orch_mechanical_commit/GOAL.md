@@ -26,24 +26,19 @@ created_after: ["orch_attention_queue", "orch_conflict_oracle", "orch_agent_skil
 
 ## Minor Goal
 
-Replace the agent-driven commit phase with a mechanical commit. Currently, when
-the orchestrator detects uncommitted changes after the COMPLETE phase, it runs
-`agent_runner.run_commit()` which launches an agent with the `/chunk-commit`
-skill. This agent can escape the worktree sandbox (as demonstrated when the
-`orch_sandbox_enforcement` chunk's agent ran `cd /host/repo && git commit`,
-committing to main instead of the worktree branch).
-
-The fix is to eliminate the agent entirely for commits. After COMPLETE phase
-succeeds and uncommitted changes are detected, mechanically run git commands
-directly in the worktree:
+The orchestrator commits chunk changes mechanically, without an agent. After
+the COMPLETE phase succeeds and uncommitted changes are detected, the scheduler
+invokes `WorktreeManager.commit_changes`, which runs git directly in the
+worktree:
 
 ```bash
 git add -A
 git commit -m "feat: chunk <chunk_name>"
 ```
 
-This is simpler, faster, and cannot escape the sandbox because there's no agent
-making decisions about where to run commands.
+Because no agent decides where to run these commands, the commit cannot escape
+the worktree sandbox. This path replaces the prior agent-driven `run_commit`
+flow that relied on the `/chunk-commit` skill.
 
 ## Success Criteria
 

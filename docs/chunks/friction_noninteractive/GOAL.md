@@ -24,17 +24,18 @@ created_after:
 
 ## Minor Goal
 
-Make the `ve friction log` CLI command fully non-interactive, enabling agents and
-scripts to log friction entries without requiring interactive prompts.
+The `ve friction log` CLI command runs fully non-interactively, enabling agents
+and scripts to log friction entries without requiring interactive prompts.
 
-Currently, the command uses Click's `prompt=True` on all options (title, description,
-impact, theme), which forces interactive input. This breaks when:
+The command's options (title, description, impact, theme) accept values directly
+rather than forcing Click prompts, so the command works in contexts where
+interactive input is unavailable:
 - Running from scripts or CI
-- Agents attempt to use the command (as encountered in the friction_log skill)
+- Agents invoking the command (including from the friction_log skill)
 - Piping input from other commands
 
-This enables agents to capture friction programmatically without fallback to
-direct file editing.
+Agents can capture friction programmatically without falling back to direct file
+editing.
 
 ## Success Criteria
 

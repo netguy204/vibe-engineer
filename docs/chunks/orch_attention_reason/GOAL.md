@@ -51,9 +51,9 @@ created_after:
 
 ## Minor Goal
 
-Store and display the reason why a work unit needs attention, making it easy for operators to diagnose and resolve blocked work units without needing to dig through logs.
+The orchestrator stores and displays the reason a work unit needs attention, so operators can diagnose and resolve blocked work units without digging through logs.
 
-Currently when an agent fails or suspends (e.g., asking a question), the work unit status changes to NEEDS_ATTENTION but the operator has no way to know WHY without checking logs. This chunk adds structured reason tracking and display capabilities.
+When an agent fails or suspends (e.g., by asking a question), the work unit status changes to NEEDS_ATTENTION and the scheduler captures the diagnosis (error message or question text) into a structured `attention_reason` field on the work unit. CLI surfaces (`ve orch ps`, `ve orch work-unit show`) and the API render this reason directly.
 
 ## Success Criteria
 

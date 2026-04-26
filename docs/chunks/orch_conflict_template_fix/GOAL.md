@@ -28,22 +28,18 @@ created_after:
 
 ## Minor Goal
 
-The conflict oracle in `src/orchestrator/oracle.py` produces false positive
-conflicts when analyzing chunks at the GOAL stage. The `_analyze_goal_stage()`
-method reads the entire GOAL.md file and passes it to `_find_common_terms()`,
-which extracts common words between two chunks' goals.
+The conflict oracle in `src/orchestrator/oracle.py` ignores HTML comment blocks
+when analyzing chunks at the GOAL stage. `_analyze_goal_stage()` reads each
+GOAL.md file, strips `<!-- ... -->` template boilerplate via
+`_strip_html_comments()`, then passes the cleaned text to `_find_common_terms()`
+for overlap detection.
 
-The problem: GOAL.md files contain a large template comment block with example
-paths like `src/segment/writer.rs` and `src/segment/format.rs`. When two chunks
-share this template boilerplate, the oracle detects these example paths as
-overlapping content and flags a potential conflict.
-
-This was observed when `artifact_copy_backref` and `orch_sandbox_enforcement`
-were flagged with `Files: src/segment/format.rs` - a file that doesn't exist.
-Both chunks have the same GOAL.md template with example paths.
-
-The fix should ensure the oracle only analyzes meaningful content from GOAL.md,
-not the template comment block with example paths.
+GOAL.md files include a large template comment block with example paths (e.g.,
+`src/segment/writer.rs`, `src/segment/format.rs`). Without comment stripping,
+two chunks that share this boilerplate would surface spurious overlap on
+template example paths rather than on actual goal content. Stripping comments
+before term extraction means the oracle only weighs the chunk author's
+description and success criteria.
 
 ## Success Criteria
 

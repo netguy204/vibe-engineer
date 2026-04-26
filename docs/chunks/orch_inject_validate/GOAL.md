@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/chunks.py
 - src/cli/chunk.py
-- src/orchestrator/api.py
+- src/orchestrator/api/scheduling.py
 - tests/test_orchestrator_api.py
 - tests/test_chunk_validate_inject.py
 code_references:
@@ -31,9 +31,7 @@ created_after:
 
 ## Minor Goal
 
-The orchestrator can currently accept chunks in illegal states (e.g., ACTIVE status with no plan content), leading to runtime failures that waste agent cycles. When a chunk is in an inconsistent state, the orchestrator should reject it upfront with a clear error message rather than dispatching an agent that will inevitably fail.
-
-This chunk adds injection-time validation to ensure chunks are in a valid state before being submitted to the work pool. It extends the existing `ve chunk validate` command with injection-specific checks and integrates this validation into `ve orch inject`.
+The orchestrator validates chunks at injection time and rejects those in illegal states (e.g., ACTIVE status with no plan content) with a clear error message, rather than dispatching an agent that would inevitably fail. The `ve chunk validate` command exposes the same checks via an `--injectable` flag, and `ve orch inject` runs them before creating a work unit.
 
 ## Success Criteria
 

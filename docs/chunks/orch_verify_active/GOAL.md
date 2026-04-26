@@ -40,13 +40,13 @@ created_after: ["respect_future_intent", "orch_scheduling"]
 
 ## Minor Goal
 
-Add validation to the orchestrator's completion flow to ensure that a chunk's GOAL.md has been marked as ACTIVE status before attempting to commit and merge. If the `/chunk-complete` phase runs but fails to mark the chunk as ACTIVE (e.g., agent didn't complete the final step), the scheduler should:
+The orchestrator's completion flow validates that a chunk's GOAL.md is marked ACTIVE before attempting to commit and merge. If the `/chunk-complete` phase runs but fails to mark the chunk as ACTIVE (e.g., the agent did not complete the final step), the scheduler:
 
-1. Detect the incomplete completion by checking the chunk's GOAL.md frontmatter status
-2. Resume the agent session that ran `/chunk-complete` with a reminder to finish the final step
-3. Only proceed to commit/merge once the chunk is properly marked ACTIVE
+1. Detects the incomplete completion by checking the chunk's GOAL.md frontmatter status
+2. Resumes the agent session that ran `/chunk-complete` with a reminder to finish the final step
+3. Only proceeds to commit/merge once the chunk is properly marked ACTIVE
 
-This guards against a common failure mode where an agent runs `/chunk-complete` but stops before marking the status as ACTIVE and removing the frontmatter comment block - leaving the chunk in a half-completed state.
+This guards against a common failure mode where an agent runs `/chunk-complete` but stops before marking the status as ACTIVE and removing the frontmatter comment block, leaving the chunk in a half-completed state.
 
 ## Success Criteria
 

@@ -37,30 +37,27 @@ created_after: ["orch_mechanical_commit"]
 
 ## Minor Goal
 
-The orchestrator's conflict resolution system has two deficiencies that prevent
-serialized work units from automatically resuming after their blockers complete:
+The orchestrator's conflict resolution system supports a complete blocked
+lifecycle for serialized work units:
 
-**Bug 1: Status not updated on SERIALIZE verdict**
+**SERIALIZE verdict transitions to BLOCKED**
 
-When `ve orch resolve <chunk> --with <other> serialize` is called, the endpoint
-at `src/orchestrator/api.py:777-780` correctly adds the other chunk to
-`blocked_by`, but fails to:
-- Transition status from `NEEDS_ATTENTION` to `BLOCKED`
-- Clear the `attention_reason` field
+When `ve orch resolve <chunk> --with <other> serialize` is called, the
+`resolve_conflict_endpoint` adds the other chunk to `blocked_by`, transitions
+status from `NEEDS_ATTENTION` to `BLOCKED`, and clears the `attention_reason`
+field so the resolved conflict no longer surfaces as a stale reason.
 
-This leaves the work unit stuck in `NEEDS_ATTENTION` with a stale attention
-reason even though the conflict has been resolved.
+**Automatic unblock when blockers complete**
 
-**Bug 2: No automatic unblock when blockers complete**
+When a work unit transitions to `DONE`, the scheduler scans for work units
+with that chunk in their `blocked_by` list and removes the completed chunk.
+If removal leaves `blocked_by` empty and the unit is `BLOCKED` or
+`NEEDS_ATTENTION`, the unit transitions to `READY` and is picked up by the
+next dispatch cycle.
 
-When a work unit transitions to `DONE` status, there is no logic to check if
-other work units were blocked by it and should now be unblocked. Work units
-with `status=BLOCKED` and `blocked_by=[completed_chunk]` remain blocked forever
-unless manually transitioned to `READY`.
-
-This chunk fixes both issues to enable the expected workflow: resolve a conflict
-with SERIALIZE → work unit becomes BLOCKED → blocker completes → work unit
-automatically becomes READY and resumes.
+Together these behaviors enable the workflow: resolve a conflict with SERIALIZE
+→ work unit becomes BLOCKED → blocker completes → work unit automatically
+becomes READY and resumes.
 
 ## Success Criteria
 

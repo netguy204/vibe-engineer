@@ -4,9 +4,9 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
-- src/orchestrator/api.py
+- src/orchestrator/api/work_units.py
 - src/orchestrator/worktree.py
-- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_scheduler_worktree.py
 code_references:
   - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
     implements: "Worktree creation at dispatch time (READY → RUNNING transition)"
@@ -27,17 +27,17 @@ created_after:
 
 ## Minor Goal
 
-Defer git worktree creation until work can actually begin execution, rather than creating worktrees at inject time.
+Git worktree creation is deferred until a work unit actually begins execution, rather than happening at inject time.
 
-Currently, when work is injected via `ve orch inject`, the worktree is created immediately. This is problematic because:
+When work is injected via `ve orch inject`, the worktree is not created yet. Creating worktrees at inject time would be problematic because:
 
-1. **Stale base state**: A worktree created at inject time reflects the repository state when the work was queued, not when it actually runs. If the work is blocked or there are no agent slots available, other work may complete and change the repository before this work starts.
+1. **Stale base state**: A worktree created at inject time would reflect the repository state when the work was queued, not when it actually runs. If the work is blocked or there are no agent slots available, other work may complete and change the repository before this work starts.
 
-2. **Blocked work sees outdated code**: Work that depends on other chunks (via `created_after`) gets a worktree based on the state *before* its dependencies complete. The work should see the state *after* its dependencies have merged.
+2. **Blocked work would see outdated code**: Work that depends on other chunks (via `created_after`) would get a worktree based on the state *before* its dependencies complete. The work needs to see the state *after* its dependencies have merged.
 
-3. **Resource waste**: Creating worktrees for work that can't run yet consumes disk space and git resources unnecessarily.
+3. **Resource waste**: Creating worktrees for work that can't run yet would consume disk space and git resources unnecessarily.
 
-**Solution**: Create worktrees at the moment a work unit transitions from READY to RUNNING (i.e., when an agent slot becomes available and the scheduler dispatches the work). This ensures:
+**Behavior**: The worktree is created at the moment a work unit transitions from READY to RUNNING (i.e., when an agent slot becomes available and the scheduler dispatches the work). This ensures:
 - The worktree reflects the most current repository state
 - Blocked work sees the changes from the work it was waiting on
 - Resources are allocated only when actually needed

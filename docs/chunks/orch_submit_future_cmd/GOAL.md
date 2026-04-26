@@ -18,11 +18,11 @@ created_after: ["cluster_seed_naming", "learning_philosophy_docs"]
 
 ## Minor Goal
 
-Create a new slash command `/orchestrator-submit-future` that batch-submits all FUTURE chunks to the orchestrator, with appropriate guards for uncommitted and already-running chunks.
+The slash command `/orchestrator-submit-future` batch-submits all FUTURE chunks to the orchestrator, with appropriate guards for uncommitted and already-running chunks.
 
-**Why this matters**: Currently, FUTURE chunks must be manually injected one-by-one via `ve orch inject`. When multiple FUTURE chunks accumulate, this becomes tedious. This command enables a workflow where an operator queues up FUTURE chunks during planning, then submits them all at once when ready to parallelize work.
+**Why this matters**: Without batch submission, FUTURE chunks must be injected one-by-one via `ve orch inject`. When multiple FUTURE chunks accumulate, this becomes tedious. The batch command supports a workflow where an operator queues up FUTURE chunks during planning, then submits them all at once when ready to parallelize work.
 
-**Implementation**: This is a slash command only (no `ve` CLI subcommand). Create template at `src/templates/commands/orchestrator-submit-future.md.jinja2` which renders to `.claude/commands/orchestrator-submit-future.md`.
+**Form**: This is a slash command only (no `ve` CLI subcommand). The source template lives at `src/templates/commands/orchestrator-submit-future.md.jinja2` and renders to `.claude/commands/orchestrator-submit-future.md`.
 
 **Behavior**:
 1. Find all chunks with `status: FUTURE` in their frontmatter

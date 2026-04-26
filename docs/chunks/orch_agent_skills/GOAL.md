@@ -26,14 +26,14 @@ created_after:
 
 ## Minor Goal
 
-Configure background agents spawned by the orchestrator to have access to the same skills (slash commands) that interactive Claude Code users have.
+Background agents spawned by the orchestrator have access to the same skills (slash commands) that interactive Claude Code users have.
 
-Currently, background agents run in isolated worktrees that contain the project's `.claude/` configuration directory with skills defined in `.claude/commands/`. However, the transcript audit revealed agents receiving errors like `Unknown skill: chunk-resolve-references` when trying to use skills that should be available.
+Background agents run in isolated worktrees that contain the project's `.claude/` configuration directory with skills defined in `.claude/commands/`. Without explicit SDK configuration, agents receive errors like `Unknown skill: chunk-resolve-references` when trying to use skills that should be available.
 
-The Claude Agent SDK provides configuration options to make project-level Claude config available to spawned agents. This chunk will:
-- Ensure the worktree's `.claude/commands/` directory is recognized by background agents
-- Configure the agent runner to use project-level skills
-- Give background agents feature parity with interactive users for skill access
+The Claude Agent SDK provides configuration options to make project-level Claude config available to spawned agents. The orchestrator:
+- Recognizes the worktree's `.claude/commands/` directory in background agents
+- Configures the agent runner to use project-level skills
+- Gives background agents feature parity with interactive users for skill access
 
 ## Success Criteria
 

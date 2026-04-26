@@ -29,22 +29,20 @@ created_after:
 
 ## Minor Goal
 
-When using `ve artifact copy-external` to copy an artifact from the external
-artifact repository to a target project, the command currently creates an
-`external.yaml` in the target project referencing the source artifact, but it
-does NOT update the source artifact's frontmatter to record this relationship.
+`ve artifact copy-external` maintains both sides of the cross-repository
+artifact relationship. Copying an artifact from the external artifact repository
+to a target project does two things:
 
-The `dependents` field already exists in all artifact frontmatter models
+1. The target project gets an `external.yaml` pointing to the source artifact.
+2. The source artifact's frontmatter gets a `dependents` entry pointing to the
+   target project, written by `append_dependent_to_artifact()`.
+
+The `dependents` field on every artifact frontmatter model
 (`ChunkFrontmatter`, `NarrativeFrontmatter`, `InvestigationFrontmatter`,
-`SubsystemFrontmatter`) to track which projects have copied/referenced the
-artifact. This chunk implements the back-reference update so that both sides of
-the relationship are maintained:
-
-1. Target project gets `external.yaml` pointing to source artifact (already works)
-2. Source artifact gets `dependents` entry pointing to target project (needs implementation)
-
-This enables artifact authors to see where their work has been adopted and
-supports future tooling for cascade notifications when artifacts are updated.
+`SubsystemFrontmatter`) tracks which projects have copied or referenced the
+artifact. This bidirectional record lets artifact authors see where their work
+has been adopted and supports future tooling for cascade notifications when
+artifacts are updated.
 
 ## Success Criteria
 

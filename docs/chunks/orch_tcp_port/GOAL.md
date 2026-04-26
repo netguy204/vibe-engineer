@@ -31,15 +31,15 @@ created_after:
 
 ## Minor Goal
 
-Add TCP port support to the orchestrator daemon so the web dashboard can be accessed directly from a browser without needing a reverse proxy like `socat`.
+The orchestrator daemon supports TCP port binding so the web dashboard can be accessed directly from a browser without needing a reverse proxy like `socat`.
 
-Currently the daemon only listens on a Unix socket (`.ve/orchestrator/orchestrator.sock`), which browsers cannot connect to directly. This chunk enables browser access by:
+The daemon listens on both a Unix socket (`.ve/orchestrator/orchestrator.sock`) for CLI client communication and a TCP port for browser access:
 
-1. Adding a `--port` flag to `ve orch start` to specify a TCP port
-2. When no port is specified, automatically selecting an available port and printing it to stdout
-3. Maintaining the Unix socket for CLI client communication (backward compatible)
+1. `ve orch start --port <N>` binds the daemon to TCP port N.
+2. When no port is specified, the daemon selects an available port and prints it to stdout.
+3. The Unix socket remains active for CLI client communication (backward compatible).
 
-This is a direct follow-up to `orch_dashboard` which explicitly noted this limitation in its PLAN.md: "The daemon uses a Unix socket by default. For dashboard access via browser, operators will need to configure HTTP on a TCP port."
+This complements `orch_dashboard`, whose PLAN.md noted the original Unix-socket-only limitation: "The daemon uses a Unix socket by default. For dashboard access via browser, operators will need to configure HTTP on a TCP port."
 
 ## Success Criteria
 
