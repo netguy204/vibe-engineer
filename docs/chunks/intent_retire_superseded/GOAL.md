@@ -9,7 +9,7 @@ investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["intent_principles", "intent_superseded_migration"]
+depends_on: ["intent_superseded_migration"]
 created_after: ["intent_principles"]
 ---
 
