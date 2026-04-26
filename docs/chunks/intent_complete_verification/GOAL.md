@@ -1,8 +1,14 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/models/chunk.py
+- src/models/__init__.py
+- src/templates/commands/chunk-complete.md.jinja2
+- src/templates/chunk/GOAL.md.jinja2
+- tests/test_models.py
+- tests/test_reviewer_decision_create.py
 code_references: []
 narrative: intent_ownership
 investigation: null
@@ -10,9 +16,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["intent_principles"]
+created_after:
+- intent_principles
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
