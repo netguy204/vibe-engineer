@@ -1,0 +1,34 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Migrations">
+  <h2>Migrations</h2>
+  <p>
+    Migrations are guides for moving an existing project's chunk corpus
+    forward when the workflow's principles, schema, or templates evolve.
+    Each migration is a focused, reproducible procedure that converts the
+    corpus into the current standard while preserving every chunk's
+    architectural intent.
+  </p>
+  <p>
+    Migrations are designed to be operator-led at the start and
+    agent-driven at scale. You walk the first few chunks personally to
+    build confidence in the agent's judgment, scale to small parallel
+    waves once the pattern is clear, then hand off to full automation
+    once the work is mechanical and the rules are tight.
+  </p>
+
+  <h3>Available migrations</h3>
+  <ul>
+    <li>
+      <a href="/docs/migrations/active-tense-chunks/">
+        <strong>Active-tense chunks</strong>
+      </a>
+      &mdash; Migrate ACTIVE chunks to present-tense, system-centric framing.
+      Catches retrospective <code>Currently, …</code> openings and chunk-centric
+      <code>This chunk adds&hellip;</code> framing. Logs over-claims that need
+      operator triage. Historicalizes chunks with no enduring intent.
+    </li>
+  </ul>
+</DocsLayout>
