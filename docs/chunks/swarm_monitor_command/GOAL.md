@@ -27,14 +27,14 @@ created_after:
 
 ## Minor Goal
 
-Create a new `/swarm-monitor` slash command that gives operators a single-command view across all changelog channels in a swarm. Currently, monitoring multiple project changelogs requires manually listing channels, checking cursors, and starting individual watches. This command automates that workflow:
+The `/swarm-monitor` slash command gives operators a single-command view across all changelog channels in a swarm, automating the workflow of listing channels, checking cursors, and starting watches that would otherwise be done one channel at a time:
 
 1. **List changelog channels** — Run `ve board channels` and filter for `*-changelog` patterns
 2. **Show cursor vs head** — For each changelog channel, display the cursor position and head position to identify unread messages
 3. **Launch background watches** — Start `run_in_background` watches on all changelog channels that have unread messages or are at head (waiting for new ones)
 4. **Report to operator** — As messages arrive on any watched channel, report them back to the operator inline
 
-The skill should be a rendered Jinja2 command template at `src/templates/commands/swarm-monitor.md.jinja2`, following the same patterns as other command templates (auto-generated header, common tips partial, `{% raw %}` block for instructions).
+The skill is a rendered Jinja2 command template at `src/templates/commands/swarm-monitor.md.jinja2`, following the same patterns as other command templates (auto-generated header, common tips partial, `{% raw %}` block for instructions).
 
 ## Success Criteria
 

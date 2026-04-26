@@ -11,11 +11,11 @@ code_paths:
 - tests/test_orchestrator_scheduler.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_finalize_completed_work_unit
-  implements: "Moved commit logic into retain_worktree branch, eliminating the double-commit with finalize_work_unit"
+  implements: "Commits only on the retain_worktree path; delegates commit-remove-merge to finalize_work_unit otherwise (no double-commit)"
 - ref: src/orchestrator/worktree.py#WorktreeManager::commit_changes
-  implements: "Hardened against empty-stderr exit-code-1 edge case (e.g., submodule entries)"
+  implements: "Treats empty-stderr exit-code-1 from git commit as a no-op (e.g., submodule entries leaving nothing actually staged)"
 - ref: src/orchestrator/worktree.py#WorktreeManager::_remove_worktree_from_repo
-  implements: "Added git worktree prune after shutil.rmtree fallback for submodule-containing worktrees"
+  implements: "Falls back to shutil.rmtree followed by git worktree prune when git worktree remove fails for submodule-containing worktrees"
 narrative: null
 investigation: null
 subsystems:
@@ -32,13 +32,11 @@ created_after:
 
 ## Minor Goal
 
-The orchestrator's `_finalize_completed_work_unit()` in `scheduler.py` commits uncommitted changes at lines 1042-1053, then calls `worktree.finalize_work_unit()` at line 1079, which attempts to commit *again* at line 1310-1311. When the first commit leaves the tree clean but `has_uncommitted_changes()` still returns `True` (e.g., due to git submodule entries in `git status --porcelain` output), the second `commit_changes()` call fails with an empty stderr, raising `WorktreeError("git commit failed: ")`. This bubbles up to the scheduler, which marks the work unit NEEDS_ATTENTION — blocking all downstream chunks even though the implementation work completed successfully.
+`finalize_work_unit()` is the single owner of the commit-remove-merge sequence for non-retained worktrees. The scheduler's `_finalize_completed_work_unit()` only commits directly on the `retain_worktree` path (where `finalize_work_unit()` is skipped); on the normal path, it delegates to `finalize_work_unit()` so commit, remove, and merge happen as one sequence. This avoids any double-commit pattern where a clean tree triggers a spurious second `commit_changes()` failure that would mark the work unit NEEDS_ATTENTION.
 
-This chunk eliminates the double-commit by making `finalize_work_unit()` the single owner of the commit-remove-merge sequence. The scheduler's pre-commit block (lines 1042-1053) is replaced with a narrower role: for `retain_worktree` work units, the scheduler commits directly (since `finalize_work_unit()` is skipped); for all other work units, `finalize_work_unit()` handles commit-remove-merge as one sequence. This preserves the existing behavior where retained worktrees still get their uncommitted changes committed.
+`commit_changes()` treats `git commit` exit code 1 with empty stderr as a no-op (returning `False`, like "nothing to commit") so submodule entries and similar cases where `git status --porcelain` is non-empty but nothing is staged do not raise `WorktreeError`.
 
-The chunk also hardens `commit_changes()` to treat exit-code-1-with-empty-stderr as a no-op (same as "nothing to commit"), making it resilient to submodule and other edge cases.
-
-Additionally, `git worktree remove` fails on worktrees containing submodules ("working trees containing submodules cannot be moved or removed"). The cleanup path should fall back to `rm -rf` + `git worktree prune` when submodules are present.
+Worktree removal handles submodule-containing worktrees by falling back to `shutil.rmtree` followed by `git worktree prune` when `git worktree remove --force` fails (submodule worktrees report "working trees containing submodules cannot be moved or removed").
 
 ## Success Criteria
 

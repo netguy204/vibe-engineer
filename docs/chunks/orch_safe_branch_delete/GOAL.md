@@ -43,11 +43,11 @@ created_after:
 
 ## Minor Goal
 
-Prevent `ve orch work-unit delete` from destroying branches that contain unmerged implementation code. Currently, the delete endpoint (`api/work_units.py:264-270`) calls `remove_worktree(chunk, remove_branch=True)` which uses `git branch -D` (force delete) at `worktree.py:666` — no check on whether the branch has commits not yet on main.
+`ve orch work-unit delete` refuses to destroy branches that contain unmerged implementation code. The delete endpoint (`api/work_units.py#delete_work_unit_endpoint`) checks for unmerged commits via `WorktreeManager.has_unmerged_commits` before invoking `remove_worktree`. If commits on `orch/<chunk>` are not reachable from the base branch, the delete is refused with a clear error message showing the commit count.
 
-This caused data loss in the motivating incident: an operator deleted work units for chunks stuck at NEEDS_ATTENTION, force-deleting branches that held the only copy of implementation code. Recovery required `git reflog` archaeology.
+`_remove_single_repo_worktree` defaults to `git branch -d` (safe delete), which refuses to delete unmerged branches. `git branch -D` (force delete) is only used when the operator passes `--force` (CLI) or `force=true` (API), explicitly opting into discarding the work.
 
-The normal finalization path (`finalize_work_unit`) already uses `git branch -d` (safe delete) which refuses to delete unmerged branches. The fix brings the manual delete path to the same safety level.
+This brings the manual delete path to the same safety level as the normal finalization path (`finalize_work_unit`), which already uses safe delete. It prevents the motivating data-loss incident — where deleting NEEDS_ATTENTION work units force-deleted branches that held the only copy of implementation code, requiring `git reflog` archaeology to recover.
 
 ## Success Criteria
 

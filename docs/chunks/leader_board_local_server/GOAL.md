@@ -51,8 +51,8 @@ Implement a local WebSocket server adapter that wraps the portable core. This
 is a simple server that accepts WebSocket connections, routes them through the
 core, and persists swarm/channel state to the local filesystem.
 
-Used for **development iteration and self-hosting**. Must speak the identical
-wire protocol that the Durable Objects adapter will speak.
+Used for **development iteration and self-hosting**. Speaks the identical
+wire protocol as the Durable Objects adapter.
 
 ## Success Criteria
 

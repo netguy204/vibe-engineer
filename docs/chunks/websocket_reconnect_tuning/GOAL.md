@@ -22,15 +22,15 @@ created_after:
 
 ## Minor Goal
 
-Two issues with the WebSocket reconnect behavior after the `websocket_hibernation_compat` changes:
+Two concerns with the WebSocket reconnect behavior under the `websocket_hibernation_compat` regime:
 
-1. **Backoff counter never resets**: After a successful reconnect, the exponential backoff counter stays at its current value (eventually capping at 30s). It should reset to the initial delay after a successful reconnection so subsequent disconnects start with a short retry. Currently `watch_with_reconnect` in `src/board/client.py` increments the attempt counter on each disconnect but never resets it on success.
+1. **Backoff reset on successful reconnect**: The exponential backoff counter resets to the initial delay after a successful reconnection so subsequent disconnects start with a short retry. Without the reset, the counter would stay at its accumulated value (eventually capping at 30s) and `watch_with_reconnect` in `src/board/client.py` would never recover its retry agility after a transient blip.
 
-2. **Investigate whether client-side pings keep Cloudflare WebSockets alive during hibernation**: The `websocket_hibernation_compat` chunk removed server-side heartbeats and relies on client-side `ping_interval` to keep connections alive. But field observations show connections still dropping every 2-5 minutes across multiple channels. Investigate whether:
-   - The `websockets` library's `ping_interval` actually sends WebSocket-level pings (not application-level)
-   - Cloudflare's proxy infrastructure honors these pings for idle timeout reset
-   - The DO's hibernation eviction is what's closing the connection (the DO evicts from memory, but the docs say connections should survive hibernation — verify this is working)
-   - A different `ping_interval` value (currently likely the default 20s) would help
+2. **Client-side ping behavior vs Cloudflare idle timeouts (investigation)**: `websocket_hibernation_compat` removed server-side heartbeats and relies on client-side `ping_interval` to keep connections alive, yet field observations show connections dropping every 2-5 minutes across multiple channels. The investigation covers:
+   - Whether the `websockets` library's `ping_interval` sends WebSocket-level pings (not application-level)
+   - Whether Cloudflare's proxy infrastructure honors these pings for idle timeout reset
+   - Whether DO hibernation eviction is what closes the connection (the DO evicts from memory, but the docs say connections should survive hibernation — verify this works)
+   - Whether a different `ping_interval` value (default 20s) would help
 
 ## Success Criteria
 
@@ -41,4 +41,4 @@ Two issues with the WebSocket reconnect behavior after the `websocket_hibernatio
 
 ## Relationship to Parent
 
-Parent chunk `websocket_hibernation_compat` removed server-side heartbeats for cost efficiency (DO hibernation). This chunk addresses the resulting increase in disconnect frequency and fixes the backoff counter that was introduced by `websocket_keepalive`.
+Parent chunk `websocket_hibernation_compat` removed server-side heartbeats for cost efficiency (DO hibernation). The backoff-reset behavior here addresses the resulting increase in disconnect frequency and corrects the counter introduced by `websocket_keepalive`.

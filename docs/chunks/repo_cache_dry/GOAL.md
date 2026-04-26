@@ -42,18 +42,13 @@ created_after:
 
 ## Minor Goal
 
-The `repo_cache` module contains two copy-pasted patterns that inflate its surface area and make future changes error-prone:
+The `repo_cache` module factors two repeated git-interaction patterns into reusable internal helpers:
 
-1. **Retry-after-fetch pattern** -- `get_file_at_ref`, `resolve_ref`, and `list_directory_at_ref` each contain an identical block: try an operation, catch the failure, run `git fetch --all --quiet`, then retry the same operation. The three copies are structurally identical and differ only in the inner callable.
+1. **Retry-after-fetch pattern** — `_with_fetch_retry(fn, cache_path)` encapsulates the "try operation / catch failure / `git fetch --all --quiet` / retry" cycle exactly once. `get_file_at_ref`, `resolve_ref`, and `list_directory_at_ref` each delegate to this helper, supplying only the inner callable.
 
-2. **subprocess.run + error wrapping** -- Roughly ten call sites across the module invoke `subprocess.run` with the same set of keyword arguments (`check=True`, `capture_output=True`, `text=True`), catch `CalledProcessError`, and re-raise as `ValueError` with a formatted message. Each site repeats this boilerplate.
+2. **subprocess.run + error wrapping** — `_run_git(*args, cwd, error_msg)` wraps `subprocess.run` with the standard arguments (`check=True`, `capture_output=True`, `text=True`), catches `CalledProcessError`, and re-raises as `ValueError` with a formatted message. Call sites across the module use this helper rather than inlining the boilerplate; the few intentional deviations (e.g., `_is_bare_repo`, which returns a boolean instead of raising) remain inline with comments explaining why.
 
-This chunk extracts both patterns into reusable internal helpers:
-
-- A `_with_fetch_retry(fn, cache_path)` wrapper (or equivalent) that encapsulates the try/fetch/retry logic so the three public functions each reduce to a single call.
-- A `_run_git(*args, cwd, error_msg)` helper that wraps `subprocess.run` with the standard arguments and error translation, replacing the repeated boilerplate across the module.
-
-This is a pure refactor with no behavioral changes. It advances the project goal of keeping the codebase maintainable by agents: when patterns are duplicated, agents risk applying a fix to one copy and missing the others. Consolidation makes the module easier to evolve correctly.
+The public API of `repo_cache.py` is unchanged: existing function signatures, return types, and exception behavior are preserved. This factoring keeps the codebase maintainable by agents — duplicated patterns invite fixes that miss copies, and consolidation makes the module easier to evolve correctly.
 
 ## Success Criteria
 

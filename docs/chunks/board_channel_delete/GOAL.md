@@ -37,19 +37,19 @@ created_after:
 
 ## Minor Goal
 
-Add the ability to delete channels from a swarm, both in the Durable Object backend and the `ve board` CLI.
+Channels can be deleted from a swarm, both in the Durable Object backend and via the `ve board` CLI.
 
-Channels are implicitly created when a message is first sent to them. Typos and experiments create stale channels that pollute the channel list, confusing future consumers (stewards, monitors, operators running `ve board channels`). There is currently no way to remove them.
+Channels are implicitly created when a message is first sent to them. Typos and experiments produce stale channels that pollute the channel list, confusing future consumers (stewards, monitors, operators running `ve board channels`). Channel deletion provides a way to remove them.
 
 **Backend (SwarmDO):**
-- Add a `DELETE /channels/{channel}` endpoint to the gateway/swarm API
+- A `DELETE /channels/{channel}` endpoint exists on the gateway/swarm API
 - Deleting a channel removes all its messages and cursor state from storage
-- Return 404 if the channel doesn't exist, 200 on success
+- The endpoint returns 404 if the channel doesn't exist, 200 on success
 
 **CLI:**
-- Add `ve board channel-delete <channel> [--swarm <id>]` (or `ve board delete-channel`)
-- Requires confirmation or a `--yes` flag to prevent accidental deletion
-- Reports success/failure to stdout
+- `ve board channel-delete <channel> [--swarm <id>]` deletes a channel
+- The command requires confirmation or a `--yes` flag to prevent accidental deletion
+- Success/failure is reported to stdout
 
 ## Success Criteria
 

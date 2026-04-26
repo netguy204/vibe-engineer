@@ -9,7 +9,7 @@ code_paths:
 - src/orchestrator/worktree.py
 - src/orchestrator/scheduler.py
 - src/orchestrator/activation.py
-- tests/test_orchestrator_merge_retry.py
+- tests/test_orchestrator_scheduler_merge_conflict.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_handle_merge_conflict_retry
   implements: "Detect merge conflicts during finalization and cycle back to REBASE phase"
@@ -41,38 +41,28 @@ created_after:
 
 ## Minor Goal
 
-When a chunk completes the COMPLETE phase and its worktree is finalized, the merge-to-main step can fail with a merge conflict (another chunk merged to main in the meantime, causing divergence). Currently, this marks the work unit as `NEEDS_ATTENTION`, requiring operator intervention.
+When a chunk's worktree is finalized after the COMPLETE phase, the merge-to-main step can fail with a merge conflict if another chunk merged to main in the meantime. The orchestrator recovers from this automatically by cycling the work unit back to the REBASE phase rather than escalating to `NEEDS_ATTENTION`. Cycling back lets an agent perform a context-aware merge (with the chunk's GOAL.md to inform conflict resolution), followed by a re-review, and then a second attempt at completion — converting what would otherwise be a manual escalation into a fully automated retry loop.
 
-Instead, the orchestrator should automatically recover by cycling the work unit back to the REBASE phase. This lets an agent do a context-aware merge (it has the chunk's GOAL.md to inform conflict resolution), followed by a re-review, and then a second attempt at completion. This turns a manual escalation into a fully automated retry loop.
-
-### Current flow on merge conflict during finalization
+### Finalization-time merge conflict flow
 
 1. COMPLETE phase succeeds — chunk GOAL.md status is now ACTIVE
 2. Mechanical commit runs
 3. `finalize_work_unit` removes the worktree (`remove_branch=False`)
 4. `merge_to_base` fails with a merge conflict
-5. `WorktreeError` is caught → `NEEDS_ATTENTION` (operator must intervene)
-
-### Desired flow
-
-1. COMPLETE phase succeeds — chunk GOAL.md status is now ACTIVE
-2. Mechanical commit runs
-3. `finalize_work_unit` removes the worktree (`remove_branch=False`)
-4. `merge_to_base` fails with a merge conflict
-5. **Scheduler detects the merge conflict (vs other finalization errors)**
-6. **Scheduler recreates the worktree from the surviving branch**
-7. **Phase is set back to REBASE, status to READY**
-8. Agent rebases the branch onto current main, resolves conflicts, runs tests
-9. Reviewer re-reviews the merged result
-10. COMPLETE phase runs again — chunk is already ACTIVE, so this must be idempotent
+5. The scheduler distinguishes the merge conflict from other finalization errors
+6. The scheduler recreates the worktree from the surviving branch
+7. The phase is set back to REBASE, status to READY
+8. An agent rebases the branch onto current main, resolves conflicts, runs tests
+9. The reviewer re-reviews the merged result
+10. The COMPLETE phase runs again idempotently — the chunk is already ACTIVE, so re-entry succeeds without error
 11. Finalization succeeds on retry
 
-### Key complications
+### Key constraints
 
-- **Worktree is already removed when the merge conflict is detected.** The branch survives (due to `remove_branch=False`), so the worktree can be recreated from it. The implementation must handle worktree recreation from an existing branch.
-- **Chunk is already ACTIVE.** The COMPLETE phase (`/chunk-complete`) and `verify_chunk_active_status` must be idempotent — they should succeed when the chunk is already ACTIVE rather than failing because it's not IMPLEMENTING.
-- **Infinite loop risk.** If the merge keeps failing (e.g., a pathological conflict pattern), the retry should be bounded. Two retry attempts are allowed — if the third merge also conflicts, escalate to `NEEDS_ATTENTION`.
-- **Merge conflict vs other finalization errors.** Only merge conflicts should trigger the retry-via-rebase path. Other finalization errors (e.g., worktree removal failures, commit errors) should continue to escalate to `NEEDS_ATTENTION`.
+- **Worktree is already removed when the merge conflict is detected.** The branch survives (because `remove_branch=False`), so worktree recreation works from the surviving branch.
+- **Chunk is already ACTIVE.** The COMPLETE phase (`/chunk-complete`) and `verify_chunk_active_status` are idempotent — they succeed when the chunk is already ACTIVE rather than failing for not being IMPLEMENTING.
+- **Infinite loop bound.** Two retry attempts are allowed — if the third merge also conflicts, the work unit escalates to `NEEDS_ATTENTION`.
+- **Merge conflict vs other finalization errors.** Only merge conflicts trigger the retry-via-rebase path. Other finalization errors (worktree removal failures, commit errors) escalate to `NEEDS_ATTENTION` immediately.
 
 ## Success Criteria
 

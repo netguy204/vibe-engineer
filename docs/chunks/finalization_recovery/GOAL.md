@@ -33,11 +33,11 @@ created_after:
 
 ## Minor Goal
 
-In `WorktreeManager.finalize_work_unit()`, the finalization sequence is: (1) commit changes, (2) remove worktree, (3) merge branch to base. If the daemon crashes after step 2 but before step 3, committed changes survive only as a dangling `orch/<chunk>` branch ref. The worktree is gone, so the existing `_recover_from_crash()` logic -- which only resets RUNNING work units to READY and logs orphaned worktrees -- cannot detect this condition. The work unit may be re-dispatched from scratch, silently discarding the completed work on the unmerged branch.
+The orchestrator daemon is resilient to crashes during the finalization window of `WorktreeManager.finalize_work_unit()`, whose sequence is (1) commit changes, (2) remove worktree, (3) merge branch to base. A crash between steps 2 and 3 leaves committed changes only as a dangling `orch/<chunk>` branch ref with no worktree, which the basic RUNNING-unit reset path cannot detect.
 
-This chunk adds incomplete-finalization recovery to the scheduler's startup path. During `_recover_from_crash()`, after handling orphaned RUNNING work units, the scheduler will scan for work units that show signs of interrupted finalization: the work unit was in a terminal phase (COMPLETE), its `orch/<chunk>` branch exists with commits ahead of base, but no worktree is present. For each such case, the recovery logic will either auto-complete the merge (if the merge is clean) or transition the work unit to NEEDS_ATTENTION with a descriptive message explaining the incomplete finalization and the branch that needs manual recovery.
+The scheduler's `_recover_from_crash()` startup path includes incomplete-finalization recovery. After handling orphaned RUNNING work units, `_find_incomplete_finalizations()` scans for work units that show signs of interrupted finalization: the work unit is in COMPLETE phase (or DONE status), its `orch/<chunk>` branch exists with commits ahead of the persisted base branch (via `_load_base_branch`), and no worktree is present. For each such case, `_recover_incomplete_finalization()` either auto-completes the merge and calls `unblock_dependents` (when the merge is clean — fast-forward or conflict-free), or transitions the work unit to NEEDS_ATTENTION with an `attention_reason` naming the dangling `orch/<chunk>` branch the operator must merge manually (when the merge has conflicts). A warning is logged for every incomplete finalization detected, regardless of which branch is taken.
 
-This makes the orchestrator daemon resilient to crashes during the critical finalization window, preventing silent data loss of completed chunk work.
+Existing crash recovery behavior is preserved: RUNNING work units are still reset to READY, and orphaned worktree detection continues to function. This prevents silent data loss of completed chunk work when the daemon dies mid-finalization.
 
 ## Success Criteria
 

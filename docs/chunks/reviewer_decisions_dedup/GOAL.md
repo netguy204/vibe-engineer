@@ -38,11 +38,11 @@ created_after:
 
 ## Minor Goal
 
-The `decisions` group handler's `--recent` path (lines 74-128 of `src/cli/reviewer.py`) and the `decisions list` subcommand (lines 185-274) implement nearly identical logic: glob decision files, parse YAML frontmatter manually, filter for curated decisions (non-null `operator_review`), sort by modification time, and format output. Both also bypass the `Reviewers` class entirely, duplicating raw YAML parsing that `Reviewers.parse_decision_frontmatter()` already provides.
+The `Reviewers` class owns the pipeline for listing curated decisions: globbing decision files, parsing YAML frontmatter via `parse_decision_frontmatter()`, filtering for non-null `operator_review`, sorting by modification time, and limiting to N results. Both the `decisions` group handler's `--recent` path and the `decisions list` subcommand in `src/cli/reviewer.py` delegate to this shared `Reviewers.list_curated_decisions()` helper rather than implementing their own glob/parse/filter/sort logic, and neither performs raw YAML parsing.
 
-This chunk extracts a shared helper (e.g., `_list_curated_decisions()`) in the `Reviewers` class that encapsulates the common "glob, parse, filter curated, sort by mtime, limit" pipeline, and has both the group handler's `--recent` path and the `list` subcommand delegate to it. This also resolves the confusing UX overlap where `ve reviewer decisions --recent 5` and `ve reviewer decisions list --recent 5` do nearly the same thing with slightly different behavior (the group handler adds an agent nudge note for feedback reviews; the subcommand does not).
+The two CLI entry points share a single source of truth, so `ve reviewer decisions --recent 5` and `ve reviewer decisions list --recent 5` produce consistent output for the same inputs. The only intentional difference — an agent nudge note for feedback reviews emitted by the group handler — is applied at the CLI formatting layer (`_format_curated_decision`) rather than inside the shared helper.
 
-This advances the project's goal of maintaining a clean, well-factored CLI by eliminating a concrete source of maintenance burden and divergence risk identified during architecture review.
+This factoring keeps the CLI clean and well-factored, eliminating a maintenance-burden and divergence risk identified during architecture review.
 
 ## Success Criteria
 

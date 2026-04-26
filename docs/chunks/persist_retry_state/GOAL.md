@@ -6,7 +6,7 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/state.py
 - src/orchestrator/models.py
-- tests/orchestrator/test_scheduler.py
+- tests/test_orchestrator_scheduler.py
 code_references:
   - ref: src/orchestrator/scheduler.py#Scheduler::_recover_from_crash
     implements: "Retry-aware crash recovery that preserves backoff state for units with api_retry_count > 0"
@@ -34,13 +34,11 @@ created_after:
 
 ## Minor Goal
 
-Ensure that orchestrator daemon restarts preserve retry backoff behavior for work units that were mid-retry when the daemon stopped.
+Orchestrator daemon restarts preserve retry backoff behavior for work units that were mid-retry when the daemon stopped.
 
-Currently, the `_recover_from_crash()` method in `scheduler.py` resets all RUNNING work units to READY status without considering their retry state. When a work unit has `api_retry_count > 0` (indicating it was in an exponential backoff retry cycle for a 5xx API error), its `next_retry_at` field is `None` because the dispatch loop cleared it when the agent was dispatched (line 400 of `_dispatch_tick`). After crash recovery, these units dispatch immediately without backoff, defeating the purpose of the retry mechanism and potentially overwhelming a struggling API endpoint.
+The `_recover_from_crash()` method in `scheduler.py` is retry-aware: when resetting a RUNNING work unit to READY, it inspects `api_retry_count`. If `api_retry_count > 0` (indicating the unit was in an exponential backoff retry cycle for a 5xx API error), the recovery logic computes a new `next_retry_at` from the configured backoff parameters using `_compute_retry_backoff()` — the same exponential backoff helper `_schedule_api_retry()` uses. If `api_retry_count == 0`, `next_retry_at` stays `None` and the unit dispatches normally. This preserves the intent of the exponential backoff across daemon restarts so a struggling API endpoint isn't overwhelmed by units that would otherwise dispatch immediately.
 
-The fix is to make `_recover_from_crash()` retry-aware: when resetting a RUNNING work unit to READY, if `api_retry_count > 0`, compute a new `next_retry_at` based on the current retry count and the configured backoff parameters. This preserves the intent of the exponential backoff across daemon restarts.
-
-This matters for the orchestrator's reliability as a long-running daemon managing parallel agent work. The orchestrator subsystem is the backbone for scaling the documentation-driven workflow to multiple concurrent chunks, and daemon restarts should be transparent to the retry mechanism rather than a loophole that resets backoff state.
+This matters for the orchestrator's reliability as a long-running daemon managing parallel agent work. The orchestrator subsystem is the backbone for scaling the documentation-driven workflow to multiple concurrent chunks, and daemon restarts are transparent to the retry mechanism rather than a loophole that resets backoff state.
 
 ## Success Criteria
 

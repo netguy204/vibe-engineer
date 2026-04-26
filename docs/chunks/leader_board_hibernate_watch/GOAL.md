@@ -30,16 +30,11 @@ created_after:
 
 ## Minor Goal
 
-Fix the watcher wake-up mechanism in `SwarmDO` so that blocked `watch` requests survive Durable Object hibernation.
+The watcher wake-up mechanism in `SwarmDO` survives Durable Object hibernation: blocked `watch` requests still receive messages after the DO hibernates between the watch and send calls.
 
-The `watchers` Map (`swarm-do.ts:34`) is plain in-memory state. When the DO hibernates between the watcher's blocking `watch` call and the sender's `send` call, the watchers Map is lost. The sender's `wakeWatchers` call finds no watchers to notify, even though the watcher's WebSocket connection is still alive (the Hibernation API preserves WebSocket connections, just not JS heap state).
+The in-memory `watchers` Map in `swarm-do.ts` is lost when the DO hibernates, but the Hibernation API preserves the underlying WebSocket connections. To bridge that gap, watcher state is mirrored into per-WebSocket attachments via `ws.serializeAttachment()`: the channel and cursor are stored on the attachment when a watch frame arrives, alongside the existing auth state. In `wakeWatchers`, after attempting in-memory delivery the DO falls back to scanning `this.ctx.getWebSockets()` and reconstructing watchers from those attachments, so a sender's wake call reaches the live socket even when the in-memory Map is empty. On WebSocket close or error, `removeWatcher` clears the attachment's watch state alongside the in-memory state.
 
-The fix is to use the Hibernation API's WebSocket tags and attachments to make watcher state recoverable after hibernation:
-- Tag watcher WebSockets with their channel (e.g., `this.ctx.acceptWebSocket(ws, ["watch:channel_name"])`) or re-tag when a watch frame arrives
-- Store the cursor in `ws.serializeAttachment()` alongside the auth state
-- In `wakeWatchers`, also check `this.ctx.getWebSockets("watch:channel_name")` and reconstruct watchers from tags + attachments
-
-This ensures the steward watch loop (`ve board watch`) reliably receives messages even when the DO hibernates between the watch and send calls.
+This makes the steward watch loop (`ve board watch`) reliably receive messages even when the DO hibernates between the watch and send calls.
 
 ## Success Criteria
 

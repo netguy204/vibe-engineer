@@ -39,31 +39,27 @@ created_after:
 
 ## Minor Goal
 
-The orchestrator's `_detect_rename()` method produces false positive rename
-detections. It should only consider IMPLEMENTING chunks, but something in the
-detection path allows non-IMPLEMENTING chunks to influence the result.
+The orchestrator's `_detect_rename()` method strictly only considers
+IMPLEMENTING chunks when computing the baseline-to-current set difference,
+and only runs during the GOAL and PLAN phases. Renames are only possible
+during PLAN (via `ve chunk suggest-prefix`); post-PLAN phases (IMPLEMENT,
+REBASE, REVIEW, COMPLETE) skip detection entirely.
 
-**Observed failure:** `backref_language_agnostic` completed IMPLEMENT, then
-during REBASE merged main (which contained the completed `merge_safety` chunk).
-Rebase only retrieves chunks in ACTIVE or FUTURE states from main. Despite this,
-the rename detection concluded `backref_language_agnostic` had been renamed to
-`merge_safety`. If detection truly only considered IMPLEMENTING chunks, a rebase
-could never produce a false positive — no new IMPLEMENTING chunks appear via
-rebase.
+The work unit's own chunk identity (`work_unit.chunk`) is the source of
+truth for which chunk a work unit manages — not inferred from the
+IMPLEMENTING set — so detection remains correct after COMPLETE has changed
+the chunk's status to ACTIVE. The check is: "is there an IMPLEMENTING
+chunk with a different name than `work_unit.chunk`?" rather than "did my
+chunk disappear from the IMPLEMENTING set?"
 
-**Additional scenario:** When a merge conflict occurs after COMPLETE, the chunk
-returns to the REBASE step. At that point the COMPLETE phase has already changed
-the chunk's status to ACTIVE. The work unit's own chunk is now ACTIVE, not
-IMPLEMENTING, so `_detect_rename` sees it as "disappeared" even though it's
-still present — just in a different status.
+This prevents two false-positive scenarios:
 
-**Fix:** Ensure `_detect_rename()` strictly only considers IMPLEMENTING chunks
-when computing the baseline-to-current set difference. The work unit's own chunk
-identity (`work_unit.chunk`) must be used directly — not inferred from the
-IMPLEMENTING set — so that the detection still works after COMPLETE has changed
-the chunk to ACTIVE. The check should be: "is there an IMPLEMENTING chunk with
-a different name than `work_unit.chunk`?" rather than "did my chunk disappear
-from the IMPLEMENTING set?"
+- A rebase that merges main into the worktree. Main only contains
+  ACTIVE/FUTURE chunks, so no new IMPLEMENTING chunks appear via rebase
+  and no rename can be detected.
+- A post-COMPLETE merge-conflict retry. After COMPLETE the chunk's status
+  is ACTIVE, but `work_unit.chunk` still knows its name, so the chunk is
+  not seen as "disappeared".
 
 ## Success Criteria
 
@@ -85,6 +81,7 @@ from the IMPLEMENTING set?"
 ## Relationship to Parent
 
 The parent chunk (`orch_rename_propagation`) introduced `_detect_rename()` with
-the intent of only considering IMPLEMENTING chunks. This chunk fixes a defect
-where non-IMPLEMENTING chunks leak into the detection, causing false positives
-after rebase.
+the intent of only considering IMPLEMENTING chunks. This chunk hardens that
+guarantee with a phase guard and a `work_unit.chunk` identity check, preventing
+non-IMPLEMENTING chunks (and post-COMPLETE status transitions) from triggering
+false-positive renames after rebase.

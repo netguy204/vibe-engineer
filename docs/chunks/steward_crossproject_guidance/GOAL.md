@@ -21,15 +21,13 @@ created_after:
 
 ## Minor Goal
 
-Add cross-project steward messaging guidance to the CLAUDE.md template (`src/templates/claude/CLAUDE.md.jinja2`) so that agents in downstream projects can correctly resolve "tell the X steward" instructions.
+The CLAUDE.md template (`src/templates/claude/CLAUDE.md.jinja2`) carries a "Cross-project messaging" subsection under the Steward section, near the `/steward-send` reference, so agents in downstream projects can correctly resolve "tell the X steward" instructions.
 
-The guidance should explain:
+The subsection establishes:
 
-1. **Channel naming convention**: The channel is `<project>-steward` where `<project>` is the steward you're addressing, NOT the project you're sending from. E.g., to tell the vibe-engineer steward from lite-edit, send to `vibe-engineer-steward`.
-2. **Send command format**: `ve board send <project>-steward "<message>"`
-3. **Common mistake**: Agents in downstream projects may find their local `STEWARD.md` and send to their own steward channel instead of the target project's channel. The guidance should explicitly warn against this.
-
-This belongs in the Steward section of the CLAUDE.md template, near the `/steward-send` command reference.
+1. **Channel naming convention**: The channel is `<target-project>-steward`, where `<target-project>` is the steward being addressed — not the project sending from. Sending to the `vibe-engineer` steward from any project in the swarm goes to `vibe-engineer-steward`.
+2. **Send command format**: `ve board send <target-project>-steward "<message>" --swarm <swarm_id>`.
+3. **Common mistake**: Agents often find their local `STEWARD.md`, read its `channel` field, and send to their *own* project's steward channel instead of the target project's. The guidance derives the channel name from the target project, never from the local steward configuration.
 
 ## Success Criteria
 

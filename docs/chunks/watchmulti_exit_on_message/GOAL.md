@@ -31,14 +31,14 @@ created_after:
 
 ## Minor Goal
 
-Add a `--count N` flag (default 1) to `ve board watch-multi` so it exits after receiving N messages. This makes `watch-multi` compatible with the event-driven `run_in_background` pattern that agents use: launch watch, get task completion notification on message, process, ack, re-launch.
+`ve board watch-multi` accepts a `--count N` flag (default 1) and exits after receiving N messages. This makes `watch-multi` compatible with the event-driven `run_in_background` pattern that agents use: launch watch, get task completion notification on message, process, ack, re-launch.
 
-Currently `watch-multi` streams continuously and never exits, so agents using `run_in_background` never get notified. The only workaround is polling the output file or falling back to N single watches (losing the single-connection benefit).
+Without `--count`, `watch-multi` streams continuously and never exits, so agents using `run_in_background` never get notified. The only workaround would be polling the output file or falling back to N single watches (losing the single-connection benefit).
 
-Changes:
-- **CLI**: Add `--count N` flag to `ve board watch-multi` (default 1). With `--count 1`, print one message (with channel tag) and exit. With `--count 0`, stream indefinitely (current behavior).
-- **Client**: `watch_multi` (or a new `watch_multi_one`) method that subscribes to all channels but returns after the first message instead of yielding continuously.
-- **Swarm-monitor skill**: Update to use `watch-multi --count 1` in `run_in_background`, preserving the event-driven loop.
+The pieces:
+- **CLI**: `ve board watch-multi` accepts `--count N` (default 1). With `--count 1`, it prints one message (with channel tag) and exits. With `--count 0`, it streams indefinitely.
+- **Client**: `watch_multi` subscribes to all channels and returns after delivering N messages instead of yielding continuously.
+- **Swarm-monitor skill**: Uses `watch-multi --count 1` in `run_in_background`, preserving the event-driven loop.
 
 ## Success Criteria
 
@@ -49,4 +49,4 @@ Changes:
 
 ## Relationship to Parent
 
-Parent chunk `multichannel_watch` implemented continuous streaming. This chunk adds the exit-after-N-messages mode needed for agent event-driven workflows, which is how all current steward and monitor skills operate.
+Parent chunk `multichannel_watch` provides continuous streaming. The exit-after-N-messages mode layered on top is needed for agent event-driven workflows, which is how all steward and monitor skills operate.

@@ -30,33 +30,33 @@ created_after:
 
 ## Minor Goal
 
-Fix three gaps identified by comparing our DO against the [Cloudflare WebSocket Hibernation Server example](https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/), plus increase the client-side close timeout. Together these changes should eliminate zombie WebSocket accumulation and reduce connection drops.
+Three DO-side practices and one client-side timeout, aligned with the [Cloudflare WebSocket Hibernation Server example](https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/), eliminate zombie WebSocket accumulation and reduce connection drops.
 
-### 1. Add `setWebSocketAutoResponse` in the constructor
+### 1. `setWebSocketAutoResponse` in the constructor
 
-The example sets up application-level auto-responses in the constructor:
+The DO constructor registers application-level auto-responses:
 ```js
 this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
 ```
-This makes the DO automatically reply `"pong"` to any client sending `"ping"` **without waking from hibernation**. This is separate from WebSocket protocol-level pings. The Cloudflare edge proxy may use application-level activity to determine whether a connection is idle — without this, our connections look idle to the proxy even though protocol pings are flowing, leading to the TCP drops we've been seeing (`close_code=None`, raw EOF).
+The DO automatically replies `"pong"` to any client sending `"ping"` **without waking from hibernation**. This is separate from WebSocket protocol-level pings. The Cloudflare edge proxy may use application-level activity to determine whether a connection is idle — without this, connections look idle to the proxy even while protocol pings flow, leading to TCP drops (`close_code=None`, raw EOF).
 
 ### 2. Complete the close handshake in `webSocketClose`
 
-The example's close handler calls `ws.close(code, reason)` to complete the server-side close handshake. Our handler only calls `this.removeWatcher(ws)` and never sends the close response. This means:
-- The client sends a close frame, waits for the server's close response
+The `webSocketClose` handler calls `ws.close(code, reason)` to complete the server-side close handshake. Without it:
+- The client sends a close frame and waits for the server's close response
 - Server never responds → client's `close_timeout` expires → client drops TCP
 - The DO never fully closes the socket → it stays in `ctx.getWebSockets()` as a zombie
 - After hibernation recovery, `getWebSockets()` returns the zombie, which gets re-added to watchers
 
-Fix: Add `ws.close(code, reason)` in the `webSocketClose` handler after `removeWatcher`.
+The handler calls `ws.close(code, reason)` after `removeWatcher`.
 
-### 3. Run `getWebSockets()` in the constructor for cleanup
+### 3. `getWebSockets()` in the constructor for cleanup
 
-The example calls `ctx.getWebSockets()` in the constructor to restore state on wake. We only call it in `wakeWatchers`. Moving it to the constructor (or adding a constructor call) ensures zombie sockets are detected and cleaned up early — before they accumulate and cause the HTTP 500s we saw on reconnect.
+The constructor calls `ctx.getWebSockets()` to restore state on wake. Constructor-level visibility ensures zombie sockets are detected and cleaned up early — before they accumulate and cause HTTP 500s on reconnect. (`wakeWatchers` also calls it as a separate consumer.)
 
-### 4. Increase client-side `close_timeout` from 1s to 10s
+### 4. Client-side `close_timeout` of 10s
 
-In `src/board/client.py`, `websockets.connect()` uses `close_timeout=1`. This is too aggressive — the server needs time to wake from hibernation and process the close frame. Increase to 10s so the server can complete the close handshake properly. Also increase the `close_timeout` in the reconnect path's `self.close()` call.
+In `src/board/client.py`, `websockets.connect()` uses `close_timeout=10`. A more aggressive 1s timeout does not give the server enough time to wake from hibernation and process the close frame. The reconnect path's `self.close()` call uses the same 10s timeout so the server can complete the close handshake properly.
 
 ## Success Criteria
 
@@ -70,4 +70,4 @@ In `src/board/client.py`, `websockets.connect()` uses `close_timeout=1`. This is
 
 ## Relationship to Parent
 
-Parent chunk `websocket_hibernation_compat` removed server-side heartbeats for cost efficiency but introduced connection instability. This chunk addresses the root causes: missing application-level auto-response (edge proxy thinks connections are idle), incomplete close handshake (zombie accumulation), and aggressive client close timeout (server can't respond in time).
+Parent chunk `websocket_hibernation_compat` removed server-side heartbeats for cost efficiency but introduced connection instability. The fixes here address the root causes: missing application-level auto-response (edge proxy thinks connections are idle), incomplete close handshake (zombie accumulation), and aggressive client close timeout (server can't respond in time).
