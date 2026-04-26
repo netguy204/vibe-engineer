@@ -33,9 +33,9 @@ for other artifact types—when computing tips for `created_after` population.
 
 ### Problem
 
-Currently, `find_tips()` returns all artifacts that are not referenced by any
-other artifact's `created_after` field. This creates an issue when creating
-multiple FUTURE chunks during in-progress work:
+Without status filtering, `find_tips()` would return all artifacts that are not
+referenced by any other artifact's `created_after` field. That creates an issue
+when creating multiple FUTURE chunks during in-progress work:
 
 1. Operator is working on chunk A (IMPLEMENTING)
 2. Operator creates FUTURE chunk B → its `created_after` is set to chunk A (the tip)

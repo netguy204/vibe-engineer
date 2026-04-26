@@ -26,9 +26,9 @@ created_after:
 ## Minor Goal
 
 Add bidirectional references from source code back to the chunks and subsystems that
-created or govern them. Currently, documentation references code (via `code_references`
-in chunk GOAL.md and subsystem OVERVIEW.md), but the code itself has no way to point
-an exploring agent back to the business context that motivated it.
+created or govern them. Documentation references code (via `code_references`
+in chunk GOAL.md and subsystem OVERVIEW.md); this chunk gives the code itself a way
+to point an exploring agent back to the business context that motivated it.
 
 This chunk closes that loop by:
 
