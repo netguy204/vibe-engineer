@@ -1,6 +1,6 @@
 ---
 name: chunk-create
-description: Create a new chunk of work and refine its goal. Use when the operator wants to start new work, chunk something, define a piece of work, or break work into a chunk.
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.
 ---
 
 

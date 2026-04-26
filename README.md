@@ -68,7 +68,7 @@ Now you should edit your docs/trunk contents so that agents (and humans) underst
 
 ### Working in Chunks
 
-Chunks are the units of change in the Vibe Engineering workflow. You don't have to edit your code using chunks, but if you do then you get the value of agent maintained documentation "for free". When I'm using this workflow professionally, I usually create at least one chunk for each ticket I'm working on.
+Chunks capture the *intent* behind your code — the constraints, contracts, and boundaries that should outlive any particular implementation. Not every change needs a chunk; typo fixes, dependency bumps, and mechanical renames bypass the chunk system entirely. The test: *does this code need to remember why it exists?* If yes, make a chunk. See `docs/trunk/CHUNKS.md` for the full principles.
 
 Each chunk has a goal and an implementation plan. The goal is where you get clear on what the end value you're trying to achieve is. The plan is where you get clear on how you'll get to that value. The agent writes both of these files and you edit them.
 

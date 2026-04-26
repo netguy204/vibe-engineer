@@ -21,7 +21,9 @@ Read GOAL.md first to understand the project's purpose before making changes.
 
 ## Chunks (`docs/chunks/`)
 
-Work is organized into "chunks" - discrete units of implementation stored in `docs/chunks/`. Each chunk directory (e.g., `docs/chunks/feature_name/`) contains:
+Work that carries architectural intent is organized into "chunks" — discrete units of intent stored in `docs/chunks/`. Before creating a chunk, read [docs/trunk/CHUNKS.md](docs/trunk/CHUNKS.md) — especially principle 2. Intent-less work (typo fixes, dependency bumps, mechanical renames) bypasses the chunk system entirely.
+
+Each chunk directory (e.g., `docs/chunks/feature_name/`) contains:
 
 - **GOAL.md** - What this chunk accomplishes and its success criteria
 - **PLAN.md** - Technical breakdown of how the chunk will be implemented
@@ -112,7 +114,7 @@ See: `docs/trunk/ARTIFACTS.md#code-backreferences` for valid types and usage.
 
 Use these slash commands for artifact management:
 
-- `/chunk-create` - Create a new chunk and refine its goal
+- `/chunk-create` - Create a new chunk for intent-bearing work and refine its goal
 - `/chunk-plan` - Create a technical plan for the current chunk
 - `/chunk-implement` - Implement the current chunk
 {# Chunk: docs/chunks/skill_chunk_execute - Added /chunk-execute to Available Commands #}
@@ -186,7 +188,7 @@ If you encounter a situation where no creation command exists for an artifact ty
 
 1. Read `docs/trunk/GOAL.md` to understand the project
 2. Check `docs/chunks/` for recent and in-progress work
-3. Use `/chunk-create` to start new work
+3. Use `/chunk-create` to start new intent-bearing work (see `docs/trunk/CHUNKS.md` principle 2)
 
 {# Chunk: docs/chunks/learning_philosophy_docs - Learning Philosophy section for natural progression #}
 ## Learning Philosophy
