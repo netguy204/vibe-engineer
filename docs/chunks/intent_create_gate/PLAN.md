@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,79 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk adds an intent-judgment gate to the `/chunk-create` skill template (`src/templates/commands/chunk-create.md.jinja2`). The gate is a new step inserted **before** the existing goal-refinement step (current step 4). It instructs the agent to apply the `docs/trunk/CHUNKS.md` principle 2 test ("does this code need to remember why it exists?") and route accordingly:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- **Clearly intent-bearing** → proceed silently.
+- **Suspected non-intent-bearing** → ask the operator with a one-line rationale.
+- **Orchestrator-execution signals present** → proceed silently regardless.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The change is purely to the Jinja2 template text — no Python code, no model changes, no CLI changes. The template is rendered via `ve init` through the template_system subsystem (DEC-001 / `src/template_system.py`). After editing, `uv run ve init` re-renders, and `uv run pytest tests/` confirms nothing breaks.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/intent_create_gate/GOAL.md)
-with references to the files that you expect to touch.
--->
+Per `docs/trunk/TESTING_PHILOSOPHY.md`, template prose is not tested for exact wording. The existing test suite already covers template rendering (files created without error). No new tests are needed — the gate is agent instruction text, not executable code.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): This chunk USES the template system. The edit target is a Jinja2 template (`src/templates/commands/chunk-create.md.jinja2`) rendered through the canonical `render_to_directory` path. No rendering logic changes; the subsystem is used as-is.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Read the current template and identify insertion point
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Read `src/templates/commands/chunk-create.md.jinja2` in full. The new intent-judgment step must be inserted **before** the current step 4 (goal refinement). All subsequent step numbers will shift by one.
 
-Example:
+Location: `src/templates/commands/chunk-create.md.jinja2`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Insert the intent-judgment step
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Add a new step between the current step 3 (run `ve chunk create`) and step 4 (refine GOAL.md). The new step instructs the agent to:
 
-Location: src/segment/format.rs
+1. **Apply the principle-2 intent test** from `docs/trunk/CHUNKS.md`: *"Does this code need to remember why it exists?"*
 
-### Step 2: Implement header serialization
+2. **Route based on the answer:**
+   - **Clearly intent-bearing** (architectural decision, constraint to remember, contract being established, behavioral invariant, design boundary) → proceed to goal refinement silently. No operator prompt.
+   - **Suspected non-intent-bearing** (mechanical change, typo fix, dependency bump, performance tweak that doesn't change shape, comment cleanup, one-off bug patch) → surface to the operator with a one-line summary of *why* the work looks vibe-able (i.e., why it lacks architectural intent), and ask: *"This looks like it could be vibed — [reason]. Create the chunk anyway?"* If the operator declines, stop. If the operator confirms, proceed.
+   - **Orchestrator-execution signals detected** in the operator's request (phrases like: "in the background", "in parallel", "via the orchestrator", "queue these up", "have an agent do this", "spawn all the chunks in this narrative", or semantically equivalent variants) → proceed silently regardless of intent-bearing judgment. The operator has signaled they want a unit of delegated work.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+3. **Reference the source principle** by name: *"This gate enforces docs/trunk/CHUNKS.md principle 2 — chunks exist only for intent-bearing work."*
 
-### Step 3: ...
+The asymmetry rationale should be included as a brief comment in the template so future contributors understand: operators routinely spawn entire narratives' worth of chunks; re-confirming each would be unbearable. The agent only interrupts on suspected scope creep.
 
----
+Location: `src/templates/commands/chunk-create.md.jinja2`
 
-**BACKREFERENCE COMMENTS**
+### Step 3: Renumber subsequent steps
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+All steps after the insertion point shift by one. Current steps 4–9 become steps 5–10. Update all internal cross-references (e.g., "step 5 above" in the depends_on section currently references step 5 — verify it still points to the correct content after renumbering).
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Location: `src/templates/commands/chunk-create.md.jinja2`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 4: Re-render and verify
 
-Format (place immediately before the symbol):
+Run `uv run ve init` to re-render the template. Verify the rendered output at `.claude/commands/chunk-create.md` contains the new intent-judgment step and correct step numbering.
+
+### Step 5: Run the test suite
+
+Run `uv run pytest tests/` and confirm all tests pass. No new tests are needed per the testing philosophy — template prose is not tested for exact wording.
+
+### Step 6: Update code_paths in GOAL.md
+
+Update the `code_paths` frontmatter in `docs/chunks/intent_create_gate/GOAL.md` to list the file touched:
+
+```yaml
+code_paths:
+  - src/templates/commands/chunk-create.md.jinja2
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **intent_principles** (ACTIVE): Landed `docs/trunk/CHUNKS.md` with the four principles. This chunk references principle 2 by name. The dependency is satisfied — `intent_principles` is already ACTIVE.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Step numbering fragility**: The template has internal cross-references between steps (e.g., "step 5 above" in the depends_on guidance). Renumbering must be done carefully to avoid dangling references. Mitigated by a careful read-through in Step 3.
+- **Orchestrator-signal detection scope**: The list of orchestrator-execution phrases is illustrative, not exhaustive. The template instructs the agent to match "semantically equivalent variants," which relies on the agent's judgment. This is intentional — a rigid keyword list would miss natural phrasing.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

@@ -15,7 +15,7 @@ code_paths:
   - tests/test_scratchpad_commands.py
   - tests/conftest.py
 code_references:
-  - ref: src/models.py
+  - ref: src/models/
     implements: "Removed ScratchpadChunkStatus, ScratchpadChunkFrontmatter, ScratchpadNarrativeStatus, ScratchpadNarrativeFrontmatter classes"
   - ref: src/ve.py
     implements: "Removed scratchpad CLI command group"

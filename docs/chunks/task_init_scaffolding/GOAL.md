@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/task_init.py
   - tests/test_task_init.py
-  - src/templates/task/CLAUDE.md.jinja2
+  - src/templates/task/AGENTS.md.jinja2
   - src/templates/commands/chunk-create.md.jinja2
   - src/templates/commands/chunk-plan.md.jinja2
   - src/templates/commands/chunk-implement.md.jinja2
