@@ -54,9 +54,9 @@ proposed_chunks:
       Grep across docs/chunks/*/GOAL.md to enumerate candidates. Be exhaustive on the discovery pass; let the operator decide which to fix in this run vs defer.
     chunk_directory: intent_active_audit
     depends_on: [0]
-  - prompt: "Remove SUPERSEDED from the runtime entirely. After the SUPERSEDED migration chunk has moved all existing chunks off SUPERSEDED, drop ChunkStatus.SUPERSEDED from src/models/chunk.py (enum and state machine), strip SUPERSEDED handling from src/chunk_validation.py, src/cli/chunk.py, src/orchestrator/activation.py, and src/chunks.py comments. Update any tests. The runtime then accepts only the five-status taxonomy from CHUNKS.md."
-    chunk_directory: intent_retire_superseded
-    depends_on: [0, 4]
+  - prompt: "Deprecate SUPERSEDED rather than remove it. Removal would create a chicken-and-egg upgrade trap (chunks with status: SUPERSEDED fail validation; can't migrate without upgrading; can't upgrade without migrating). Instead: keep SUPERSEDED in ChunkStatus enum so existing chunks parse; close the on-ramp by removing ACTIVE→SUPERSEDED from VALID_CHUNK_TRANSITIONS; keep the off-ramp (SUPERSEDED→HISTORICAL) so the set drains. Emit a DeprecationWarning when SUPERSEDED is parsed, pointing at CHUNKS.md and the migration guide. ve chunk validate warns instead of erroring on SUPERSEDED. Update SPEC.md, CHUNKS.md, and the migration guide to note the deprecation."
+    chunk_directory: intent_deprecate_superseded
+    depends_on: [0]
 created_after: ["leader_board"]
 ---
 
@@ -121,9 +121,9 @@ The narrative decomposes into seven chunks. The first lands the principle as can
 4. **Workflow doc updates** — CLAUDE.md and other workflow-facing docs reflect the "chunks for intent-bearing work only" framing.
 5. **SUPERSEDED chunk migration** — Move the 12 existing SUPERSEDED chunks into the new taxonomy (HISTORICAL or COMPOSITE).
 6. **ACTIVE chunk truthfulness audit** — Sweep ACTIVE chunks for goals that don't describe code as it actually stands. Two failure modes: retrospective framing (goal ages into a lie) and over-claimed scope (goal asserts behaviors the code doesn't implement, often visible as `status: partial` in `code_references`). For each candidate, rewrite or finish the implementation depending on what's still wanted. Anchor cases: `orch_activate_on_inject` (retrospective) and `respect_future_intent` (over-claimed).
-7. **Retire SUPERSEDED from the runtime** — After chunk 5 has moved every chunk off SUPERSEDED, drop the enum value, the state-machine entries, and all code-path handling. The runtime then accepts only the five-status taxonomy from CHUNKS.md.
+7. **Deprecate SUPERSEDED in the runtime** — Close the on-ramp (`ACTIVE → SUPERSEDED` transition removed) while keeping the off-ramp (`SUPERSEDED → HISTORICAL` preserved) and the enum value (existing SUPERSEDED chunks keep parsing). A DeprecationWarning fires on parse, pointing at the migration guide. Removing SUPERSEDED entirely is deferred indefinitely — that would create an upgrade-cycle trap.
 
-Chunks 2-6 all depend on chunk 1 (the seed must exist before behavior or migration can reference it). Within 2-6, chunks are largely independent and can ship in any order — though chunk 6 (audit) benefits from being last so the verification pass from chunk 3 catches any new violations going forward. Chunk 7 depends on chunk 5: SUPERSEDED can only be retired after every chunk has migrated off it.
+Chunks 2-6 all depend on chunk 1 (the seed must exist before behavior or migration can reference it). Within 2-6, chunks are largely independent and can ship in any order — though chunk 6 (audit) benefits from being last so the verification pass from chunk 3 catches any new violations going forward. Chunk 7 also depends only on chunk 1: deprecation is safe regardless of migration progress, and the deprecation warning actively encourages unmigrated projects to run the migration.
 
 ## Completion Criteria
 

@@ -7,16 +7,22 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
   <p>
     This migration brings every ACTIVE chunk in your project into the
     present-tense, intent-owning standard described in
-    <a href="/docs/chunks/">Chunks</a>. It's the migration to run after
-    upgrading <code>ve</code> to a version that ships the four principles
-    and the five-status taxonomy (FUTURE, IMPLEMENTING, ACTIVE, COMPOSITE,
-    HISTORICAL).
+    <a href="/docs/chunks/">Chunks</a>. Older chunks often open
+    retrospectively ("Currently, X") or chunk-centrically ("This
+    chunk adds Y"). Both fail the principle that a chunk's
+    <code>GOAL.md</code> should read true at every status it passes
+    through; the migration fixes them.
+  </p>
+  <p>
+    Run it after upgrading <code>ve</code> to a version that ships
+    the four principles and the five-status taxonomy (FUTURE,
+    IMPLEMENTING, ACTIVE, COMPOSITE, HISTORICAL).
   </p>
 
   <h3>What it does</h3>
   <p>
-    The agent walks every ACTIVE chunk and applies one of six actions per
-    chunk:
+    The agent walks every ACTIVE chunk and applies one of six actions
+    per chunk:
   </p>
   <ul>
     <li><strong>Rewrite</strong> retrospective framing inline (preserving intent, only fixing tense).</li>
@@ -30,14 +36,27 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
   <h3>Prerequisites</h3>
   <p>
     Before you start, the project needs three things in place. Run
-    <code>/audit-intent</code> and it will check; if any are missing it
-    stops and tells you what to do.
+    <code>/audit-intent</code> and it will check; if any are missing
+    it stops and tells you what to do.
   </p>
   <ul>
     <li><code>docs/trunk/CHUNKS.md</code> declaring the four principles. Installed by <code>ve init</code> on recent ve versions.</li>
-    <li>The chunk GOAL.md template's STATUS VALUES block lists COMPOSITE. Same install path.</li>
+    <li>The chunk <code>GOAL.md</code> template's STATUS VALUES block lists COMPOSITE. Same install path.</li>
     <li>The runtime accepts COMPOSITE as a chunk status (<code>ChunkStatus</code> enum value). This requires a recent <code>ve</code>.</li>
   </ul>
+  <p>
+    If any of these are missing, you're on an older version of
+    <code>ve</code>. Upgrade and re-run <code>ve init</code>:
+  </p>
+  <pre><code>$ uv tool upgrade vibe-engineer
+$ ve init</code></pre>
+  <p>
+    (<code>pip install --upgrade vibe-engineer</code> works too.)
+    The upgrade gets you the new runtime; <code>ve init</code>
+    refreshes the workflow files. Your chunks and other artifacts
+    are preserved. Re-run <code>/audit-intent</code> to confirm the
+    prerequisites are met.
+  </p>
   <p>
     The migration assumes your working tree is clean (no uncommitted
     changes outside the audit's scope). It commits per wave; an
@@ -47,10 +66,10 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
 
   <h3>The three-phase rollout</h3>
   <p>
-    The migration is structured to scale operator effort with confidence.
-    You start small and hands-on, scale to medium parallel waves once you
-    trust the pattern, then hand off to full auto once you've seen the
-    rules behave.
+    The migration scales operator effort with confidence. You start
+    small and hands-on, scale to medium parallel waves once you
+    trust the pattern, then hand off to full auto once you've seen
+    the rules behave.
   </p>
 
   <table>
@@ -82,53 +101,54 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
 
   <h3>Phase 1: Kickoff</h3>
   <p>
-    Pick five chunks for the first batch. <strong>Include at least one
-    chunk you suspect is problematic</strong> &mdash; an old foundational
-    chunk, or one whose name suggests a bug fix. The first batch's job
-    isn't speed; it's letting you see the rules fire on cases you have an
-    opinion about.
+    Pick five chunks for the first batch. <strong>Include at least
+    one chunk you suspect is problematic</strong>: an old
+    foundational chunk, or one whose name suggests a bug fix. The
+    first batch's job isn't speed; it's letting you see the rules
+    fire on cases you have an opinion about.
   </p>
   <p>
     Run a single sub-agent against those five chunks. The agent will
-    produce a structured summary per chunk and either rewrite the prose,
-    log an inconsistency entry, or leave the chunk clean.
+    produce a structured summary per chunk and either rewrite the
+    prose, log an inconsistency entry, or leave the chunk clean.
   </p>
 
   <h4>What to check</h4>
   <ul>
     <li>
-      <strong>Read every diff.</strong> Each rewrite should change only
-      narrative prose &mdash; no edits to <code>success_criteria</code>,
+      <strong>Read every diff.</strong> Each rewrite should change
+      only narrative prose: no edits to <code>success_criteria</code>,
       <code>code_paths</code>, <code>code_references</code>, or the
       chunk's architectural claims. If a rewrite touches structured
       fields, something went wrong; reset and refine the prompt.
     </li>
     <li>
-      <strong>Read every inconsistency entry.</strong> The format should
-      give you what you need for later triage: claim, reality, workaround,
-      fix paths. If an entry feels vague, the detection caught something
-      real but the agent couldn't articulate it &mdash; resolve it
-      manually before scaling up.
+      <strong>Read every inconsistency entry.</strong> The format
+      should give you what you need for later triage: claim,
+      reality, workaround, fix paths. If an entry feels vague, the
+      detection caught something real but the agent couldn't
+      articulate it. Resolve it manually before scaling up.
     </li>
     <li>
-      <strong>Verify the veto rule fired correctly.</strong> If a chunk
-      had over-claimed scope (some success criteria not implemented in
-      code), the agent should have logged rather than rewritten. If it
-      rewrote anyway, the veto rule isn't enforcing &mdash; this is a
-      blocker.
+      <strong>Verify the veto rule fired correctly.</strong> If a
+      chunk had over-claimed scope (some success criteria not
+      implemented in code), the agent should have logged rather
+      than rewritten. If it rewrote anyway, the veto rule isn't
+      enforcing, and that's a blocker.
     </li>
     <li>
-      <strong>Check any historicalizations.</strong> Pattern A (bug-fix-only)
-      and Pattern B (intent fully superseded) have a high bar. If a chunk
-      flipped to HISTORICAL, confirm it really has no enduring intent. The
-      agent leaves the goal text alone for HISTORICAL chunks &mdash; that
-      preserves the original record as archaeology.
+      <strong>Check any historicalizations.</strong> Pattern A
+      (bug-fix-only) and Pattern B (intent fully superseded) have
+      a high bar. If a chunk flipped to HISTORICAL, confirm it
+      really has no enduring intent. The agent leaves the goal text
+      alone for HISTORICAL chunks; that preserves the original
+      record as archaeology.
     </li>
   </ul>
   <p>
-    Commit the batch when satisfied. If you found issues, refine the
-    sub-agent prompt before the next batch. Do not scale up until kickoff
-    is clean.
+    Commit the batch when satisfied. If you found issues, refine
+    the sub-agent prompt before the next batch. Do not scale up
+    until kickoff is clean.
   </p>
 
   <h3>Phase 2: Confidence-building waves</h3>
@@ -144,47 +164,49 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
   <ul>
     <li>
       <strong>Aggregate counts.</strong> A healthy wave on a typical
-      codebase reports something like 50&ndash;70% rewrites, 20&ndash;30%
-      clean, and 10&ndash;20% logged or historicalized. If you see 100%
-      rewrites or 100% clean, the detector is mis-calibrated.
+      codebase reports something like 50&ndash;70% rewrites,
+      20&ndash;30% clean, and 10&ndash;20% logged or historicalized.
+      If you see 100% rewrites or 100% clean, the detector is
+      mis-calibrated.
     </li>
     <li>
       <strong>Anchor cases.</strong> If you have known-problematic
       chunks, drop them into the first wave. They should fire the
-      detector you expect (retrospective framing, over-claimed scope,
-      etc.). If they don't, you've found a detection gap.
+      detector you expect (retrospective framing, over-claimed
+      scope, etc.). If they don't, you've found a detection gap.
     </li>
     <li>
-      <strong>Spot-check a few diffs.</strong> Read 2&ndash;3 rewrites
-      from each wave to confirm quality. You don't need to review every
-      diff &mdash; the rules are doing the work.
+      <strong>Spot-check a few diffs.</strong> Read 2&ndash;3
+      rewrites from each wave to confirm quality. You don't need to
+      review every diff; the rules are doing the work.
     </li>
     <li>
-      <strong>Watch the inconsistency log grow.</strong> Each wave adds
-      entries. The patterns you'll see most: stale references after a
-      large refactor (file moved, package split), half-shipped chunks
-      (criteria 4 of 5 are unmet), quantitative criteria that drifted
-      (file size targets that grew past the chunk's claim).
+      <strong>Watch the inconsistency log grow.</strong> Each wave
+      adds entries. The patterns you'll see most: stale references
+      after a large refactor (file moved, package split),
+      half-shipped chunks (criteria 4 of 5 are unmet), quantitative
+      criteria that drifted (file size targets that grew past the
+      chunk's claim).
     </li>
     <li>
-      <strong>Watch for systemic signals.</strong> If a single wave hits
-      100% veto rate, all the chunks in that wave share a root cause
-      (often a refactor that invalidated criteria across a family). That
-      signals "fix the root cause first" rather than "audit one chunk
-      at a time."
+      <strong>Watch for systemic signals.</strong> If a single wave
+      hits 100% veto rate, all the chunks in that wave share a root
+      cause (often a refactor that invalidated criteria across a
+      family). That signals "fix the root cause first" rather than
+      "audit one chunk at a time."
     </li>
   </ul>
   <p>
     Two or three waves is usually enough to build confidence. The
-    behaviors you see in waves 2&ndash;4 are the same behaviors you'll
-    see in waves 8&ndash;10.
+    behaviors you see in waves 2&ndash;4 are the same behaviors
+    you'll see in waves 8&ndash;10.
   </p>
 
   <h3>Phase 3: Full auto</h3>
   <p>
-    Once you trust the pattern, hand off the rest. Tell the agent: "run
-    the remaining waves required to migrate all remaining chunks." The
-    agent will:
+    Once you trust the pattern, hand off the rest. Tell the agent:
+    "run the remaining waves required to migrate all remaining
+    chunks." The agent will:
   </p>
   <ul>
     <li>Build the audit pool from remaining ACTIVE chunks not already touched.</li>
@@ -196,59 +218,61 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
   <h4>What to check after full auto</h4>
   <ul>
     <li>
-      <strong>The cumulative report.</strong> Counts per action across
-      all waves; top patterns (refactor drift, half-shipped chunks,
-      quantitative slips); follow-up recommendations.
+      <strong>The cumulative report.</strong> Counts per action
+      across all waves; top patterns (refactor drift, half-shipped
+      chunks, quantitative slips); follow-up recommendations.
     </li>
     <li>
-      <strong>The inconsistency log.</strong> Each open entry is a piece
-      of operator triage. Group them by type:
+      <strong>The inconsistency log.</strong> Each open entry is a
+      piece of operator triage. Group them by type:
       <ul>
-        <li><em>Mechanical drift</em> (stale references after refactor) &mdash; usually a single sweep chunk fixes the whole class.</li>
-        <li><em>Half-shipped behavior</em> &mdash; per-chunk decision: finish the implementation, narrow the goal, or historicalize.</li>
-        <li><em>Quantitative criteria slipped</em> &mdash; relax the criteria or finish the decomposition.</li>
-        <li><em>Cross-artifact mismatches</em> &mdash; small targeted fixes (template-vs-template, README-vs-code).</li>
+        <li><em>Mechanical drift</em> (stale references after refactor): usually a single sweep chunk fixes the whole class.</li>
+        <li><em>Half-shipped behavior</em>: per-chunk decision. Finish the implementation, narrow the goal, or historicalize.</li>
+        <li><em>Quantitative criteria slipped</em>: relax the criteria or finish the decomposition.</li>
+        <li><em>Cross-artifact mismatches</em>: small targeted fixes (template-vs-template, README-vs-code).</li>
       </ul>
     </li>
     <li>
-      <strong>Spot-check a few historicalizations.</strong> The bar is
-      high but the cost of a wrong historicalization is real (a chunk
-      that owned intent silently demoted). Read the chunk's goal and
-      confirm the agent's reasoning before merging.
+      <strong>Spot-check a few historicalizations.</strong> The bar
+      is high but the cost of a wrong historicalization is real (a
+      chunk that owned intent silently demoted). Read the chunk's
+      goal and confirm the agent's reasoning before merging.
     </li>
   </ul>
 
   <h3>Reference numbers</h3>
   <p>
-    The migration was developed against the <code>vibe-engineer</code>
-    project itself. For calibration, that run looked like this:
+    The migration was developed against the
+    <code>vibe-engineer</code> project itself. For calibration,
+    that run looked like this:
   </p>
   <ul>
     <li><strong>341 ACTIVE chunks</strong> at the start.</li>
-    <li><strong>11 waves</strong> &mdash; 1 kickoff (5 chunks), 3 confidence-building (5&ndash;5 chunks each), then 7 full-auto (50 chunks each, 14 in the final wave).</li>
-    <li><strong>~180 prose rewrites</strong> &mdash; the dominant action; older chunks tended to open with <code>Currently, &hellip;</code> framing.</li>
-    <li><strong>~25 codepath fixes</strong> &mdash; mostly post-refactor drift (<code>src/ve.py &rarr; src/cli/&hellip;</code>, <code>src/models.py &rarr; src/models/</code>, <code>src/orchestrator/api.py &rarr; src/orchestrator/api/</code>).</li>
-    <li><strong>7 historicalizations</strong> &mdash; six Pattern B (intent fully superseded) and one Pattern A (a deleted command's chunk).</li>
+    <li><strong>11 waves:</strong> 1 kickoff, 3 confidence-building waves, then 7 full-auto waves (50 chunks each, 14 in the final wave).</li>
+    <li><strong>~180 prose rewrites</strong> (the dominant action; older chunks tended to open with <code>Currently, &hellip;</code> framing).</li>
+    <li><strong>~25 codepath fixes</strong>, mostly post-refactor drift (<code>src/ve.py &rarr; src/cli/&hellip;</code>, <code>src/models.py &rarr; src/models/</code>, <code>src/orchestrator/api.py &rarr; src/orchestrator/api/</code>).</li>
+    <li><strong>7 historicalizations:</strong> six Pattern B (intent fully superseded) and one Pattern A (a deleted command's chunk).</li>
     <li><strong>62 inconsistency entries</strong> logged for triage, of which 6 self-resolved during the run.</li>
     <li><strong>~85 chunks audited clean.</strong></li>
   </ul>
   <p>
-    Your numbers will differ &mdash; younger projects with cleaner
-    authorship will see more clean and fewer rewrites; projects with
-    multiple major refactors in their history will see more logs and
-    historicalizations.
+    Your numbers will differ. Younger projects with cleaner
+    authorship will see more clean and fewer rewrites; projects
+    with multiple major refactors in their history will see more
+    logs and historicalizations.
   </p>
 
   <h3>Triaging the inconsistency log</h3>
   <p>
-    The inconsistency log is the durable record of what the migration
-    couldn't auto-fix. It's designed to outlive the migration: future
-    audits add to it, and operator-led triage closes entries by
-    referencing the resolving chunk or commit.
+    The inconsistency log is the durable record of what the
+    migration couldn't auto-fix. It's designed to outlive the
+    migration: future audits add to it, and operator-led triage
+    closes entries by referencing the resolving chunk or commit.
   </p>
   <p>
-    A reasonable triage cadence: review the log weekly until it's drained
-    to a stable backlog, then revisit on demand. For each entry:
+    A reasonable triage cadence: review the log weekly until it's
+    drained to a stable backlog, then revisit on demand. For each
+    entry:
   </p>
   <ul>
     <li>If the fix is mechanical and unambiguous, land it directly and mark the entry resolved.</li>
@@ -256,10 +280,49 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
     <li>If the entry turns out to be a false positive on closer inspection, mark it resolved with a note explaining why.</li>
   </ul>
 
+  <h3>SUPERSEDED is deprecated, not removed</h3>
+  <p>
+    Older chunk corpora often contain chunks with
+    <code>status: SUPERSEDED</code>, a value the workflow has retired
+    in favor of distinguishing <code>HISTORICAL</code> (no longer
+    owns intent) from <code>COMPOSITE</code> (shares intent with
+    other chunks). The runtime continues to parse
+    <code>status: SUPERSEDED</code> for backward compatibility, so
+    projects can upgrade <code>ve</code> without first migrating their
+    corpus.
+  </p>
+  <p>
+    What changes is the on-ramp. The state machine no longer accepts
+    the transition <code>ACTIVE &rarr; SUPERSEDED</code>, so no new
+    chunk can become SUPERSEDED. The off-ramp
+    (<code>SUPERSEDED &rarr; HISTORICAL</code>) stays open, so the
+    existing SUPERSEDED set can only shrink as the migration drains
+    chunks into <code>HISTORICAL</code> or <code>COMPOSITE</code>.
+    Parsing a SUPERSEDED chunk emits a
+    <code>DeprecationWarning</code> pointing here, so unmigrated
+    projects know what to run.
+  </p>
+  <p>
+    This shape avoids an upgrade-cycle trap. Removing SUPERSEDED
+    outright would block projects from upgrading <code>ve</code>
+    until they migrated their corpus, but they couldn't migrate
+    without upgrading first. Deprecation breaks the cycle: keep
+    parsing, close the on-ramp, let the set drain over time.
+  </p>
+  <p>
+    Practically: when you run <code>/audit-intent</code> on a corpus
+    with SUPERSEDED chunks, one of the spawned phases walks each one
+    and decides whether it should be HISTORICAL (intent no longer in
+    force) or COMPOSITE (intent shared with peers), then transitions
+    the chunk forward. SUPERSEDED chunks the operator chooses to leave
+    alone keep working; they just keep firing the deprecation warning
+    until handled.
+  </p>
+
   <h3>When to re-run</h3>
   <p>
-    The migration is idempotent &mdash; clean chunks stay clean,
-    rewritten chunks don't trigger again. Re-run after:
+    The migration is idempotent: clean chunks stay clean, rewritten
+    chunks don't trigger again. Re-run after:
   </p>
   <ul>
     <li>A large refactor that invalidates references across many chunks.</li>
@@ -267,8 +330,8 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
     <li>An extended period where chunks were authored without the present-tense gate at <code>/chunk-create</code>.</li>
   </ul>
   <p>
-    Re-running on a project where most chunks are already migrated is
-    cheap: most waves will be mostly clean, with a small number of new
-    entries reflecting recent drift.
+    Re-running on a project where most chunks are already migrated
+    is cheap: most waves will be mostly clean, with a small number
+    of new entries reflecting recent drift.
   </p>
 </DocsLayout>
