@@ -1,8 +1,13 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
+  - src/templates/commands/chunk-create.md.jinja2
+  - docs/trunk/ARTIFACTS.md
+  - README.md
 code_references: []
 narrative: intent_ownership
 investigation: null
@@ -10,9 +15,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["intent_principles"]
+created_after:
+- intent_principles
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

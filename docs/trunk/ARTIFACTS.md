@@ -55,7 +55,7 @@ investigation: memory_leak
 
 | Scenario | Use |
 |----------|-----|
-| Know what needs to be done | Chunk |
+| Clear intent to capture (see [CHUNKS.md](CHUNKS.md) principle 2) | Chunk |
 | Need to understand first | Investigation |
 | Clear multi-step goal | Narrative |
 | Pain point to remember | Friction Log |
@@ -135,7 +135,7 @@ Source code may contain comments linking back to documentation:
 | Type | Purpose | Lifespan |
 |------|---------|----------|
 | `# Subsystem:` | Architectural pattern | Enduring |
-| `# Chunk:` | Implementation work | Until SUPERSEDED/HISTORICAL |
+| `# Chunk:` | Implementation work | Until HISTORICAL |
 
 When you see backreferences, read the referenced artifact to understand the code's context and constraints.
 

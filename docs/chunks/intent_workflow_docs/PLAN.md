@@ -1,179 +1,179 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a documentation-only sweep. Every file touched is either a Jinja2 template
+or a Markdown document. The strategy is:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Reference, don't restate.** Where docs currently describe chunks, add a
+   cross-reference to `docs/trunk/CHUNKS.md` (the canonical source, landed by
+   `intent_principles`) and adjust the surrounding prose so it frames chunks as
+   the artifact for *intent-bearing* work rather than the default mechanism for
+   *all* work.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Minimal-diff edits.** Each file gets the smallest edit that corrects the
+   framing. We are not rewriting sections wholesale — just qualifying language
+   and adding references.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/intent_workflow_docs/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Twin templates stay in sync.** `CLAUDE.md.jinja2` and `AGENTS.md.jinja2`
+   are near-identical templates for different agent surfaces. Every edit to one
+   is mirrored in the other.
 
-## Subsystem Considerations
+4. **Render and verify.** After template edits, `uv run ve init` re-renders
+   output files. `uv run pytest tests/` confirms nothing broke.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
-
-## Sequence
-
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
-
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
-
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+No test changes are expected — this chunk touches only prose and template content,
+not runtime behavior.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+- `intent_principles` must have landed `docs/trunk/CHUNKS.md` and the
+  cross-reference in `docs/trunk/ARTIFACTS.md`. Both are confirmed present in
+  the worktree.
 
-If there are no dependencies, delete this section.
--->
+## Sequence
+
+### Step 1: Update `src/templates/claude/CLAUDE.md.jinja2` — Chunks section header
+
+**Location:** `src/templates/claude/CLAUDE.md.jinja2`, lines 22–30
+
+The current text reads:
+
+> Work is organized into "chunks" - discrete units of implementation stored in `docs/chunks/`.
+
+Replace with language that frames chunks as the artifact for intent-bearing work
+and references CHUNKS.md principle 2. Add a brief note on when *not* to create a
+chunk (typo fixes, dep bumps, mechanical renames). Something like:
+
+> Work that carries architectural intent is organized into "chunks" — discrete
+> units of intent stored in `docs/chunks/`. Before creating a chunk, read
+> [docs/trunk/CHUNKS.md](docs/trunk/CHUNKS.md) — especially principle 2.
+> Intent-less work (typo fixes, dependency bumps, mechanical renames) bypasses
+> the chunk system entirely.
+
+Keep the existing bullet list of GOAL.md / PLAN.md and the `ve chunk list`
+guidance that follows.
+
+### Step 2: Update `src/templates/claude/CLAUDE.md.jinja2` — Getting Started section
+
+**Location:** `src/templates/claude/CLAUDE.md.jinja2`, line 190
+
+Current text:
+
+> 3. Use `/chunk-create` to start new work
+
+Qualify to:
+
+> 3. Use `/chunk-create` to start new intent-bearing work (see `docs/trunk/CHUNKS.md` principle 2)
+
+### Step 3: Update `src/templates/claude/CLAUDE.md.jinja2` — Available Commands `/chunk-create` line
+
+**Location:** `src/templates/claude/CLAUDE.md.jinja2`, line 116
+
+Current text:
+
+> - `/chunk-create` - Create a new chunk and refine its goal
+
+Qualify to:
+
+> - `/chunk-create` - Create a new chunk for intent-bearing work and refine its goal
+
+### Step 4: Mirror all Step 1–3 edits in `src/templates/claude/AGENTS.md.jinja2`
+
+`AGENTS.md.jinja2` is a near-twin of `CLAUDE.md.jinja2`. Apply identical edits
+at the same locations. Verify the two templates remain in sync by diffing
+corresponding sections.
+
+### Step 5: Update `src/templates/commands/chunk-create.md.jinja2` — frontmatter description
+
+**Location:** `src/templates/commands/chunk-create.md.jinja2`, line 3
+
+Current `description`:
+
+> Create a new chunk of work and refine its goal. Use when the operator wants to start new work, chunk something, define a piece of work, or break work into a chunk.
+
+Replace with:
+
+> Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.
+
+This is the skill description that Claude uses for matching — it should signal
+that chunks are for intent-bearing work, not all work.
+
+### Step 6: Update `docs/trunk/ARTIFACTS.md` — chunk framing
+
+**Location:** `docs/trunk/ARTIFACTS.md`
+
+The file already has a cross-reference to CHUNKS.md on line 5 (added by
+`intent_principles`). Two additional items:
+
+a. In the "Choosing between artifacts" table (around line 57), the Chunk row
+   currently reads "Know what needs to be done". Qualify to something like
+   "Know what intent-bearing work needs to be done" or "Clear intent to
+   capture (see CHUNKS.md principle 2)".
+
+b. In the Code Backreferences section (line 138), the `# Chunk:` row says
+   "Until SUPERSEDED/HISTORICAL". Update to "Until HISTORICAL" since
+   SUPERSEDED has been retired from the taxonomy by `intent_principles`.
+
+### Step 7: Update `README.md` — Working in Chunks section
+
+**Location:** `README.md`, around line 69–71
+
+Current text:
+
+> Chunks are the units of change in the Vibe Engineering workflow. You don't
+> have to edit your code using chunks, but if you do then you get the value of
+> agent maintained documentation "for free".
+
+This is the most prominent "chunks for everything" framing in the project. The
+second sentence already hedges ("You don't have to"), but the first sentence
+frames chunks as "units of change" which implies all change flows through them.
+
+Reframe the opening to emphasize intent-bearing work. Something like:
+
+> Chunks capture the *intent* behind your code — the constraints, contracts, and
+> boundaries that should outlive any particular implementation. Not every change
+> needs a chunk; typo fixes, dependency bumps, and mechanical renames bypass the
+> chunk system entirely. The test: *does this code need to remember why it
+> exists?* If yes, make a chunk. See `docs/trunk/CHUNKS.md` for the full
+> principles.
+
+Keep the existing CLI example and slash-command table that follows.
+
+### Step 8: Render and verify
+
+Run:
+
+```bash
+uv run ve init
+```
+
+Confirm it completes cleanly. Spot-check that `CLAUDE.md` in the project root
+reflects the template changes from Steps 1–3.
+
+### Step 9: Run tests
+
+```bash
+uv run pytest tests/
+```
+
+No test changes are expected. If any tests break, investigate — the failure
+would indicate either a template rendering issue or an unexpected downstream
+effect.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **README.md tone:** The README is operator-facing prose, not agent
+  instructions. The rewrite in Step 7 should stay conversational and inviting,
+  not bureaucratic. The exact wording is a suggestion — match the existing
+  README's voice.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **AGENTS.md.jinja2 drift:** If `AGENTS.md.jinja2` has diverged from
+  `CLAUDE.md.jinja2` in ways not visible from the current read, Step 4 may
+  need adjustment. Diff the two templates before editing.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
