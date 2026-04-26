@@ -45,24 +45,25 @@ created_after: ["orch_verify_active"]
 
 ## Minor Goal
 
-When the orchestrator injects a chunk (via `ve orch inject`), it must transition the chunk's status from FUTURE to IMPLEMENTING before running agent phases. Currently, the orchestrator injects FUTURE chunks and immediately runs the PLAN phase, but the `/chunk-plan` skill uses `ve chunk list --latest` to find the active chunk - which only returns IMPLEMENTING chunks. This causes agents to either:
+When the orchestrator injects a chunk (via `ve orch inject`), the chunk's status transitions from FUTURE to IMPLEMENTING before agent phases run. Without this transition, the `/chunk-plan` skill — which uses `ve chunk list --latest` and only returns IMPLEMENTING chunks — would either:
 
-1. Fail immediately with "No implementing chunk found"
-2. Find a different chunk that happens to be IMPLEMENTING and work on the wrong chunk
+1. Fail immediately with "No implementing chunk found", or
+2. Find a different chunk that happens to be IMPLEMENTING and work on the wrong chunk.
 
-The fix: When a work unit enters the RUNNING state for its first phase, the orchestrator should update the chunk's GOAL.md frontmatter to change `status: FUTURE` to `status: IMPLEMENTING` before spawning the agent.
+When a work unit enters the RUNNING state for its first phase, the scheduler updates the target chunk's GOAL.md frontmatter from `status: FUTURE` to `status: IMPLEMENTING` before spawning the agent.
 
-**Edge case - existing IMPLEMENTING chunk in worktree:**
+**Edge case — existing IMPLEMENTING chunk in worktree:**
 
-When the orchestrator creates a worktree from main, there may already be a chunk in IMPLEMENTING status (the user was working on something manually). If we just set our chunk to IMPLEMENTING, there would be two IMPLEMENTING chunks, which violates the invariant that only one chunk can be IMPLEMENTING at a time.
+A worktree created from main may already contain a chunk in IMPLEMENTING status (because the user was working on something manually). Promoting the orchestrator's target chunk to IMPLEMENTING without handling this would produce two IMPLEMENTING chunks, violating the invariant that only one chunk can be IMPLEMENTING at a time.
 
-Solution:
-1. On worktree creation, detect if any chunk is already IMPLEMENTING
-2. If so, temporarily set that chunk to FUTURE in the worktree (not main)
-3. Set the orchestrator's target chunk to IMPLEMENTING
-4. Run all agent phases
-5. Before commit/merge, restore the displaced chunk back to IMPLEMENTING
-6. This ensures the merge back to main doesn't change the status of the user's active chunk
+The activation flow:
+
+1. On worktree creation, detect any chunk already in IMPLEMENTING.
+2. Temporarily demote that chunk to FUTURE in the worktree (not main).
+3. Promote the orchestrator's target chunk to IMPLEMENTING.
+4. Run all agent phases.
+5. Before commit/merge, restore the displaced chunk back to IMPLEMENTING.
+6. The merge back to main therefore preserves the status of the user's manually-active chunk.
 
 ## Success Criteria
 

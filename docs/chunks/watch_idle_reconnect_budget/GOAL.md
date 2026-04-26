@@ -27,38 +27,42 @@ created_after:
 
 ## Minor Goal
 
-Prevent `ve board watch` from exhausting its reconnection budget on idle
-channels. Currently, idle channels with no messages trigger a deterministic
-failure cycle: re-register every 300s, force reconnect every 2 re-registers,
-exhaust the 10-attempt budget in ~90 minutes, then terminate. Every steward
-must restart the watch every ~1 hour of idle — a constant background tax.
+`ve board watch` survives indefinitely on idle channels without exhausting
+its reconnection budget. Idle channels with no messages still trigger a
+re-registration cycle (every 300s, forcing a reconnect every 2
+re-registrations), but those idle reconnects are accounted separately from
+the 10-attempt budget that protects against genuine network failure. Without
+this separation, every steward in the swarm needed to restart the watch
+about once an hour of idle time — a constant background tax.
 
-### The problem
+### The two reconnect conditions
 
-The watch client's reconnect logic conflates two distinct conditions:
-1. **Transient network failure** — the WebSocket connection actually dropped
-   and needs a fresh connection (should count against the reconnect budget)
-2. **Idle heartbeat timeout** — the channel has no messages, the re-register
-   probe gets no new data, and the client treats this as "stale" (should NOT
-   count against the reconnect budget)
+The watch client distinguishes two conditions that previously shared a
+single counter:
 
-Both paths increment the same reconnect counter. After 10 attempts of either
-kind, the watch terminates with "reconnect exhaustion."
+1. **Transient network failure** — the WebSocket connection actually
+   dropped and needs a fresh connection. Counts against the reconnect
+   budget.
+2. **Idle heartbeat timeout** — the channel has no messages, the
+   re-register probe gets no new data, and the client treats the
+   connection as "stale". Does NOT count against the reconnect budget.
 
-### The fix (option 2 from reporter, preferred)
+A `StaleWatchError` sentinel raised by the inner watch path lets
+`watch_with_reconnect` and `watch_multi_with_reconnect` route idle
+timeouts through a budget-exempt branch.
 
-Don't count idle re-registrations against the 10-attempt reconnect budget.
-Specifically, in `src/board/client.py`'s `watch_with_reconnect` method:
+### The accounting rules
 
-1. **Separate the reconnect counter from the idle-reconnect counter.** When
-   the reconnect is triggered by a stale re-registration (the "Watch stale
-   after 2 re-registrations" path), use a separate counter or reset the main
-   counter — this is expected behavior on idle channels, not a failure.
-2. **Reset the reconnect counter on successful message delivery.** If a
-   message is eventually received, the connection is healthy — reset.
-3. **Optionally**: after N idle reconnects, increase the re-register interval
-   (e.g., from 300s to 600s) to reduce unnecessary reconnect churn on very
-   idle channels.
+In `src/board/client.py`:
+
+1. **Separate counters.** Stale re-registrations increment an
+   `idle_reconnects` counter that is independent of the main reconnect
+   budget — idle behavior is expected, not a failure.
+2. **Reset on message delivery.** A successfully received message marks
+   the connection as healthy and resets both counters.
+3. **Adaptive backoff.** After 3 idle reconnects, the stale timeout
+   doubles (capped at 600s) to reduce reconnect churn on very idle
+   channels.
 
 ### Cross-project context
 
@@ -77,9 +81,10 @@ times due to this bug.
 
 ## Relationship to Parent
 
-Parent `board_watch_reconnect_fix` added the reconnect-with-retry logic and
-the 10-attempt budget. This chunk refines the budget accounting to
-distinguish idle timeouts from real failures.
+Parent `board_watch_reconnect_fix` introduced the reconnect-with-retry
+logic and the 10-attempt budget. The budget accounting now distinguishes
+idle timeouts from real failures, so the safety valve still terminates
+on genuine connection trouble while idle channels survive indefinitely.
 
 ## Relationship to Parent
 
