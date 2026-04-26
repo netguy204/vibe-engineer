@@ -26,12 +26,14 @@ created_after: {{ created_after | default([], true) | tojson }}
 This comment describes schema information that needs to be adhered
 to throughout the process.
 
-STATUS VALUES:
-- FUTURE: This chunk is queued for future work and not yet being implemented
-- IMPLEMENTING: This chunk is in the process of being implemented.
-- ACTIVE: This chunk accurately describes current or recently-merged work
-- SUPERSEDED: Another chunk has modified the code this chunk governed
-- HISTORICAL: Significant drift; kept for archaeology only
+STATUS VALUES (status answers: how much of the intent does this chunk own?):
+- FUTURE: Not yet owned. Queued for later.
+- IMPLEMENTING: Being taken into ownership. At most one per worktree.
+- ACTIVE: Fully owns the intent that governs the code.
+- COMPOSITE: Shares ownership with other chunks. Must be read alongside its co-owners.
+- HISTORICAL: No longer owns intent. Kept for archaeological context.
+
+See docs/trunk/CHUNKS.md for the full principle.
 
 FUTURE CHUNK APPROVAL REQUIREMENT:
 ALL FUTURE chunks require operator approval before committing or injecting.

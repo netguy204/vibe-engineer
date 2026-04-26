@@ -1,5 +1,8 @@
 <!-- Chunk: docs/chunks/progressive_disclosure_refactor - Extracted artifact documentation -->
+<!-- Chunk: docs/chunks/intent_principles - Cross-reference to CHUNKS.md added -->
 # VE Artifact Types Reference
+
+> Before working with chunks, read [docs/trunk/CHUNKS.md](CHUNKS.md) — the canonical statement of what chunks are for and how their status is interpreted.
 
 Beyond chunks (the core unit of work), VE supports several artifact types for different scenarios.
 

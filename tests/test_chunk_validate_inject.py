@@ -221,6 +221,26 @@ class TestValidateChunkInjectableFunction:
         assert result.success is False
         assert any("terminal status" in e or "SUPERSEDED" in e for e in result.errors)
 
+    # Chunk: docs/chunks/intent_principles - COMPOSITE is settled and cannot be re-injected
+    def test_composite_status_cannot_be_injected(self, runner, tmp_path):
+        """COMPOSITE chunks cannot be injected."""
+        from chunks import Chunks
+
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "my_feature", "--project-dir", str(task_dir)]
+        )
+        chunk_path = external_path / "docs" / "chunks" / "my_feature"
+        write_goal_frontmatter(chunk_path, "COMPOSITE")
+        write_plan_with_content(chunk_path, has_content=True)
+
+        chunks = Chunks(external_path)
+        result = chunks.validate_chunk_injectable("my_feature")
+
+        assert result.success is False
+        assert any("terminal status" in e or "COMPOSITE" in e for e in result.errors)
+
     def test_historical_status_cannot_be_injected(self, runner, tmp_path):
         """HISTORICAL chunks cannot be injected."""
         from chunks import Chunks

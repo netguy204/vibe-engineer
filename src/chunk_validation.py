@@ -458,7 +458,7 @@ def validate_chunk_injectable(chunks: Chunks, chunk_id: str) -> ValidationResult
                 f"Chunk has status 'FUTURE' with empty plan. "
                 f"Will start with PLAN phase to populate the plan."
             )
-    elif frontmatter.status in (ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL):
+    elif frontmatter.status in (ChunkStatus.SUPERSEDED, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL):
         # Terminal states - shouldn't be injected
         errors.append(
             f"Chunk has terminal status '{frontmatter.status.value}' and cannot be injected. "

@@ -66,14 +66,19 @@ class TestChunkTransitionValues:
         assert VALID_CHUNK_TRANSITIONS[ChunkStatus.FUTURE] == expected
 
     def test_implementing_transitions(self):
-        """IMPLEMENTING -> {ACTIVE, HISTORICAL}"""
-        expected = {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL}
+        """IMPLEMENTING -> {ACTIVE, COMPOSITE, HISTORICAL}"""
+        expected = {ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL}
         assert VALID_CHUNK_TRANSITIONS[ChunkStatus.IMPLEMENTING] == expected
 
     def test_active_transitions(self):
-        """ACTIVE -> {SUPERSEDED, HISTORICAL}"""
-        expected = {ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL}
+        """ACTIVE -> {SUPERSEDED, COMPOSITE, HISTORICAL}"""
+        expected = {ChunkStatus.SUPERSEDED, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL}
         assert VALID_CHUNK_TRANSITIONS[ChunkStatus.ACTIVE] == expected
+
+    def test_composite_transitions(self):
+        """COMPOSITE -> {ACTIVE, HISTORICAL}"""
+        expected = {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL}
+        assert VALID_CHUNK_TRANSITIONS[ChunkStatus.COMPOSITE] == expected
 
     def test_superseded_transitions(self):
         """SUPERSEDED -> {HISTORICAL}"""

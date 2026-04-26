@@ -16,14 +16,20 @@ from models.references import (
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk lifecycle status StrEnum
+# Chunk: docs/chunks/intent_principles - COMPOSITE status added; see docs/trunk/CHUNKS.md
 class ChunkStatus(StrEnum):
-    """Status values for chunk lifecycle."""
+    """Status values for chunk lifecycle.
 
-    FUTURE = "FUTURE"  # Queued for future work, not yet being implemented
-    IMPLEMENTING = "IMPLEMENTING"  # Currently being implemented
-    ACTIVE = "ACTIVE"  # Accurately describes current or recently-merged work
-    SUPERSEDED = "SUPERSEDED"  # Another chunk has modified the code this chunk governed
-    HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
+    Status answers a single question: how much of the intent does this chunk
+    own? See docs/trunk/CHUNKS.md for the full principle.
+    """
+
+    FUTURE = "FUTURE"  # Not yet owned. Queued for later.
+    IMPLEMENTING = "IMPLEMENTING"  # Being taken into ownership. At most one per worktree.
+    ACTIVE = "ACTIVE"  # Fully owns the intent that governs the code.
+    COMPOSITE = "COMPOSITE"  # Shares ownership with other chunks. Read alongside its co-owners.
+    SUPERSEDED = "SUPERSEDED"  # Legacy; being retired by intent_ownership narrative.
+    HISTORICAL = "HISTORICAL"  # No longer owns intent. Kept for archaeological context.
 
 
 # Chunk: docs/chunks/bug_type_field - BugType enum with SEMANTIC and IMPLEMENTATION values
@@ -39,10 +45,12 @@ class BugType(StrEnum):
     IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
 
 
+# Chunk: docs/chunks/intent_principles - COMPOSITE transitions added; see docs/trunk/CHUNKS.md
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
-    ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
-    ChunkStatus.ACTIVE: {ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL},
+    ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL},
+    ChunkStatus.ACTIVE: {ChunkStatus.SUPERSEDED, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL},
+    ChunkStatus.COMPOSITE: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
     ChunkStatus.SUPERSEDED: {ChunkStatus.HISTORICAL},
     ChunkStatus.HISTORICAL: set(),  # Terminal state
 }
