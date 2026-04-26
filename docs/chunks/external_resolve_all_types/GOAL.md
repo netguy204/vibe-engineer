@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/external_resolve.py
-- src/ve.py
+- src/cli/external.py
 - tests/test_external_resolve.py
 - tests/test_external_resolve_cli.py
 code_references:
@@ -16,11 +16,11 @@ code_references:
     implements: "Generic artifact resolution in task directory mode for any artifact type"
   - ref: src/external_resolve.py#resolve_artifact_single_repo
     implements: "Generic artifact resolution in single repo mode for any artifact type"
-  - ref: src/ve.py#resolve
-    implements: "CLI command updated to accept local_artifact_id with --main-only/--secondary-only options"
-  - ref: src/ve.py#_detect_artifact_type_from_id
+  - ref: src/cli/external.py#resolve
+    implements: "CLI command accepting local_artifact_id with --main-only/--secondary-only options"
+  - ref: src/cli/external.py#_detect_artifact_type_from_id
     implements: "Auto-detection of artifact type from project directory structure"
-  - ref: src/ve.py#_display_resolve_result
+  - ref: src/cli/external.py#_display_resolve_result
     implements: "Type-aware display showing artifact type in header and appropriate file names"
   - ref: tests/test_external_resolve.py#TestFindArtifactInProject
     implements: "Tests for find_artifact_in_project with all artifact types"
@@ -30,8 +30,6 @@ code_references:
     implements: "Tests for resolve_artifact_task_directory with narratives"
   - ref: tests/test_external_resolve_cli.py
     implements: "CLI integration tests for all artifact types and backward compatibility"
-  - ref: src/cli/external.py#resolve
-    implements: "CLI external resolve command supporting all artifact types after CLI modularization"
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
@@ -43,20 +41,18 @@ created_after: ["consolidate_ext_ref_utils"]
 
 ## Minor Goal
 
-Extend `ve external resolve` to work with all workflow artifact types (chunks,
-narratives, investigations, subsystems), not just chunks. This supports the
-project's goal of providing consistent cross-repository capability across all
-workflow types.
+`ve external resolve` works with all workflow artifact types (chunks, narratives,
+investigations, subsystems), providing consistent cross-repository capability
+across all workflow types.
 
-Currently, `ve external resolve` only works with chunks—it hardcodes paths to
-`docs/chunks/` and reads `GOAL.md` and `PLAN.md`. The infrastructure from
-`src/external_refs.py` (created by chunk `consolidate_ext_ref_utils`) already
-supports all artifact types generically. This chunk extends the resolve command
-to leverage that infrastructure.
+The resolve command auto-detects artifact type from the directory path and uses
+the generic infrastructure in `src/external_refs.py` (`ARTIFACT_DIR_NAME`,
+`ARTIFACT_MAIN_FILE`, `is_external_artifact`, `load_external_ref`) so the same
+resolution logic serves chunks, narratives, investigations, and subsystems.
 
-This enables agents working in task directories to resolve external references
-for narratives, investigations, and subsystems—completing the external reference
-story for all workflow artifact types.
+This lets agents working in task directories resolve external references for any
+artifact type, completing the external reference story across all workflow
+artifacts.
 
 ## Success Criteria
 

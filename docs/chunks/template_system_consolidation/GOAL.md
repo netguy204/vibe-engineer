@@ -25,7 +25,7 @@ code_paths:
 - src/templates/claude/CLAUDE.md.jinja2
 - tests/test_template_system.py
 - tests/test_project.py
-- docs/subsystems/0001-template_system/OVERVIEW.md
+- docs/subsystems/template_system/OVERVIEW.md
 code_references:
 - ref: src/template_system.py#RenderResult
   implements: RenderResult dataclass tracking created/skipped/overwritten files
@@ -125,7 +125,7 @@ will be rendered files, not symlinks.
 4. **Templates renamed** - `src/templates/trunk/*.md` and `src/templates/commands/*.md`
    renamed to `*.md.jinja2`
 
-5. **Subsystem updated** - All NON_COMPLIANT references in `docs/subsystems/0001-template_system/OVERVIEW.md`
+5. **Subsystem updated** - All NON_COMPLIANT references in `docs/subsystems/template_system/OVERVIEW.md`
    are marked COMPLIANT and status changed to STABLE
 
 6. **Tests pass** - All existing tests continue to pass

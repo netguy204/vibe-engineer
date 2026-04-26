@@ -44,17 +44,18 @@ created_after: ["consolidate_ext_refs", "rename_chunk_start_to_create", "valid_t
 
 ## Minor Goal
 
-Create a dedicated `src/external_refs.py` module that consolidates external artifact
-reference utilities. This supports the project's goal of maintaining consistent
-tooling across all workflow artifact types (chunks, narratives, investigations,
-subsystems) by providing generic utilities that work for any artifact type.
+`src/external_refs.py` is the dedicated module for external artifact reference
+utilities, providing generic helpers that work for any workflow artifact type
+(chunks, narratives, investigations, subsystems). This keeps tooling consistent
+across artifact types and avoids the chunk-specific naming that would otherwise
+leak into shared infrastructure.
 
-Currently, external reference utilities (`is_external_chunk`, `load_external_ref`,
-`create_external_yaml`) are located in `src/task_utils.py` and are chunk-specific
-in naming even though the underlying `ExternalArtifactRef` model (from chunk
-`consolidate_ext_refs`) already supports all artifact types. This chunk extracts
-and generalizes these utilities to enable future chunks that extend external
-reference support to narratives, investigations, and subsystems.
+The module exposes `is_external_artifact()`, `detect_artifact_type_from_path()`,
+`load_external_ref()`, `create_external_yaml()`, and the `ARTIFACT_MAIN_FILE` /
+`ARTIFACT_DIR_NAME` mappings. The underlying `ExternalArtifactRef` model
+(established by `consolidate_ext_refs`) is already type-agnostic, so the
+utilities here complete the path from a generic model to generic helpers usable
+by every workflow artifact type.
 
 ## Success Criteria
 

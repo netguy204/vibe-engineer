@@ -35,7 +35,7 @@ created_after:
 
 Integrate subsystem code references into the chunk completion workflow so that changes touching subsystem-tracked code automatically surface for documentation review.
 
-When a chunk is completed, its code changes may overlap with files or symbols tracked by subsystems. Without explicit detection, subsystem documentation can drift out of sync with the actual implementation. This chunk adds `ve subsystem overlap <chunk_id>` to identify overlapping subsystems and updates the `/chunk-complete` workflow to verify subsystem documentation accuracy when overlap is detected.
+When a chunk is completed, its code changes may overlap with files or symbols tracked by subsystems. Without explicit detection, subsystem documentation can drift out of sync with the actual implementation. The `ve subsystem overlap <chunk_id>` command identifies overlapping subsystems, and the `/chunk-complete` workflow verifies subsystem documentation accuracy when overlap is detected.
 
 This advances the narrative's goal of maintaining document health over time: subsystem documentation stays accurate because changes to subsystem code are automatically flagged during chunk completion.
 

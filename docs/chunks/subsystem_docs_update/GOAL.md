@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- docs/subsystems/0002-workflow_artifacts/OVERVIEW.md
+- docs/subsystems/workflow_artifacts/OVERVIEW.md
 code_references:
-- ref: docs/subsystems/0002-workflow_artifacts/OVERVIEW.md
+- ref: docs/subsystems/workflow_artifacts/OVERVIEW.md
   implements: 'Documentation of causal ordering system (Hard Invariants #1-#2, Artifact
     Ordering section, Directory Naming Transition, Known Deviation for external chunks)'
 narrative: null

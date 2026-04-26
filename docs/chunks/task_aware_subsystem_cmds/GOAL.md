@@ -3,30 +3,31 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/task_utils.py
+- src/models/subsystem.py
+- src/task/exceptions.py
+- src/task/artifact_ops.py
 - src/subsystems.py
-- src/ve.py
+- src/cli/subsystem.py
 - tests/test_task_subsystem_discover.py
 - tests/test_task_subsystem_list.py
 code_references:
-  - ref: src/models.py#SubsystemFrontmatter
+  - ref: src/models/subsystem.py#SubsystemFrontmatter
     implements: "Added dependents field to SubsystemFrontmatter for cross-repo subsystem references"
-  - ref: src/task_utils.py#TaskSubsystemError
+  - ref: src/task/exceptions.py#TaskSubsystemError
     implements: "Error class for user-friendly task subsystem error messages"
-  - ref: src/task_utils.py#add_dependents_to_subsystem
+  - ref: src/task/artifact_ops.py#add_dependents_to_subsystem
     implements: "Update subsystem OVERVIEW.md frontmatter with dependents list"
-  - ref: src/task_utils.py#create_task_subsystem
+  - ref: src/task/artifact_ops.py#create_task_subsystem
     implements: "Orchestrate multi-repo subsystem creation in task directory context"
-  - ref: src/task_utils.py#list_task_subsystems
+  - ref: src/task/artifact_ops.py#list_task_subsystems
     implements: "List subsystems from external repo with dependents"
-  - ref: src/ve.py#list_subsystems
+  - ref: src/cli/subsystem.py#list_subsystems
     implements: "CLI command with task directory detection for subsystem listing"
-  - ref: src/ve.py#_list_task_subsystems
+  - ref: src/cli/subsystem.py#_list_task_subsystems
     implements: "Handler for task-aware subsystem listing"
-  - ref: src/ve.py#discover
+  - ref: src/cli/subsystem.py#discover
     implements: "CLI command with task directory detection for subsystem discovery"
-  - ref: src/ve.py#_create_task_subsystem
+  - ref: src/cli/subsystem.py#_create_task_subsystem
     implements: "Handler for task-aware subsystem creation"
   - ref: tests/test_task_subsystem_discover.py
     implements: "Integration tests for task-aware subsystem discovery"

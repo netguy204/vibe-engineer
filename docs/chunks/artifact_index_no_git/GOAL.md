@@ -28,17 +28,17 @@ created_after:
 
 ## Minor Goal
 
-Simplify `ArtifactIndex` staleness detection to work without git by using directory enumeration instead of file content hashing. This aligns with DEC-002 (git not assumed) and leverages the key insight that `created_after` is immutable after artifact creation.
+`ArtifactIndex` staleness detection works without git by using directory enumeration instead of file content hashing. This aligns with DEC-002 (git not assumed) and leverages the key insight that `created_after` is immutable after artifact creation.
 
-Currently, `ArtifactIndex` uses `git hash-object` to detect when cached ordering becomes stale. This has two problems:
-1. **Git dependency**: Violates DEC-002; fails or degrades in non-git environments
-2. **Unnecessary complexity**: Since `created_after` never changes after creation, we only need to detect when artifacts are added or removed—not when their contents change
+Because `created_after` never changes after creation, the system only needs to detect when artifacts are added or removed — not when their contents change. Two prior problems motivated this:
+1. **Git dependency**: hashing depended on `git hash-object`, violating DEC-002 and failing or degrading in non-git environments
+2. **Unnecessary complexity**: content hashing detected changes that, by construction, could not affect the ordering
 
-The simplified approach:
-- Cache the set of artifact directory names alongside the ordered list and tips
-- On access, enumerate current directories and compare against cached set
-- If sets differ, rebuild; otherwise use cached values
-- No external commands needed (pure Python `pathlib` operations)
+The current approach:
+- Caches the set of artifact directory names alongside the ordered list and tips
+- On access, enumerates current directories and compares against the cached set
+- If sets differ, rebuilds; otherwise uses cached values
+- Uses no external commands (pure Python `pathlib` operations)
 
 ## Success Criteria
 
@@ -58,9 +58,9 @@ The simplified approach:
 
 **Parent chunk**: `0038-artifact_ordering_index`
 
-**What prompted this work**: The parent chunk implemented `ArtifactIndex` with git-hash-based staleness detection. While functional, this approach:
-- Violates DEC-002 by depending on git
-- Is more complex than necessary given `created_after` immutability
+**What prompted this work**: The parent chunk's original `ArtifactIndex` implementation used git-hash-based staleness detection. While functional, that approach:
+- Violated DEC-002 by depending on git
+- Was more complex than necessary given `created_after` immutability
 
 **What remains valid from parent**:
 - `ArtifactIndex` class structure and public API (`get_ordered()`, `find_tips()`, `rebuild()`)
@@ -70,8 +70,8 @@ The simplified approach:
 - Index file format (JSON with ordered, tips, and per-type data)
 - Gitignored index file approach (`.artifact-order.json`)
 
-**What is being changed**:
-- Replace `_get_git_hash()` and `_get_all_artifact_hashes()` with directory set comparison
-- Modify `_is_index_stale()` to compare directory sets instead of file hashes
-- Remove `hashes` field from index format (replaced with `directories` set)
-- Update `_build_index_for_type()` to store directory set instead of hashes
+**What changed**:
+- Directory set comparison replaces `_get_git_hash()` and `_get_all_artifact_hashes()`
+- `_is_index_stale()` compares directory sets instead of file hashes
+- The index format stores a `directories` set instead of a `hashes` field
+- `_build_index_for_type()` stores the directory set instead of hashes

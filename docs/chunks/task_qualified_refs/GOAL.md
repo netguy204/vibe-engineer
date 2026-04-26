@@ -2,7 +2,7 @@
 status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: ["src/symbols.py", "src/models.py", "src/chunks.py", "src/subsystems.py", "tests/test_symbols.py", "tests/test_models.py"]
+code_paths: ["src/symbols.py", "src/models/references.py", "src/chunks.py", "src/subsystems.py", "tests/test_symbols.py", "tests/test_models.py"]
 code_references:
   - ref: src/symbols.py#parse_reference
     implements: "Extended parsing to return 3-tuple (project, file_path, symbol_path) with project qualification support"
@@ -37,11 +37,11 @@ created_after: ["task_aware_investigations", "task_aware_subsystem_cmds"]
 
 ## Minor Goal
 
-Extend the `SymbolicReference` model to support project-qualified paths using the format `org/repo::path#symbol`. This enables task-level chunks (stored in an external artifact repo) to have forward code references pointing to code in multiple participating projects.
+The `SymbolicReference` model supports project-qualified paths using the format `org/repo::path#symbol`. This enables task-level chunks (stored in an external artifact repo) to have forward code references pointing to code in multiple participating projects.
 
-Currently, `SymbolicReference` only supports local file paths like `src/foo.py#FooClass`. When working in a task context that spans multiple repositories, chunk completion (`/chunk-complete`) needs to collect code references from ALL participating projects and store them with project qualification so readers know which project each reference belongs to.
+Local file paths like `src/foo.py#FooClass` remain valid for single-project use. In task contexts that span multiple repositories, chunk completion (`/chunk-complete`) collects code references from ALL participating projects and stores them with project qualification so readers know which project each reference belongs to.
 
-This directly supports the project goal of enabling multi-project workflows. Without project-qualified references, task-level chunks cannot properly document which code they touch across repositories, breaking the bidirectional traceability between docs and code.
+Project-qualified references support the project goal of enabling multi-project workflows. Without them, task-level chunks could not properly document which code they touch across repositories, breaking the bidirectional traceability between docs and code.
 
 ## Success Criteria
 

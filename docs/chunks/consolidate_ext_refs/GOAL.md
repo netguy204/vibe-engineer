@@ -41,20 +41,22 @@ created_after: ["external_chunk_causal"]
 
 ## Minor Goal
 
-Replace the chunk-specific `ExternalChunkRef` model with a generic `ExternalArtifactRef` model
-that can represent external references to any workflow artifact type (chunks, narratives,
-investigations, subsystems). This addresses the "External References Only for Chunks" deviation
-in the workflow_artifacts subsystem by establishing a foundation for cross-repo support
-across all workflow types.
+`ExternalArtifactRef` is the generic model for external references to any workflow
+artifact type (chunks, narratives, investigations, subsystems), replacing the
+chunk-only `ExternalChunkRef`. This grounds cross-repo support across all
+workflow types and resolves the workflow_artifacts subsystem's "External
+References Only for Chunks" deviation.
 
-The current `ExternalChunkRef` model has a `chunk` field that only makes sense for chunks.
-The new `ExternalArtifactRef` model will have:
+The model carries:
 - `artifact_type` field (enum: CHUNK, NARRATIVE, INVESTIGATION, SUBSYSTEM)
-- `artifact_id` field (replaces `chunk` field - the short name of the referenced artifact)
+- `artifact_id` field (the short name of the referenced artifact, replacing the
+  old `chunk` field)
+- `repo`, `track`, `pinned`, `created_after` fields (carried forward unchanged)
 
-This is the first step in the External Reference Consolidation sequence outlined in the
-workflow_artifacts subsystem. Subsequent chunks will build on this foundation to add
-generic utilities and extend commands to all workflow types.
+This is the foundation of the External Reference Consolidation sequence in the
+workflow_artifacts subsystem. Generic utilities (`consolidate_ext_ref_utils`)
+and command-level support for all artifact types (`external_resolve_all_types`)
+build on it.
 
 ## Success Criteria
 

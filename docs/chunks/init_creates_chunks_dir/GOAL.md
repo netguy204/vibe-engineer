@@ -25,9 +25,9 @@ created_after: ["task_aware_investigations", "task_aware_subsystem_cmds"]
 
 ## Minor Goal
 
-The `ve init` command must create the `docs/chunks/` directory so that newly initialized projects are recognized as Vibe Engineer projects by the task init process.
+The `ve init` command creates the `docs/chunks/` directory so that newly initialized projects are recognized as Vibe Engineer projects by the task init process.
 
-Currently, `ve init` creates `docs/trunk/`, `.claude/commands/`, `CLAUDE.md`, and `docs/narratives/`, but not `docs/chunks/`. However, the task init detection logic in `task_init.py:120-123` uses the presence of `docs/chunks/` as the sentinel to determine whether a directory is a VE project:
+Alongside `docs/trunk/`, `.claude/commands/`, `CLAUDE.md`, and `docs/narratives/`, `ve init` provisions `docs/chunks/`. The task init detection logic in `task_init.py` uses the presence of `docs/chunks/` as the sentinel to determine whether a directory is a VE project:
 
 ```python
 if not (path / "docs" / "chunks").exists():
@@ -36,7 +36,7 @@ if not (path / "docs" / "chunks").exists():
     )
 ```
 
-This creates an inconsistency: a freshly initialized project passes `ve init` successfully but fails task init validation. Adding `docs/chunks/` creation to `ve init` ensures the project is fully recognized as a VE project from the moment of initialization.
+A freshly initialized project therefore passes both `ve init` and `ve task init` validation — it is recognized as a VE project from the moment of initialization.
 
 ## Success Criteria
 

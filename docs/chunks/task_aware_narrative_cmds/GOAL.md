@@ -3,35 +3,37 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/task_utils.py
+- src/models/shared.py
+- src/models/narrative.py
+- src/task/exceptions.py
+- src/task/artifact_ops.py
 - src/narratives.py
-- src/ve.py
+- src/cli/narrative.py
 - tests/test_task_narrative_create.py
 - tests/test_task_narrative_list.py
 - tests/test_task_chunk_create.py
 - tests/test_task_chunk_list.py
 - tests/test_task_models.py
 code_references:
-  - ref: src/models.py#TaskConfig
+  - ref: src/models/shared.py#TaskConfig
     implements: "Renamed external_chunk_repo to external_artifact_repo for generic artifact support"
-  - ref: src/models.py#NarrativeFrontmatter
+  - ref: src/models/narrative.py#NarrativeFrontmatter
     implements: "Added dependents field for cross-repo narrative references"
-  - ref: src/task_utils.py#TaskNarrativeError
+  - ref: src/task/exceptions.py#TaskNarrativeError
     implements: "Error class for task narrative creation with user-friendly messages"
-  - ref: src/task_utils.py#add_dependents_to_narrative
+  - ref: src/task/artifact_ops.py#add_dependents_to_narrative
     implements: "Update narrative OVERVIEW.md frontmatter with dependents list"
-  - ref: src/task_utils.py#create_task_narrative
+  - ref: src/task/artifact_ops.py#create_task_narrative
     implements: "Orchestrate multi-repo narrative creation with external.yaml and dependents"
-  - ref: src/task_utils.py#list_task_narratives
+  - ref: src/task/artifact_ops.py#list_task_narratives
     implements: "List narratives from external repo with their dependents"
-  - ref: src/ve.py#_create_task_narrative
+  - ref: src/cli/narrative.py#_start_task_narrative
     implements: "CLI handler for task-aware narrative creation"
-  - ref: src/ve.py#_list_task_narratives
+  - ref: src/cli/narrative.py#_list_task_narratives_cmd
     implements: "CLI handler for task-aware narrative listing"
-  - ref: src/ve.py#create_narrative
+  - ref: src/cli/narrative.py#create_narrative
     implements: "CLI command with task directory detection for narrative create"
-  - ref: src/ve.py#list_narratives
+  - ref: src/cli/narrative.py#list_narratives
     implements: "CLI command with task directory detection for narrative list"
   - ref: tests/test_task_narrative_create.py
     implements: "Integration tests for task-aware narrative creation"

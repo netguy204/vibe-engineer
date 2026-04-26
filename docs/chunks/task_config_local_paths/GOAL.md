@@ -27,13 +27,13 @@ created_after:
 
 ## Minor Goal
 
-Make `ve task init` resolve local directory names to GitHub `org/repo` format automatically, so users can leverage shell autocompletion when specifying projects.
+`ve task init` resolves local directory names to GitHub `org/repo` format automatically, so users can leverage shell autocompletion when specifying projects.
 
-Currently, `ve task init` requires users to type GitHub-style `org/repo` references (e.g., `btaylor/dotter`). This is cumbersome because:
+Direct `org/repo` references (e.g., `btaylor/dotter`) remain accepted, but plain directory names are equally valid input — the command inspects each directory's git remote and substitutes the canonical `org/repo` form before writing `.ve-task.yaml`. This matters because:
 1. Shell autocompletion doesn't help with `org/repo` strings
 2. Users often already have the projects cloned locally (often as worktrees) in the task directory
 
-The desired workflow:
+The supported workflow:
 ```bash
 # User types local directory names (with shell autocompletion)
 ve task init --external architecture --project dotter --project vibe-engineer
@@ -46,7 +46,7 @@ ve task init --external architecture --project dotter --project vibe-engineer
 #     - btaylor/vibe-engineer
 ```
 
-The resolution must work for **git worktrees**, not just regular clones, since users often set up task directories with worktree clones of the projects they're working on.
+Resolution works for **git worktrees**, not just regular clones, since users often set up task directories with worktree clones of the projects they're working on.
 
 ## Success Criteria
 
