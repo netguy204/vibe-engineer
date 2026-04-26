@@ -245,30 +245,31 @@ Anchor case: `docs/chunks/orch_activate_on_inject/GOAL.md:46` — the goal opens
 
 Anchor case: `docs/chunks/respect_future_intent/GOAL.md` — status: ACTIVE, lists 5 success criteria, but its single `code_reference` admits *"does NOT implement user intent detection, priority order, conflict handling, or safe pause protocol from success criteria"* with `status: partial`.
 
-For each candidate, the agent presents to the operator with the failure mode and a recommended fix path:
+The audit fans out across sub-agents, **5 chunks per sub-agent**, run in parallel. Each sub-agent works through its assigned chunks one at a time and takes one of two actions per chunk:
 
-- **Retrospective framing** → rewrite the goal text into a present-tense description of how the system works. The agent uses the implemented code (and the chunk's existing `code_references`) as the source of truth.
-- **Over-claimed scope** → operator chooses between (a) revise the goal down to what the code actually does, or (b) finish the implementation so the goal becomes true. Default lean for old chunks where the ambition has cooled is (a); for chunks where the missing work is small and still wanted, (b).
+- **Present-tense grammar fix (inline).** When retrospective framing is detected, the sub-agent rewrites the prose into present tense describing how the system works, using the implemented code as the source of truth. **The intent of the chunk does not change.** Only the tense and framing change. If a passage can't be reframed without altering meaning — e.g., the goal text is so tangled with retrospective claims that present-tense rewording would shift what the chunk asserts — the sub-agent leaves it alone and instead writes an inconsistency entry describing why.
+- **Intent-vs-code consistency entry (log only).** When over-claimed scope is detected, the sub-agent writes an entry to `docs/trunk/INCONSISTENCIES/` per its README. The sub-agent does **not** revise the goal down or attempt to finish the missing implementation. Both of those decisions require operator judgment — change the intent, change the implementation, or accept the gap — and that triage happens later, manually, informed by the log.
 
-The discovery pass is exhaustive. The operator may choose to fix only some candidates in this run and defer the rest — that's fine; the audit's job is to surface them all.
+The asymmetry mirrors the principles: tense is grammar (mechanical, safe to fix); intent is architecture (load-bearing, operator-only).
+
+The discovery pass is exhaustive — every ACTIVE chunk under `docs/chunks/` is reviewed exactly once across the parallel sub-agents.
 
 ## Success Criteria
 
-1. The agent enumerates all ACTIVE chunks under `docs/chunks/` and runs both detectors against each.
-2. The retrospective-framing detector catches `orch_activate_on_inject` (anchor case).
-3. The over-claimed-scope detector catches `respect_future_intent` (anchor case).
-4. For each candidate, the agent writes an entry to `docs/trunk/INCONSISTENCIES/` following the format documented in that directory's README. Entries use the timestamp+slug filename convention (`YYYYMMDD_HHMMSS_microseconds_<slug>.md`) so multiple sub-agents can write in parallel without collision. Each entry names the artifact making the false claim, quotes (or paraphrases) the claim with file/line, describes the reality, and lists fix paths.
-5. For each candidate, the agent presents a structured report to the operator: chunk name, failure mode, evidence (the offending text or metadata), recommended fix path, and the inconsistency entry filename so the operator can drill in.
-6. For each candidate the operator chooses to fix in this run, the agent applies the chosen fix and updates the inconsistency entry's frontmatter to `status: resolved` with `resolved_by:` set to the chunk name or commit SHA:
-   - Retrospective framing → rewrite goal text in place.
-   - Over-claimed scope, option (a) → revise goal to match implemented behavior.
-   - Over-claimed scope, option (b) → finish the implementation (this may itself be a substantial sub-task; if so, surface to operator and consider spinning up a dedicated chunk).
-7. Chunks fixed in this run pass both detectors clean afterward.
-8. Chunks deferred remain as `status: open` entries in `docs/trunk/INCONSISTENCIES/`; the durable log replaces any need for an in-chunk follow-up summary.
-9. `uv run pytest tests/` passes; any code changes from option (b) implementations include test updates.
+1. The audit enumerates all ACTIVE chunks under `docs/chunks/` and partitions them across sub-agents at 5 chunks per sub-agent. Every ACTIVE chunk is assigned to exactly one sub-agent.
+2. Sub-agents run in parallel; each receives a self-contained prompt with its assigned chunk list, the detection criteria, the action rules ("rewrite tense inline; log intent mismatches; never change intent"), and a pointer to `docs/trunk/INCONSISTENCIES/README.md`.
+3. The retrospective-framing detector catches `orch_activate_on_inject` (anchor case) — the sub-agent assigned this chunk produces an in-place rewrite that removes the leading `Currently,` framing while preserving the chunk's architectural assertion.
+4. The over-claimed-scope detector catches `respect_future_intent` (anchor case) — the sub-agent assigned this chunk produces an inconsistency entry naming the partial-implementation evidence and listing fix paths (revise goal vs finish implementation) for later operator triage.
+5. For every retrospective-framing fix, the sub-agent's edit changes only the tense/framing of the prose. The chunk's success criteria, code_paths, code_references, and architectural claims are untouched. (A diff that touches only narrative prose passes; a diff that adds, removes, or reworks success criteria fails this check.)
+6. Every over-claimed-scope finding produces exactly one entry in `docs/trunk/INCONSISTENCIES/` with `status: open`. No goal revisions or implementation work happens during the audit.
+7. After all sub-agents finish, the audit produces a parent-level summary listing: chunks rewritten (with the grep tells removed), inconsistency entries created (with filenames), and any chunks the sub-agents skipped or escalated.
+8. `uv run ve init` runs cleanly after the rewrites.
+9. `uv run pytest tests/` passes — no test should be affected by tense rewrites; if any breaks, investigate before silencing.
 
 ## Out of Scope
 
 - Adding the verification pass to `/chunk-complete` (chunk 3 does that — running this audit is what catches everything that landed *before* the verification pass existed).
-- Migrating SUPERSEDED chunks (chunk 5 does that).
+- Migrating SUPERSEDED chunks (chunk 5).
 - Removing SUPERSEDED from the runtime (chunk 7).
+- Revising any goal's intent or finishing any implementation surfaced by the over-claimed-scope detector. Those are explicitly deferred to manual operator triage informed by the inconsistency log.
+- Auditing FUTURE, IMPLEMENTING, COMPOSITE, or HISTORICAL chunks. Only ACTIVE chunks fall in scope; other statuses either haven't reached the truthfulness bar yet (FUTURE/IMPLEMENTING) or are explicitly not asserting current reality (COMPOSITE shares ownership; HISTORICAL no longer governs).

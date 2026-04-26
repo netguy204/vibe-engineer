@@ -1,179 +1,110 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The audit is a fan-out / collect / commit pipeline. The implementing (parent) agent does enumeration, partitioning, sub-agent dispatch, result collection, verification, and commit. Sub-agents do the per-chunk work in parallel and write directly to the working tree (in-place rewrites + new files in `docs/trunk/INCONSISTENCIES/`).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Why fan out at all:** an exhaustive sweep of every ACTIVE chunk in `docs/chunks/` is many chunks (currently ~150+). Sequential audit would be slow; reading + reasoning per chunk is the long pole, and each chunk is independent of every other. Five-per-sub-agent gives each sub-agent enough chunks to amortize startup but few enough that any single sub-agent's context stays focused.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Why sub-agents write directly to the working tree:** the inconsistency log is concurrency-safe by design (one file per entry, microsecond-precision filenames). The tense rewrites are per-chunk so different sub-agents can't conflict on the same file. There's no shared mutable state for sub-agents to fight over. The parent agent doesn't need to merge sub-agent outputs; it just commits whatever the working tree has accumulated.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/intent_active_audit/GOAL.md)
-with references to the files that you expect to touch.
--->
+**What the parent commits:** one commit per logical unit of work — one for tense rewrites (potentially batched if the sub-agents produce a lot), one for inconsistency-log additions. Fine-grained per-chunk commits aren't useful here because the audit is a single coordinated pass.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **`docs/subsystems/workflow_artifacts`** (STABLE): The audit USES the workflow_artifacts subsystem — it reads chunk frontmatter and prose, writes back tense-corrected prose. No structural changes to artifacts themselves.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No other subsystems involved. No new subsystems emerge from this work; the inconsistency log is too project-specific to count as a cross-cutting pattern (yet).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Enumerate ACTIVE chunks
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
-
-Example:
-
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```bash
+uv run ve chunk list --status ACTIVE
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Capture the list. Verify the two anchor cases are present: `orch_activate_on_inject` and `respect_future_intent`. If either is missing, stop and surface — the audit's anchor cases must be in scope.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Strip `intent_principles` and any other chunks already touched by this narrative from the list (they shouldn't appear in the audit, but if they do, the audit shouldn't rewrite work this session just produced).
 
-## Dependencies
+### Step 2: Partition into batches of 5
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Split the ACTIVE chunk list into groups of 5. The last group may be smaller. Record the partition (chunk → sub-agent index) so the parent can reconstruct who handled what when results return.
 
-If there are no dependencies, delete this section.
--->
+### Step 3: Define the sub-agent prompt template
+
+Each sub-agent gets a self-contained prompt with:
+
+1. **Scope** — the 5 chunk names assigned to this sub-agent (full paths under `docs/chunks/`).
+2. **Detection criteria** —
+   - Retrospective framing tells: `Currently,`, `was`, `we added`, `this chunk fixes`, `this chunk adds`, `the fix:`, `will change to`. Case-insensitive grep.
+   - Over-claimed scope tells: any `code_references[].status: partial`; `implements:` text containing `does NOT implement`, `partial`, `only Step N of M`, `TODO`, `not yet`; success-criteria list count meaningfully exceeding code_references count.
+3. **Action rules** —
+   - Retrospective framing → rewrite the prose **in place** to present tense. **Do not change the chunk's intent.** Only the tense and framing change. If the rewrite would alter the goal's claim, leave the prose alone and write an inconsistency entry instead, explaining why a safe rewrite isn't possible.
+   - Over-claimed scope → write an entry to `docs/trunk/INCONSISTENCIES/` per its README. Do not revise the goal. Do not finish the implementation.
+4. **Filename convention** for inconsistency entries:
+   ```
+   YYYYMMDD_HHMMSS_microseconds_<chunk_name>_<failure_mode>.md
+   ```
+   Use `python3 -c "from datetime import datetime; print(datetime.now().strftime('%Y%m%d_%H%M%S_%f'))"` to generate the timestamp. Slug suggestion: `<chunk_name>_<failure_mode>` (e.g., `respect_future_intent_overclaimed`). Chunk name + failure mode is unique per finding.
+5. **What to return** — a short structured summary per chunk: `{chunk_name, action_taken: rewrote|logged|skipped, evidence: <one-line>, entry_filename: <if logged>}`. Plain markdown is fine.
+6. **Pointer to the inconsistency log README** so the sub-agent has the entry format reference.
+
+### Step 4: Spawn sub-agents in parallel
+
+Launch all sub-agents in a single message via the Agent tool, subagent_type `general-purpose` (needs Edit + Write access for inline rewrites and new entries; Explore is read-only). Run in the foreground — the parent needs the summaries before commit.
+
+### Step 5: Collect summaries and verify anchor coverage
+
+When sub-agents return, gather the structured summaries. Verify:
+- `orch_activate_on_inject` shows `action_taken: rewrote` (the leading `Currently,` should have been rewritten).
+- `respect_future_intent` shows `action_taken: logged` with an `entry_filename` pointing at a new file in `docs/trunk/INCONSISTENCIES/`.
+
+If either anchor case isn't handled correctly, surface to the operator — the detection logic in the sub-agent prompt may need tightening before re-running the affected batch.
+
+### Step 6: Verify the working tree
+
+Inspect the working tree:
+- Tense rewrites should be limited to prose changes inside `docs/chunks/*/GOAL.md`. No success criteria, code_paths, code_references, or other frontmatter fields should have moved. Diff each rewritten chunk against `HEAD` and skim — flag any rewrite that touches structured fields.
+- Inconsistency entries should be net-new files in `docs/trunk/INCONSISTENCIES/`, each conforming to the README's frontmatter schema.
+
+### Step 7: Run verification
+
+```bash
+uv run ve init
+uv run pytest tests/
+```
+
+Both should pass cleanly. If a test breaks, the rewrite went beyond grammar — investigate before committing.
+
+### Step 8: Commit
+
+Two commits:
+
+1. `audit: rewrite retrospective framing in N ACTIVE chunks` — staging the modified `docs/chunks/*/GOAL.md` files.
+2. `audit: log N intent-vs-code inconsistencies` — staging the new entries in `docs/trunk/INCONSISTENCIES/`.
+
+If either set is empty, skip that commit.
+
+### Step 9: Produce the parent-level summary
+
+Print a final report:
+- Number of ACTIVE chunks audited.
+- Number of tense rewrites applied (chunks).
+- Number of inconsistency entries written (with filenames listed).
+- Any sub-agent escalations or skips.
+- Pointer to the inconsistency log for operator triage.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Detector false positives.** A chunk's prose may use `was` or `the fix:` in a context that's already present-tense (e.g., describing a historical event the current system records). Sub-agents need to apply judgment — the rule is "would changing this to present tense make it false?" not "does this string appear?" Risk is wasted effort or unwanted rewrites; mitigation is the "leave alone + log" escape hatch.
+- **Detector false negatives.** Chunks with subtle retrospective framing (no obvious tells) may slip through. The audit can be re-run with sharper detectors later; this run isn't expected to be comprehensive against subtle cases.
+- **Sub-agent variance in rewrite quality.** Different sub-agents may produce stylistically different rewrites. Acceptable for a first pass — the goal is to remove lies, not to achieve uniform prose. If quality varies wildly, a follow-up polish pass is cheap.
+- **Concurrency safety on inconsistency entries.** The README documents microsecond-precision timestamps. Sub-agents writing entries at near-identical times *could* collide if both call `datetime.now()` within the same microsecond and pick the same slug. Slug includes chunk name, which is unique per chunk, so two sub-agents writing for different chunks can't collide. Two entries about the same chunk (one per failure mode) include the failure_mode in the slug. Effectively zero collision risk in practice.
+- **Working tree contamination.** Sub-agents might accidentally modify files outside their scope. Mitigation: the parent reviews `git status` before committing; anything unexpected gets investigated.
+- **`intent_principles` and `respect_future_intent` are the only known anchors.** If the detectors run and find *only* the anchors with no other hits across 150+ chunks, that's suspicious — most likely a detector bug. Spot-check a few random chunks manually if the count is suspiciously low.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->
