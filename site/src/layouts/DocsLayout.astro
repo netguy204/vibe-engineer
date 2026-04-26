@@ -11,8 +11,13 @@ interface Props {
 const { title } = Astro.props;
 
 const sidebarItems = [
-  { href: '/docs/', label: 'Getting Started' },
-  { href: '/docs/concepts/', label: 'Concepts' },
+  { href: '/docs/', label: 'Quickstart' },
+  { href: '/docs/who-this-is-for/', label: 'Who this is for' },
+  { href: '/docs/chunks/', label: 'Chunks' },
+  { href: '/docs/narratives/', label: 'From narratives', nested: true },
+  { href: '/docs/investigations/', label: 'From investigations', nested: true },
+  { href: '/docs/friction/', label: 'From friction', nested: true },
+  { href: '/docs/orchestrator/', label: 'Orchestrator' },
 ];
 
 const currentPath = Astro.url.pathname;
@@ -27,14 +32,14 @@ const currentPath = Astro.url.pathname;
       <select class="docs-mobile-nav" aria-label="Documentation navigation">
         {sidebarItems.map(item => (
           <option value={item.href} selected={currentPath === item.href}>
-            {item.label}
+            {item.nested ? `  ${item.label}` : item.label}
           </option>
         ))}
       </select>
       <nav class="docs-desktop-nav" aria-label="Documentation">
         <ul>
           {sidebarItems.map(item => (
-            <li>
+            <li class:list={{ nested: item.nested }}>
               <a href={item.href} class:list={{ active: currentPath === item.href }}>
                 {item.label}
               </a>
@@ -49,6 +54,17 @@ const currentPath = Astro.url.pathname;
     </article>
   </div>
 </BaseLayout>
+
+<script>
+  // Wire the mobile nav <select> to actually navigate on change.
+  const mobileNav = document.querySelector<HTMLSelectElement>('.docs-mobile-nav');
+  mobileNav?.addEventListener('change', (event) => {
+    const target = event.target as HTMLSelectElement;
+    if (target.value && target.value !== window.location.pathname) {
+      window.location.href = target.value;
+    }
+  });
+</script>
 
 <style>
   .docs-wrapper {
@@ -85,12 +101,20 @@ const currentPath = Astro.url.pathname;
     margin-bottom: var(--space-sm);
   }
 
+  .docs-desktop-nav li.nested {
+    padding-left: var(--space-md);
+  }
+
   .docs-desktop-nav a {
     color: var(--text-muted);
     text-decoration: none;
     font-size: 14px;
     padding: var(--space-xs) 0;
     display: block;
+  }
+
+  .docs-desktop-nav li.nested a {
+    font-size: 13px;
   }
 
   .docs-desktop-nav a:hover,

@@ -1,0 +1,124 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="From friction">
+  <h2>Chunks from friction</h2>
+
+  <div class="evolving-notice">
+    <span class="evolving-label">Evolving</span>
+    <p>
+      The friction log works today and is useful, but the design isn't
+      finalized. The implementation may change, significant rethinking
+      is possible, and input is welcome.
+    </p>
+  </div>
+
+  <p>
+    The friction log is an accumulative ledger. You write down pain points as
+    you hit them: something that almost worked, a workflow gap, a confusing
+    CLI behavior, a doc that lied. The log doesn't fix anything by itself;
+    it remembers, so a pattern can emerge.
+  </p>
+  <p>
+    When three or more entries cluster around a theme, that's signal:
+    there's probably <em>something to do</em> in there. Whether it's a
+    chunk or just something to vibe depends on what the work looks like
+    once the pattern is named. A chunk if the resolution carries
+    architectural intent. Vibe it if it's a mechanical fix the code
+    doesn't need to remember.
+  </p>
+
+  <h3>Logging</h3>
+  <p>
+    Friction is captured with the <code>/friction-log</code> skill.
+    Describe what bit you and ask the agent to log it; the skill picks
+    the theme, writes a short description, and appends an entry to
+    <code>docs/trunk/FRICTION.md</code> (calling
+    <code>ve friction log</code> underneath). Each entry has an ID, a
+    date, a theme tag, and a short description:
+  </p>
+  <pre><code>### F012: 2026-04-26 [orchestrator] Hard to tell why a chunk was flagged
+
+The attention queue shows that my_chunk needs attention but doesn't say
+which other chunk it conflicts with. I had to grep the daemon logs to
+figure out it was the parallel auth refactor.</code></pre>
+  <p>
+    Themes are loose categories that grow over time:
+    <code>orchestrator</code>, <code>cli</code>, <code>docs</code>,
+    <code>workflow</code>. Use an existing theme if it fits; add a new one
+    when nothing matches.
+  </p>
+
+  <h3>The lifecycle is derived</h3>
+  <p>
+    Entries don't have a status field. Their lifecycle is computed from the
+    rest of the document:
+  </p>
+  <table>
+    <thead>
+      <tr><th>State</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>OPEN</code></td><td>Entry isn't referenced by any proposed chunk.</td></tr>
+      <tr><td><code>ADDRESSED</code></td><td>Entry appears in a <code>proposed_chunks.addresses</code> list and the chunk has been created.</td></tr>
+      <tr><td><code>RESOLVED</code></td><td>The chunk that addresses the entry has reached <code>ACTIVE</code>.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    No one sets these. They follow from the relationship between the friction
+    entry and the chunk that addresses it.
+  </p>
+
+  <h3>From pattern to chunk</h3>
+  <p>
+    When a theme has accumulated enough (typically three or more
+    entries with a shared root cause), tell the agent to add a proposed
+    chunk to the friction log's frontmatter that addresses the cluster.
+    The frontmatter ends up looking like this:
+  </p>
+  <pre><code>proposed_chunks:
+  - prompt: "Surface conflict reasons in the orchestrator attention queue"
+    chunk_directory: null
+    addresses:
+      - "F001: Over-eager conflict oracle causes unnecessary blocking"
+      - "F004: Hard to tell why a chunk was flagged"
+      - "F011: Operator can't see which chunk caused a conflict"</code></pre>
+  <p>
+    <code>addresses</code> is a list of entry titles: the friction this
+    chunk would resolve. Once the chunk is created and reaches
+    <code>ACTIVE</code>, the listed entries are derived as
+    <code>RESOLVED</code>.
+  </p>
+
+  <h3>Realizing the chunk</h3>
+  <p>
+    Run the intent test on the proposal first: does the resolution
+    carry architectural intent that future contributors will need to
+    reconstruct? If yes, ask the agent to materialize it as a FUTURE
+    chunk. If no, the friction is real but the fix is just something
+    to vibe; close the friction entries when the fix lands and skip
+    the chunk.
+  </p>
+  <p>
+    When the agent materializes the chunk, it updates the proposed
+    chunk's <code>chunk_directory</code> in FRICTION.md to point at
+    the new directory. The friction-to-chunk linkage is now closed;
+    subsequent runs of <code>ve chunk list-proposed</code> won't
+    surface it as outstanding.
+  </p>
+
+  <h3>Why log friction at all</h3>
+  <p>
+    Real friction is hard to remember in the moment when you're trying
+    to ship something else. The log lets you keep moving and gives a
+    future you (or another agent) a map of where the rough edges
+    actually are. The patterns in the log are usually more honest
+    than a planning meeting would be.
+  </p>
+  <p>
+    Run <code>ve friction analyze</code> when the log gets long. It
+    surfaces themes that have crossed the "probably a chunk" threshold
+    and suggests where to look next.
+  </p>
+</DocsLayout>

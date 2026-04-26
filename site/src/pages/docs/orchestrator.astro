@@ -1,0 +1,238 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Orchestrator">
+  <h2>Orchestrator</h2>
+  <p>
+    The orchestrator is a team of decent engineers who understand your
+    codebase. Architecture is staked out by chunks, discoverable through
+    code backreferences; a new chunk that arrives with just a defined
+    goal can be reliably implemented by a team that already understands
+    what it's building on. You hand them chunks; they do the work in
+    dedicated workspaces and send each chunk back to you the moment
+    it's done.
+  </p>
+  <p>
+    The orchestrator turns your understanding of a large swath of
+    architecture into implementation while you sleep.
+  </p>
+
+  <h3>Mental model</h3>
+  <p>
+    When you inject a chunk, the orchestrator creates a git worktree off
+    your project's active branch and runs the chunk's full lifecycle
+    inside that worktree: plan, implement, review, complete. Review is
+    optional in manual mode; the orchestrator always runs it. Once
+    complete finishes, the orchestrator merges the worktree back to the
+    active branch in the directory you launched it from. Each completed
+    chunk lands as its own commit, which makes the work easy to read
+    chunk-by-chunk afterward.
+  </p>
+  <p>
+    When chunks interact, declare it in their <code>depends_on</code>
+    frontmatter. The orchestrator schedules them in dependency order so
+    each chunk builds on its predecessors. When chunks don't interact,
+    the orchestrator runs them in parallel, each in its own worktree
+    with its own agent. The same model the chunk page describes still
+    holds: at most one <code>IMPLEMENTING</code> chunk per worktree,
+    enforced across many worktrees at once.
+  </p>
+
+  <h3>Starting it</h3>
+  <pre><code>$ ve orch start
+$ ve orch status</code></pre>
+  <p>
+    The daemon runs in the background. <code>ve orch stop</code> shuts
+    it down.
+  </p>
+
+  <h3>Injecting a chunk</h3>
+  <p>
+    A chunk has to be committed before injection. The orchestrator works
+    from git state, not your working directory.
+  </p>
+  <pre><code>$ git add docs/chunks/my_chunk/
+$ git commit -m "feat(chunks): add my_chunk"
+$ ve orch inject my_chunk</code></pre>
+  <p>
+    The orchestrator creates a worktree off the active branch, picks up
+    the chunk, and starts the lifecycle. You can keep working on the
+    active branch in the meantime; the worktree is isolated.
+  </p>
+
+  <div class="docs-callout">
+    <p>
+      <strong>Don't manually flip a chunk to <code>IMPLEMENTING</code>
+      before injecting.</strong> The orchestrator manages status
+      transitions for chunks under its control. Inject the chunk in
+      <code>FUTURE</code>; the orchestrator activates it inside the
+      worktree.
+    </p>
+  </div>
+
+  <h3>The review loop</h3>
+  <p>
+    Review is the orchestrator's quality gate. After implement finishes,
+    the orchestrator spawns a fresh subagent to compare the goal and
+    plan against the implemented code and write a decision. On
+    <code>APPROVE</code>, the chunk proceeds to complete. On
+    <code>FEEDBACK</code>, the orchestrator loops back to implement
+    with the reviewer's notes. The loop is bounded at three iterations;
+    a fourth review escalates the chunk to
+    <code>NEEDS_ATTENTION</code> for operator input.
+  </p>
+  <p>
+    The fresh context is what makes review catch things. An implementing
+    agent holding goal, plan, and code in a single window for hours
+    starts to lose the gap between what the goal asked for and what the
+    code does. A new agent reading both side by side catches success
+    criteria partially addressed, constraints rationalized past, edge
+    cases never tested. See the
+    <a href="/docs/chunks/#reviewing">Reviewing section</a> on the
+    chunks page for more.
+  </p>
+
+  <h3>Watching what's happening</h3>
+  <pre><code>$ ve orch ps              # all work units and their states
+$ ve orch queue           # what's ready, ordered by priority
+$ ve orch tail my_chunk   # stream the agent's log for one work unit
+$ ve orch url             # open the dashboard</code></pre>
+
+  <h3>Attention items</h3>
+  <p>
+    A work unit moves to <code>NEEDS_ATTENTION</code> when it has a
+    question, a conflict with another in-flight chunk, a phase that
+    failed, or an escalated review. View the queue:
+  </p>
+  <pre><code>$ ve orch attention</code></pre>
+
+  <p>The four kinds you'll see most often:</p>
+
+  <h4>A question</h4>
+  <p>The agent needs context only the operator (or another agent) has.</p>
+  <pre><code>$ ve orch answer my_chunk "Use the v2 token endpoint, not v1."</code></pre>
+
+  <h4>A conflict</h4>
+  <p>Two chunks touch the same code in incompatible ways.</p>
+  <pre><code>$ ve orch resolve my_chunk --with other_chunk parallelize
+# or
+$ ve orch resolve my_chunk --with other_chunk serialize</code></pre>
+  <p>
+    <code>parallelize</code> tells the orchestrator the changes are
+    independent enough to merge in either order. <code>serialize</code>
+    says one must finish before the other starts.
+  </p>
+
+  <h4>A review escalation</h4>
+  <p>
+    The reviewer asked for changes three times and the implementer
+    couldn't satisfy them. Read the latest decision file in
+    <code>docs/reviewers/&lt;reviewer&gt;/decisions/</code>, decide what
+    to do (refine the goal, accept the implementation as-is, abandon
+    the chunk), and resume.
+  </p>
+
+  <h4>A failure</h4>
+  <p>
+    A phase failed. The worktree is preserved automatically so you can
+    inspect it, fix the issue, and retry.
+  </p>
+  <pre><code>$ ve orch tail my_chunk          # see what failed
+$ cd .ve/chunks/my_chunk/worktree
+# investigate, commit any uncommitted work
+$ ve orch retry my_chunk</code></pre>
+
+  <h3><code>/orchestrator-investigate</code></h3>
+  <p>
+    When something has gone wrong in the orchestrator and you don't
+    want to figure it out yourself, run
+    <code>/orchestrator-investigate</code>. The skill explores the
+    orchestrator's state, answers questions from stalled agents, works
+    around bugs that left work units stuck, and recovers from just
+    about any state you can land in. Reach for it when the attention
+    queue isn't clearing, a work unit won't move, or you'd rather have
+    an agent triage everything than walk through the queue yourself.
+  </p>
+
+  <h3>Worktrees and retention</h3>
+  <p>
+    Worktrees live under <code>.ve/chunks/&lt;name&gt;/worktree</code>.
+    By default they are removed after the work unit completes (the
+    chunk's commit is already on your active branch by then). Use
+    <code>--retain</code> to keep a worktree for inspection:
+  </p>
+  <pre><code>$ ve orch inject my_chunk --retain</code></pre>
+
+  <p>Manage retained worktrees:</p>
+  <pre><code>$ ve orch worktree list                # show status of all worktrees
+$ ve orch worktree prune               # merges and cleans up
+$ ve orch worktree prune --dry-run     # preview what would be pruned
+$ ve orch worktree remove my_chunk     # drops without merging</code></pre>
+  <p>
+    <code>prune</code> is the safe operation. It merges any uncommitted
+    work back to the base branch before removing the worktree.
+    <code>remove</code> drops the worktree as-is; uncommitted changes
+    are lost.
+  </p>
+  <p>
+    The orchestrator warns when retained worktrees exceed a threshold
+    (default 10) so disk usage doesn't surprise you. Adjust with
+    <code>ve orch config --worktree-threshold N</code>.
+  </p>
+
+  <h3>Submitting a batch of FUTURE chunks</h3>
+  <p>
+    A narrative or investigation often produces several
+    <code>FUTURE</code> chunks at once. Hand them all to the
+    orchestrator in one step:
+  </p>
+  <pre><code>/orchestrator-submit-future</code></pre>
+  <p>
+    The skill finds every committed <code>FUTURE</code> chunk that
+    isn't already in the orchestrator and injects it. The orchestrator
+    sorts the batch by <code>depends_on</code> and schedules
+    accordingly: dependents wait for their predecessors, independent
+    chunks run in parallel.
+  </p>
+
+  <h3>Trigger phrases</h3>
+  <p>
+    The slash commands that drive the orchestrator
+    (<code>/orchestrator-inject</code>,
+    <code>/orchestrator-submit-future</code>,
+    <code>/orchestrator-investigate</code>,
+    <code>/orchestrator-monitor</code>) are the easiest entry. When you
+    say "in the background" to your agent, you're telling it to use the
+    orchestrator. The agent will create or commit the chunk as needed
+    and inject it for you.
+  </p>
+
+  <h3>Working with the orchestrator</h3>
+  <p>
+    A vibe engineer using the orchestrator typically hands off large
+    bodies of work and doesn't see the code until it goes to PR. At PR
+    time you take on the role of an engineering manager, making sure
+    the intent is being maintained in broad strokes. Some PRs you'll
+    review nitpickily, leaving a lot of comments and then telling your
+    agent to resolve them all. Most of the time you accept a bit of
+    distance from the code in exchange for the leverage.
+  </p>
+  <p>
+    The engineering-manager role also includes QA. Start up what was
+    built, run it, and check that the feature actually makes sense. If
+    the work is more like a data pipeline, prompt a separate agent to
+    test the pipeline's invariants under a variety of scenarios and
+    verify that the tests it writes are valid. The pattern across the
+    role: let the agent lead the investigation, debugging, and
+    test-writing while you verify that its methodology is sound.
+  </p>
+
+  <h3>What it feels like</h3>
+  <p>
+    Working with the orchestrator at full tilt feels like having a
+    highly competent team bring your architecture vision into reality
+    at unbelievable speed, with you serving just the role of providing
+    judgment.
+  </p>
+</DocsLayout>

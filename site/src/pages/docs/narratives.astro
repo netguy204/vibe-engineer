@@ -1,0 +1,128 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="From narratives">
+  <h2>Chunks from narratives</h2>
+  <p>
+    A narrative is a multi-chunk initiative with the decomposition done up
+    front. It's a vehicle for generating chunks; the chunks are what stake
+    out the architecture. Use it when you can sketch the whole shape of
+    the work and each piece carries enough intent to deserve its own
+    chunk.
+  </p>
+
+  <h3>When to reach for one</h3>
+  <ul>
+    <li>The work has three or more chunks worth of intent-bearing scope.</li>
+    <li>You can describe the end state and the major steps from where you sit today.</li>
+    <li>Splitting up front would help with scheduling, parallelism, or review.</li>
+  </ul>
+  <p>
+    If you can't sketch the steps yet, you don't want a narrative. You want
+    an <a href="/docs/investigations/">investigation</a>. If the work
+    decomposes into a long list of mechanical edits with no architectural
+    decisions to record, you don't want a narrative or chunks for it at
+    all. Vibe it.
+  </p>
+
+  <h3>Creating</h3>
+  <p>
+    Narratives are created with the <code>/narrative-create</code> skill.
+    The natural workflow is to brain-dump the initiative to the agent
+    (what you're trying to build, why it matters, the rough shape of the
+    arc) and ask the agent to use the skill to capture what you just
+    said. The skill scaffolds <code>OVERVIEW.md</code> from a template,
+    calling <code>ve narrative create</code> underneath. You and the
+    agent then iterate on <code>OVERVIEW.md</code> until it captures the
+    arc you're trying to paint.
+  </p>
+  <p><code>OVERVIEW.md</code> has two key sections:</p>
+  <ul>
+    <li><strong>Advances Trunk Goal:</strong> how this initiative connects to the project's goal in <code>docs/trunk/GOAL.md</code>.</li>
+    <li><strong>Proposed Chunks:</strong> the prompts that will become real chunks.</li>
+  </ul>
+
+  <h3>Proposing chunks</h3>
+  <p>The narrative's frontmatter holds the proposed-chunk list:</p>
+  <pre><code>proposed_chunks:
+  - prompt: "Add the new card-on-file model and migration"
+    chunk_directory: null
+  - prompt: "Wire the v2 payment endpoint to the new model"
+    chunk_directory: null
+  - prompt: "Migrate existing customers in the background"
+    chunk_directory: null</code></pre>
+  <p>
+    <code>chunk_directory</code> is null until the chunk has been created.
+    To see what's outstanding, two CLI commands help:
+  </p>
+  <pre><code>$ ve chunk list-proposed     # all proposals (across narratives,
+                             # investigations, and the friction log)
+                             # that haven't been turned into chunks yet
+$ ve chunk list --future     # all chunks that exist but aren't being
+                             # implemented yet</code></pre>
+
+  <h3>Realizing the chunks</h3>
+  <p>
+    Before turning a proposed chunk into a real one, run the intent test on
+    it: does the code that results need to remember why it exists? A
+    proposal that fails the test isn't a chunk waiting to happen. It's
+    work to vibe when the time comes. Strike those proposals from the
+    narrative or mark them as out-of-chunk-system work.
+  </p>
+  <p>
+    For the proposals that pass: ask the agent to materialize them. You
+    don't run <code>ve chunk create</code> by hand. The natural prompt is
+    something like <em>"turn the proposed chunks in the
+    payment_methods_v2 narrative into FUTURE chunks."</em> The agent
+    iterates through the list, runs <code>/chunk-create</code> for each
+    (with <code>--future</code> under the hood), and refines each
+    <code>GOAL.md</code> against the narrative's framing and the existing
+    code.
+  </p>
+  <p>
+    Once the chunks exist, you walk the goals one by one and decide
+    whether each one fits your vision. Goals that miss get refined or
+    rewritten; chunks that no longer fit the narrative get pulled. Each
+    chunk's <code>GOAL.md</code> references the parent narrative in its
+    frontmatter:
+  </p>
+  <pre><code>narrative: payment_methods_v2</code></pre>
+  <p>
+    When an agent reads a chunk later, the narrative reference tells it
+    where to look for shared context: the framing decisions, the order of
+    operations, the why.
+  </p>
+
+  <h3>Workflow</h3>
+  <ol>
+    <li>Brain-dump the initiative to the agent: what you're building, why, the rough shape.</li>
+    <li>Ask the agent to use <code>/narrative-create</code> to capture it. Iterate on <code>OVERVIEW.md</code> with the agent until it captures the arc.</li>
+    <li>Ask the agent to materialize the proposed chunks as FUTURE chunks.</li>
+    <li>Walk each chunk's <code>GOAL.md</code> and decide whether it fits your vision; refine in turn or in parallel.</li>
+    <li>
+      Activate one chunk with <code>ve chunk activate &lt;name&gt;</code>
+      and drive it through the usual workflow. Or, if the architecture
+      is already well-defined and you're confident enough in how your
+      goals will be interpreted to skip reading each plan file, inject
+      the whole narrative into the
+      <a href="/docs/orchestrator/">orchestrator</a> and have it solve
+      the chunks in dependency order in the background while you sleep.
+    </li>
+  </ol>
+
+  <h3>Narratives are scaffolding</h3>
+  <p>
+    Once a narrative has spawned its chunks, the narrative has done its
+    work. The chunks now own the architectural intent and get maintained
+    as the code evolves. The narrative itself drifts: proposed chunks
+    that didn't pan out, descriptions that no longer match what shipped,
+    an arc that turned out to bend differently in practice. That's
+    expected.
+  </p>
+  <p>
+    Don't try to keep <code>OVERVIEW.md</code> in sync with the code. The
+    narrative was the vehicle for generating the chunks; the chunks are
+    what stake out the architecture from here.
+  </p>
+</DocsLayout>

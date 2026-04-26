@@ -2,7 +2,136 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 ---
 
-<DocsLayout title="Getting Started">
-  <h2>Getting Started</h2>
-  <p>Documentation coming soon.</p>
+<DocsLayout title="Quickstart">
+  <h2>Quickstart</h2>
+  <p>
+    <code>ve</code> is a CLI for organizing AI-assisted code changes around
+    architectural intent. Engineering isn't about writing code; it's about
+    making architectural choices that hold the implementation in productive
+    shape over time. Code owns <em>how</em> the system works: mutable,
+    refactorable, tactical. <strong>Chunks</strong> are pieces of
+    architecture work bound to that code. They own <em>why</em> a piece of
+    the system has the shape it has, and stay current as the implementation
+    evolves underneath them. Most engineering effort with <code>ve</code>
+    goes into chunks; agents handle the typing.
+  </p>
+  <p>
+    This page gets you from zero to a completed first chunk.
+  </p>
+
+  <h3>1. Install</h3>
+  <pre><code>$ uv tool install vibe-engineer</code></pre>
+  <p>
+    <code>pip install vibe-engineer</code> works too. <code>ve</code> is a
+    Python package; it has no opinions about your project's language.
+  </p>
+
+  <h3>2. Initialize a project</h3>
+  <pre><code>$ cd path/to/your/project
+$ ve init</code></pre>
+
+  <p>What this creates:</p>
+  <ul>
+    <li><code>docs/trunk/</code>: project-level docs (GOAL, SPEC, DECISIONS, TESTING_PHILOSOPHY)</li>
+    <li><code>docs/chunks/</code>: where each chunk lives</li>
+    <li><code>.claude/commands/</code>: slash commands your agent can use</li>
+    <li><code>CLAUDE.md</code>: orientation for the agent</li>
+  </ul>
+  <p>
+    <code>ve init</code> is idempotent. Existing files are not overwritten,
+    so it's safe to run on a project you've already touched.
+  </p>
+
+  <h3>3. Write down the project goal</h3>
+  <p>
+    Open <code>docs/trunk/GOAL.md</code> and replace the template with one
+    or two paragraphs about what this project is, who it's for, and what
+    "done" would look like. This is the anchor every chunk traces back to.
+    You don't have to get it perfect; you can revise as you learn.
+  </p>
+
+  <h3>4. Pick something chunk-worthy</h3>
+  <p>
+    Not every change earns a chunk. Apply one test:
+    <strong>does this code need to remember why it exists?</strong>
+  </p>
+  <ul>
+    <li><strong>Yes:</strong> there's a contested design decision, a constraint that future contributors will accidentally break, or a tradeoff worth recording. Make a chunk.</li>
+    <li><strong>No:</strong> typo, dep bump, mechanical rename, an off-by-one that was just wrong. Vibe it; commit and move on. A chunk would add ceremony without adding memory. (Both paths end in a commit; the difference is whether you're recording architectural intent on the way.)</li>
+  </ul>
+  <p>
+    For your first chunk, pick something on the "yes" side. A small but
+    real architectural decision is the cleanest first run.
+  </p>
+
+  <h3>5. Run <code>/chunk-create</code></h3>
+  <pre><code>/chunk-create my_first_change</code></pre>
+  <p>
+    The skill scaffolds the chunk directory and walks you through writing
+    <code>GOAL.md</code>, refining your vibey intent in light of the
+    existing code and the project's trunk goal. This is where the
+    architecture work happens. Under the hood the skill calls
+    <code>ve chunk create</code> to instantiate the templates; you'll see
+    this pattern across <code>ve</code>, where slash commands are the
+    operator-facing surface and CLI commands are the plumbing.
+  </p>
+  <p>
+    A chunk directory now exists at <code>docs/chunks/my_first_change/</code>
+    with two files:
+  </p>
+  <ul>
+    <li><code>GOAL.md</code>: the architectural record. Why the code has the shape it has, written in present tense so it ages well.</li>
+    <li><code>PLAN.md</code>: still a template at this point. The next skill fills it in.</li>
+  </ul>
+  <p>
+    Status is <code>IMPLEMENTING</code>. Only one chunk can be
+    <code>IMPLEMENTING</code> at a time per worktree, which keeps an
+    agent's attention bounded.
+  </p>
+
+  <h3>6. Run <code>/chunk-plan</code></h3>
+  <pre><code>/chunk-plan</code></pre>
+  <p>
+    The skill writes <code>PLAN.md</code>: a literate-programming bridge
+    from the codebase as it stands today to the codebase that satisfies
+    the goal. Read it. If the plan goes somewhere surprising, the goal
+    didn't constrain the solution tightly enough; refine the goal and
+    regenerate the plan. If the plan reads as the path you'd have taken,
+    the goal was specific enough.
+  </p>
+
+  <h3>7. Run <code>/chunk-implement</code></h3>
+  <pre><code>/chunk-implement</code></pre>
+  <p>
+    The agent works through the plan. When it writes code that the chunk's
+    intent governs, it adds a backreference comment near the top:
+  </p>
+  <pre><code># Chunk: docs/chunks/my_first_change - Brief description</code></pre>
+  <p>
+    The next agent that reads the code follows that comment back to the
+    chunk and learns why the code is the way it is. Backreferences
+    accumulate as chunks land; the codebase teaches the next agent instead
+    of handing it a blank slate.
+  </p>
+
+  <h3>8. Run <code>/chunk-complete</code></h3>
+  <pre><code>/chunk-complete</code></pre>
+  <p>
+    The skill walks the chunk's <code>code_references</code>, verifies
+    they resolve to real symbols, fills in any references the agent
+    collected during implement, and flips status from
+    <code>IMPLEMENTING</code> to <code>ACTIVE</code>. It also scans for
+    other chunks that govern the same code, surfacing potential
+    <code>COMPOSITE</code> situations early. The chunk now owns the
+    intent that governs the code it produced.
+  </p>
+
+  <h3>What next</h3>
+  <ul>
+    <li>Most days are a sequence of chunks. <a href="/docs/chunks/">Chunks</a> walks the model in detail: status as ownership, GOAL.md as architectural record, when not to chunk.</li>
+    <li>When work is too big for one chunk, write a <a href="/docs/narratives/">narrative</a> first.</li>
+    <li>When you don't yet know what the work should be, run an <a href="/docs/investigations/">investigation</a>.</li>
+    <li>Pain points you keep hitting? Log them in the <a href="/docs/friction/">friction log</a>.</li>
+    <li>To run multiple chunks in parallel, use the <a href="/docs/orchestrator/">orchestrator</a>.</li>
+  </ul>
 </DocsLayout>

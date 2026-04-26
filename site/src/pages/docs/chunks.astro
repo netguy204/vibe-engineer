@@ -1,0 +1,575 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Chunks">
+  <h2>Chunks</h2>
+  <p>
+    Engineering isn't about writing code. It's about making architectural
+    choices that can hold an implementation in productive shape over time.
+    Chunks are the mechanism for those choices, which is why most of the
+    human effort of engineering with <code>ve</code> goes into building
+    good ones. The boring typing gets deferred to agents.
+  </p>
+  <p>
+    A chunk is a piece of architecture work bound to implementation. It
+    captures the constraints, decisions, and boundaries that give a piece
+    of the system its shape, then holds that record steady as the code
+    evolves underneath it. Each chunk contains a goal, a plan, code
+    references back to the implementation it describes, and a status
+    tracking how much of that architecture it currently owns.
+  </p>
+
+  <p>
+    If you have worked with PRDs and TDDs, GOAL.md and PLAN.md will feel
+    familiar. They cover similar ground at a different scope, for a
+    different reader.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>PRD</th>
+        <th>TDD</th>
+        <th>GOAL.md</th>
+        <th>PLAN.md</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Answers</strong></td>
+        <td>What to build and why</td>
+        <td>How to build it</td>
+        <td>Why the code is the way it is</td>
+        <td>How to get from here to the goal</td>
+      </tr>
+      <tr>
+        <td><strong>Written by</strong></td>
+        <td>Product</td>
+        <td>Engineering</td>
+        <td>Engineer + AI</td>
+        <td>AI</td>
+      </tr>
+      <tr>
+        <td><strong>Read by</strong></td>
+        <td>Engineering team</td>
+        <td>Engineering team</td>
+        <td>Agent, then engineers</td>
+        <td>Implementing agent and reviewing engineer</td>
+      </tr>
+      <tr>
+        <td><strong>Scope</strong></td>
+        <td>Product initiative</td>
+        <td>Technical approach</td>
+        <td>Single chunk's intent</td>
+        <td>Single chunk's path</td>
+      </tr>
+      <tr>
+        <td><strong>Lifespan</strong></td>
+        <td>Project lifetime</td>
+        <td>Project lifetime</td>
+        <td>Evolves with the code</td>
+        <td>Discarded after completion</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Lifecycle</h3>
+  <p>
+    Each phase produces an artifact the next phase reads. The goal grounds
+    the plan. The plan grounds the implementation. Review (optional in
+    manual mode; always run by the orchestrator) compares the
+    implementation against the goal and the plan and decides whether
+    it's ready. Completion creates forward references from the chunk to
+    the code it governs. Nothing is thrown away; everything compounds.
+  </p>
+
+  <div class="chunk-evolution">
+    <input type="radio" name="evo" id="evo-create" checked class="evo-input" />
+    <input type="radio" name="evo" id="evo-plan" class="evo-input" />
+    <input type="radio" name="evo" id="evo-implement" class="evo-input" />
+    <input type="radio" name="evo" id="evo-review" class="evo-input" />
+    <input type="radio" name="evo" id="evo-complete" class="evo-input" />
+
+    <div class="lifecycle evo-stepper">
+      <label for="evo-create" class="step">Create</label>
+      <span class="arrow">&rarr;</span>
+      <label for="evo-plan" class="step">Plan</label>
+      <span class="arrow">&rarr;</span>
+      <label for="evo-implement" class="step">Implement</label>
+      <span class="arrow">&rarr;</span>
+      <label for="evo-review" class="step">Review</label>
+      <span class="arrow">&rarr;</span>
+      <label for="evo-complete" class="step">Complete</label>
+    </div>
+
+    <div class="evo-panel evo-panel-create">
+      <p class="evo-caption">
+        Brain-dump your intent; ask the agent to use
+        <code>/chunk-create</code>. The skill scaffolds the directory
+        and shapes the dump into a clear <code>GOAL.md</code>. The plan
+        is still a template.
+      </p>
+      <div class="evo-tree"><pre><code>docs/
+└── chunks/
+    └── auth_session_refresh/
+        ├── <span class="evo-changed">GOAL.md</span>      <span class="evo-tag">refined</span>
+        └── <span class="evo-dim">PLAN.md</span>      <span class="evo-tag-dim">template</span></code></pre></div>
+      <p class="evo-filename">docs/chunks/auth_session_refresh/GOAL.md</p>
+      <pre><code>---
+status: IMPLEMENTING
+ticket: null
+code_paths: []
+code_references: []
+---
+
+# Goal: Refresh expired auth sessions
+
+## Behavior
+Users remain logged in as long as their browser is recognized,
+until they explicitly log out.
+
+## Success Criteria
+- A request with an expired access token but valid refresh
+  token completes without redirect.
+- Refresh failure surfaces as 401.
+
+## Constraints
+- No change to the public API.
+- Refresh tokens must rotate on use.
+
+## Out of Scope
+- Login UI changes.
+- Logging out devices remotely.</code></pre>
+    </div>
+
+    <div class="evo-panel evo-panel-plan">
+      <p class="evo-caption">
+        <code>/chunk-plan</code> turns the goal into ordered steps. The
+        plan references the existing code the implementation will touch.
+      </p>
+      <div class="evo-tree"><pre><code>docs/
+└── chunks/
+    └── auth_session_refresh/
+        ├── GOAL.md
+        └── <span class="evo-changed">PLAN.md</span>      <span class="evo-tag">filled</span></code></pre></div>
+      <p class="evo-filename">docs/chunks/auth_session_refresh/PLAN.md</p>
+      <pre><code># Plan: Refresh expired auth sessions
+
+## Step 1: Detect expired access tokens in middleware
+`src/auth/middleware.py` owns the JWT check. When `jwt.decode`
+raises `ExpiredSignatureError`, fall through to the refresh
+path instead of returning 401 immediately.
+
+## Step 2: Rotate the refresh token before retry
+Call `auth_service.rotate_refresh_token(...)` to obtain a new
+access + refresh pair. Persist the new refresh; revoke the old.
+
+## Step 3: Retry once with the new access token
+On rotation success, replace the request's Authorization header
+and re-dispatch the route handler. On rotation failure, return
+401.
+
+## Step 4: Test coverage
+Add an integration test for the expired-token + valid-refresh
+path. Confirm the public API contract is unchanged.</code></pre>
+    </div>
+
+    <div class="evo-panel evo-panel-implement">
+      <p class="evo-caption">
+        <code>/chunk-implement</code> works through the plan. Code that
+        the chunk's intent governs lands in <code>src/</code> with a
+        backreference comment pointing back to the chunk.
+      </p>
+      <div class="evo-tree"><pre><code>docs/
+└── chunks/
+    └── auth_session_refresh/
+        ├── GOAL.md
+        └── PLAN.md
+src/
+└── auth/
+    └── <span class="evo-changed">middleware.py</span>    <span class="evo-tag">new</span></code></pre></div>
+      <p class="evo-filename">src/auth/middleware.py</p>
+      <pre><code><span class="evo-bref"># Chunk: docs/chunks/auth_session_refresh - Refresh expired sessions via rotation</span>
+
+from fastapi import Request, Response
+from .service import auth_service, ExpiredSignatureError, RotationFailed
+
+
+async def refresh_session_if_expired(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except ExpiredSignatureError:
+        try:
+            new_access, new_refresh = auth_service.rotate_refresh_token(
+                request.cookies.get("refresh_token")
+            )
+        except RotationFailed:
+            return Response(status_code=401)
+
+        request.headers["authorization"] = f"Bearer &#123;new_access&#125;"
+        response = await call_next(request)
+        response.set_cookie("refresh_token", new_refresh, httponly=True)
+        return response</code></pre>
+    </div>
+
+    <div class="evo-panel evo-panel-review">
+      <p class="evo-caption">
+        <code>/chunk-review</code> spawns a fresh subagent with no prior
+        context to compare goal, plan, and implementation. The reviewer
+        decides <code>APPROVE</code> (proceed to complete),
+        <code>FEEDBACK</code> (loop back to implement with specific
+        issues to address), or <code>ESCALATE</code> (operator input
+        needed). Optional in manual mode; the
+        <a href="/docs/orchestrator/">orchestrator</a> always runs it.
+      </p>
+      <div class="evo-tree"><pre><code>docs/
+├── chunks/
+│   └── auth_session_refresh/
+│       ├── GOAL.md
+│       └── PLAN.md
+└── reviewers/
+    └── baseline/
+        └── decisions/
+            └── <span class="evo-changed">auth_session_refresh_1.md</span>      <span class="evo-tag">APPROVE</span>
+src/
+└── auth/
+    └── middleware.py</code></pre></div>
+      <p class="evo-filename">docs/reviewers/baseline/decisions/auth_session_refresh_1.md</p>
+      <pre><code>---
+decision: APPROVE
+summary: "Implementation matches the goal; success
+  criteria met by refresh_session_if_expired."
+operator_review: null
+---
+
+## Criteria Assessment
+
+### Criterion 1: Expired access token + valid refresh
+  completes without redirect
+- **Status**: satisfied
+- **Evidence**: src/auth/middleware.py#refresh_session_if_expired
+  catches ExpiredSignatureError and rotates before retry.
+
+### Criterion 2: Refresh failure surfaces as 401
+- **Status**: satisfied
+- **Evidence**: RotationFailed handler returns
+  Response(status_code=401).</code></pre>
+    </div>
+
+    <div class="evo-panel evo-panel-complete">
+      <p class="evo-caption">
+        <code>/chunk-complete</code> walks <code>code_references</code>,
+        verifies they resolve, scans for overlaps with other chunks
+        (a potential <code>COMPOSITE</code> situation), and flips the
+        chunk to <code>ACTIVE</code>.
+      </p>
+      <div class="evo-tree"><pre><code>docs/
+└── chunks/
+    └── auth_session_refresh/
+        ├── <span class="evo-changed">GOAL.md</span>      <span class="evo-tag">ACTIVE</span>
+        └── PLAN.md
+src/
+└── auth/
+    └── middleware.py</code></pre></div>
+      <p class="evo-filename">docs/chunks/auth_session_refresh/GOAL.md</p>
+      <pre><code><span class="evo-bref">---
+status: ACTIVE
+ticket: null
+code_paths:
+  - src/auth/middleware.py
+code_references:
+  - ref: src/auth/middleware.py#refresh_session_if_expired
+    implements: "Detects expired access tokens and rotates the
+      refresh token before retrying the request"
+---</span>
+
+# Goal: Refresh expired auth sessions
+
+## Behavior
+Users remain logged in as long as their browser is recognized,
+until they explicitly log out.
+
+## Success Criteria
+- A request with an expired access token but valid refresh
+  token completes without redirect.
+- Refresh failure surfaces as 401.
+
+[...]</code></pre>
+    </div>
+  </div>
+
+  <h3>Anatomy</h3>
+  <p>
+    Each chunk lives in <code>docs/chunks/&lt;name&gt;/</code> and contains
+    two files: <code>GOAL.md</code> and <code>PLAN.md</code>.
+  </p>
+
+  <h4>GOAL.md</h4>
+  <p>
+    The goal is an architectural record, not a change log. It describes the
+    why behind the code as it stands today: the problem the code solves, the
+    decisions that shaped its design, the constraints it must respect. Git
+    captures what changed. The goal captures why the code is the way it is,
+    and stays current as the code evolves to absorb new features.
+  </p>
+
+  <pre><code>---
+status: IMPLEMENTING
+ticket: null
+code_paths: []
+code_references: []
+---
+
+# Goal: Refresh expired auth sessions
+
+## Behavior
+Users remain logged in as long as their browser is recognized, until they
+explicitly log out.
+
+## Success Criteria
+- A request with an expired access token but valid refresh token completes
+  without redirect.
+- Refresh failure surfaces as 401.
+
+## Constraints
+- No change to the public API.
+- Refresh tokens must rotate on use.
+
+## Out of Scope
+- Login UI changes.
+- Logging-out devices remotely.</code></pre>
+
+  <h4>PLAN.md</h4>
+  <p>
+    PLAN.md is a literate-programming bridge between two states: the
+    codebase as it stands when the chunk is created, and the codebase
+    that satisfies the goal. The plan walks the path from one to the
+    other in prose, explaining each step's reasoning rather than just
+    listing what to do.
+  </p>
+  <p>
+    Its value is verification. When the agent writes the plan, it's
+    thinking through the goal in a form a human reviewer can read. If
+    the plan goes somewhere surprising, the goal didn't constrain the
+    solution tightly enough; the plan reveals the gap before any code
+    gets written. If reading the plan produces no surprises, the goal
+    was specific enough.
+  </p>
+  <p>
+    Once the chunk completes, the plan isn't maintained. Its job was to
+    bridge the transition, not outlive it.
+  </p>
+
+  <h3>Status values</h3>
+  <p>
+    A chunk records intent. The intent governs code: it constrains how the
+    code can change without violating what the chunk asserts. A chunk's
+    status describes where it sits in that relationship.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>FUTURE</code></td><td>Intent recorded; no code is governed by the chunk yet. Queued for later.</td></tr>
+      <tr><td><code>IMPLEMENTING</code></td><td>Code is actively being written under the chunk's intent. At most one per worktree.</td></tr>
+      <tr><td><code>ACTIVE</code></td><td>The chunk's intent governs real code. Reading the chunk tells you why that code has the shape it has.</td></tr>
+      <tr><td><code>COMPOSITE</code></td><td>Multiple chunks together govern the same code. None alone tells the whole story.</td></tr>
+      <tr><td><code>HISTORICAL</code></td><td>The chunk no longer governs any code. Its intent was replaced, rolled back, or abandoned. Kept for context.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Read across the table, every status is a position on a single axis:
+    how much of the intent does this chunk currently own?
+    <code>COMPOSITE</code> and <code>HISTORICAL</code> are both
+    degenerate, resolvable, realistic states. They describe very
+    different situations.
+  </p>
+  <p>
+    <code>COMPOSITE</code> says two real pieces of intent genuinely
+    co-exist on the same code. Every <code>COMPOSITE</code> chunk is an
+    architectural refactoring opportunity: split the code so each chunk
+    owns its own piece, split the chunks into smaller and more atomic
+    intents, or merge the chunks into a single coherent intent.
+  </p>
+  <p>
+    <code>HISTORICAL</code> says the intent was real once but is no
+    longer in force. Because a <code>HISTORICAL</code> chunk doesn't
+    constrain the architecture, it is always safe to delete. Some people
+    keep them for archaeological interest; that is the only reason to.
+  </p>
+
+  <h3>Creating</h3>
+  <p>
+    Chunks are created with the <code>/chunk-create</code> skill. The
+    natural workflow is to brain-dump your intent to the agent ("we
+    should rotate refresh tokens before they expire") and ask it to use
+    the skill. The skill refines that dump against the existing code
+    and the project's trunk goal until you have a clearly articulated
+    architectural record. A vague dump produces a plan that interprets
+    it generously and code that solves a different problem than the one
+    you wanted; the back-and-forth in the skill is where that ambiguity
+    gets resolved cheaply.
+  </p>
+  <p>
+    Under the hood, the skill calls <code>ve chunk create</code> to
+    instantiate the chunk directory from a template, then collaborates
+    with you on filling in <code>GOAL.md</code>. This pattern repeats
+    throughout <code>ve</code>: skills are the operator-facing surface
+    where intent gets shaped; CLI commands are plumbing that instantiates
+    templates the agent then edits.
+  </p>
+  <p>
+    Name chunks by the <strong>initiative</strong> they advance. Domain
+    prefixes like <code>auth_</code>, <code>ordering_</code>, or
+    <code>taskdir_</code> are what you want, not action verbs like
+    <code>fix_</code>, <code>add_</code>, or <code>refactor_</code>.
+    Initiative-based names cluster naturally as a project grows.
+    Action-verb names tell you what happened once; initiative names tell
+    you where the work belongs.
+  </p>
+  <p>
+    To queue a chunk for later instead of starting it now, ask the skill
+    for a future chunk. (The underlying CLI flag is <code>--future</code>,
+    but you'll rarely call the CLI yourself.)
+  </p>
+
+  <h3>Planning</h3>
+  <p>
+    <code>/chunk-plan</code> is how the agent thinks through the goal. The
+    plan walks from the current codebase to the goal state, naming
+    relevant code paths, prior decisions, and subsystem invariants along
+    the way. Reading it tells you whether the agent understood your intent,
+    and whether the goal constrained the solution tightly enough.
+  </p>
+
+  <h3>Implementing</h3>
+  <p>
+    The agent works through the plan. When it writes code that the chunk's
+    intent governs, it adds a backreference comment near the top:
+  </p>
+  <pre><code># Chunk: docs/chunks/auth_session_refresh - short description</code></pre>
+  <p>
+    The test is whether changing this code would violate what the chunk
+    asserts. Code the chunk doesn't constrain (incidental glue, generic
+    helpers, refactors that happened to land in the same change) doesn't
+    earn a backreference. Not every line of new code is intent-bearing.
+  </p>
+  <p>
+    Future agents touching that code follow the comment back to the chunk
+    and inherit its context: the constraints, the reasoning, the scope.
+    This is how a vibe-engineered codebase teaches the next agent rather
+    than handing it a blank slate.
+  </p>
+
+  <h3 id="reviewing">Reviewing</h3>
+  <p>
+    Reviewing is optional. You can skip it for small or low-risk chunks
+    and go straight to <code>/chunk-complete</code>. The
+    <a href="/docs/orchestrator/">orchestrator</a> always runs it.
+  </p>
+  <pre><code>/chunk-review</code></pre>
+  <p>
+    The skill spawns a fresh subagent — a new context window with no
+    history of the implement phase — and hands it the goal, the plan,
+    and the implemented code. The reviewer compares intent against
+    implementation and produces a decision file at
+    <code>docs/reviewers/&lt;reviewer&gt;/decisions/&lt;chunk&gt;_&lt;iteration&gt;.md</code>.
+  </p>
+  <p>
+    The decision is one of three: <code>APPROVE</code> (proceed to
+    complete), <code>FEEDBACK</code> (loop back to implement with
+    specific issues to address), or <code>ESCALATE</code> (the reviewer
+    can't decide alone — operator input needed). When the decision is
+    <code>FEEDBACK</code>, the issues land in
+    <code>REVIEW_FEEDBACK.md</code> in the chunk directory; the next
+    implement run reads that file and addresses each item, then deletes
+    it. You re-review and the loop continues. In manual mode you can
+    iterate as many times as the work needs. The orchestrator caps the
+    loop at three iterations to bound runaway sessions; on the fourth,
+    it escalates.
+  </p>
+  <p>
+    The fresh-eyes effect is what makes this step valuable. An
+    implementing agent that's been holding the goal, plan, and code in
+    one context window for hours starts to lose the gap between what
+    the goal asked for and what the code does. A new agent reading both
+    side by side catches the things context overload smoothed over:
+    success criteria that got partially addressed and forgotten,
+    constraints the implementing agent rationalized past, edge cases
+    that never made it into a test.
+  </p>
+
+  <h3>Completing</h3>
+  <pre><code>/chunk-complete</code></pre>
+  <p>
+    The skill walks the chunk's <code>code_references</code> to verify
+    they resolve to real symbols, fills in any references the agent
+    collected during implement, scans for other chunks that govern the
+    same code, and flips status to <code>ACTIVE</code>. (Underneath, it
+    drives <code>ve chunk complete</code>.)
+  </p>
+  <p>
+    The overlap scan is where <code>COMPOSITE</code> situations get
+    caught. If the code this chunk now references is also governed by
+    other chunks, the skill surfaces the overlap and helps you decide on
+    a resolution.
+  </p>
+  <p>
+    If references no longer resolve, that surfaces here, not three weeks
+    later when an agent tries to follow them and finds nothing. Symbol
+    renamed, file moved: you find out at completion, with the chunk still
+    fresh in your head.
+  </p>
+
+  <h3>When to chunk</h3>
+  <p>
+    Not every change earns a chunk. The test is whether the code needs to
+    remember why it exists. If yes: chunk it. If no: vibe it. (Both paths
+    end in a commit; the difference is whether you're recording
+    architectural intent on the way.)
+  </p>
+  <p>
+    Chunks are for load-bearing intent: the decisions, constraints, and
+    tradeoffs that future engineers and agents will need to reconstruct in
+    order to safely change the code. A chunk isn't documentation overhead.
+    It's the load-bearing record that keeps the next session from reasoning
+    from scratch about why this code is the way it is.
+  </p>
+  <p>
+    A lot of work doesn't meet that bar. Fixing a typo in a string. Bumping
+    a dependency version. Correcting an off-by-one in a loop that was just
+    wrong. These are real changes, but they carry no architectural intent.
+    The code simply needed to be right and now it is. Vibe it; commit and
+    move on. A chunk would add ceremony without adding memory.
+  </p>
+  <p>
+    The boundary isn't always obvious. A one-line change that settles a
+    contested design decision is chunk-worthy. A 500-line refactor that is
+    purely mechanical (rename, restructure, no new constraints) is not.
+    Ask what would happen if a future agent encountered this code with no
+    context. If the right response is "figure it out from the code," vibe
+    it. If the right response is "you need to know why we made this
+    choice," chunk it.
+  </p>
+
+  <h3>Where chunks come from</h3>
+  <p>
+    A chunk is the smallest unit you will work with, but it is often
+    produced by something larger:
+  </p>
+  <ul>
+    <li>A <a href="/docs/narratives/"><strong>narrative</strong></a> breaks a multi-step initiative into proposed chunks.</li>
+    <li>An <a href="/docs/investigations/"><strong>investigation</strong></a> produces proposed chunks once it has answers.</li>
+    <li>The <a href="/docs/friction/"><strong>friction log</strong></a> accumulates pain until a pattern emerges into a chunk.</li>
+  </ul>
+  <p>
+    When you encounter a "proposed chunk" (a prompt waiting to become real),
+    make it real with <code>ve chunk create</code>. Use <code>--future</code>
+    if you are not starting it immediately. Apply the same intent test to a
+    proposed chunk that you would to one you thought of yourself: not every
+    proposal earns a chunk.
+  </p>
+</DocsLayout>
