@@ -13,9 +13,9 @@ created_at: '2026-01-22T11:59:20.479769'
 
 ## Goal
 
-When `ve task init` creates a task directory, the generated CLAUDE.md should include references to key documentation files from each participating project. This gives agents strong breadcrumbs to follow when they need to understand the constraints and context of each project involved in the task.
+When `ve task init` creates a task directory, the generated CLAUDE.md includes references to key documentation files from each participating project, giving agents strong breadcrumbs to follow when they need to understand the constraints and context of each project involved in the task.
 
-Currently, the task CLAUDE.md lists participating projects by name but doesn't point to their key documentation. An agent starting in the task directory has to discover these files on their own.
+Without these references, an agent starting in the task directory would only see participating projects listed by name and would have to discover their documentation on its own.
 
 ## Success Criteria
 
