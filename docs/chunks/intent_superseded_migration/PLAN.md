@@ -1,5 +1,3 @@
-
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +8,107 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a documentation-only migration: change `status: SUPERSEDED` to `status: HISTORICAL` (or, rarely, `COMPOSITE`) in 12 chunk GOAL.md files, and preserve replacement traceability. No source code changes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Strategy:** For each of the 12 chunks, read its GOAL.md, identify why it was superseded (from `superseded_by` field, `superseded_reason` field, or prose context), classify under the new taxonomy (almost certainly HISTORICAL for all 12), present the classification and reasoning to the operator, then apply on confirmation.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Traceability:** Three of the 12 chunks already have a `superseded_by:` field in frontmatter (`integrity_deprecate_standalone`, `template_drift_prevention`, `websocket_keepalive`). One has `superseded_reason:` (`narrative_backreference_support`). One has `superseded_by:` as a prose-style note (`update_crossref_format`). The Pydantic `ChunkFrontmatter` model does not define these fields, but its default config (`{}`) silently ignores extras — so these fields parse without error and persist in YAML. For the remaining chunks without any traceability field, a brief `<!-- Replaced by: ... -->` HTML comment will be added to the goal prose explaining the replacement context.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/intent_superseded_migration/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Validation note:** The `ve chunk validate` command is completion-focused (requires IMPLEMENTING or ACTIVE). HISTORICAL is a terminal state that is never "completed," so this command will always report a status error for HISTORICAL chunks. Success criterion #6 should be interpreted as: frontmatter parses without error (Pydantic model accepts it) and `IntegrityValidator.validate_chunk()` reports no errors for outbound references. We verify this by running `uv run pytest tests/` (criterion #7) and by confirming `grep -l "^status: SUPERSEDED" docs/chunks/*/GOAL.md` returns nothing (criterion #5).
 
-## Subsystem Considerations
+**State machine:** `VALID_CHUNK_TRANSITIONS` in `src/models/chunk.py` already includes `SUPERSEDED → {HISTORICAL}`, so the transition is valid.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new tests are needed — this chunk modifies only documentation frontmatter. Per `docs/trunk/TESTING_PHILOSOPHY.md`, tests verify behavior, not document content. The existing test suite (`uv run pytest tests/`) confirms the frontmatter model still parses all chunks correctly after migration.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Prepare the classification table
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Read each of the 12 SUPERSEDED chunk GOAL.md files and build a classification table with columns: chunk name, current traceability info (superseded_by / superseded_reason / prose), recommended new status, and reasoning.
 
-Example:
+**Pre-analysis (from planning-time reading):**
 
-### Step 1: Define the SegmentHeader struct
+All 12 are **HISTORICAL** — every one describes intent that has been replaced, abandoned, or subsumed by other work. None co-own intent with active peers (the COMPOSITE test).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+| Chunk | Replacement context | Traceability |
+|-------|-------------------|--------------|
+| `integrity_deprecate_standalone` | `superseded_by: integrity_deprecated_removal` | ✅ has field |
+| `jinja_backrefs` | `superseded_by: "Commit a465762 (refactor: remove chunk/narrative backreferences, simplify subsystems)"` | ✅ has field |
+| `narrative_backreference_support` | `superseded_reason: "Narrative backreferences in source code were removed as a design decision..."` | ✅ has field |
+| `proposed_chunks_frontmatter` | Standardized proposed_chunks format — work was completed and chunk is no longer the authority | Needs prose note |
+| `scratchpad_storage` | Part of `global_scratchpad` narrative — scratchpad approach was abandoned | Needs prose note |
+| `scratchpad_chunk_commands` | Part of `global_scratchpad` narrative — scratchpad approach was abandoned | Needs prose note |
+| `scratchpad_cross_project` | Part of `global_scratchpad` narrative — scratchpad approach was abandoned | Needs prose note |
+| `scratchpad_narrative_commands` | Part of `global_scratchpad` narrative — scratchpad approach was abandoned | Needs prose note |
+| `subsystem_template` | Template content was refactored in commit a465762; Chunk Relationships and Consolidation Chunks sections removed | Needs prose note |
+| `template_drift_prevention` | `superseded_by: template_lang_agnostic` | ✅ has field |
+| `update_crossref_format` | `superseded_by: "scratchpad_remove_infra - Chunk backreferences were eliminated entirely..."` | ✅ has field |
+| `websocket_keepalive` | `superseded_by: websocket_hibernation_compat` | ✅ has field |
 
-Location: src/segment/format.rs
+### Step 2: Present classifications to the operator
 
-### Step 2: Implement header serialization
+Present the full table to the operator with the recommendation that all 12 are HISTORICAL. Wait for confirmation or overrides per chunk before proceeding.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Apply status changes to chunks with existing traceability
 
-### Step 3: ...
+For the 7 chunks that already have `superseded_by` or `superseded_reason` fields, the traceability is already preserved in frontmatter. For each:
 
----
+1. Change `status: SUPERSEDED` → `status: HISTORICAL` in the YAML frontmatter
+2. Leave the `superseded_by` / `superseded_reason` field in place (Pydantic ignores it; it serves as archaeological context for humans and agents reading the file)
 
-**BACKREFERENCE COMMENTS**
+Chunks: `integrity_deprecate_standalone`, `jinja_backrefs`, `narrative_backreference_support`, `template_drift_prevention`, `update_crossref_format`, `websocket_keepalive`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Note: `jinja_backrefs` has `superseded_by` at line 14 (after `created_after`), which is a non-standard position. Leave as-is — field order in YAML doesn't affect parsing.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Apply status changes to chunks needing prose traceability
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+For the 5 chunks without a `superseded_by` field, change the status and add a brief HTML comment after the `# Chunk Goal` heading explaining the replacement context:
 
-Format (place immediately before the symbol):
+1. `proposed_chunks_frontmatter` — Add: `<!-- HISTORICAL: The proposed_chunks standardization was completed and merged. This chunk no longer owns active intent. -->`
+2. `scratchpad_storage` — Add: `<!-- HISTORICAL: The global_scratchpad narrative and its scratchpad approach were abandoned. Chunks remain in-repo under docs/chunks/. -->`
+3. `scratchpad_chunk_commands` — Same scratchpad note as above.
+4. `scratchpad_cross_project` — Same scratchpad note as above.
+5. `scratchpad_narrative_commands` — Same scratchpad note as above.
+6. `subsystem_template` — Add: `<!-- HISTORICAL: Template content was substantially refactored in commit a465762. Chunk Relationships and Consolidation Chunks sections were removed from the subsystem template. The planning template's Subsystem Considerations section persists. -->`
+
+### Step 5: Verify the migration
+
+Run verification commands:
+
+1. `grep -l "^status: SUPERSEDED" docs/chunks/*/GOAL.md` — should return nothing
+2. `grep -l "^status: HISTORICAL" docs/chunks/*/GOAL.md` — should include all 12 migrated chunks (plus any previously HISTORICAL chunks)
+3. `uv run pytest tests/` — all tests pass
+
+### Step 6: Spot-check frontmatter parsing
+
+For 2-3 of the migrated chunks, verify frontmatter parses correctly by running a quick Python check that the `ChunkFrontmatter` model accepts the updated YAML. This catches any YAML formatting errors introduced during editing.
+
+```bash
+uv run python -c "
+from models.chunk import ChunkFrontmatter
+from chunks import Chunks
+import pathlib
+c = Chunks(pathlib.Path('.'))
+for name in ['integrity_deprecate_standalone', 'scratchpad_storage', 'websocket_keepalive']:
+    fm = c.parse_chunk_frontmatter(name)
+    print(f'{name}: status={fm.status}')
+"
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **`intent_principles`** (IMPLEMENTING) — Lands `docs/trunk/CHUNKS.md` and adds HISTORICAL/COMPOSITE to the runtime enum. Must be merged first so the five-status taxonomy exists. The state machine transition `SUPERSEDED → HISTORICAL` is already in `src/models/chunk.py`.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **`ve chunk validate` reports errors for HISTORICAL chunks.** This is expected behavior (completion validation requires IMPLEMENTING/ACTIVE). Success criterion #6 needs to be interpreted as "frontmatter is valid" rather than "completion validation passes." If the operator wants strict `ve chunk validate` to pass, the validate command would need a mode that checks only frontmatter validity — but that's out of scope for this chunk.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Extra frontmatter fields (`superseded_by`, `superseded_reason`).** These are not in the Pydantic model but are silently ignored (default `model_config = {}`). If a future change sets `model_config = ConfigDict(extra="forbid")`, these fields would cause parse errors. This is acceptable — the intent_retire_superseded chunk (chunk 7) should clean up SUPERSEDED-related fields when it retires the status from the runtime.
+
+- **Operator may want to rewrite some goals while migrating.** The GOAL.md explicitly puts goal rewriting out of scope. If the operator notices retrospective framing during the review, note it for the `intent_active_audit` chunk (chunk 6) rather than fixing it here.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 ticket: null
 parent_chunk: null
 code_paths:
@@ -43,6 +43,7 @@ created_after:
 ---
 
 # Chunk Goal
+<!-- HISTORICAL: The proposed_chunks standardization was completed and merged. This chunk no longer owns active intent. -->
 
 ## Minor Goal
 
