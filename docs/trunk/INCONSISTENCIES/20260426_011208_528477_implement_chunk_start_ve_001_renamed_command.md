@@ -2,8 +2,8 @@
 discovered_by: claude
 discovered_at: 2026-04-26T01:12:08
 severity: medium
-status: open
-resolved_by: null
+status: resolved
+resolved_by: "audit batch 3 follow-up — historicalized (Pattern B: ve chunk start renamed to ve chunk create; NNNN paths gone; TESTS.md template gone)"
 artifacts:
   - docs/chunks/implement_chunk_start-ve-001/GOAL.md
   - src/cli/chunk.py

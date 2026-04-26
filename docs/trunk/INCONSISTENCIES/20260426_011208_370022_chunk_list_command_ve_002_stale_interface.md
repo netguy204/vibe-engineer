@@ -2,8 +2,8 @@
 discovered_by: claude
 discovered_at: 2026-04-26T01:12:08
 severity: medium
-status: open
-resolved_by: null
+status: resolved
+resolved_by: "audit batch 3 follow-up — historicalized (Pattern B: intent fully superseded by 8 successor chunks named in src/cli/chunk.py backreferences)"
 artifacts:
   - docs/chunks/chunk_list_command-ve-002/GOAL.md
   - src/cli/chunk.py
