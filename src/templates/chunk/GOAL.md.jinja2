@@ -8,7 +8,6 @@ narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
-bug_type: null
 depends_on: []
 created_after: {{ created_after | default([], true) | tojson }}
 ---
@@ -132,19 +131,6 @@ FRICTION_ENTRIES:
       scope: partial
 - Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
 - When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
-
-BUG_TYPE:
-- Optional field for bug fix chunks that guides agent behavior at completion
-- Values: semantic | implementation | null (for non-bug chunks)
-  - "semantic": The bug revealed new understanding of intended behavior
-    - Code backreferences REQUIRED (the fix adds to code understanding)
-    - On completion, search for other chunks that may need updating
-    - Status → ACTIVE (the chunk asserts ongoing understanding)
-  - "implementation": The bug corrected known-wrong code
-    - Code backreferences MAY BE SKIPPED (they don't add semantic value)
-    - Focus purely on the fix
-    - Status → HISTORICAL (point-in-time correction, not an ongoing anchor)
-- Leave null for feature chunks and other non-bug work
 
 CHUNK ARTIFACTS:
 - Single-use scripts, migration tools, or one-time utilities created for this chunk

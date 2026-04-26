@@ -60,15 +60,6 @@ search for it - run it directly via Bash.
    NOTIFY THE OPERATOR. It is likely that this chunk cannot be completed because
    it is not reflected in the code yet.
 
-**Bug type guidance for code_references:**
-   Check the chunk's `bug_type` field in GOAL.md frontmatter:
-   - If `bug_type: semantic` (or `bug_type: null`): Code references are **required**.
-     The fix adds to code understanding and should be traceable.
-   - If `bug_type: implementation`: Code references are **optional**. If the fix
-     doesn't add semantic value (e.g., a typo fix, off-by-one error, null check),
-     you may skip populating code_references. The backreference would just be
-     noise—saying "we fixed a typo here" doesn't help future understanding.
-
 3. The chunk directory short name (e.g., `ordering_audit_seqnums` from
    `docs/chunks/ordering_audit_seqnums`) is the `<chunk_id>` used by CLI commands below.
 
@@ -108,32 +99,44 @@ search for it - run it directly via Bash.
     recommendations based on each overlapping subsystem's status. For semantic changes,
     always get operator confirmation before expanding scope or updating subsystem documentation.
 
-11. **Determine final status based on bug_type.** Check the chunk's `bug_type`
-    field in GOAL.md frontmatter to determine the correct final status:
+11. **Retrospective framing rewrite.** Re-read the chunk's GOAL.md and detect
+    retrospective framing tells: `Currently,`, `was`, `we added`, `this chunk fixes`,
+    `this chunk adds`, `the fix:`, `will change to`. Rewrite offending passages into
+    present-tense descriptions of how the system works, using the implemented code as
+    the source of truth. Reference: docs/trunk/CHUNKS.md principle 3.
 
-    - If `bug_type: null` (not a bug fix) or `bug_type: semantic`:
-      - Set status to **ACTIVE**
-      - For semantic bugs: The fix revealed new understanding and serves as an
-        ongoing anchor for that understanding
+    - **Proceed silently** when the rewrite is mechanical (e.g., changing `we added X`
+      to `X exists`; replacing `Currently the system does Y, we'll change it to Z`
+      with `The system does Z because...`).
+    - **Escalate to the operator** only when:
+      (a) the goal asserts something you can't reconcile against the current code,
+      (b) the rewrite would materially change the goal's meaning rather than just
+          its tense, or
+      (c) your confidence in the rewrite is low.
+      When escalating, present a candidate rewrite alongside the specific reason you
+      couldn't land it on your own.
 
-    - If `bug_type: semantic`: Additionally, **search for impacted chunks**.
-      This bug revealed new understanding, which may affect other chunks:
-      a. Run `ve chunk list --active` to see all ACTIVE chunks
-      b. Review any chunks that touch related code paths or concepts
-      c. Report to the operator which chunks may need review based on the new
-         understanding. Don't modify them—just flag for human review.
+12. **Apply the intent test.** Apply the intent test from docs/trunk/CHUNKS.md
+    principle 2: *"Does this code need to remember why it exists?"*
 
-    - If `bug_type: implementation`:
-      - Set status to **HISTORICAL** (not ACTIVE)
-      - Implementation bugs are point-in-time corrections. The code was simply
-        wrong and we fixed it—there's no ongoing semantic value to preserve.
-      - The chunk served its purpose (tracking the fix) and is now archaeological.
+    - If yes → status: **ACTIVE** (or **COMPOSITE** if co-owning intent with peers).
+    - If no → status: **HISTORICAL**.
+
+13. **HISTORICAL deletion prompt.** When you decide HISTORICAL, prompt the operator:
+
+    > *"This chunk has no ongoing intent to remember — its job was to coordinate
+    > execution. Consider deleting it. The work is preserved in git; the chunk no
+    > longer earns its keep in `docs/chunks/`."*
+
+    - If the operator chooses **delete**: delete the chunk directory.
+    - If the operator chooses **keep**: land the chunk as HISTORICAL with a brief
+      note in the goal explaining why it was retained.
 
     After determining the correct status, update the chunk's GOAL.md:
-    - Set the status field to the determined value (ACTIVE or HISTORICAL)
+    - Set the status field to the determined value (ACTIVE, COMPOSITE, or HISTORICAL)
     - Remove the comment block explaining the structure of the front matter
 
-12. **Check for friction entries being resolved.** Read the chunk's GOAL.md
+14. **Check for friction entries being resolved.** Read the chunk's GOAL.md
     frontmatter and check if it has a `friction_entries` field with any entries.
 
     If friction entries are present:
