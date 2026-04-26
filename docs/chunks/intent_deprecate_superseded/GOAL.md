@@ -9,7 +9,7 @@ investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
-depends_on: ["intent_superseded_migration"]
+depends_on: []
 created_after: ["intent_principles"]
 ---
 
@@ -232,49 +232,49 @@ VALIDATION:
 
 ## Minor Goal
 
-`SUPERSEDED` is removed from the runtime entirely. The five-status taxonomy in `docs/trunk/CHUNKS.md` (FUTURE, IMPLEMENTING, ACTIVE, COMPOSITE, HISTORICAL) becomes the only set of statuses the runtime accepts. This is safe because the migration chunk (`intent_superseded_migration`) has moved every chunk in `docs/chunks/` off SUPERSEDED.
+`SUPERSEDED` is deprecated as a chunk status. The runtime continues to parse `status: SUPERSEDED` for backward compatibility — projects upgrading `ve` keep working without first migrating their corpus. But the on-ramp is closed: the state machine no longer accepts `ACTIVE → SUPERSEDED`, so no new chunk can become SUPERSEDED. The off-ramp (`SUPERSEDED → HISTORICAL`) stays open, so the existing SUPERSEDED set can only shrink as chunks drain organically. A deprecation warning fires when SUPERSEDED is parsed, pointing operators at `docs/trunk/CHUNKS.md` and the active-tense-chunks migration guide.
 
-This chunk is the cleanup tail of the intent-ownership narrative. It removes the transition-period scaffolding the seed chunk (`intent_principles`) intentionally left in place.
+### Why deprecation, not removal
 
-## Pre-flight check (must pass before any code changes)
+Removing `SUPERSEDED` from the runtime would create a chicken-and-egg upgrade trap: chunks with `status: SUPERSEDED` would fail Pydantic validation, blocking projects from upgrading; but those projects can't migrate off SUPERSEDED without first upgrading to a `ve` that supports `COMPOSITE`. Deprecation breaks the cycle. Existing SUPERSEDED chunks keep parsing; the on-ramp closes so the set can only shrink; projects migrate at their own pace via the migration chunk and `/audit-intent` skill.
 
-Before editing any source file, run:
+This is the final chunk of the intent-ownership narrative. After it ships, the workflow speaks with one voice — five canonical statuses for new work, with SUPERSEDED still readable but visibly fading.
 
-```
-grep -l "^status: SUPERSEDED" docs/chunks/*/GOAL.md
-```
+## Behavior changes
 
-If this returns any results, **STOP and surface to the operator**. The migration chunk has not completed, and removing SUPERSEDED would orphan those chunks. This chunk depends on `intent_superseded_migration` precisely to make this check pass.
+1. **State machine: drop `ACTIVE → SUPERSEDED`.** No chunk can transition into SUPERSEDED anymore. The transition table in `src/models/chunk.py` becomes:
+   ```python
+   ChunkStatus.ACTIVE: {ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL},  # SUPERSEDED removed
+   ChunkStatus.SUPERSEDED: {ChunkStatus.HISTORICAL},  # off-ramp preserved
+   ```
+2. **Keep `ChunkStatus.SUPERSEDED` in the enum.** Projects with existing SUPERSEDED chunks still parse cleanly.
+3. **Emit a `DeprecationWarning` when SUPERSEDED is parsed.** Pydantic field validator on `ChunkFrontmatter.status` checks for SUPERSEDED and emits a warning naming the chunk, with a pointer to `docs/trunk/CHUNKS.md` and the migration guide. Once-per-chunk-per-session is fine; no need to spam.
+4. **`ve chunk validate` reports SUPERSEDED chunks as a warning, not an error.** The validation surface should make the deprecation visible without breaking validation runs.
+5. **CLI help text marks SUPERSEDED as deprecated.** `--status` flag's valid-statuses list either drops SUPERSEDED entirely (it's no longer a target) or annotates it as deprecated. Drop is cleaner — operators creating new work shouldn't see it.
 
-## Code paths to clean up
+## Documentation
 
-Each location currently references SUPERSEDED. After this chunk, none of them do:
-
-- `src/models/chunk.py` — `ChunkStatus.SUPERSEDED` enum value; `VALID_CHUNK_TRANSITIONS` entries (`ACTIVE → SUPERSEDED` and the `SUPERSEDED → HISTORICAL` row).
-- `src/chunk_validation.py:461` (or current line) — terminal-for-injection tuple drops `ChunkStatus.SUPERSEDED`.
-- `src/cli/chunk.py` — help text drops `SUPERSEDED` from the valid-statuses list.
-- `src/orchestrator/activation.py` — `_is_post_implementing` docstring and `verify_chunk_active_status` docstring drop the `SUPERSEDED` mention.
-- `src/chunks.py` — comments and docstrings dropping `SUPERSEDED` from filtered-status lists.
-- `tests/test_state_machine.py` — remove SUPERSEDED-specific transition tests; update the `test_error_message_includes_valid_transitions` assertion.
-- `tests/test_transitions.py` — remove `test_superseded_transitions` and the SUPERSEDED entry in `test_active_transitions`'s expected set.
-- `tests/test_chunk_validate_inject.py` — remove `test_superseded_status_cannot_be_injected`.
-
-After all edits, the runtime accepts the five-status taxonomy and rejects SUPERSEDED with the standard "invalid status" error.
+- **`docs/trunk/SPEC.md`** — add a one-line note to the status table (or a sibling block): *"SUPERSEDED is deprecated. The runtime parses it for backward compatibility but no chunk transitions into it. Migrate via the active-tense-chunks migration guide."*
+- **`docs/trunk/CHUNKS.md`** — already absent from the principle table. Add a brief footnote-style note at the bottom: *"Older corpora may carry chunks with `status: SUPERSEDED`. The runtime still parses that value but treats it as deprecated; the active-tense-chunks migration moves them into the current taxonomy."*
+- **Migration guide** (`site/src/pages/docs/migrations/active-tense-chunks.astro`) — add a section explaining the deprecation status of SUPERSEDED and how the migration chunk drains it.
 
 ## Success Criteria
 
-1. Pre-flight grep returns no results before any code is changed.
-2. `ChunkStatus.SUPERSEDED` is removed from `src/models/chunk.py`.
-3. `VALID_CHUNK_TRANSITIONS` no longer references `ChunkStatus.SUPERSEDED` (no rows pointing to it; no row keyed by it).
-4. All other source files listed above no longer mention `SUPERSEDED`.
-5. `grep -rn "SUPERSEDED" src/` returns nothing.
-6. `grep -rn "SUPERSEDED" tests/` returns nothing.
-7. Attempting to write `status: SUPERSEDED` in a chunk frontmatter and parsing it produces a Pydantic validation error.
-8. `uv run ve init` runs cleanly.
-9. `uv run pytest tests/` passes.
+1. `VALID_CHUNK_TRANSITIONS[ChunkStatus.ACTIVE]` no longer includes `SUPERSEDED`.
+2. `VALID_CHUNK_TRANSITIONS[ChunkStatus.SUPERSEDED]` still includes `HISTORICAL` (off-ramp preserved).
+3. `ChunkStatus.SUPERSEDED` remains a valid enum value (parsing existing SUPERSEDED chunks still succeeds).
+4. Parsing a chunk with `status: SUPERSEDED` emits a `DeprecationWarning` once. The warning text names the chunk and points at `docs/trunk/CHUNKS.md` and the migration guide.
+5. `ve chunk validate` on a SUPERSEDED chunk produces a warning (not an error) recommending migration.
+6. CLI help text for `ve chunk list --status` no longer lists SUPERSEDED as a primary option (or annotates it as deprecated).
+7. `docs/trunk/SPEC.md` notes the deprecation in the status section.
+8. `docs/trunk/CHUNKS.md` notes the deprecation as a footnote.
+9. The active-tense-chunks migration guide explains the deprecation and the drain mechanism.
+10. Tests cover: the new transition table (no `ACTIVE → SUPERSEDED`); the deprecation warning fires on parse; `SUPERSEDED → HISTORICAL` still works; `ve chunk validate` warns but doesn't error on SUPERSEDED.
+11. `uv run ve init` runs cleanly.
+12. `uv run pytest tests/` passes.
 
 ## Out of Scope
 
-- Migrating chunks off SUPERSEDED (`intent_superseded_migration` does that — this chunk depends on it).
-- Documentation changes — `docs/trunk/CHUNKS.md` and `docs/trunk/SPEC.md` already document the five-status taxonomy; SUPERSEDED is already absent from them as of `intent_principles`.
-- Other workflow doc updates (chunk 4 covers that).
+- **Removing SUPERSEDED from the runtime entirely.** Deferred indefinitely. Removal would only be safe after the entire ecosystem has migrated, and even then the upgrade-cycle risk argues for keeping SUPERSEDED parseable. If a future chunk eventually removes it, that chunk owns the migration coordination problem — not this one.
+- **Migrating any specific chunks.** `intent_superseded_migration` (chunk 5 of this narrative) handles that. Chunk 7 doesn't depend on it: deprecation is safe whether the migration has run or not — in fact the deprecation warning *encourages* unmigrated projects to run the migration.
+- **Other workflow doc updates.** `intent_workflow_docs` (chunk 4) handles CLAUDE.md and ARTIFACTS.md framing.
