@@ -8,7 +8,7 @@ code_paths:
   - src/templates/commands/investigation-create.md.jinja2
 code_references:
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Step 6: depends_on null vs empty semantics guidance for chunk creation"
+    implements: "Step 7: depends_on null vs empty semantics guidance for chunk creation"
   - ref: src/templates/commands/narrative-create.md.jinja2
     implements: "Step 4: depends_on semantics for proposed_chunks entries"
   - ref: src/templates/commands/investigation-create.md.jinja2
