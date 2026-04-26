@@ -29,14 +29,9 @@ created_after:
 
 ## Minor Goal
 
-Add Jinja2 templates for the progressive disclosure documents (ORCHESTRATOR.md, ARTIFACTS.md, EXTERNAL.md) so they get installed during `ve init`.
+Provide Jinja2 templates for the progressive disclosure documents (ORCHESTRATOR.md, ARTIFACTS.md, EXTERNAL.md) so `ve init` installs them in user projects.
 
-The `progressive_disclosure_refactor` chunk created these documents in the vibe-engineer repo's `docs/trunk/` but did not add corresponding templates to `src/templates/trunk/`. As a result, the CLAUDE.md template has signposts like `See: docs/trunk/ORCHESTRATOR.md`, but when agents in user projects try to read those files, they don't exist.
-
-**The gap:**
-- CLAUDE.md.jinja2 references `docs/trunk/ORCHESTRATOR.md`, `docs/trunk/ARTIFACTS.md`, and `docs/trunk/EXTERNAL.md`
-- These files exist in vibe-engineer's own docs/trunk/
-- But there are no templates in `src/templates/trunk/` to install them in user projects
+CLAUDE.md.jinja2 contains signposts like `See: docs/trunk/ORCHESTRATOR.md` that reference the progressive disclosure documents. The trunk template directory carries `ORCHESTRATOR.md.jinja2`, `ARTIFACTS.md.jinja2`, and `EXTERNAL.md.jinja2` so user projects receive these documents during initialization, keeping the CLAUDE.md signposts resolvable.
 
 ## Success Criteria
 

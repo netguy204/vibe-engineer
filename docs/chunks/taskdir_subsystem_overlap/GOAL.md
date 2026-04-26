@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/subsystem.py
 - tests/test_subsystem_overlap_cli.py
 code_references:
-  - ref: src/ve.py#overlap
+  - ref: src/cli/subsystem.py#overlap
     implements: "Task-aware subsystem overlap command that resolves chunks across external and project repos"
   - ref: tests/test_subsystem_overlap_cli.py#TestSubsystemOverlapInTaskContext
     implements: "Tests for task context chunk resolution and subsystem overlap detection"
@@ -28,9 +28,9 @@ created_after:
 
 ## Minor Goal
 
-Make `ve subsystem overlap` work correctly in task contexts by resolving chunks through the task's external artifacts system instead of only looking locally.
+`ve subsystem overlap` resolves chunks through the task's external artifacts system when run from a task directory, not just from the local repo.
 
-Currently, when running `ve subsystem overlap <chunk_name>` from within a task directory, the command fails with "Chunk not found" even when the chunk exists in the external artifacts repo. The command should resolve external chunks the same way other task-aware commands do.
+When invoked from a task directory, the command first looks up the chunk in the external artifacts repo (per `.ve-task.yaml`) and falls back to local resolution otherwise. Outside a task context, it behaves the same as before — searching only the local repo.
 
 ## Success Criteria
 

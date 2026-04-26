@@ -4,9 +4,9 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/log_parser.py
-- src/ve.py
+- src/cli/orch.py
 - tests/test_orchestrator_log_parser.py
-- tests/test_orchestrator_cli.py
+- tests/test_orchestrator_cli_tail.py
 code_references:
   - ref: src/orchestrator/log_parser.py#ParsedLogEntry
     implements: "Dataclass for structured log entries with timestamp, message type, content"
@@ -34,11 +34,11 @@ code_references:
     implements: "Format ResultMessage as summary banner with status, duration, cost, turns"
   - ref: src/orchestrator/log_parser.py#format_entry
     implements: "Unified entry formatting dispatching to type-specific formatters"
-  - ref: src/ve.py#orch_tail
+  - ref: src/cli/orch.py#orch_tail
     implements: "CLI command for streaming parsed log output with -f follow mode"
   - ref: tests/test_orchestrator_log_parser.py
     implements: "Unit tests for log parsing and formatting functions"
-  - ref: tests/test_orchestrator_cli.py#TestOrchTail
+  - ref: tests/test_orchestrator_cli_tail.py#TestOrchTail
     implements: "CLI integration tests for ve orch tail command"
 narrative: null
 investigation: null

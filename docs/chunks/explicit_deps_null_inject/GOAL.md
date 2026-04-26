@@ -24,10 +24,10 @@ created_after:
 
 ## Minor Goal
 
-Update the orchestrator's injection logic to distinguish between `depends_on: []` (explicit empty list) and `depends_on: null` or omitted field. Currently, both cases trigger oracle consultation. After this change:
+The orchestrator's injection logic distinguishes between `depends_on: []` (explicit empty list) and `depends_on: null` or omitted field:
 
-- `depends_on: []` → Set `explicit_deps=True`, bypass oracle (agent explicitly declares no dependencies)
-- `depends_on: null` or omitted → Consult oracle as before (agent doesn't know dependencies)
+- `depends_on: []` → Sets `explicit_deps=True`, bypasses oracle (agent explicitly declares no dependencies)
+- `depends_on: null` or omitted → Consults oracle (agent doesn't know dependencies)
 
 This completes the explicit dependency story from the `explicit_chunk_deps` narrative by allowing agents to declare chunks as truly independent.
 

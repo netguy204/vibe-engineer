@@ -33,7 +33,7 @@ created_after:
 
 ## Minor Goal
 
-Add CLI command to aggregate decisions for few-shot context. This enables the reviewer agent to learn from past decisions that have received operator feedback.
+The CLI aggregates past decisions into few-shot context for the reviewer agent. Only decisions that have received operator feedback are surfaced, so the reviewer learns from curated examples rather than all prior outputs.
 
 ## Success Criteria
 

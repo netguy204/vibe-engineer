@@ -45,7 +45,7 @@ created_after:
 
 ## Minor Goal
 
-Add status filtering to `ve chunk list` so operators can quickly find chunks by lifecycle state. Currently, listing chunks requires manually scanning output or piping through grep. Native filtering reduces friction when managing large chunk sets.
+`ve chunk list` supports status filtering so operators can quickly find chunks by lifecycle state. Native filtering reduces the friction of manually scanning output or piping through grep when managing large chunk sets.
 
 ## Success Criteria
 

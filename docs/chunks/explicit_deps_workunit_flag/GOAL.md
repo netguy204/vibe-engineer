@@ -37,11 +37,11 @@ depends_on: []
 
 ## Minor Goal
 
-Add an `explicit_deps` boolean field to the `WorkUnit` model in `src/orchestrator/models.py`. This field signals that a work unit uses explicitly declared dependencies (via the chunk's `depends_on` frontmatter) and should bypass the conflict oracle's auto-detection.
+The `WorkUnit` model in `src/orchestrator/models.py` carries an `explicit_deps` boolean field. This field signals that a work unit uses explicitly declared dependencies (via the chunk's `depends_on` frontmatter) and should bypass the conflict oracle's auto-detection.
 
-This is a foundational change for the explicit_chunk_deps narrative. When `explicit_deps=True`:
-- The work unit's `blocked_by` list was populated from declared dependencies at injection time
-- The scheduler should skip oracle conflict analysis for this work unit
+This is the foundational schema change for the explicit_chunk_deps narrative. When `explicit_deps=True`:
+- The work unit's `blocked_by` list is populated from declared dependencies at injection time
+- The scheduler skips oracle conflict analysis for this work unit
 - Dependencies are authoritative rather than heuristically detected
 
 This enables predictable parallel execution for well-structured work batches where agents know the intended execution order upfront.

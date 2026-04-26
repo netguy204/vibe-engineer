@@ -34,12 +34,12 @@ created_after:
 
 ## Minor Goal
 
-Add warnings for bidirectional consistency violations:
+`ve validate` emits warnings for bidirectional consistency violations:
 - Chunk claims a narrative but narrative's proposed_chunks doesn't list the chunk
 - Chunk claims an investigation but investigation's proposed_chunks doesn't list the chunk
 - Code has `# Chunk:` backref but chunk's code_references doesn't include that file
 
-These should be warnings (not errors) because the parent→child direction is often set at creation time while child→parent is added later.
+These are warnings (not errors) because the parent→child direction is often set at creation time while child→parent is added later.
 
 ## Success Criteria
 

@@ -45,18 +45,9 @@ created_after:
 
 ## Minor Goal
 
-Add a dedicated tool that the reviewer agent must call to indicate its final review decision, replacing the current approach of parsing text/YAML output from the agent's response.
+The reviewer agent submits its final decision by calling a dedicated `ReviewDecision` tool rather than emitting parseable text or a YAML file. The orchestrator reads the decision from the tool call result.
 
-**The problem:** The current REVIEW phase relies on parsing the reviewer's decision from text output or a YAML file. When the orchestrator can't parse the decision format, it defaults to APPROVE:
-
-```
-[WARNING] Could not parse review decision for orch_tail_command, defaulting to APPROVE
-[INFO] Review APPROVED: Review completed but decision format not recognized.
-```
-
-This caused a reviewer's FEEDBACK decision to be silently ignored, allowing a chunk with missing tests to proceed to COMPLETE.
-
-**The solution:** Provide the reviewer agent with a tool (e.g., `ReviewDecision`) that it must call to submit its decision. This makes the decision unambiguous and machine-readable:
+**Why a tool, not text parsing:** Text/YAML parsing is brittle. When the orchestrator cannot parse a decision format, it has no safe default — silently approving a FEEDBACK decision lets work with unmet criteria proceed to COMPLETE. A tool call is unambiguous and machine-readable:
 
 ```python
 # Reviewer calls this tool to submit decision
@@ -66,6 +57,8 @@ ReviewDecision(
     criteria_assessment=[...]
 )
 ```
+
+If the reviewer completes the session without calling the tool, the orchestrator nudges it to do so; after three nudges without a tool call, the work unit escalates to NEEDS_ATTENTION.
 
 ## Success Criteria
 

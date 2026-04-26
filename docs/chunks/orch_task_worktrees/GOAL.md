@@ -52,11 +52,11 @@ created_after:
 
 ## Minor Goal
 
-Extend `WorktreeManager` to support task contexts by creating coordinated worktrees for multiple repositories under a shared `work/` directory.
+`WorktreeManager` supports task contexts by creating coordinated worktrees for multiple repositories under a shared `work/` directory.
 
-Currently the orchestrator creates a single worktree per work unit in `.ve/chunks/<chunk>/worktree/`. In a task context, chunks span multiple repos (external artifacts repo + one or more project repos), requiring coordinated worktrees that maintain isolation while enabling the agent to work across all affected repos.
+In single-repo mode, the orchestrator creates one worktree per work unit in `.ve/chunks/<chunk>/worktree/`. In a task context, chunks span multiple repos (external artifacts repo + one or more project repos), so the manager creates coordinated worktrees that maintain isolation while enabling the agent to work across all affected repos.
 
-This chunk implements the core worktree structure:
+The worktree structure is:
 ```
 .ve/chunks/<chunk>/
   work/

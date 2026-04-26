@@ -37,7 +37,7 @@ created_after:
 
 ## Minor Goal
 
-Update the chunk-review skill to use the new per-file decision system instead of appending to DECISION_LOG.md. This is the migration point where concurrent reviews become conflict-free.
+The chunk-review skill uses the per-file decision system rather than appending to DECISION_LOG.md. Concurrent reviews are conflict-free because each decision lands in its own file.
 
 ## Success Criteria
 

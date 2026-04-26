@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/reviewer.py
 - tests/test_models.py
 - docs/reviewers/baseline/decisions/.gitkeep
 code_references:
@@ -47,7 +47,7 @@ created_after:
 
 ## Minor Goal
 
-Create pydantic models and directory structure for per-file reviewer decisions. This enables concurrent chunk reviews without merge conflicts by giving each decision its own file.
+Per-file reviewer decisions are backed by pydantic models and a dedicated decisions directory. Concurrent chunk reviews avoid merge conflicts because each decision lives in its own file rather than appending to a shared log.
 
 ## Success Criteria
 

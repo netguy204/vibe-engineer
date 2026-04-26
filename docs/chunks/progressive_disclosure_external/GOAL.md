@@ -31,9 +31,9 @@ created_after:
 
 ## Minor Goal
 
-Extract external artifacts documentation to `docs/trunk/EXTERNAL.md` and add a signpost to CLAUDE.md. This continues the progressive disclosure refactoring by moving multi-repo workflow documentation out of CLAUDE.md.
+External artifacts documentation lives in `docs/trunk/EXTERNAL.md`, with a signpost in CLAUDE.md directing agents to it. This continues the progressive disclosure pattern by keeping multi-repo workflow documentation out of CLAUDE.md.
 
-External artifacts documentation is situational content (~292 tokens) needed only in multi-repository contexts. Extracting it reduces CLAUDE.md weight while ensuring agents can discover the documentation when working with `external.yaml` files.
+External artifacts documentation is situational content (~292 tokens) needed only in multi-repository contexts. Holding it in EXTERNAL.md keeps CLAUDE.md slim while keeping the documentation discoverable when agents encounter `external.yaml` files.
 
 ## Success Criteria
 

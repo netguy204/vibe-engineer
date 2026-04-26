@@ -3,29 +3,28 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
-- src/ve.py
-- src/orchestrator/api.py
-- tests/test_orchestrator_cli.py
+- src/models/chunk.py
+- src/cli/orch.py
+- src/orchestrator/api/scheduling.py
+- src/orchestrator/dependencies.py
+- tests/test_orchestrator_cli_batch.py
 code_references:
-  - ref: src/models.py#ChunkFrontmatter
+  - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Added depends_on field to chunk frontmatter model for parsing dependency declarations"
-  - ref: src/cli/orch.py#topological_sort_chunks
+  - ref: src/orchestrator/dependencies.py#topological_sort_chunks
     implements: "Kahn's algorithm for topological sorting of chunks by dependency order"
-  - ref: src/cli/orch.py#read_chunk_dependencies
+  - ref: src/orchestrator/dependencies.py#read_chunk_dependencies
     implements: "Read depends_on from chunk GOAL.md frontmatter for dependency graph construction"
-  - ref: src/cli/orch.py#validate_external_dependencies
+  - ref: src/orchestrator/dependencies.py#validate_external_dependencies
     implements: "Validate that dependencies outside the batch exist as work units"
   - ref: src/cli/orch.py#orch_inject
     implements: "CLI command extended to accept multiple chunks and inject in dependency order"
-  - ref: src/orchestrator/api.py#inject_endpoint
+  - ref: src/orchestrator/api/scheduling.py#inject_endpoint
     implements: "API endpoint extended to accept blocked_by and explicit_deps parameters"
-  - ref: tests/test_orchestrator_cli.py#TestOrchInjectBatch
+  - ref: tests/test_orchestrator_cli_batch.py#TestOrchInjectBatch
     implements: "Test suite for batch injection with dependency ordering"
   - ref: src/orchestrator/dependencies.py
     implements: "Dependency resolution functions (extracted from CLI layer)"
-  - ref: src/orchestrator/api/scheduling.py
-    implements: "API endpoint extended to accept blocked_by and explicit_deps parameters"
 narrative: explicit_chunk_deps
 investigation: null
 subsystems: []
@@ -42,9 +41,9 @@ created_after:
 
 ## Minor Goal
 
-Extend `ve orch inject` to accept multiple chunk names in a single invocation, topologically sort them by their `depends_on` declarations, and inject them in dependency order. This enables batch injection of related chunks while ensuring that when a chunk declares dependencies on other chunks, those dependencies are already registered as work units by the time the dependent chunk is injected.
+`ve orch inject` accepts multiple chunk names in a single invocation, topologically sorts them by their `depends_on` declarations, and injects them in dependency order. Batch injection of related chunks ensures that when a chunk declares dependencies on other chunks, those dependencies are already registered as work units by the time the dependent chunk is injected.
 
-Currently, `ve orch inject` accepts only a single chunk name. When injecting multiple related chunks, the operator must manually determine the correct order and inject them one by one. With explicit dependencies declared in chunk GOAL.md frontmatter, the inject command can automate this: it reads each chunk's `depends_on` field, builds a dependency graph, detects cycles, and injects in topological order so that `blocked_by` references resolve to existing work units.
+For each named chunk, the inject command reads the `depends_on` field from GOAL.md frontmatter, builds a dependency graph, detects cycles, and injects in topological order so that `blocked_by` references resolve to existing work units. Single-chunk invocation remains supported as a degenerate case of the batch path.
 
 This chunk is the CLI integration point for the explicit_chunk_deps narrative. It depends on:
 - `explicit_deps_goal_template`: Provides the `depends_on` field in chunk GOAL.md frontmatter
