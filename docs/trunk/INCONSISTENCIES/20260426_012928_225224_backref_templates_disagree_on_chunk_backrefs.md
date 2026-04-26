@@ -2,8 +2,8 @@
 discovered_by: claude
 discovered_at: 2026-04-26T01:29:28Z
 severity: medium
-status: open
-resolved_by: null
+status: resolved
+resolved_by: "subsystem template aligned to PLAN template (fix path 1) — both # Subsystem: and # Chunk: declared valid; cross-reference to ARTIFACTS.md for the canonical convention"
 artifacts:
   - src/templates/chunk/PLAN.md.jinja2
   - src/templates/subsystem/OVERVIEW.md.jinja2
