@@ -1,8 +1,20 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- docs/chunks/integrity_deprecate_standalone/GOAL.md
+- docs/chunks/jinja_backrefs/GOAL.md
+- docs/chunks/narrative_backreference_support/GOAL.md
+- docs/chunks/proposed_chunks_frontmatter/GOAL.md
+- docs/chunks/scratchpad_chunk_commands/GOAL.md
+- docs/chunks/scratchpad_cross_project/GOAL.md
+- docs/chunks/scratchpad_narrative_commands/GOAL.md
+- docs/chunks/scratchpad_storage/GOAL.md
+- docs/chunks/subsystem_template/GOAL.md
+- docs/chunks/template_drift_prevention/GOAL.md
+- docs/chunks/update_crossref_format/GOAL.md
+- docs/chunks/websocket_keepalive/GOAL.md
 code_references: []
 narrative: intent_ownership
 investigation: null
@@ -10,9 +22,9 @@ subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["intent_principles"]
+created_after:
+- intent_principles
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
