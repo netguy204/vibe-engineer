@@ -35,17 +35,11 @@ created_after:
 
 ## Minor Goal
 
-Extract shared CLI formatting helpers into a new `src/cli/formatters.py` module, eliminating duplicated code and cross-module private imports that have accumulated across the four artifact CLI modules.
+Shared CLI formatting helpers live in a single `src/cli/formatters.py` module, so the four artifact CLI modules (`cli/chunk.py`, `cli/narrative.py`, `cli/subsystem.py`, `cli/investigation.py`) neither duplicate the formatting logic nor reach into each other for private symbols.
 
-Today, each artifact CLI module (`cli/chunk.py`, `cli/narrative.py`, `cli/subsystem.py`, `cli/investigation.py`) contains its own `_*_to_json_dict()` function that converts artifact frontmatter to a JSON-serializable dictionary. These four functions share identical core logic: handle the `None` frontmatter case, call `model_dump()`, normalize StrEnum status values, build a result dict with `name` first then `status`, add an `is_tip` indicator, and merge remaining frontmatter fields. The only variation is that the chunk version accepts additional parameters (`chunks_manager`, `project_dir`) that it does not actually use in its logic beyond passing them through.
+`formatters.py` exposes a single generic `artifact_to_json_dict(name, frontmatter, tips=None)` function that converts artifact frontmatter to a JSON-serializable dictionary for any artifact type. It handles the `None` frontmatter case, calls `model_dump()`, normalizes StrEnum status values, builds a result dict with `name` first then `status`, adds an `is_tip` indicator, and merges remaining frontmatter fields. There is no per-artifact variant.
 
-Additionally, `_format_grouped_artifact_list()` and `_format_grouped_artifact_list_json()` are defined in `cli/chunk.py` but imported as private symbols by both `cli/subsystem.py` (line 137) and `cli/investigation.py` (line 221) via `from cli.chunk import _format_grouped_artifact_list, _format_grouped_artifact_list_json`. This cross-module import of private (underscore-prefixed) functions couples modules that should be independent.
-
-This chunk will:
-
-1. Create `src/cli/formatters.py` with a single generic `artifact_to_json_dict(name, frontmatter, tips=None)` function that replaces all four `_*_to_json_dict()` variants.
-2. Move `_format_grouped_artifact_list()` and `_format_grouped_artifact_list_json()` from `cli/chunk.py` into `cli/formatters.py` as public functions (without underscore prefix).
-3. Update all four CLI modules to import from `cli.formatters` instead of defining their own copies or importing private symbols from `cli.chunk`.
+`format_grouped_artifact_list()` and `format_grouped_artifact_list_json()` also live in `formatters.py` as public (non-underscore) functions. The four artifact CLI modules import these helpers from `cli.formatters`, with no cross-module imports of underscore-prefixed symbols between sibling CLI modules.
 
 ## Success Criteria
 

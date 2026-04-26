@@ -45,13 +45,11 @@ created_after:
 
 ## Minor Goal
 
-The `ve validate` command fails when encountering external chunks because it attempts to parse frontmatter from `GOAL.md`, which doesn't exist for external chunks (they have `external.yaml` instead).
-
-This chunk makes validation handle external chunks correctly by:
+The `ve validate` command handles external chunks correctly by:
 1. Detecting when a chunk directory contains `external.yaml` instead of `GOAL.md`
-2. Either skipping validation for external chunks (minimal fix) or dereferencing the external pointer to validate the canonical artifact (full solution)
+2. Skipping local-content validation for those chunks while continuing to recognize them as valid chunk references in code backreferences
 
-This enables `ve validate` to run successfully on repositories that contain external chunk references, which is essential for multi-repository workflows.
+This lets `ve validate` run successfully on repositories that contain external chunk references, which is essential for multi-repository workflows.
 
 ## Success Criteria
 

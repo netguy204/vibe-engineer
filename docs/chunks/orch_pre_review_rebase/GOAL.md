@@ -42,16 +42,9 @@ created_after:
 
 ## Minor Goal
 
-Add a REBASE phase to the orchestrator's phase progression between IMPLEMENT and REVIEW. When parallel chunks are running, branches diverge from main as other chunks merge in. Currently this divergence is only discovered at final merge time (after COMPLETE), producing conflicts that halt automation and require manual operator intervention.
+The orchestrator's phase progression includes a REBASE phase between IMPLEMENT and REVIEW. When parallel chunks run, branches diverge from main as other chunks merge in; the REBASE phase resolves that divergence before the REVIEW phase sees the code, so the reviewer evaluates clean, already-integrated changes rather than a stale snapshot.
 
-The REBASE phase merges the current trunk (main) into the worktree branch and runs an agent to resolve any conflicts in the context of the active chunk's goal. This means the REVIEW phase sees clean, already-integrated code — reviewing what will actually ship rather than a stale snapshot.
-
-**Current phase progression:**
-```
-PLAN → IMPLEMENT → REVIEW → COMPLETE → merge to main
-```
-
-**New phase progression:**
+**Phase progression:**
 ```
 PLAN → IMPLEMENT → REBASE → REVIEW → COMPLETE → merge to main
 ```
@@ -66,13 +59,13 @@ The REBASE phase is entirely agent-driven. The scheduler spawns an agent in the 
 4. Run the project's test suite to verify the integrated result
 5. Report success or failure
 
-If the agent succeeds, the phase advances to REVIEW. If the agent cannot resolve conflicts or tests fail, the work unit is marked NEEDS_ATTENTION for operator help.
+On agent success, the phase advances to REVIEW. On unresolvable conflicts or test failure, the work unit is marked NEEDS_ATTENTION for operator help.
 
 **Why agent-driven, not mechanical:**
 
-The agent needs the full context of the chunk to handle the messy realities of the post-IMPLEMENT state. The IMPLEMENT phase may leave uncommitted files, may have produced multiple partial commits, or may have modified files that trunk also changed. A mechanical merge would lose the context needed to make the right decisions about all of this. The agent reads the GOAL.md, understands what the chunk is trying to accomplish, and can make informed choices about staging, commit consolidation, and conflict resolution as a unified operation.
+The agent needs the full context of the chunk to handle the messy realities of the post-IMPLEMENT state. The IMPLEMENT phase may leave uncommitted files, may have produced multiple partial commits, or may have modified files that trunk also changed. A mechanical merge would lose the context needed to make the right decisions about all of this. The agent reads the GOAL.md, understands what the chunk is trying to accomplish, and makes informed choices about staging, commit consolidation, and conflict resolution as a unified operation.
 
-This directly reduces the friction identified during the architecture review: every manual merge resolution we performed was caused by branches that diverged while running in parallel. By resolving conflicts before the reviewer sees the code, we also get higher-quality reviews since the reviewer evaluates the code in its actual integration context.
+Resolving conflicts before the reviewer sees the code keeps reviews focused on the integrated reality and removes the failure mode where divergence is only discovered at final merge time, halting automation and requiring manual operator intervention.
 
 ## Success Criteria
 

@@ -5,16 +5,16 @@ parent_chunk: null
 code_paths:
   - src/orchestrator/worktree.py
   - src/orchestrator/scheduler.py
-  - src/orchestrator/api.py
+  - src/orchestrator/api/worktrees.py
   - tests/test_orchestrator_worktree.py
 code_references:
   - ref: src/orchestrator/worktree.py#WorktreeManager::finalize_work_unit
     implements: "Consolidated worktree finalization logic (commit, remove, merge, cleanup)"
   - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
     implements: "Uses finalize_work_unit for work unit completion"
-  - ref: src/orchestrator/api.py#prune_work_unit_endpoint
+  - ref: src/orchestrator/api/worktrees.py#prune_work_unit_endpoint
     implements: "Single worktree prune using finalize_work_unit"
-  - ref: src/orchestrator/api.py#prune_all_endpoint
+  - ref: src/orchestrator/api/worktrees.py#prune_all_endpoint
     implements: "Batch worktree prune using finalize_work_unit"
   - ref: tests/test_orchestrator_worktree.py#TestFinalizeWorkUnit
     implements: "Unit tests for finalize_work_unit method"
@@ -36,9 +36,9 @@ created_after:
 
 ## Minor Goal
 
-Extract and consolidate the duplicated worktree prune/merge/cleanup logic from scheduler.py and api.py into a single source of truth in worktree.py. This eliminates three copies of the same 50-line sequence (commit uncommitted changes, remove worktree, check for changes, merge to base, cleanup empty branches) that currently risks logic drift and maintenance burden.
+Worktree prune/merge/cleanup logic lives in a single source of truth in `worktree.py` rather than being duplicated across `scheduler.py` and the API. The 50-line sequence (commit uncommitted changes, remove worktree, check for changes, merge to base, cleanup empty branches) exists once as `WorktreeManager.finalize_work_unit`, eliminating logic drift between call sites.
 
-This is a pure refactoring with no behavioral changes - all three call sites will delegate to the new consolidated method.
+The consolidation is purely structural — all three call sites (scheduler phase advance, single-prune endpoint, batch-prune endpoint) delegate to the same method.
 
 ## Success Criteria
 

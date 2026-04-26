@@ -4,11 +4,11 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/review/decision.md.jinja2
-- src/ve.py
+- src/cli/reviewer.py
 code_references:
   - ref: src/templates/review/decision.md.jinja2
     implements: "Jinja2 template for reviewer decision file content"
-  - ref: src/ve.py#create_decision
+  - ref: src/cli/reviewer.py#create_decision
     implements: "CLI command that renders decision files using template system"
 narrative: null
 investigation: null
@@ -32,9 +32,9 @@ created_after:
 
 ## Minor Goal
 
-Extract the hard-coded decision file template from `src/ve.py` into a Jinja2 template at `src/templates/review/decision.md.jinja2`. This aligns the reviewer decision template with the established template system used for all other generated files (CLAUDE.md, commands, chunk templates, etc.).
+The reviewer decision file format lives in a Jinja2 template at `src/templates/review/decision.md.jinja2`, aligned with the template system used for all other generated files (CLAUDE.md, commands, chunk templates, etc.).
 
-Currently, the `ve reviewer decision create` command builds the decision file content inline using string concatenation (ve.py lines 4502-4529). Moving this to a Jinja2 template enables:
+The `ve reviewer decision create` command renders this template via `render_template("review", "decision.md.jinja2", criteria=criteria)` rather than building the decision file content inline. Templating the decision file enables:
 - Consistent template management with the rest of the codebase
 - Easier editing of the decision file format without modifying Python code
 - Potential future parameterization (e.g., reviewer-specific templates)

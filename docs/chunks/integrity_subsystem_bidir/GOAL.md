@@ -30,11 +30,9 @@ created_after:
 
 ## Minor Goal
 
-Complete the bidirectional integrity checking in `src/integrity.py` by adding chunk↔subsystem validation. Currently, the integrity validator checks bidirectional consistency for chunk↔narrative and chunk↔investigation relationships (emitting warnings when one side references the other but not vice versa), but does not perform the same check for chunk↔subsystem relationships.
+The integrity validator in `src/integrity.py` checks bidirectional consistency uniformly across all artifact relationships, including chunk↔subsystem alongside chunk↔narrative and chunk↔investigation. When a chunk references a subsystem via its `subsystems` field but that subsystem's `chunks` field does not list the chunk back, an `IntegrityWarning` with `link_type="chunk↔subsystem"` is emitted; the inverse asymmetry — a subsystem listing a chunk that does not reference the subsystem back — emits an `IntegrityWarning` with `link_type="subsystem↔chunk"`.
 
-This creates a gap where a chunk's `subsystems` field can reference a subsystem that doesn't list the chunk back in its `chunks` field, or vice versa, with no warning emitted. This asymmetry makes it harder to maintain accurate cross-references and can lead to orphaned references in the documentation.
-
-Adding this check completes the referential integrity system and ensures all bidirectional artifact relationships are validated consistently.
+A reverse index (`_subsystem_chunks`) built from each subsystem's `chunks` frontmatter field at validator construction time supports the chunk-side lookup without re-reading subsystem files per chunk. The implementation mirrors the existing chunk↔narrative and chunk↔investigation checks so all bidirectional relationships are validated consistently and orphaned cross-references surface as warnings.
 
 ## Success Criteria
 

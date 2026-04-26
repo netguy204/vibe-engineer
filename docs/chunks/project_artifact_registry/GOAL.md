@@ -49,11 +49,9 @@ created_after:
 
 ## Minor Goal
 
-Expand the `Project` class in `src/project.py` into a unified artifact registry by adding lazy-loaded properties for all artifact manager types: `narratives` (Narratives), `investigations` (Investigations), `subsystems` (Subsystems), and `friction` (Friction), following the same pattern already established by the existing `chunks` property.
+The `Project` class in `src/project.py` is a unified artifact registry: it exposes lazy-loaded properties for every artifact manager type — `chunks` (Chunks), `narratives` (Narratives), `investigations` (Investigations), `subsystems` (Subsystems), and `friction` (Friction) — all following the same `_field` / `@property` pattern.
 
-Today, callers that need multiple artifact managers must construct them independently. The `list_proposed_chunks` method on `Chunks` takes three separate manager parameters (`investigations`, `narratives`, `subsystems`) because there is no single object that owns all of them. Similarly, `IntegrityValidator.__init__` in `src/integrity.py` constructs its own `Chunks`, `Narratives`, `Investigations`, `Subsystems`, and `Friction` instances from a raw `project_dir` path, duplicating the registry concern.
-
-By centralizing all manager construction in `Project`, downstream code can accept a single `Project` instance instead of a bag of managers or a raw path. This is a pure structural refactoring -- the lazy-loading semantics already proven by `Project.chunks` are extended to the remaining managers, and call sites are updated to use the registry rather than constructing managers themselves.
+Centralizing manager construction in `Project` means downstream code accepts a single `Project` instance instead of a bag of managers or a raw `project_dir` path. `Chunks.list_proposed_chunks` accepts a `Project` and pulls `investigations`, `narratives`, and `subsystems` from it rather than receiving them as separate parameters. `IntegrityValidator.__init__` accepts an optional `Project` (constructing one from `project_dir` if none is provided) and reads all five managers through its properties, eliminating the duplicate manager construction the validator would otherwise carry. The lazy-loading semantics established by `Project.chunks` extend uniformly to every manager, so callers pay the construction cost only when they touch a given domain.
 
 ## Success Criteria
 

@@ -55,15 +55,15 @@ created_after:
 
 ## Minor Goal
 
-This chunk consolidates four instances of duplicated patterns across artifact managers:
+Four duplicated patterns across artifact managers are consolidated into shared abstractions:
 
-(a) `find_duplicates` is copy-pasted across Chunks, Narratives, Investigations, and Subsystems managers with identical logic. Extract into a single method on `ArtifactManager`.
+(a) `find_duplicates` lives once on `ArtifactManager` rather than being copy-pasted across Chunks, Narratives, Investigations, and Subsystems managers with identical logic.
 
-(b) `ChunkRelationship` and `SubsystemRelationship` in `src/models/references.py` (lines 35-83) are mirror images with identical validation logic. Unify into a generic `ArtifactRelationship` parameterized by target type.
+(b) A generic `ArtifactRelationship` model in `src/models/references.py` parameterizes target type, replacing the mirrored validation logic that previously lived in `ChunkRelationship` and `SubsystemRelationship`.
 
-(c) `_parse_created_after` and `_parse_yaml_created_after` in `src/artifact_ordering.py` (lines 128-195) share identical normalization logic for handling null, string, and list values. Extract the common logic.
+(c) `_normalize_created_after` in `src/artifact_ordering.py` provides the shared normalization logic (null → [], string → [string], list → list) used by both `_parse_created_after` and `_parse_yaml_created_after`.
 
-(d) Four `Active*` dataclasses in `src/template_system.py` (lines 79-212) — `ActiveChunk`, `ActiveNarrative`, `ActiveSubsystem`, `ActiveInvestigation` — have the same structure (`short_name`, `id`, `_project_dir`, path property). Unify into a single `ActiveArtifact` dataclass with a `type` field.
+(d) A single `ActiveArtifact` base dataclass in `src/template_system.py` carries the common structure (`short_name`, `id`, `_project_dir`, path property), and `ActiveChunk`, `ActiveNarrative`, `ActiveSubsystem`, and `ActiveInvestigation` inherit from it.
 
 ## Success Criteria
 

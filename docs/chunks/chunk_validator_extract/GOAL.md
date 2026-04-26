@@ -45,18 +45,18 @@ created_after:
 
 ## Minor Goal
 
-Extract chunk validation logic from `src/chunks.py` (1489 lines) into a new `src/chunk_validation.py` module. The Chunks class has accumulated validation methods that are conceptually distinct from core chunk management (creation, listing, resolution, status transitions). By moving validation into its own module, the Chunks class shrinks significantly and each module has a single, clear responsibility.
+Chunk validation logic lives in its own `src/chunk_validation.py` module, separate from the core chunk management responsibilities (creation, listing, resolution, status transitions) that remain in `src/chunks.py`. Each module has a single, clear responsibility.
 
-The following symbols move to `src/chunk_validation.py`:
+The following symbols live in `src/chunk_validation.py`:
 
 - `ValidationResult` dataclass (structured error reporting for validation outcomes)
-- `validate_chunk_complete()` (~150 lines, the largest validation method -- checks status, code_references, subsystem/investigation/narrative/friction refs)
+- `validate_chunk_complete()` (the largest validation function -- checks status, code_references, subsystem/investigation/narrative/friction refs)
 - `validate_chunk_injectable()` (orchestrator injection-time validation -- checks status-content consistency with PLAN.md)
 - `_validate_symbol_exists()` (verifies symbolic code references point to existing symbols)
 - `_validate_symbol_exists_with_context()` (cross-project code reference validation via task context)
 - `plan_has_content()` (module-level function detecting populated vs template-only PLAN.md)
 
-The Chunks class retains thin delegation methods that call the extracted module, preserving the existing public API (`chunks.validate_chunk_complete(...)`, `chunks.validate_chunk_injectable(...)`). All callers in `src/cli/chunk.py` and `src/orchestrator/api.py` continue to work without import changes. The `plan_has_content` function, which is imported directly by `src/orchestrator/api.py`, is re-exported from `src/chunks.py` for backward compatibility.
+The `Chunks` class exposes thin delegation methods that call the extracted module, preserving the public API (`chunks.validate_chunk_complete(...)`, `chunks.validate_chunk_injectable(...)`). Callers in `src/cli/chunk.py` and `src/orchestrator/api.py` work without import changes. `src/chunks.py` re-exports `ValidationResult` and `plan_has_content` so callers using `from chunks import ValidationResult` or `from chunks import plan_has_content` continue to resolve.
 
 ## Success Criteria
 

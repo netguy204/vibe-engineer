@@ -64,14 +64,7 @@ created_after:
 
 ## Minor Goal
 
-Retain worktrees after work unit completion until explicitly removed by user action. Currently, the orchestrator automatically deletes worktrees in two scenarios that can cause data loss:
-
-1. **After successful completion**: Worktrees are removed immediately after merge in `_handle_completion()`
-2. **During orphan recovery**: When the daemon restarts and finds orphaned RUNNING work units, it deletes their worktrees in `_recover_from_crash()`
-
-The second case caused a critical data loss incident where `cli_modularize` had ~20 minutes of implementation work (creating `src/cli/` with 11 module files, refactoring 4,500 lines) that was lost when the COMPLETE phase got orphaned and the worktree was deleted on recovery.
-
-This chunk changes worktree lifecycle to require explicit user action for removal, providing a safety net for recovering work from failed or orphaned phases.
+Worktrees persist after work unit completion until explicit user action removes them. Neither successful completion nor orphan recovery (`_recover_from_crash`) deletes worktrees automatically; this preserves a safety net for recovering work from failed or orphaned phases. Removal happens through CLI commands (`ve orch worktree remove`, `ve orch worktree prune`) and dashboard actions, with a configurable warning threshold flagging when retained worktrees pile up.
 
 ## Success Criteria
 

@@ -32,9 +32,9 @@ created_after:
 
 ## Minor Goal
 
-Eliminate the repeated task-context branching pattern that appears in 6+ CLI modules by introducing a decorator or context manager that handles the `is_task_directory()` check and routing to task-specific handlers. This reduces 10+ instances of near-identical branching logic (`if is_task_directory(project_dir): _task_handler(...); return`) across chunk.py, narrative.py, investigation.py, subsystem.py, friction.py, and external.py.
+CLI commands route to task-specific handlers through a single shared helper (`handle_task_context` in `src/cli/utils.py`) rather than repeating the `if is_task_directory(project_dir): _task_handler(...); return` branch in each command. The helper centralizes the task-context detection so callers express intent as `if handle_task_context(project_dir, lambda: _task_handler(...)): return`, and the branching contract has one definition.
 
-This consolidation improves CLI maintainability by centralizing the task-context detection logic and reducing the surface area for bugs when the branching pattern changes.
+Sites across `chunk.py`, `narrative.py`, `investigation.py`, `subsystem.py`, `friction.py`, and `external.py` use the helper, so changes to the task-context routing rule (e.g., new task-detection sources, additional context to thread through) update one function instead of a dozen.
 
 ## Success Criteria
 

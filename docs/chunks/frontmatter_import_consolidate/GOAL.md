@@ -32,18 +32,9 @@ created_after:
 
 ## Minor Goal
 
-Consolidate all imports of `update_frontmatter_field` to use a single canonical source: `src/frontmatter.py`. Currently, `src/task_utils.py` re-exports this function (line 303: `from frontmatter import update_frontmatter_field`), and five modules import from `task_utils` instead of directly from `frontmatter`:
+All imports of `update_frontmatter_field` resolve to a single canonical source: `src/frontmatter.py`. The function is defined there and every caller imports it directly, with no re-export indirection through `task_utils.py` or any other module.
 
-- `src/chunks.py` (lines 317 and 1221)
-- `src/orchestrator/scheduler.py` (line 33)
-- `src/consolidation.py` (line 55)
-- `src/cli/chunk.py` (line 638)
-
-One module already imports correctly from `frontmatter`:
-
-- `src/artifact_manager.py` (line 271)
-
-This chunk removes the re-export from `task_utils.py` and updates all callers to import directly from `frontmatter`. This eliminates an unnecessary indirection layer, making the codebase easier to navigate for both agents and humans. It is an independent chunk within the `arch_decompose` narrative that reduces the coupling surface of `task_utils.py` as part of the broader module decomposition effort.
+This single-source rule eliminates an unnecessary indirection layer, making the codebase easier to navigate for both agents and humans. It is an independent constraint within the `arch_decompose` narrative that keeps the coupling surface of `task_utils.py` minimal as part of the broader module decomposition effort.
 
 ## Success Criteria
 

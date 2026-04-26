@@ -40,24 +40,9 @@ created_after:
 
 ## Minor Goal
 
-Standardize exit codes across all CLI commands to follow a consistent convention: exit code 0 for success (including "no results found"), exit code 1 for actual errors. Currently, CLI commands inconsistently treat "no results found" scenarios: some exit with 0 (treating it as success), others exit with 1 (treating it as an error), and some don't use SystemExit at all.
+CLI commands follow a single exit-code convention: exit 0 means the command succeeded (including the "succeeded but found nothing" case), and exit 1 means the command failed. Every list command — `ve chunk list`, `ve investigation list`, `ve narrative list`, `ve subsystem list`, `ve friction list`, `ve chunk list-proposed`, and `ve migration list` — exits 0 when its result set is empty, so scripts and automation can distinguish "no results" from "error" by exit code alone.
 
-This inconsistency breaks scripting and automation use cases where users need to distinguish between "the command succeeded but found nothing" (exit 0) and "the command failed due to an error" (exit 1).
-
-**Current inconsistencies identified:**
-
-Exit 1 for "no results found" (incorrect - should be 0):
-- `ve chunk list` with no chunks (src/cli/chunk.py:445)
-- `ve investigation list` with no investigations (src/cli/investigation.py:143)
-- `ve narrative list` with no narratives (src/cli/narrative.py:130)
-- `ve subsystem list` with no subsystems (src/cli/subsystem.py:58)
-
-Exit 0 for "no results found" (correct):
-- `ve chunk list-proposed` with no proposed chunks (src/cli/chunk.py:759)
-- `ve friction list` with no entries (src/cli/friction.py:307)
-
-No SystemExit at all (ambiguous):
-- `ve migration list` with no migrations (src/cli/migration.py:102) - just returns, implicitly 0
+Validation failures, missing files, daemon-down conditions, and malformed-frontmatter errors all exit 1. The convention is documented in `docs/trunk/SPEC.md` so the contract is reviewable rather than implicit in each command's source.
 
 ## Success Criteria
 

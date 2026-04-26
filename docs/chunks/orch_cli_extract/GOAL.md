@@ -38,15 +38,15 @@ created_after:
 
 ## Minor Goal
 
-Move pure computation functions from `src/cli/orch.py` into the orchestrator domain layer. Specifically, extract three functions that have zero CLI dependency:
+Pure dependency-resolution computation lives in the orchestrator domain layer (`src/orchestrator/dependencies.py`), not in the CLI. Three functions belong here because they have zero CLI dependency:
 
-1. **topological_sort_chunks** (lines 340-408) — Kahn's algorithm for topological sorting of chunk dependencies
-2. **read_chunk_dependencies** (lines 412-441) — Reads `depends_on` from chunk frontmatter for dependency graph construction
-3. **validate_external_dependencies** (lines 445-490) — Validates that dependencies outside the batch exist as work units
+1. **`topological_sort_chunks`** — Kahn's algorithm for topological sorting of chunk dependencies.
+2. **`read_chunk_dependencies`** — Reads `depends_on` from chunk frontmatter to build the dependency graph.
+3. **`validate_external_dependencies`** — Validates that dependencies outside the batch exist as work units.
 
-These functions are pure domain logic currently misplaced in the CLI layer. Moving them to `src/orchestrator/` establishes clearer module boundaries: the CLI module should only contain Click commands and presentation logic, while domain logic lives in the orchestrator package.
+Placing them in `src/orchestrator/` enforces a clear module boundary: `src/cli/orch.py` holds Click commands and presentation logic, the orchestrator package holds domain logic. The CLI imports and calls these functions rather than defining them. This also makes dependency resolution available to other components (the API, tests, future schedulers) without those callers having to import the CLI module.
 
-This is part of the arch_consolidation narrative's Tier 1 structural consolidation work. It reduces the size of `src/cli/orch.py` (currently 1404 lines) and makes the orchestrator's dependency resolution logic available to other components without importing CLI code.
+This is part of the `arch_consolidation` narrative's Tier 1 structural consolidation work.
 
 ## Success Criteria
 

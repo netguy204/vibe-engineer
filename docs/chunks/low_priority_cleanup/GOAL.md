@@ -48,17 +48,17 @@ created_after:
 
 ## Minor Goal
 
-This chunk addresses five low-priority cleanup items identified in an architecture review:
+The codebase carries five small hygiene properties from a low-priority cleanup pass:
 
-(a) `StateMachine.validate_transition` at `src/state_machine.py` (line ~60) uses `self._transition_map.get(current, set())` — if a status exists in the enum but was forgotten in the transition map, it silently treats it as a terminal state. Fix to raise an explicit error for unmapped states.
+(a) `StateMachine.validate_transition` in `src/state_machine.py` raises an explicit error when a status exists in the enum but is missing from the transition map, rather than silently treating it as terminal.
 
-(b) `extract_short_name` at `src/models/shared.py` (lines 12-23) is a documented identity function that adds cognitive overhead. Remove it and update callers.
+(b) `extract_short_name` no longer exists in `src/models/shared.py`; callers use the underlying value directly.
 
-(c) `_get_current_branch` is implemented three times: twice in `src/orchestrator/worktree.py` and once in `src/orchestrator/daemon.py`. Consolidate into a single utility function.
+(c) `get_current_branch` in `src/orchestrator/git_utils.py` is the single git-branch detection utility. `WorktreeManager._get_current_branch` and `daemon._get_current_branch` are thin wrappers that map `GitError` to their module-specific error types.
 
-(d) `ArtifactType` is double-imported in `src/cli/chunk.py`, `narrative.py`, `subsystem.py`, and `investigation.py` — the second import silently shadows the first. Remove the shadowed imports.
+(d) `ArtifactType` is imported once per CLI module in `src/cli/chunk.py`, `narrative.py`, `subsystem.py`, and `investigation.py` — no shadowed re-imports.
 
-(e) PreToolUse hooks in `src/orchestrator/agent.py` (lines ~593-612) are non-functional — they don't fire for MCP or built-in tools. The actual capture happens via message parsing. Remove the hooks or add clear documentation explaining they're vestigial.
+(e) The PreToolUse hooks in `src/orchestrator/agent.py` (`create_question_intercept_hook`, `create_review_decision_hook`) carry explicit documentation noting they are non-functional for MCP and built-in tools; the actual capture happens via message parsing.
 
 ## Success Criteria
 

@@ -24,7 +24,7 @@ created_after:
 
 ## Minor Goal
 
-Clarify the length validation logic in `validate_identifier()` by simplifying the condition from `len(value) >= max_length + 1` to `len(value) > max_length` and updating the error message from "must be less than {max_length + 1} characters" to "must be at most {max_length} characters".
+The length validation logic in `validate_identifier()` uses the direct condition `len(value) > max_length` and reports violations with the message "must be at most {max_length} characters".
 
 ## Success Criteria
 

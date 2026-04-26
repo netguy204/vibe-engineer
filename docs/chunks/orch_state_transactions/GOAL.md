@@ -30,9 +30,9 @@ created_after:
 
 ## Minor Goal
 
-Add explicit SQLite transaction boundaries around multi-statement operations in the orchestrator's state store to prevent incomplete status logs and ensure atomicity. Currently, `update_work_unit()` performs a SELECT (get old status), UPDATE (new status), and INSERT (status log) as separate autocommitted statements. If the process dies between operations, the status log becomes incomplete or inconsistent with work unit state.
+The orchestrator's state store wraps multi-statement operations in explicit SQLite transactions so status logs stay consistent with work unit state. `StateStore.transaction()` provides a context manager that emits `BEGIN`/`COMMIT` (and `ROLLBACK` on exception) against the autocommit-mode connection. `create_work_unit()` uses it to atomically write the work unit row and its initial status log entry; `update_work_unit()` uses it to bundle the SELECT (for old status), UPDATE, and status-log INSERT into a single atomic unit. A process death between statements either commits the full transition or none of it.
 
-This chunk wraps these multi-statement sequences in explicit BEGIN/COMMIT blocks to ensure atomic updates. Additionally, review the dual-connection pattern where two separate StateStore instances connect to the same database (one from `start_daemon`, one from `create_app`) to ensure there are no unintended concurrency issues.
+The dual-connection pattern — separate `StateStore` instances from `start_daemon` and `create_app` connecting to the same database — is documented on the `StateStore` class. WAL mode plus short-lived transactions keep concurrent writes from corrupting state; SQLite serializes writes across connections.
 
 ## Success Criteria
 

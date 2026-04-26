@@ -26,16 +26,16 @@ created_after:
 
 ## Minor Goal
 
-This chunk brings trunk documentation back into alignment with the current implementation:
+Trunk documentation aligns with the current implementation along three axes:
 
-**(a) Update `docs/trunk/SPEC.md` command references.** Replace `ve chunk start` with `ve chunk create` at line ~443 and any other references. The command was renamed but the spec was not updated.
+**(a) `docs/trunk/SPEC.md` command references.** SPEC.md uses `ve chunk create` as the canonical command name; `ve chunk start` survives only as a documented deprecated alias.
 
-**(b) Add orchestrator worktree note to SPEC.md.** Add a note to the IMPLEMENTING constraint section (around line ~216) explaining how the orchestrator maintains the single-IMPLEMENTING constraint via worktrees. Each worktree has at most one IMPLEMENTING chunk, preserving the constraint's intent, but the orchestrator manages multiple worktrees in parallel. The spec currently only describes the single-IMPLEMENTING rule without acknowledging this dual model.
+**(b) Orchestrator worktree note in SPEC.md.** The IMPLEMENTING constraint section explains the dual model: the single-IMPLEMENTING rule applies *per worktree*, and the orchestrator manages multiple worktrees in parallel, each with at most one IMPLEMENTING chunk. This preserves the constraint's intent (focused work, predictable state) while enabling parallel execution.
 
-**(c) Record missing architectural decisions in `docs/trunk/DECISIONS.md`.** Add ADRs for:
-- The orchestrator's daemon + HTTP API architecture (why a persistent server with Unix socket + TCP)
-- The choice of Pydantic for frontmatter models (why schema validation at the model layer)
-- The ArtifactManager abstract base class pattern (why Template Method for artifact lifecycle)
+**(c) Architectural decisions recorded in `docs/trunk/DECISIONS.md`.** ADRs cover:
+- The orchestrator's daemon + HTTP API architecture (a persistent server with Unix socket + TCP)
+- The choice of Pydantic for frontmatter models (schema validation at the model layer)
+- The ArtifactManager abstract base class pattern (Template Method for artifact lifecycle)
 
 ## Success Criteria
 

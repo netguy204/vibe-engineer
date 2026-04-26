@@ -24,13 +24,13 @@ created_after:
 
 ## Minor Goal
 
-Add critical-path awareness to the orchestrator's ready queue so that chunks which block other chunks are dispatched before independent leaf chunks.
+The orchestrator's ready queue is critical-path aware: chunks that block other chunks are dispatched before independent leaf chunks.
 
-Currently `get_ready_queue()` in `src/orchestrator/state.py:649` orders READY work units by `priority DESC, created_at ASC`. This means a chunk like `frontmatter_io` (which blocks `artifact_manager_base` and `validation_error_surface`) has no scheduling advantage over independent chunks — it gets dispatched whenever a slot opens based on FIFO order.
+`get_ready_queue()` in `src/orchestrator/state.py` orders READY work units by `blocks_count DESC, priority DESC, created_at ASC`. A chunk like `frontmatter_io` (which blocks `artifact_manager_base` and `validation_error_surface`) is dispatched ahead of independent chunks because its `blocks_count` is higher.
 
-The attention queue (`get_attention_queue()` at line 603) already computes a `blocks_count` for each work unit by counting how many other work units have it in their `blocked_by` list, and sorts by that count descending. The ready queue should apply the same logic: chunks that unblock the most other work should be dispatched first.
+The attention queue (`get_attention_queue()`) computes the same `blocks_count` by counting how many other work units have it in their `blocked_by` list. The ready queue applies the same logic: chunks that unblock the most other work go first.
 
-This directly advances the trunk goal's required property that the workflow "should not grow more difficult over time" — as dependency chains grow deeper, the scheduler should automatically optimize for throughput rather than requiring manual priority tuning.
+This advances the trunk goal's required property that the workflow "should not grow more difficult over time" — as dependency chains grow deeper, the scheduler automatically optimizes for throughput rather than requiring manual priority tuning.
 
 ## Success Criteria
 
