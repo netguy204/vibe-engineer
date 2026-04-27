@@ -10,153 +10,134 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Two template files are out of sync. The fix is purely documentary: rewrite the
+`PROPOSED_CHUNKS` comment block in the OVERVIEW.md template so it tells the
+agent to populate the array at narrative-creation time, then audit the
+`narrative-create` skill prompt to confirm (and tighten if needed) that it
+gives consistent guidance. Re-render with `ve init` and smoke-test with an
+ephemeral narrative to confirm the rendered output is coherent.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
-
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/narrative_proposed_chunks_doc/GOAL.md)
-with references to the files that you expect to touch.
--->
+No schema changes. No code logic changes. This chunk touches only Jinja2
+templates and documentation.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+This chunk USES the **template_system** subsystem (STABLE). The templates being
+edited (`src/templates/narrative/OVERVIEW.md.jinja2` and
+`src/templates/commands/narrative-create.md.jinja2`) are part of the template
+system's scope, but the changes here are purely to comment/prose content inside
+those templates — not to the rendering infrastructure itself. No compliance
+deviations to record.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Rewrite the `PROPOSED_CHUNKS` comment block in OVERVIEW.md.jinja2
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/templates/narrative/OVERVIEW.md.jinja2`, replace the existing
+`PROPOSED_CHUNKS:` comment block (lines 18–38) with a corrected version that:
 
-Example:
+1. Removes the "DO NOT POPULATE this array during narrative creation" line
+   entirely — this is the root cause of the bug.
 
-### Step 1: Define the SegmentHeader struct
+2. Adds an explicit instruction that the agent **must** populate this array at
+   narrative-creation time, as part of completing the OVERVIEW.md template.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+3. Documents which fields are set when:
+   - `prompt` — written at narrative-creation time (the refinement output)
+   - `depends_on` — written at narrative-creation time (per the semantics table)
+   - `chunk_directory` — left as `null` at narrative-creation time; filled in
+     automatically by `/chunk-create` when the proposed chunk is reified
 
-Location: src/segment/format.rs
+4. Preserves the existing `depends_on` semantics table verbatim (null vs [] vs
+   indices), since those semantics are correct and cross-referenced by the skill
+   prompt.
 
-### Step 2: Implement header serialization
+5. Keeps the `ve chunk list-proposed` tip.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+The updated block should read as a single, coherent instruction: "populate now,
+leave chunk_directory null until /chunk-create."
 
-### Step 3: ...
+### Step 2: Audit and tighten the `narrative-create` skill prompt
 
----
+Open `src/templates/commands/narrative-create.md.jinja2` and review Step 3 and
+Step 4:
 
-**BACKREFERENCE COMMENTS**
+- **Step 3** currently says "Complete the template in <narrative_path>/OVERVIEW.md
+  with the information supplied by the operator." This is correct in intent but
+  does not explicitly mention populating `proposed_chunks`. Add a parenthetical
+  or clarifying sentence making it clear that completing the template includes
+  writing the `proposed_chunks` frontmatter array.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+- **Step 4** already focuses on `depends_on` semantics and doesn't imply the
+  array should be left empty. Verify no wording does so implicitly. If the
+  existing wording is clean, leave Step 4 otherwise unchanged.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+The goal is that an agent reading Steps 3 and 4 in sequence gets an unambiguous
+directive: populate `proposed_chunks` now, use Step 4's guidance to set
+`depends_on` correctly for each entry.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 3: Re-render with `ve init`
 
-Format (place immediately before the symbol):
+Run:
+
+```bash
+uv run ve init
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+
+Confirm the command exits cleanly and reports the expected rendered files. The
+rendered commands (`.claude/commands/narrative-create.md`) and any CLAUDE.md
+sections should be updated if they reference the affected templates.
+
+### Step 4: Smoke-test with an ephemeral narrative
+
+Create a temporary narrative to verify the template produces coherent guidance:
+
+```bash
+uv run ve narrative create verify_proposed_chunks_fix
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Open `docs/narratives/verify_proposed_chunks_fix/OVERVIEW.md` and confirm:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+- The `PROPOSED_CHUNKS` comment block instructs the agent to populate the array
+  **now**, not later.
+- The comment specifies `chunk_directory: null` until reification.
+- The `depends_on` semantics table is present and intact.
+- No contradictory "DO NOT POPULATE" text appears anywhere in the file.
+
+Then delete the ephemeral narrative:
+
+```bash
+rm -rf docs/narratives/verify_proposed_chunks_fix
+```
+
+### Step 5: Update chunk GOAL.md code_paths
+
+Update the `code_paths` field in
+`docs/chunks/narrative_proposed_chunks_doc/GOAL.md` to reflect both files
+touched:
+
+```yaml
+code_paths:
+- src/templates/narrative/OVERVIEW.md.jinja2
+- src/templates/commands/narrative-create.md.jinja2
+```
+
+(These are already listed; confirm they are accurate and complete.)
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. Both files are standalone templates with no code dependencies.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **`ve init` scope**: `ve init` re-renders all templates. Confirm the command
+  doesn't overwrite any locally modified files unexpectedly. The CLAUDE.md in
+  this worktree has a VE:MANAGED section that is managed by `ve init` — verify
+  it doesn't regress.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Rendered command location**: After `ve init`, the rendered
+  `.claude/commands/narrative-create.md` should reflect Step 3's updated
+  wording. Check that the rendered file matches the template change.
 
 ## Deviations
 
@@ -167,13 +148,4 @@ When reality diverges from the plan, document it here:
 - What changed?
 - Why?
 - What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

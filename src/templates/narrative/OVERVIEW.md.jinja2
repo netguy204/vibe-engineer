@@ -16,25 +16,28 @@ ADVANCES_TRUNK_GOAL:
 - Example: "Required Properties: Must support multi-repository workflows"
 
 PROPOSED_CHUNKS:
-- Starts empty; entries are added as prompts are turned into chunks via /chunk-create
-- Each entry records which prompt was refined and where the resulting chunk lives
-- prompt: The prompt text from this document that was used to create the chunk
-- chunk_directory: The created chunk directory (e.g., "feature_name"), null until created
-- depends_on: Optional array of integer indices expressing implementation dependencies.
+- POPULATE THIS ARRAY at narrative-creation time. Leaving it empty defeats the
+  discovery surface that lets `ve chunk list-proposed` surface unstarted work.
+- Each entry describes a proposed chunk that has not yet been reified via /chunk-create.
 
-  SEMANTICS (null vs empty distinction):
+Fields and when they are set:
+- prompt: Written at narrative-creation time — the refined prompt text for this chunk.
+- depends_on: Written at narrative-creation time — see semantics table below.
+- chunk_directory: Leave as `null` at narrative-creation time. /chunk-create fills this
+  in automatically when the proposed chunk is reified into a real chunk.
+
+DEPENDS_ON SEMANTICS (null vs empty distinction):
   | Value           | Meaning                                 | Oracle behavior |
   |-----------------|----------------------------------------|-----------------|
   | omitted/null    | "I don't know dependencies for this"  | Consult oracle  |
   | []              | "Explicitly has no dependencies"       | Bypass oracle   |
   | [0, 2]          | "Depends on prompts at indices 0 & 2"  | Bypass oracle   |
 
-  - Indices are zero-based and reference other prompts in this same array
+  - Indices are zero-based and reference other entries in this same array
   - At chunk-create time, index references are translated to chunk directory names
   - Use `[]` when you've analyzed the chunks and determined they're independent
   - Omit the field when you don't have enough context to determine dependencies
-- DO NOT POPULATE this array during narrative creation. It will be populated as
-  chunks are created.
+
 - Use `ve chunk list-proposed` to see all proposed chunks that haven't been created yet
 -->
 

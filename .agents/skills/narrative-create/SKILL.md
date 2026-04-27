@@ -36,7 +36,10 @@ $ARGUMENTS
 
 3. Complete the template in <narrative_path>/OVERVIEW.md with the
    information supplied by the operator and through further clarification
-   interactions with the operator.
+   interactions with the operator. Completing the template includes writing
+   the `proposed_chunks` frontmatter array — populate it now with a prompt
+   entry for each chunk identified during refinement (set `chunk_directory:
+   null` for each; /chunk-create will fill that in when the chunk is reified).
 
 4. **When populating `proposed_chunks`, understand the `depends_on` semantics.**
 

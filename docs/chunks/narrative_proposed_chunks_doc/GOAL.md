@@ -1,19 +1,19 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/narrative/OVERVIEW.md.jinja2
-  - src/templates/commands/narrative-create.md.jinja2
+- src/templates/narrative/OVERVIEW.md.jinja2
+- src/templates/commands/narrative-create.md.jinja2
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["watch_reconnect_counter_reset"]
+created_after:
+- watch_reconnect_counter_reset
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
