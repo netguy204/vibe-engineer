@@ -36,8 +36,8 @@ $ ve init</code></pre>
   <ul>
     <li><code>docs/trunk/</code>: project-level docs (GOAL, SPEC, DECISIONS, TESTING_PHILOSOPHY, and others)</li>
     <li><code>docs/chunks/</code>: where each chunk lives</li>
-    <li><code>AGENTS.md</code> and <code>.agents/skills/</code>: agents-standard orientation and skill layout, so any compliant harness can in principle drive the workflow</li>
-    <li><code>.claude/commands/</code>: Claude Code's slash-command layout, also rendered because Claude Code is the well-tested harness today</li>
+    <li><code>AGENTS.md</code> and <code>.agents/skills/</code>: agents-standard orientation and skill layout. This is the source of truth.</li>
+    <li><code>CLAUDE.md</code> and <code>.claude/commands/</code>: symlinks into the above, so Claude Code finds the orientation and skills in the layout it expects. No duplication; just a shim. Other harnesses get similar shims as we add them.</li>
   </ul>
 
   <div class="evolving-notice">
