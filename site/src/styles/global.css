@@ -455,6 +455,7 @@ nav {
 
 .cta-links {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: var(--space-lg);
   margin-top: var(--space-lg);
