@@ -372,6 +372,8 @@ class BoardClient:
                 )
                 # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
                 backoff = 1.0
+                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after successful reconnect
+                attempt = 0
 
     # Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch_multi
@@ -666,6 +668,8 @@ class BoardClient:
                     cursors,
                 )
                 backoff = 1.0
+                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after successful reconnect
+                attempt = 0
 
     # Chunk: docs/chunks/board_channel_delete - Delete a channel and all its messages
     async def delete_channel(self, channel: str) -> None:

@@ -386,7 +386,13 @@ async def test_watch_multi_reconnect_delivers_pending_messages(keypair):
 
 @pytest.mark.asyncio
 async def test_watch_with_reconnect_max_retries(keypair):
-    """watch_with_reconnect() raises after exhausting max_retries."""
+    """watch_with_reconnect() raises after exhausting max_retries.
+
+    Since attempt resets to 0 after every successful connect(), the safety
+    valve now fires when connect() *itself* fails consecutively (handshake
+    errors).  The initial watch recv failure starts the count; each
+    subsequent connect() failure increments it until max_retries is exceeded.
+    """
     seed, pub, swarm_id = keypair
     nonce_hex = "aa" * 32
     challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
@@ -394,16 +400,26 @@ async def test_watch_with_reconnect_max_retries(keypair):
 
     import websockets.exceptions
 
+    call_count = 0
+
     def make_ws_factory(*args, **kwargs):
-        """Every connection's watch recv raises ConnectionClosedError."""
+        nonlocal call_count
+        call_count += 1
         ws = AsyncMock()
-        ws.recv = AsyncMock(side_effect=[
-            challenge,
-            auth_ok,
-            websockets.exceptions.ConnectionClosedError(None, None),
-        ])
         ws.send = AsyncMock()
         ws.close = AsyncMock()
+        if call_count == 1:
+            # Initial connection succeeds, then the watch recv immediately fails.
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Reconnect attempts: connect() itself fails on challenge recv.
+            ws.recv = AsyncMock(side_effect=[
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
         return _async_ctx(ws)
 
     with patch("board.client.websockets.connect", side_effect=make_ws_factory):
@@ -544,7 +560,8 @@ async def test_watch_with_reconnect_resets_backoff_after_success(keypair):
 
     assert result["position"] == 1
     # All 4 sleeps are 1.0s because backoff resets after each successful connect().
-    # The attempt counter is NOT reset, preserving max_retries semantics.
+    # The attempt counter IS reset after each successful reconnect (attempt=0),
+    # so the ceiling applies only to consecutive failures, not lifetime failures.
     assert sleep_mock.call_count == 4
     for i in range(4):
         assert sleep_mock.call_args_list[i].args[0] == pytest.approx(1.0)
@@ -1864,60 +1881,84 @@ async def test_watch_with_reconnect_backoff_caps_at_60s(keypair):
 @pytest.mark.asyncio
 async def test_watch_with_reconnect_default_max_retries(keypair):
     """watch_with_reconnect with default max_retries=10 raises after 10
-    consecutive failed reconnects (not unlimited)."""
+    consecutive connect() handshake failures (not unlimited).
+
+    Since attempt resets to 0 after every successful connect(), the safety
+    valve fires when connect() itself fails consecutively.  The initial
+    connection succeeds (to allow calling watch_with_reconnect), then every
+    subsequent reconnect attempt fails on the challenge recv.
+    """
     seed, pub, swarm_id = keypair
     nonce_hex = "aa" * 32
     challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
     auth_ok = json.dumps({"type": "auth_ok"})
 
+    call_count = 0
+
     def make_ws_factory(*args, **kwargs):
-        """Every connection's watch recv raises ConnectionClosedError."""
+        nonlocal call_count
+        call_count += 1
         ws = AsyncMock()
-        ws.recv = AsyncMock(side_effect=[
-            challenge,
-            auth_ok,
-            websockets.exceptions.ConnectionClosedError(None, None),
-        ])
         ws.send = AsyncMock()
         ws.close = AsyncMock()
+        if call_count == 1:
+            # Initial connection: auth OK, watch recv immediately fails.
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Reconnect: connect() itself fails on challenge recv.
+            ws.recv = AsyncMock(side_effect=[
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
         return _async_ctx(ws)
 
-    connect_count = 0
-    original_factory = make_ws_factory
-
-    def counting_factory(*args, **kwargs):
-        nonlocal connect_count
-        connect_count += 1
-        return original_factory(*args, **kwargs)
-
-    with patch("board.client.websockets.connect", side_effect=counting_factory):
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
         with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
             with patch("board.client.random.uniform", return_value=0):
                 client = BoardClient("ws://localhost:8787", swarm_id, seed)
                 await client.connect()
-                # Default max_retries=10, should raise after 10 attempts
+                # Default max_retries=10, should raise after 10 connect() failures
                 with pytest.raises(websockets.exceptions.ConnectionClosedError):
                     await client.watch_with_reconnect("ch1", 0)
 
 
 @pytest.mark.asyncio
 async def test_watch_multi_reconnect_default_max_retries(keypair):
-    """watch_multi_with_reconnect with default max_retries=10 raises after 10
-    consecutive failed reconnects."""
+    """watch_multi_with_reconnect raises after exhausting max_retries.
+
+    Since attempt resets to 0 after every successful connect(), the safety
+    valve fires when connect() itself fails consecutively.  The initial
+    watch recv failure starts the count; each subsequent connect() failure
+    increments it until the default max_retries=10 is exceeded.
+    """
     seed, pub, swarm_id = keypair
     nonce_hex = "aa" * 32
     challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
     auth_ok = json.dumps({"type": "auth_ok"})
 
+    call_count = 0
+
     def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
         ws = AsyncMock()
-        ws.recv = AsyncMock(side_effect=[
-            challenge,
-            auth_ok,
-            websockets.exceptions.ConnectionClosedError(None, None),
-        ])
         ws.send = AsyncMock()
         ws.close = AsyncMock()
+        if call_count == 1:
+            # Initial connection: auth OK, then watch_multi recv fails.
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Subsequent reconnect attempts: connect() itself fails on challenge.
+            ws.recv = AsyncMock(side_effect=[
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
         return _async_ctx(ws)
 
     with patch("board.client.websockets.connect", side_effect=make_ws_factory):
@@ -2047,25 +2088,39 @@ async def test_watch_with_reconnect_idle_does_not_exhaust_budget(keypair):
 
 @pytest.mark.asyncio
 async def test_watch_with_reconnect_real_failure_exhausts_budget(keypair):
-    """Genuine connection failures still count against max_retries.
+    """Genuine handshake failures still count against max_retries.
 
-    Simulate max_retries+1 genuine ConnectionClosedErrors and verify the
-    exception propagates (safety valve is preserved).
+    After the attempt counter resets on each successful connect(), the safety
+    valve now triggers when connect() *itself* fails consecutively — not when
+    a watch recv fails after a healthy connection.  Simulate an initial watch
+    recv failure followed by max_retries connect() handshake failures and
+    verify the exception propagates.
     """
     seed, pub, swarm_id = keypair
     nonce_hex = "aa" * 32
     challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
     auth_ok = json.dumps({"type": "auth_ok"})
 
+    call_count = 0
+
     def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
         ws = AsyncMock()
-        ws.recv = AsyncMock(side_effect=[
-            challenge,
-            auth_ok,
-            websockets.exceptions.ConnectionClosedError(None, None),
-        ])
         ws.send = AsyncMock()
         ws.close = AsyncMock()
+        if call_count == 1:
+            # Initial connection: auth OK, watch recv immediately fails.
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Reconnect: connect() itself fails (no challenge received).
+            ws.recv = AsyncMock(side_effect=[
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
         return _async_ctx(ws)
 
     with patch("board.client.websockets.connect", side_effect=make_ws_factory):
@@ -2218,3 +2273,121 @@ async def test_watch_multi_with_reconnect_budget_resets_on_message(keypair):
     assert results[1]["position"] == 2
     # Total: pre_idle + 1 (msg+stale) + post_idle + 1 (final msg) connections
     assert call_count == pre_idle + 1 + post_idle + 1
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/watch_reconnect_counter_reset - Intermittent transient tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_intermittent_transients_do_not_accumulate(keypair):
+    """N+1 transient disconnects with successful reconnects between them do not exhaust
+    the budget.  With the bug the 4th failure raises; with the fix all 5 succeed and the
+    final message is returned.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 1,
+        "body": "ok==",
+        "sent_at": "2026-04-27T00:00:00Z",
+    })
+
+    transient_count = 5  # > max_retries=3; proves counter resets on each success
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if call_count <= transient_count:
+            # Connections 1–5: connect() consumes challenge+auth_ok,
+            # then the watch loop's first recv raises ConnectionClosedError.
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Connection 6: successful reconnect — delivers the message.
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                result = await client.watch_with_reconnect("ch1", 0, max_retries=3)
+
+    assert result["position"] == 1
+    # One sleep per transient failure (5 total).
+    assert sleep_mock.call_count == transient_count
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_reconnect_intermittent_transients_do_not_accumulate(keypair):
+    """N+1 transient disconnects with successful reconnects in watch_multi_with_reconnect
+    do not exhaust the budget.  Without the fix the 4th failure raises; with it the watch
+    completes normally.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 7,
+        "body": "arrived==",
+        "sent_at": "2026-04-27T00:00:00Z",
+    })
+
+    transient_count = 5  # > max_retries=3
+    call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if call_count <= transient_count:
+            # connect() consumes challenge+auth_ok; the inner watch_multi then
+            # calls recv() and immediately gets ConnectionClosedError (no message
+            # delivered, so the reconnect attempt counter must not accumulate).
+            ws.recv = AsyncMock(side_effect=[
+                challenge,
+                auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+        else:
+            # Final connection: delivers the expected message.
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    results = []
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                async for m in client.watch_multi_with_reconnect(
+                    {"ch-a": 6}, max_retries=3, count=1
+                ):
+                    results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["channel"] == "ch-a"
+    assert results[0]["position"] == 7
+    # One sleep per transient failure (5 total).
+    assert sleep_mock.call_count == transient_count

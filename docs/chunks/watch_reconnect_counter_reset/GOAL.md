@@ -1,17 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: watch_idle_reconnect_budget
-code_paths: []
+code_paths:
+  - src/board/client.py
+  - tests/test_board_client.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["list_task_aware", "narrative_cli_commands", "wiki_diff_baseline_ref", "intent_complete_verification", "intent_create_gate", "intent_workflow_docs"]
+created_after:
+- list_task_aware
+- narrative_cli_commands
+- wiki_diff_baseline_ref
+- intent_complete_verification
+- intent_create_gate
+- intent_workflow_docs
 ---
-
 # Chunk Goal
 
 ## Minor Goal
