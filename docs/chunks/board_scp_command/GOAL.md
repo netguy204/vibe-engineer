@@ -27,13 +27,13 @@ created_after:
 
 ## Minor Goal
 
-Add a `ve board scp <host>` command that copies the user's board configuration and swarm key material to a remote host via SCP. This makes it easy for users to spread their board setup across multiple machines without manually locating and copying files.
+The `ve board scp <host>` command copies the user's board configuration and swarm key material to a remote host via SCP, letting users spread their board setup across multiple machines without manually locating and copying files.
 
-The command should copy:
+The command copies:
 - `~/.ve/board.toml` (board server configuration)
 - Swarm key material (encryption keys used for channel communication)
 
-Target destination should mirror the source layout under `~/.ve/` on the remote host.
+The target destination mirrors the source layout under `~/.ve/` on the remote host.
 
 ## Success Criteria
 

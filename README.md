@@ -1,6 +1,10 @@
 # Vibe Engineer
 
-Documentation-driven development workflow tooling. Vibe Engineer helps you maintain structured documentation through a workflow where strong documentation leads to confident code implementation and new code brings with it the needed documentation. The end result is vibe coding that still feels like magic on day 2.
+*Documentation-driven development for AI-assisted coding.*
+
+`ve` is a CLI for organizing AI-assisted code changes around architectural intent. Vibe coding is magic on day 1: you describe what you want, the agent builds it, it works. Day 2 breaks because the codebase kept the implementation but not the judgment that produced it. `ve` adds the missing layer: chunks that record *why* a piece of the system has the shape it has and stay current as the code evolves.
+
+**Website:** [veng.dev](https://veng.dev)
 
 ## Installation
 
@@ -56,21 +60,21 @@ uv tool uninstall vibe-engineer
 
 ### Initialize a Project
 
-Set up the vibe-engineer document structure in your project:
+Initialize the vibe-engineer scaffolding in a project:
 
 ```bash
 ve init
 ```
 
-This creates the `docs/trunk/` directory with template documentation files.
+This creates `docs/trunk/` for project-level docs (GOAL, SPEC, DECISIONS, TESTING_PHILOSOPHY), `docs/chunks/` for the work itself, and `AGENTS.md` plus `CLAUDE.md` so agents know how to navigate the layout.
 
-Now you should edit your docs/trunk contents so that agents (and humans) understand what your project is for and the big rules for working in it. The docs/trunk of this repository provide a strong example to work from.
+Edit `docs/trunk/` next: this is where you describe what the project is for and the rules an agent should respect when working in it. The `docs/trunk/` of this repository is a worked example.
 
 ### Working in Chunks
 
-Chunks are the units of change in the Vibe Engineering workflow. You don't have to edit your code using chunks, but if you do then you get the value of agent maintained documentation "for free". When I'm using this workflow professionally, I usually create at least one chunk for each ticket I'm working on.
+[Chunks](https://veng.dev/docs/chunks/) capture the *intent* behind your code: the constraints, decisions, and boundaries that should outlive any particular implementation. Not every change needs a chunk. Typo fixes, dependency bumps, and mechanical renames bypass the chunk system. The test: *does this code need to remember why it exists?* If yes, make a chunk. See `docs/trunk/CHUNKS.md` for the full principles.
 
-Each chunk has a goal and an implementation plan. The goal is where you get clear on what the end value you're trying to achieve is. The plan is where you get clear on how you'll get to that value. The agent writes both of these files and you edit them.
+Each chunk has two files. `GOAL.md` records the problem, the success criteria, and the constraints in present tense, so it stays current as the code evolves. `PLAN.md` is a literate-programming pass from the current codebase to one that satisfies the goal. The agent writes both; you edit them.
 
 #### Claude Code Slash Commands
 
@@ -154,7 +158,7 @@ This creates a `.ve-task.yaml` configuration file that enables task-aware chunk 
 
 ### Orchestrator
 
-The orchestrator (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously — you create the work, and the orchestrator schedules and executes it.
+The [orchestrator](https://veng.dev/docs/orchestrator/) (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously. You create the work; the orchestrator schedules and executes it.
 
 #### Key Commands
 
@@ -186,53 +190,6 @@ ve orch answer my_feature "Yes, use the existing auth module"
 ```
 
 For the full command reference and advanced topics (worktree retention, batch operations, conflict resolution), see `docs/trunk/ORCHESTRATOR.md`.
-
-### Steward
-
-The steward is a long-lived agent that watches an inbound message channel, triages requests according to a Standard Operating Procedure (SOP), and delegates work to the orchestrator. It turns cross-project messages into chunks and investigations without human intervention.
-
-#### Setup
-
-Run `/steward-setup` to create `docs/trunk/STEWARD.md` via an interactive interview. You'll configure:
-
-- **Steward name** — a human-readable identifier
-- **Channel** — the inbound channel the steward watches for messages
-- **Behavior mode** — how the steward responds to inbound messages:
-  - `autonomous` — creates and implements chunks end-to-end
-  - `queue` — creates work items for human review without implementing
-  - `custom` — follows freeform operator-defined instructions
-
-#### The Watch Loop
-
-Once set up, run `/steward-watch` to start the steward's core lifecycle:
-
-1. Read the SOP from `docs/trunk/STEWARD.md`
-2. Watch the inbound channel for messages
-3. Triage and act according to the behavior mode
-4. Post outcome summaries to the changelog channel
-5. Re-read the SOP and repeat
-
-The steward runs autonomously until the agent session ends. Editing the SOP mid-session takes effect on the next iteration.
-
-#### Cross-Project Messaging
-
-Use `/steward-send` to send a message to another project's steward without context-switching. This lets an operator in Project A request work from Project B's steward directly.
-
-#### Example Workflow
-
-```bash
-# 1. Set up the steward (interactive)
-/steward-setup
-
-# 2. Start the watch loop
-/steward-watch
-
-# 3. From another project, send a request to this steward
-/steward-send tool-b-steward "Please add rate limiting to the /api/submit endpoint"
-
-# 4. Watch for the outcome
-/steward-changelog
-```
 
 ## Development Setup (Improving the Vibe Engineering workflow)
 
@@ -272,17 +229,20 @@ Use `/steward-send` to send a message to another project's steward without conte
 
 ```
 vibe-engineer/
-├── src/
-│   ├── ve.py          # CLI entry point
-│   ├── chunks.py      # Chunk management logic
-│   ├── project.py     # Project initialization
-│   ├── models.py      # Pydantic models
-│   └── templates/     # Document templates
-├── tests/             # Pytest test suite
+├── src/                  # `ve` CLI (Python)
+│   ├── ve.py             # CLI entry point
+│   ├── cli/              # Subcommands: chunk, orch, board, entity, ...
+│   ├── orchestrator/     # Parallel chunk execution across worktrees
+│   ├── board/            # Client for the leader-board worker
+│   └── templates/        # Jinja2 templates rendered into a project by `ve init`
+├── site/                 # Marketing site (Astro) for veng.dev
+├── workers/
+│   └── leader-board/     # Cloudflare Worker: cross-agent messaging backend
+├── tests/                # Pytest test suite
 ├── docs/
-│   ├── trunk/         # Project documentation
-│   └── chunks/        # Work chunks
-└── pyproject.toml     # Project configuration
+│   ├── trunk/            # Project documentation
+│   └── chunks/           # Work chunks
+└── pyproject.toml        # Python project configuration
 ```
 
 ## Releasing
@@ -291,12 +251,12 @@ Releases are published to [PyPI](https://pypi.org/project/vibe-engineer/) automa
 
 1. Update the version in `pyproject.toml`
 2. Commit the version bump: `git commit -am "chore: bump version to 0.2.0"`
-3. Tag the release: `git tag v0.2.0`
-4. Push the tag: `git push origin v0.2.0`
+3. Tag the release: `git tag releases/v0.2.0`
+4. Push the tag: `git push origin releases/v0.2.0`
+
+Tags follow the `releases/v*` pattern; the publish workflow triggers on tags matching that prefix.
 
 GitHub Actions will build the package and publish it to PyPI using trusted publishing (OIDC).
-
-**First-time setup:** Before the first release, configure a [trusted publisher](https://docs.pypi.org/trusted-publishers/) on pypi.org linking the `netguy204/vibe-engineer` repository and the `publish.yml` workflow to the `vibe-engineer` PyPI project. Create a GitHub environment named `pypi` in the repository settings.
 
 After publishing, users can install with:
 

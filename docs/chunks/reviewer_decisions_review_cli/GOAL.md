@@ -44,7 +44,7 @@ created_after:
 
 ## Minor Goal
 
-Add CLI commands for operator review workflow. This enables the trust graduation loop where operator feedback on decisions becomes few-shot examples for future reviews.
+The CLI exposes commands for the operator review workflow. Operator feedback on decisions feeds the trust graduation loop, becoming few-shot examples for future reviews.
 
 ## Success Criteria
 

@@ -33,14 +33,14 @@ created_after:
 
 ## Minor Goal
 
-Fix the cleartext gateway returning Cloudflare error 1101 (Worker internal error / unhandled exception) when reading messages via `GET /gateway/{token}/channels/{channel}/messages`. The invite page renders correctly and invite creation works, but the actual message read/write API throws an unhandled exception.
+The cleartext gateway's read/write API (`GET`/`POST /gateway/{token}/channels/{channel}/messages`) shares its crypto pipeline with the invite-page handler. Both paths resolve a token to a symmetric message key by:
 
-Error 1101 means the Worker threw an unhandled exception. Likely causes:
-- **Crypto mismatch after `invite_token_instant_expiry` fix**: The `hashToken()` and `deriveSymmetricKey()` changes may have broken the gateway API handler (`handleGatewayAPI`) which uses the same crypto functions. The token hash fix (raw bytes vs hex string) and HKDF key derivation need to be consistent across all code paths.
-- **`deriveSymmetricKey` input format**: The attention reason from `invite_token_instant_expiry` noted "swarm-do.ts passes hex-encoded UTF-8 bytes to deriveSymmetricKey instead of raw 32-byte seed" — this may not have been fully fixed.
-- **Missing error handling**: The gateway API handler may lack try/catch, causing crypto failures to bubble up as unhandled exceptions.
+1. Hashing the raw token bytes (not the hex string) with SHA-256 to look up the encrypted blob in storage.
+2. Deriving an HKDF-SHA256 key from the raw token bytes (info `leader-board-invite-token`) and using it as the NaCl secretbox key for the blob.
+3. Decrypting the blob, which contains the Ed25519 seed encoded as a hex UTF-8 string; the gateway hex-decodes the plaintext back to a 32-byte seed via `recoverSeedFromBlob`.
+4. Deriving the message symmetric key from that seed via `deriveSymmetricKey` (SHA-512 → Curve25519 clamp → HKDF-SHA256, info `leader-board-message-encryption`).
 
-Repro: `curl 'https://leader-board.zack-98d.workers.dev/gateway/<token>/channels/<channel>/messages?after=0'` → error 1101
+`handleGatewayAPI` resolves the symmetric key through the shared `resolveTokenKey` helper and wraps decryption in try/catch so a crypto failure surfaces as a 401 / 500 JSON response instead of an unhandled exception (Cloudflare error 1101). The TypeScript test helpers (`hashTokenText`, `deriveTokenKeyLocal`, `encryptBlobWithToken`) mirror the production crypto so cross-language vectors and end-to-end gateway-API tests stay aligned with the Python CLI.
 
 ## Success Criteria
 
@@ -51,4 +51,4 @@ Repro: `curl 'https://leader-board.zack-98d.workers.dev/gateway/<token>/channels
 
 ## Relationship to Parent
 
-Parent chunk `gateway_cleartext_api` implemented the gateway HTTP routes. The `invite_token_instant_expiry` chunk fixed crypto for the invite page path but the same crypto changes likely broke the gateway API path where `deriveSymmetricKey` is called with the wrong input format.
+Parent chunk `gateway_cleartext_api` owns the gateway HTTP routes. This chunk owns the gateway-side half of the shared crypto contract with the Python CLI: the gateway API and the invite-page path agree on token hashing, key derivation, and the hex-encoded seed format, so the same encrypted blob round-trips through both handlers.

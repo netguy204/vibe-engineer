@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 superseded_by: integrity_deprecated_removal
 ticket: null
 parent_chunk: null

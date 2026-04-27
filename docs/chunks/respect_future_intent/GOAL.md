@@ -6,7 +6,7 @@ code_paths:
   - src/templates/commands/chunk-create.md.jinja2
 code_references:
   - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Basic existing-implementing-chunk detection (Step 8 only); does NOT implement user intent detection, priority order, conflict handling, or safe pause protocol from success criteria"
+    implements: "Basic existing-implementing-chunk detection (Step 9 only); does NOT implement user intent detection, priority order, conflict handling, or safe pause protocol from success criteria"
     status: partial
 narrative: null
 subsystems: []

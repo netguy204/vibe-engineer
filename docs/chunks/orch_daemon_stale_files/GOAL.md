@@ -30,15 +30,11 @@ created_after:
 
 ## Minor Goal
 
-Fix stale state file cleanup when the orchestrator daemon is stopped. Currently, when `stop_daemon()` falls back to SIGKILL (line 721), only the PID file is cleaned up (lines 700, 715, 731), but socket and port files are left behind. While atexit handlers (lines 438-440) clean these files on graceful shutdown, SIGKILL bypasses atexit handlers entirely, leaving stale files on disk.
+The orchestrator daemon removes all of its on-disk state files (PID, socket, port) on shutdown, regardless of the path taken to terminate the process. `stop_daemon()` calls `_cleanup_state_files()` after every termination branch — graceful SIGTERM, SIGKILL fallback, and stale-PID handling — so a SIGKILL that bypasses atexit handlers does not leave stale socket or port files behind. Without this, a stale socket file can block subsequent daemon starts and a stale port file can mislead callers about whether the daemon is running.
 
-This creates two problems:
-1. Stale socket files can prevent subsequent daemon starts if not cleaned up
-2. Stale port files can cause confusion about whether the daemon is running
+`_cleanup_state_files()` is tolerant of missing files so it can run as the unconditional last step of shutdown.
 
-Additionally, the PID file fd is intentionally leaked after writing (line 266-286) to maintain the flock for the daemon's lifetime, but this is undocumented and may confuse future maintainers.
-
-This chunk ensures all state files are cleaned up regardless of shutdown method and documents the intentional fd leak pattern.
+The intentional file-descriptor leak in `_write_pid_file()` — keeping the fd open for the daemon's lifetime to preserve the `flock` — is documented inline so the pattern is not mistaken for a leak bug.
 
 ## Success Criteria
 

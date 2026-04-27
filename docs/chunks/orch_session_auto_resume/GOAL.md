@@ -35,9 +35,7 @@ created_after:
 
 ## Minor Goal
 
-When an agent hits a session/rate limit with a known reset time (e.g. "You've hit your limit - resets 10pm"), the orchestrator currently marks the work unit as NEEDS_ATTENTION, requiring manual operator intervention to set it back to READY. This is unnecessary toil — the error message contains enough information for the scheduler to automatically schedule a retry after the reset time.
-
-This chunk teaches the scheduler to detect session-limit errors that include a reset time, parse the reset timestamp, and schedule an automatic retry instead of escalating to the operator. This extends the existing `orch_api_retry` infrastructure (which handles 5xx errors with exponential backoff) with a new category: session-limit errors with a deterministic resume time.
+When an agent hits a session/rate limit with a known reset time (e.g. "You've hit your limit - resets 10pm"), the orchestrator detects the session-limit error, parses the reset timestamp, and schedules an automatic retry at that time instead of escalating to NEEDS_ATTENTION. Session-limit handling sits alongside the `orch_api_retry` infrastructure (which handles 5xx errors with exponential backoff) as a separate retry category keyed off a deterministic resume time rather than a backoff curve.
 
 ## Success Criteria
 

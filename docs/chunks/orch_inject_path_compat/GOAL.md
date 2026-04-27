@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/ve.py
+  - src/cli/orch.py
   - tests/test_chunk_validate_inject.py
 code_references:
-  - ref: src/ve.py#orch_inject
+  - ref: src/cli/orch.py#orch_inject
     implements: "Path normalization using strip_artifact_path_prefix() for CLI consistency"
   - ref: tests/test_chunk_validate_inject.py#TestOrchInjectPathNormalization
     implements: "Test coverage for path normalization behavior across formats"

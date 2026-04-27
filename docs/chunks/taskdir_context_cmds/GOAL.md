@@ -17,15 +17,15 @@ code_references:
   implements: Result dataclass for task overlap detection with repo-prefixed chunk names
 - ref: src/task_utils.py#find_task_overlapping_chunks
   implements: Task-aware chunk overlap detection across external and project repos
-- ref: src/task_utils.py#_compute_cross_project_overlap
+- ref: src/task/overlap.py#_compute_cross_project_overlap
   implements: Cross-project reference overlap computation with symbol hierarchy
 - ref: src/task_utils.py#TaskActivateError
   implements: Error class for task-aware chunk activation
 - ref: src/task_utils.py#activate_task_chunk
   implements: Task-aware chunk activation across external and project repos
-- ref: src/ve.py#activate
+- ref: src/cli/chunk.py#activate
   implements: CLI handler for task-aware chunk activation
-- ref: src/ve.py#overlap
+- ref: src/cli/chunk.py#overlap
   implements: CLI handler for task-aware overlap detection
 - ref: tests/test_task_context_cmds.py
   implements: Integration tests for task-aware activate and overlap commands

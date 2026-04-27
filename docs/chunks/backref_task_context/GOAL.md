@@ -24,11 +24,11 @@ created_after: ["claudemd_uv_examples"]
 
 ## Minor Goal
 
-Correct outdated documentation about chunk back references. Two issues exist:
+Documentation for code back references covers two cases:
 
-1. **CLAUDE.md incorrectly says chunk back references are obsolete**: The documentation currently instructs agents to remove `# Chunk:` comments, treating them as "legacy backreferences that are no longer valid." This was true when chunks lived in a scratchpad location, but with scratchpad deprecated and chunks living in `docs/chunks/`, chunk back references are desirable again.
+1. **Chunk back references are valid alongside subsystem back references**: With chunks living in `docs/chunks/`, `# Chunk:` comments are documented as a supported backreference type for implementation work, complementing `# Subsystem:` comments for architectural patterns.
 
-2. **Task context back references need clarity**: When creating chunks in a task context, external pointers (`external.yaml`) are created in each participating project. Code back references within a project should point to the **local pointer** (e.g., `# Chunk: docs/chunks/my_feature` where that directory contains an `external.yaml`), not directly to the external repository path. The plan template and implementation guidance don't make this clear, leading to agents creating back references that point to non-universally-resolvable paths in the external artifact repo.
+2. **Task context back references point to local paths**: When chunks exist in a task context, external pointers (`external.yaml`) live in each participating project. Code back references within a project point to the **local pointer** (e.g., `# Chunk: docs/chunks/my_feature` where that directory contains an `external.yaml`), not to the external repository path. The plan template makes this explicit so agents create back references that are universally resolvable from within the project.
 
 ## Success Criteria
 

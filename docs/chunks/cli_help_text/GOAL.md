@@ -48,16 +48,11 @@ created_after:
 
 ## Minor Goal
 
-Improve CLI usability for new users by enriching group-level help text, adding actionable error messages, and documenting command aliases.
+The CLI surfaces concept-level guidance through enriched group help text, actionable error messages, and documented command aliases.
 
-Currently, command group help strings are terse ("Chunk commands", "Narrative commands", "Subsystem commands") and don't explain what these concepts mean to newcomers. Error messages like "Chunk 'foo' not found" provide no guidance on next steps. The `chunk start` alias for `chunk create` exists but is undocumented in help output.
+Each `@click.group()` carries a one-sentence description of the concept it manages (chunks, narratives, subsystems, investigations, friction, tasks, orchestrator, reviewer), so newcomers can read `ve --help` and understand what each command group is for. "Not found" error messages include a suggested next step (`run ve chunk list to see available chunks`) rather than dead-ending. The `chunk start` alias for `chunk create` is documented in the command's docstring.
 
-This chunk enhances discoverability by:
-1. Adding one-sentence concept descriptions to each command group's help text
-2. Enriching "not found" errors with actionable suggestions (e.g., "run `ve chunk list` to see available chunks")
-3. Documenting the `chunk start` alias in help output
-
-This addresses a gap in the CLI's onboarding experience without requiring changes to core functionality or workflows.
+The discoverability surface lives entirely in help strings and error formatting; command behavior, validation, and workflows are unchanged.
 
 ## Success Criteria
 

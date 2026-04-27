@@ -1,11 +1,11 @@
 ---
-status: ACTIVE
+status: HISTORICAL
 ticket: ve-001
 parent_chunk: null
 code_paths:
   - src/ve.py
   - src/chunks.py
-  - tests/test_ve.py
+  - tests/test_chunk_start.py
 code_references:
   - ref: src/cli/utils.py#validate_short_name
     implements: "Short name validation delegating to validate_identifier()"

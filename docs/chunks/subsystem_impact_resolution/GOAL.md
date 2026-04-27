@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/subsystems.py
-- src/ve.py
+- src/cli/subsystem.py
 - src/templates/commands/chunk-complete.md.jinja2
 - tests/test_subsystem_overlap_logic.py
 - tests/test_subsystem_overlap_cli.py
@@ -14,7 +14,7 @@ code_references:
     chunk's changes
 - ref: src/subsystems.py#Subsystems::_find_overlapping_refs
   implements: Helper method for hierarchical reference comparison using is_parent_of
-- ref: src/ve.py#subsystem::overlap
+- ref: src/cli/subsystem.py#subsystem::overlap
   implements: CLI command 've subsystem overlap <chunk_id>' that surfaces overlap
     detection
 - ref: src/templates/commands/chunk-complete.md.jinja2
@@ -35,7 +35,7 @@ created_after:
 
 Integrate subsystem code references into the chunk completion workflow so that changes touching subsystem-tracked code automatically surface for documentation review.
 
-When a chunk is completed, its code changes may overlap with files or symbols tracked by subsystems. Without explicit detection, subsystem documentation can drift out of sync with the actual implementation. This chunk adds `ve subsystem overlap <chunk_id>` to identify overlapping subsystems and updates the `/chunk-complete` workflow to verify subsystem documentation accuracy when overlap is detected.
+When a chunk is completed, its code changes may overlap with files or symbols tracked by subsystems. Without explicit detection, subsystem documentation can drift out of sync with the actual implementation. The `ve subsystem overlap <chunk_id>` command identifies overlapping subsystems, and the `/chunk-complete` workflow verifies subsystem documentation accuracy when overlap is detected.
 
 This advances the narrative's goal of maintaining document health over time: subsystem documentation stays accurate because changes to subsystem code are automatically flagged during chunk completion.
 

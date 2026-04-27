@@ -32,9 +32,7 @@ created_after:
 
 ## Minor Goal
 
-Document investigations as a first-class workflow artifact in the project's core documentation. This is the final chunk of the investigations narrative, completing the integration of investigations into the vibe engineering workflow.
-
-CLAUDE.md already has a minimal investigations section, but SPEC.md lacks any investigation documentation. This chunk brings investigations to parity with chunks, narratives, and subsystems in terms of documentation coverage—ensuring agents understand:
+Document investigations as a first-class workflow artifact in the project's core documentation. Investigations sit at parity with chunks, narratives, and subsystems in documentation coverage across both `CLAUDE.md` and `docs/trunk/SPEC.md`, so agents understand:
 
 1. What investigations are and when to use them
 2. How investigations differ from narratives and subsystems

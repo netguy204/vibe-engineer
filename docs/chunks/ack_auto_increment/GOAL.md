@@ -27,26 +27,26 @@ created_after:
 
 ## Minor Goal
 
-Make `ve board ack <channel>` auto-increment the cursor by 1 instead of requiring an explicit position argument. Since messages are delivered one at a time, the ack always means "I processed the most recently delivered message" — the position is implicit.
+`ve board ack <channel>` auto-increments the cursor by 1 instead of requiring an explicit position argument. Since messages are delivered one at a time, the ack always means "I processed the most recently delivered message" — the position is implicit.
 
-The current design where callers pass an explicit position is fragile: any arithmetic error or race condition between ack and message delivery silently skips messages. Auto-increment makes cursor advancement and message delivery lockstep — you can't skip ahead.
+A design that requires callers to pass an explicit position is fragile: any arithmetic error or race condition between ack and message delivery silently skips messages. Auto-increment keeps cursor advancement and message delivery lockstep — callers can't skip ahead.
 
-### CLI changes
+### CLI behavior
 
-- `ve board ack <channel>` (no position) — reads cursor file, writes cursor+1. This is the new default.
-- `ve board ack <channel> <position>` — still works for backward compatibility during rollout. Existing callers that pass a position will continue to function. Emit a deprecation warning suggesting the no-position form.
+- `ve board ack <channel>` (no position) — reads cursor file, writes cursor+1. This is the default.
+- `ve board ack <channel> <position>` — works for backward compatibility during rollout. Callers that pass a position continue to function and receive a deprecation warning suggesting the no-position form.
 
-### Skill/template changes
+### Skill/template surface
 
-Update all steward skill templates that reference `ve board ack` to use the new no-position form:
+Steward skill templates that reference `ve board ack` use the no-position form:
 
-- `src/templates/commands/steward-watch.md.jinja2` — Step 5 (ack step): remove position tracking from Step 2, simplify Step 5 to just `ve board ack <channel>`
-- `src/templates/commands/steward-setup.md.jinja2` — if ack is mentioned in the suggested behavior section
-- Any other templates referencing `ve board ack`
+- `src/templates/commands/steward-watch.md.jinja2` — Step 5 (ack step) calls `ve board ack <channel>` with no position tracking in Step 2
+- `src/templates/commands/steward-setup.md.jinja2` — ack mentions in the suggested behavior section use the no-position form
+- Other templates referencing `ve board ack` use the no-position form
 
 ### Why backward compat matters
 
-The operator has multiple projects with steward configurations and rendered CLAUDE.md files that reference `ve board ack <channel> <position>`. These won't all be re-rendered immediately. The position argument must keep working (with a deprecation warning) until the rollout is complete.
+The operator has multiple projects with steward configurations and rendered CLAUDE.md files that reference `ve board ack <channel> <position>`. These won't all be re-rendered immediately. The position argument keeps working (with a deprecation warning) until the rollout is complete.
 
 ## Success Criteria
 

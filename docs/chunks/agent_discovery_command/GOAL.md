@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/subsystem-discover.md
+- src/templates/commands/subsystem-discover.md.jinja2
 code_references:
-- ref: src/templates/commands/subsystem-discover.md
+- ref: src/templates/commands/subsystem-discover.md.jinja2
   implements: 'Agent command template guiding collaborative subsystem discovery through
     7 phases: name derivation, pattern identification, boundary exploration, invariant
     discovery, implementation mapping, chunk relationship mapping, and consolidation

@@ -40,7 +40,7 @@ created_after:
 
 ## Minor Goal
 
-Add automatic retry with exponential backoff when orchestrator stages encounter Anthropic API 5xx errors. Currently, when a stage fails with an API error, it transitions to NEEDS_ATTENTION and requires manual intervention. Instead, the orchestrator should automatically inject a literal "continue" prompt into the session to resume the agent, using exponential backoff to avoid overwhelming the API during outages.
+When an orchestrator stage encounters an Anthropic API 5xx error, the orchestrator automatically injects a literal "continue" prompt into the session to resume the agent, using exponential backoff to avoid overwhelming the API during outages. Manual intervention via NEEDS_ATTENTION is reserved for non-retryable failures and the case where retries are exhausted.
 
 ## Success Criteria
 

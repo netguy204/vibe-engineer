@@ -33,18 +33,19 @@ created_after:
 
 ## Minor Goal
 
-Fix `ve board watch` silently stopping message delivery after many WebSocket reconnection cycles, even though the re-poll logs show successful reconnects from the correct cursor position.
+`ve board watch` keeps delivering messages reliably across many WebSocket reconnection cycles. The watch detects stale connections, re-registers cleanly, and falls through to hibernation recovery when in-memory delivery fails.
 
-The earlier `board_watch_reconnect_delivery` fix added re-polling after reconnect — and the logs confirm re-polls are happening (`Reconnected, re-polling channel=... from cursor=N`). But after enough reconnection cycles (observed at ~8+ over ~15 hours), the watch stops delivering messages entirely. A message written to the channel is not delivered despite the watch being connected. Killing and restarting the watch immediately picks up the pending message.
+Client side (`BoardClient.watch_with_reconnect` / `watch_multi`):
 
-This suggests either:
-1. **Server-side**: The subscription state on the Durable Object becomes stale after repeated reconnects — the watch connection is registered but the push notification path is broken
-2. **Client-side**: The read loop after reconnection doesn't properly resume — the re-poll fires but the subsequent blocking read fails silently
-3. **Protocol-level**: The WebSocket connection appears healthy but is in a half-open state where the server can't push to it
+- Each blocking read uses `asyncio.wait_for` with a `stale_timeout` (default 300s). On timeout, the client re-sends the watch frame on the existing connection to re-register, which is cheaper than a full reconnect.
+- A second consecutive timeout escalates to a full reconnect via `StaleWatchError`.
+- `watch_multi_with_reconnect` passes `stale_timeout` through to the multi-channel path so every active watch frame gets re-registered together on stale detection.
 
-Investigation should examine both the Python client reconnection logic (`watch_with_reconnect`) and the Durable Object's watcher registration to determine where the delivery chain breaks after repeated reconnects.
+Server side (Durable Object `SwarmDO`):
 
-Reported by palette steward after overnight watch failure.
+- `handleWatch` deduplicates watcher entries for the same WebSocket. Re-sending a watch frame on the same connection replaces the existing entry instead of creating a duplicate that would split delivery state.
+- `wakeWatchers` tracks whether any in-memory send actually succeeded and falls through to the hibernation recovery path when every in-memory delivery attempt fails, so a stale-but-registered watcher does not silently swallow new messages.
+- `removeWatcher` logs lifecycle events for diagnostic visibility into watcher churn.
 
 ## Success Criteria
 

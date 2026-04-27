@@ -3,16 +3,19 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models/subsystem.py
+- src/models/narrative.py
+- src/models/investigation.py
+- src/models/chunk.py
 - tests/test_models.py
 code_references:
-- ref: src/models.py#SubsystemFrontmatter
+- ref: src/models/subsystem.py#SubsystemFrontmatter
   implements: created_after field for subsystem causal ordering
-- ref: src/models.py#NarrativeFrontmatter
+- ref: src/models/narrative.py#NarrativeFrontmatter
   implements: created_after field for narrative causal ordering
-- ref: src/models.py#InvestigationFrontmatter
+- ref: src/models/investigation.py#InvestigationFrontmatter
   implements: created_after field for investigation causal ordering
-- ref: src/models.py#ChunkFrontmatter
+- ref: src/models/chunk.py#ChunkFrontmatter
   implements: created_after field for chunk causal ordering
 narrative: null
 subsystems:

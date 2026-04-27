@@ -23,13 +23,7 @@ created_after:
 
 ## Minor Goal
 
-Fix `ve chunk list` to properly handle external chunk references. Currently, when a chunk directory contains `external.yaml` instead of `GOAL.md`, the command fails to parse the chunk and displays:
-
-```
-docs/chunks/edp_discount_estimation [PARSE ERROR: Chunk 'edp_discount_estimation' not found]
-```
-
-The fix should detect external artifacts and display them appropriately, either showing `[EXTERNAL]` status or resolving the external reference to fetch the actual status from the external repo.
+`ve chunk list` handles external chunk references cleanly. When a chunk directory contains `external.yaml` instead of `GOAL.md`, the command detects the external artifact and displays an `[EXTERNAL: org/repo]` status indicator rather than emitting a parse error.
 
 ## Success Criteria
 
@@ -40,11 +34,11 @@ The fix should detect external artifacts and display them appropriately, either 
 
 ## Technical Context
 
-The implementation is in `src/cli/chunk.py` in the `list_chunks` command (lines 456-481). The fix checks for external artifact references using `is_external_artifact()` before attempting to parse frontmatter:
+The implementation lives in `src/cli/chunk.py` in the `list_chunks` command. It checks for external artifact references using `is_external_artifact()` before attempting to parse frontmatter:
 
-1. For each chunk directory, checks if it contains `external.yaml` (external reference)
-2. If external, loads the external reference using `load_external_ref()` and displays `EXTERNAL: {repo}` status
-3. If not external, proceeds with standard frontmatter parsing and status display
-4. Handles status filtering by skipping external chunks when a status filter is active
+1. For each chunk directory, the command checks whether it contains `external.yaml` (external reference).
+2. If external, the command loads the reference via `load_external_ref()` and displays `EXTERNAL: {repo}` status.
+3. If not external, the command proceeds with standard frontmatter parsing and status display.
+4. Status filtering skips external chunks when a status filter is active.
 
-The fix is completed and tested with comprehensive test coverage in `TestExternalChunkListing`.
+Test coverage lives in `TestExternalChunkListing`.

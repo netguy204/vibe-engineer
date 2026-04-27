@@ -28,9 +28,9 @@ created_after:
 
 ## Minor Goal
 
-Fix a resource leak in the orchestrator's scheduler where worktrees are left behind when chunk activation fails. Currently in `scheduler.py` `_run_work_unit()` (lines 710-808), if the worktree is created successfully but `activate_chunk_in_worktree()` raises a `ValueError`, the method returns early without cleaning up the worktree. The `finally` block only removes the chunk from `_running_agents` but does not call `worktree_manager.remove_worktree()`.
+The orchestrator's scheduler does not leak worktrees when chunk activation fails. In `_run_work_unit()` in `src/orchestrator/scheduler.py`, when `activate_chunk_in_worktree()` raises `ValueError` after a successful worktree creation, the scheduler removes the worktree before returning. Cleanup failures during that path are logged as warnings rather than crashing the work unit.
 
-This leak can accumulate orphaned worktrees over time, consuming disk space and potentially causing confusion when debugging orchestrator state. The fix ensures that activation failures trigger proper worktree cleanup, maintaining the property that the workflow should not grow more difficult over time.
+This prevents orphaned worktrees from accumulating over time and consuming disk space, supporting the property that the workflow should not grow more difficult over time.
 
 ## Success Criteria
 

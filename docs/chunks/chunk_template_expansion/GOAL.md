@@ -21,7 +21,7 @@ created_after:
 
 ## Minor Goal
 
-Expand chunk templates with the full chunk directory name so that cross-references between chunk documents can use proper project-root-relative paths per DEC-004. Currently, the PLAN.md template contains awkward placeholder syntax like `docs/chunks/NNNN-name/GOAL.md` because it doesn't have access to the actual chunk directory name at render time.
+Chunk templates have access to the full chunk directory name so that cross-references between chunk documents use proper project-root-relative paths per DEC-004. The PLAN.md template renders concrete paths like `docs/chunks/0011-chunk_template_expansion/GOAL.md` rather than placeholder syntax like `docs/chunks/NNNN-name/GOAL.md`.
 
 This improves the developer experience by ensuring generated chunk documents contain accurate, navigable references from the moment they're created.
 

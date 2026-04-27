@@ -28,22 +28,22 @@ created_after:
 
 ## Minor Goal
 
-Strengthen wiki maintenance prompting in the entity startup payload so entities actually maintain their wikis during work sessions. Currently entities are told to maintain their wiki in step 6 of the startup skill, but the schema document is not loaded into context and the maintenance instruction is brief and easy to forget. Real-world observation: entities are not maintaining their wikis effectively, and cross-references are weaker than what the original LLM Wiki prompt produced.
+Wiki maintenance prompting in the entity startup payload is strong enough that entities actively maintain their wikis during work sessions. The full wiki schema document loads into the entity's initial context (not merely referenced for later reading), and the startup skill's maintenance section uses compounding-artifact framing with concrete when-X-do-Y triggers. The schema document and startup template reinforce each other — the schema is the reference, the startup makes it active — matching the effectiveness of the original LLM Wiki prompt.
 
 ### Context for implementing agent
 
 **Read first**:
 - `docs/investigations/entity_wiki_memory/OVERVIEW.md` — the broader investigation
-- `docs/investigations/entity_wiki_memory/prototypes/llm_wiki_prompt.md` — the original LLM Wiki prompt that this chunk is trying to match the effectiveness of
-- `src/templates/entity/wiki_schema.md.jinja2` — the current wiki schema document (already good content; just not loaded effectively)
-- `src/templates/commands/entity-startup.md.jinja2` — the startup skill template that needs strengthening
-- `src/entities.py` — `startup_payload()` is the function that assembles the startup context. `_wiki_index_content()` currently loads only the index. This chunk extends it to load the full schema.
+- `docs/investigations/entity_wiki_memory/prototypes/llm_wiki_prompt.md` — the original LLM Wiki prompt whose effectiveness this chunk targets
+- `src/templates/entity/wiki_schema.md.jinja2` — the wiki schema document
+- `src/templates/commands/entity-startup.md.jinja2` — the startup skill template
+- `src/entities.py` — `startup_payload()` assembles the startup context. `_wiki_schema_content()` reads the full schema for embedding alongside `_wiki_index_content()`.
 
-**The problem observed**:
-1. Entities are told to maintain wiki at startup step 6, but the schema document (`wiki/wiki_schema.md`) is referenced but not loaded into context
-2. Once the session is underway, there is no reinforcement of wiki maintenance — entities forget
-3. Cross-references between wiki pages are weaker than what the original LLM Wiki prompt produced
-4. The "compounding artifact" framing that motivates the original prompt is missing — without it, wiki maintenance feels optional rather than essential
+**The problem this chunk addresses**:
+1. A schema document referenced for later reading is not as effective as one loaded into the entity's initial context
+2. Without in-session reinforcement of wiki maintenance, entities drift away from updating the wiki
+3. Cross-references between wiki pages must be a primary maintenance target, not an afterthought
+4. "Compounding artifact" framing makes wiki maintenance feel essential rather than optional
 
 **The constraint**:
 - **Do NOT modify CLAUDE.md / AGENTS.md** — those files are read by tools other than entities. Entity-specific instruction must live in the startup payload only.

@@ -35,21 +35,19 @@ created_after:
 
 ## Minor Goal
 
-Create the entity git repo structure and `ve entity create <name>` command that initializes a new entity as a standalone git repository.
-
-Entities are evolving from project-local state into portable specialists that move across the platform. Each entity gets its own git repo that can be hosted on GitHub, submodule-added to projects, forked for divergent training, and merged to combine learnings. This chunk builds the foundation: the repo structure and creation command.
+Each entity is a standalone git repository created via `ve entity create <name>`. Entities are portable specialists that move across the platform: an entity repo can be hosted on GitHub, submodule-added to projects, forked for divergent training, and merged to combine learnings. This chunk owns the foundational repo structure and the creation command.
 
 ### Context for implementing agent
 
 **Read the investigation first**: `docs/investigations/entity_wiki_memory/OVERVIEW.md` — especially the H2 exploration log entry where the full submodule lifecycle was prototyped and tested.
 
-**The big picture**: Entities are portable specialists that move across the platform via git submodules. Each entity has its own git repo that can be hosted on GitHub, attached to any project, forked for divergent training, and merged to combine learnings. This chunk creates the repo structure — the "blank entity" that gets populated with knowledge over time.
+**The big picture**: Entities are portable specialists that move across the platform via git submodules. Each entity has its own git repo that can be hosted on GitHub, attached to any project, forked for divergent training, and merged to combine learnings. This chunk owns the repo structure — the "blank entity" that gets populated with knowledge over time.
 
-**Existing entity code**: The current entity creation is in `src/entities.py` (`create_entity` function, line ~120) and `src/cli/entity.py` (`ve entity create` command). Currently, entities are created as plain directories under `.entities/<name>/` with `identity.md` and `memories/` subdirs — NOT as git repos. This chunk replaces that flow with git-repo-based entities. The existing `EntityIdentity` model in `src/models/entity.py` validates names with pattern `^[a-z][a-z0-9_]*$`.
+**Code surface**: `src/entity_repo.py` houses the git-repo creation logic (`create_entity_repo`), repo detection (`is_entity_repo`), and metadata reading (`read_entity_metadata`). `src/cli/entity.py` exposes `ve entity create` which invokes `create_entity_repo`. Each entity lives as its own standalone git repo (not a plain directory under `.entities/<name>/`). The `EntityRepoMetadata` model in `src/entity_repo.py` carries the ENTITY.md frontmatter fields.
 
-This chunk depends on `entity_wiki_schema` (chunk 0) for the wiki templates that get rendered into the new repo.
+This chunk depends on `entity_wiki_schema` for the wiki templates that get rendered into the new repo.
 
-The entity repo structure was validated in the investigation's H2 prototype test. The proposed layout:
+The entity repo structure was validated in the investigation's H2 prototype test. The layout:
 
 ```
 <entity-name>/                        # standalone git repo

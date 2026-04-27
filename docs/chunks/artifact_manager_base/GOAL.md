@@ -53,9 +53,8 @@ created_after:
 
 ## Minor Goal
 
-Extract a generic base ArtifactManager class that captures the shared pattern across all four artifact types (chunks, narratives, investigations, subsystems). This eliminates significant code duplication and provides a reusable foundation for artifact lifecycle management.
+A generic `ArtifactManager` base class captures the shared pattern across all four artifact types (chunks, narratives, investigations, subsystems), eliminating duplicated lifecycle logic. The four managers share the same structural pattern:
 
-All four artifact managers follow the same structural pattern:
 - Initialization with `__init__(project_dir)`
 - Directory enumeration with `enumerate_*()` methods
 - Duplicate detection with `find_duplicates(short_name)`
@@ -65,18 +64,20 @@ All four artifact managers follow the same structural pattern:
 - Status transitions with `update_status(artifact_id, new_status)`
 - Frontmatter updates with `_update_overview_frontmatter(artifact_id, field, value)` (or `_update_goal_frontmatter` for chunks)
 
-The base class will include:
-1. A reusable `StateMachine` class that validates transitions using a transition map (eliminating the 4 separate transition maps with copy-pasted validation logic)
-2. Generic implementations of shared methods (get_status, update_status, _update_frontmatter)
-3. Abstract properties/methods for artifact-specific configuration (directory name, main filename, frontmatter model class, transition rules)
+The base layer provides:
 
-Each concrete manager (Chunks, Narratives, Investigations, Subsystems) will subclass the base and specify only:
+1. A reusable `StateMachine` class that validates transitions using a transition map, replacing four copy-pasted transition validators.
+2. Generic implementations of shared methods (`get_status`, `update_status`, `_update_frontmatter`).
+3. Abstract properties for artifact-specific configuration (directory name, main filename, frontmatter model class, transition rules).
+
+Each concrete manager (`Chunks`, `Narratives`, `Investigations`, `Subsystems`) inherits from `ArtifactManager` and supplies only:
+
 - Artifact directory name (e.g., "chunks", "narratives")
 - Main filename (e.g., "GOAL.md", "OVERVIEW.md")
 - Frontmatter Pydantic model class
 - Status enum and transition map
 
-This chunk depends on `frontmatter_io` because it relies on the consolidated frontmatter parsing and updating utilities.
+The base class relies on the consolidated frontmatter parsing utilities owned by `frontmatter_io`.
 
 ## Success Criteria
 

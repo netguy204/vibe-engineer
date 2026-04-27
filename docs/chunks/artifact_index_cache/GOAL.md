@@ -31,11 +31,11 @@ created_after:
 
 ## Minor Goal
 
-This chunk addresses two performance issues related to repeated object construction and N+1 query patterns:
+Two performance hotspots related to repeated object construction and N+1 query patterns are addressed:
 
-**(a) Redundant `ArtifactIndex` instantiation in `src/chunks.py`.** `ArtifactIndex` is instantiated repeatedly across `list_chunks` (~line 187), `get_last_active_chunk` (~line 265), `create_chunk` (~line 385), and `find_overlapping_chunks` (~line 740). While `ArtifactIndex` has file-level caching via `.artifact-order.json`, the repeated construction still incurs overhead from loading the cache file each time. The fix is to cache the `ArtifactIndex` as a lazily-initialized property on `ArtifactManager`, so that all methods share a single instance per manager lifetime.
+**(a) Cached `ArtifactIndex` on `ArtifactManager`.** A lazily-initialized `artifact_index` property on `ArtifactManager` ensures all methods (e.g., `list_chunks`, `get_last_active_chunk`, `create_chunk`, `find_overlapping_chunks` in `src/chunks.py`) share a single `ArtifactIndex` instance per manager lifetime, avoiding the per-call overhead of loading the `.artifact-order.json` cache file even though file-level caching exists.
 
-**(b) N+1 query patterns in `src/orchestrator/state.py`.** `get_ready_queue` (around lines 721-782) and `get_attention_queue` (around lines 674-718) fetch all matching work units and then loop over them issuing individual `COUNT(*)` queries for each to compute `blocks_count`. This N+1 pattern degrades as the number of work units grows. Replace these with a single SQL query per method using a LEFT JOIN or subquery to compute `blocks_count` in one pass.
+**(b) Single-query attention and ready queues in `src/orchestrator/state.py`.** `get_ready_queue` and `get_attention_queue` each issue one SQL query with a subquery that computes `blocks_count` in one pass, replacing the prior N+1 pattern that fetched all matching work units and then issued an individual `COUNT(*)` query per row.
 
 ## Success Criteria
 

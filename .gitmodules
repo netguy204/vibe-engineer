@@ -1,0 +1,3 @@
+[submodule ".entities/documentor"]
+	path = .entities/documentor
+	url = git@github.com:netguy204/ve-documentor-entity.git

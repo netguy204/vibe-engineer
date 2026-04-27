@@ -31,26 +31,24 @@ created_after: ["chunk_last_active"]
 
 ## Minor Goal
 
-Remove the `is_ve_source_repo` configuration option entirely and simplify the
-template system so all projects are treated identically.
+The template system treats all projects identically — there is no
+`is_ve_source_repo` config flag, and no conditional rendering keyed on
+"is this the VE source repo?".
 
-Currently:
-1. `is_ve_source_repo` in `.ve-config.yaml` enables conditional template rendering
-2. The CLAUDE.md template has conditional blocks for vibe-engineer-specific
-   content (Development section, Template Editing Workflow)
-3. The auto-generated header on command files only renders when `is_ve_source_repo`
-   is true
-4. The "Development" section with Python/UV/pytest guidance renders for all projects
-
-Changes needed:
-1. **Auto-generated headers**: Should ALWAYS render on command files, not just
-   in vibe-engineer. Agents in any host project shouldn't edit those files
-   either - they'd be overwritten on the next `ve init`.
-2. **Development/testing guidance**: Remove entirely from VE-managed content.
-   This is host project responsibility, not VE's.
-3. **Template editing workflow**: Move outside VE-managed markers in vibe-engineer's
-   own CLAUDE.md - it's project-specific documentation.
-4. **`is_ve_source_repo` config**: Remove entirely from VeConfig and templates.
+Specifically:
+1. `.ve-config.yaml` carries no `is_ve_source_repo` field, and `VeConfig`
+   in `src/template_system.py` has no such attribute.
+2. The CLAUDE.md template (`src/templates/claude/CLAUDE.md.jinja2`) contains
+   no vibe-engineer-specific conditional blocks. Python/UV/pytest "Development"
+   guidance is host-project responsibility, not VE-managed content.
+3. The auto-generated header partial
+   (`src/templates/commands/partials/auto-generated-header.md.jinja2`)
+   renders unconditionally on every command file in every host project, so
+   agents in any project see the "do not edit, regenerate via `ve init`"
+   warning.
+4. Vibe-engineer's own project-specific documentation (UV commands, template
+   editing workflow) lives outside the `<!-- VE:MANAGED:START/END -->` markers
+   in this repository's CLAUDE.md, where `ve init` will not overwrite it.
 
 ## Success Criteria
 

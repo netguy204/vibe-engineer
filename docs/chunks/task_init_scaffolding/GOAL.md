@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/task_init.py
   - tests/test_task_init.py
-  - src/templates/task/CLAUDE.md.jinja2
+  - src/templates/task/AGENTS.md.jinja2
   - src/templates/commands/chunk-create.md.jinja2
   - src/templates/commands/chunk-plan.md.jinja2
   - src/templates/commands/chunk-implement.md.jinja2
@@ -17,14 +17,14 @@ code_paths:
 code_references:
   - ref: src/template_system.py#TaskContext
     implements: "Task-level context dataclass for template rendering with external_artifact_repo, projects, and task_context flag"
-  - ref: src/task_init.py#TaskInit::_render_claude_md
-    implements: "Renders task CLAUDE.md template to task root"
-  - ref: src/task_init.py#TaskInit::_render_commands
-    implements: "Renders command templates to .claude/commands/ with task context"
+  - ref: src/task_init.py#TaskInit::_render_agents_md
+    implements: "Renders agents.md and creates .claude/commands/ symlinks with task context"
+  - ref: src/task_init.py#TaskInit::_render_skills
+    implements: "Renders skill templates to .agents/skills/ with .claude/commands/ symlinks for task context"
   - ref: src/task_init.py#TaskInitResult
     implements: "Extended result dataclass with created_files tracking"
-  - ref: src/project.py#Project::_init_commands
-    implements: "Project commands rendered with task_context=False for proper conditional block resolution"
+  - ref: src/project.py#Project::_init_skills
+    implements: "Project skills rendered with task_context=False for proper conditional block resolution"
   - ref: src/templates/task/CLAUDE.md.jinja2
     implements: "Task-specific CLAUDE.md template with project list and orientation"
   - ref: src/templates/commands/chunk-create.md.jinja2
@@ -41,10 +41,10 @@ code_references:
     implements: "Subsystem discover command with task context conditional block"
   - ref: src/templates/commands/investigation-create.md.jinja2
     implements: "Investigation create command with task context conditional block"
-  - ref: tests/test_task_init.py#TestTaskInitClaudeMd
-    implements: "Tests for CLAUDE.md generation in task init"
-  - ref: tests/test_task_init.py#TestTaskInitCommands
-    implements: "Tests for command template rendering in task init"
+  - ref: tests/test_task_init.py#TestTaskInitAgentsMd
+    implements: "Tests for agents.md generation in task init"
+  - ref: tests/test_task_init.py#TestTaskInitSkills
+    implements: "Tests for skill template rendering in task init"
   - ref: tests/test_task_init.py#TestTaskInitCreatedFiles
     implements: "Tests for created_files tracking in TaskInitResult"
   - ref: tests/test_template_system.py#TestTaskContext

@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/ve.py
+- src/cli/reviewer.py
 - tests/test_reviewer_decisions.py
 code_references:
-- ref: src/ve.py#decisions
+- ref: src/cli/reviewer.py#_format_curated_decision
   implements: "Nudge message output for FeedbackReview decisions in --recent mode"
 - ref: tests/test_reviewer_decisions.py#TestReviewerDecisionsNudge
   implements: "Test coverage for nudge behavior with FeedbackReview vs good/bad"

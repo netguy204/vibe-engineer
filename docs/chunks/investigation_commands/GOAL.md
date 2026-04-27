@@ -41,17 +41,17 @@ created_after:
 
 ## Minor Goal
 
-Add CLI commands and a slash command for managing investigations, enabling operators and agents to create and list investigations as first-class workflow artifacts.
+Operators and agents create and list investigations through CLI commands and a guided slash command, treating investigations as first-class workflow artifacts.
 
 **Context**: Investigations are exploratory documents created when an operator wants to understand something before committing to action—either exploring an issue with the system or exploring a potential new concept. Unlike narratives (which start with a known ambition) or subsystems (which document emergent patterns), investigations start with uncertainty.
 
-**This chunk builds upon** the investigation OVERVIEW.md template from chunk 0027-investigation_template (status: ACTIVE) and provides:
-1. `src/investigations.py` - Business logic for investigation management (following patterns from `src/narratives.py` and `src/subsystems.py`)
+The investigation surface area provides:
+1. `src/investigations.py` - Business logic for investigation management, following patterns from `src/narratives.py` and `src/subsystems.py`
 2. `ve investigation create <name>` - Creates a new investigation directory with the OVERVIEW.md template
 3. `ve investigation list [--state <state>]` - Lists investigations with status tags, optionally filtered by state
 4. `/investigation-create` slash command - Guides collaborative refinement of a new investigation, with intelligent assessment of whether the described task warrants a full investigation or is better suited as a direct chunk
 
-**Why now**: The template defines *what* investigation documentation looks like. This chunk enables operators to *create* and *discover* that documentation. The slash command provides guided workflow support.
+The investigation OVERVIEW.md template (see chunk `investigation_template`) defines *what* investigation documentation looks like; the surface above is *how* operators create and discover it.
 
 ## Success Criteria
 

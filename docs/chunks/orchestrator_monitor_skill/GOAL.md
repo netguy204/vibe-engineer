@@ -31,17 +31,17 @@ created_after:
 
 ## Minor Goal
 
-Create a new `/orchestrator-monitor` slash command skill that standardizes how stewards (and other agents) monitor injected chunks through the orchestrator lifecycle to completion.
+The `/orchestrator-monitor` slash command skill standardizes how stewards (and other agents) monitor injected chunks through the orchestrator lifecycle to completion.
 
-Currently, steward-watch manually constructs `/loop` prompts with inline orchestrator polling logic each time a chunk is injected. This is error-prone — agents forget to handle NEEDS_ATTENTION, don't know the right `ve orch` subcommands for diagnosis, or fail to cancel loops after completion.
+Without this skill, steward-watch would manually construct `/loop` prompts with inline orchestrator polling logic each time a chunk is injected — error-prone because agents forget to handle NEEDS_ATTENTION, don't know the right `ve orch` subcommands for diagnosis, or fail to cancel loops after completion.
 
-The skill should:
-1. Accept chunk name(s) as arguments
-2. Set up a `/loop 3m` to poll `ve orch ps` for those chunks
-3. Run the first check immediately (don't wait for first cron fire)
-4. Handle each status: RUNNING (no action), NEEDS_ATTENTION (diagnose via `ve orch work-unit show`, resolve or escalate), DONE (push, deploy if needed, post changelog, cancel loop), FAILED (post failure summary)
-5. For NEEDS_ATTENTION: check `attention_reason`, inspect branch commits/diffs, merge manually if sufficient or reset to READY for retry
-6. Accept a `--changelog-channel` and `--swarm` to know where to post outcomes
+The skill:
+1. Accepts chunk name(s) as arguments
+2. Sets up a `/loop 3m` to poll `ve orch ps` for those chunks
+3. Runs the first check immediately (doesn't wait for first cron fire)
+4. Handles each status: RUNNING (no action), NEEDS_ATTENTION (diagnose via `ve orch work-unit show`, resolve or escalate), DONE (push, deploy if needed, post changelog, cancel loop), FAILED (post failure summary)
+5. For NEEDS_ATTENTION: checks `attention_reason`, inspects branch commits/diffs, merges manually if sufficient or resets to READY for retry
+6. Accepts a `--changelog-channel` and `--swarm` to know where to post outcomes
 
 This pairs with `/steward-watch` — the steward monitors chunks concurrently with watching the inbound channel.
 

@@ -22,9 +22,9 @@ created_after:
 
 ## Minor Goal
 
-Validate agent behavior with extracted documentation during normal development. This is a lightweight validation chunk to confirm that the progressive disclosure refactoring maintains agent effectiveness.
+Validate that agent behavior with the extracted documentation holds up during normal development — a lightweight gate confirming that the progressive disclosure structure maintains agent effectiveness.
 
-The investigation's subagent test confirmed agents can discover linked documentation from signposts. This chunk validates that real-world agent workflows continue to function correctly with the extracted documentation structure.
+The investigation's subagent test already confirmed agents can discover linked documentation from signposts. This validation gate covers the broader question: do real-world agent workflows continue to function correctly with the extracted documentation structure?
 
 ## Success Criteria
 

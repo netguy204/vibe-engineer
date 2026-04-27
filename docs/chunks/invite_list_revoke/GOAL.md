@@ -56,4 +56,4 @@ These commands complete the invite lifecycle management: create → list → rev
 
 ## Relationship to Parent
 
-Parent chunk `invite_cli_command` implemented `ve board invite` and `ve board revoke` for single tokens. This chunk extends the CLI with list and bulk-revoke operations that were not part of the original investigation scope but are needed for practical invite management.
+Parent chunk `invite_cli_command` owns `ve board invite` and `ve board revoke` for single tokens. This chunk owns the list and bulk-revoke operations layered on top — outside the original investigation scope but required for practical invite lifecycle management.

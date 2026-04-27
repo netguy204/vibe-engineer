@@ -23,23 +23,25 @@ created_after:
 
 ## Minor Goal
 
-Replace all direct GitHub repository links on the veng.dev landing page with
-the analytics redirect URL `https://analytics.veng.dev/q/bMiDbOK78`. The
-redirect still takes users to GitHub but routes through analytics so we can
-measure conversion rate.
+Every GitHub repository link on the veng.dev landing page routes through the
+analytics redirect URL `https://analytics.veng.dev/q/bMiDbOK78` instead of
+linking directly to GitHub. The redirect still takes users to GitHub but
+routes through analytics so conversion rate can be measured.
 
-Find every `<a>` tag and any other element in `site/index.html` that currently
-links to the GitHub repo and change the `href` to the analytics redirect URL.
+The landing page is built with Astro; the GitHub-bound links live in
+`site/src/pages/index.astro` (CTA section) and `site/src/components/Nav.astro`
+(navigation bar). Both use the analytics redirect URL as their `href`.
 
 ## Success Criteria
 
-- Every link on the landing page that previously pointed to the GitHub repo
-  now points to `https://analytics.veng.dev/q/bMiDbOK78`
-- No direct GitHub repo URLs remain in `site/index.html`
+- Every link on the landing page pointing to the GitHub repo uses
+  `https://analytics.veng.dev/q/bMiDbOK78`
+- No direct GitHub repo URLs remain in `site/src/pages/index.astro` or
+  `site/src/components/Nav.astro`
 - The page renders correctly and all links are clickable
 
 ## Relationship to Parent
 
-Parent chunk `landing_page_veng_dev` created the landing page at `site/index.html`.
+Parent chunk `landing_page_veng_dev` established the landing page structure.
 All page structure, design, and content from the parent remain valid. This chunk
-only modifies link `href` values — no layout, copy, or style changes.
+scopes only the link `href` values — no layout, copy, or style changes.

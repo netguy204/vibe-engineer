@@ -41,17 +41,17 @@ created_after:
 
 ## Minor Goal
 
-Add multi-channel watch support so a single WebSocket connection can subscribe to multiple channels and wake when any of them receives a message. Currently, monitoring N channels requires N concurrent WebSocket connections (one per channel), which won't scale as swarms grow.
+A single WebSocket connection can subscribe to multiple channels and wake when any of them receives a message. Without multi-channel watch support, monitoring N channels would require N concurrent WebSocket connections (one per channel), which does not scale as swarms grow.
 
-Three changes needed:
+Three pieces support this capability:
 
-1. **Protocol update**: Extend the wire protocol to support subscribing to multiple channels on a single connection. The server should accept a list of channels (with per-channel cursors) in the watch frame, and deliver messages tagged with which channel they came from. This likely requires changes to both the Python local server (`src/leader_board/`) and the Cloudflare DO worker.
+1. **Protocol**: The wire protocol supports subscribing to multiple channels on a single connection. The server accepts a list of channels (with per-channel cursors) in the watch frame, and delivers messages tagged with which channel they came from. This spans both the Python local server (`src/leader_board/`) and the Cloudflare DO worker.
 
-2. **CLI command**: Add `ve board watch-multi <channel1> <channel2> ...` (or extend `ve board watch` to accept multiple channels). Output should indicate which channel each message came from, e.g., `[vibe-engineer-changelog] message text`.
+2. **CLI command**: `ve board watch-multi <channel1> <channel2> ...` accepts multiple channels and tags each message with its source channel, e.g., `[vibe-engineer-changelog] message text`.
 
-3. **Update `/swarm-monitor`**: The `swarm-monitor` skill currently launches one background watch per changelog channel. Update it to use the new multi-channel watch, reducing N connections to 1.
+3. **`/swarm-monitor` skill**: The `swarm-monitor` skill uses the multi-channel watch in place of one background watch per changelog channel, collapsing N connections to 1.
 
-Design consideration: since each channel lives on a different Durable Object (keyed by swarm), the multi-channel subscription may need to be implemented at the worker entry point level (fan-out to multiple DOs) rather than within a single DO.
+Design consideration: since each channel lives on a different Durable Object (keyed by swarm), the multi-channel subscription is implemented at the worker entry point level (fan-out to multiple DOs) rather than within a single DO.
 
 ## Success Criteria
 

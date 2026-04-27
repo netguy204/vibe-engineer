@@ -26,11 +26,11 @@ created_after:
 
 ## Minor Goal
 
-Fix the `/chunk-execute` skill template to include the review → implement
-feedback loop. Currently, `/chunk-execute` runs plan → implement → review →
-complete linearly. When `/chunk-review` finds issues, the skill should loop
-back to `/chunk-implement` with the review feedback, then re-review, iterating
-until the review is clean.
+Extend the `/chunk-execute` skill template with a review → implement
+feedback loop. The skill runs plan → implement → review → complete; when
+`/chunk-review` finds issues, the skill loops back to `/chunk-implement`
+with the review feedback, then re-reviews, iterating until the review is
+clean.
 
 The correct workflow is:
 

@@ -27,14 +27,14 @@ created_after:
 
 ## Minor Goal
 
-Add a `--no-auto-ack` flag to `ve board watch-multi` that delivers messages without advancing the cursor. The consumer is responsible for calling `ve board ack` after completing side effects, giving at-least-once processing guarantees.
+A `--no-auto-ack` flag on `ve board watch-multi` delivers messages without advancing the cursor. The consumer is responsible for calling `ve board ack` after completing side effects, giving at-least-once processing guarantees.
 
-Currently watch-multi auto-advances cursors after each delivered message. This is correct for the swarm-monitor use case (display only, no durability needed), but insufficient for distributed orchestration where messages trigger durable side effects — if the agent crashes between receiving a message and completing the action, auto-ack means the message is lost.
+By default, watch-multi auto-advances cursors after each delivered message. This is correct for the swarm-monitor use case (display only, no durability needed), but insufficient for distributed orchestration where messages trigger durable side effects — if the agent crashes between receiving a message and completing the action, auto-ack would lose the message. The `--no-auto-ack` flag opts into manual ack semantics for those workflows.
 
-Changes:
-- **CLI**: Add `--no-auto-ack` flag to `ve board watch-multi` (default: auto-ack for backward compatibility)
-- **Output**: When `--no-auto-ack` is set, include the message position in output so the consumer knows what to ack
-- **Client**: `watch_multi` method accepts an `auto_ack=True` parameter; when False, skips cursor advancement after delivery
+Behavior:
+- **CLI**: `--no-auto-ack` flag on `ve board watch-multi` (default: auto-ack for backward compatibility)
+- **Output**: When `--no-auto-ack` is set, the message position is included in output so the consumer knows what to ack
+- **Client**: `watch_multi` method accepts an `auto_ack=True` parameter; when False, cursor advancement after delivery is skipped
 
 Use cases:
 1. Swarm monitor (current): auto-ack, no durability needed
@@ -49,4 +49,4 @@ Use cases:
 
 ## Relationship to Parent
 
-Parent chunk `watchmulti_exit_on_message` added `--count` for event-driven workflows. This chunk adds `--no-auto-ack` for durable processing workflows — a different axis of configurability on the same command.
+Parent chunk `watchmulti_exit_on_message` introduced `--count` for event-driven workflows. `--no-auto-ack` covers durable processing workflows — a different axis of configurability on the same command.

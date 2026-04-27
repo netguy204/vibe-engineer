@@ -24,11 +24,11 @@ depends_on: []
 
 ## Minor Goal
 
-Extend the `proposed_chunks` schema in narrative and investigation templates to support a `depends_on` field that uses index-based references to other prompts in the same array. This enables agents to express inter-chunk dependencies at the planning stage, before any chunks are created.
+The `proposed_chunks` schema in narrative and investigation templates supports a `depends_on` field that uses index-based references to other prompts in the same array. This enables agents to express inter-chunk dependencies at the planning stage, before any chunks are created.
 
-Currently, dependencies between proposed chunks can only be described informally in prose. By adding a structured `depends_on` field that references other prompts by their array index (e.g., `depends_on: [0, 2]` means "this prompt depends on prompts at indices 0 and 2"), agents can declare ordering constraints that will later be translated into chunk-level dependencies during `/chunk-create`.
+Without this field, dependencies between proposed chunks could only be described informally in prose. The structured `depends_on` field references other prompts by their array index (e.g., `depends_on: [0, 2]` means "this prompt depends on prompts at indices 0 and 2"), so agents can declare ordering constraints that are later translated into chunk-level dependencies during `/chunk-create`.
 
-This is the second step in the explicit_chunk_deps narrative, providing the schema foundation that chunk #3 (dependency propagation during chunk-create) will consume.
+This is the second step in the explicit_chunk_deps narrative, providing the schema foundation that the dependency-propagation chunk consumes during `/chunk-create`.
 
 ## Success Criteria
 

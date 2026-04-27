@@ -35,19 +35,19 @@ created_after:
 
 ## Minor Goal
 
-Replace the hardcoded "Active State" reminder in the entity startup payload with a role-specific `SOP.md` file in the entity's wiki. The startup payload currently ends with generic guidance to "restart channels you were watching" — this is inactionable because the entity has no way to know what was active before. Instead, each entity has a Standard Operating Procedures file (`wiki/SOP.md`) that captures its role-specific startup and recurring actions. Empty by default; populated for specific roles (e.g., a steward's SOP says "run /steward-watch").
+Each entity has a role-specific `wiki/SOP.md` file (Standard Operating Procedures) that the startup payload includes verbatim under "## Standard Operating Procedures". This replaces a generic hardcoded "Active State" reminder that asked entities to restart watched channels — guidance that was inactionable because the entity had no way to know what was active before. SOP.md is empty by default and is populated for specific roles (e.g., a steward's SOP says "run /steward-watch"). The startup payload omits the section entirely when SOP.md is empty or absent — zero noise for entities without procedures.
 
 ### Context for implementing agent
 
 **Read first**:
-- `src/entities.py` — `startup_payload()` around line 440-450 has the hardcoded "Active State" section to remove
-- `src/templates/commands/entity-startup.md.jinja2` — around line 150-160 has corresponding guidance to update
-- `src/templates/entity/wiki_schema.md.jinja2` — schema document that describes wiki structure, needs to include SOP.md
-- `docs/trunk/STEWARD.md` — the steward's own procedure document (this pattern is what inspired the SOP generalization)
+- `src/entities.py` — `startup_payload()` includes SOP.md content under "## Standard Operating Procedures" when present
+- `src/templates/commands/entity-startup.md.jinja2` — references SOP.md in its startup-flow guidance
+- `src/templates/entity/wiki_schema.md.jinja2` — schema document that describes wiki structure including SOP.md
+- `docs/trunk/STEWARD.md` — the steward's own procedure document (the pattern that inspired the SOP generalization)
 
-**The problem**: The current "Active State" reminder (`src/entities.py:443-449`) tells the entity "If you were previously watching channels or had pending async operations, restart them now." This made sense when entities manually watched ad-hoc channels, but now with the steward pattern (`/steward-watch`, `/orchestrator-monitor`), this generic reminder creates noise without actionable information. The entity has no way to know what was active before.
+**Why this exists**: A generic "restart what was active" reminder is inactionable — the entity has no way to know what was active before. With the steward pattern (`/steward-watch`, `/orchestrator-monitor`), each entity now declares its own startup actions in `wiki/SOP.md` and the payload simply embeds them.
 
-**The solution**: Every entity has a `wiki/SOP.md` file — Standard Operating Procedures — that captures its role-specific startup and recurring actions. Empty by default. Populated by the entity itself (as part of wiki maintenance) or pre-populated for specific roles. For a steward entity, SOP.md might say:
+**The shape of an SOP.md file**: For a steward entity, SOP.md might say:
 
 ```markdown
 # Standard Operating Procedures

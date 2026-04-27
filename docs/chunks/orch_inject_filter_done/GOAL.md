@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/orchestrator/api.py
+- src/orchestrator/api/scheduling.py
 - tests/test_orchestrator_api.py
 code_references:
-  - ref: src/orchestrator/api.py#inject_endpoint
+  - ref: src/orchestrator/api/scheduling.py#inject_endpoint
     implements: "Filters already-DONE blockers from blocked_by before determining initial status"
   - ref: tests/test_orchestrator_api.py#TestInjectFiltersDoneBlockers
     implements: "Test suite for DONE blocker filtering during injection"
@@ -24,16 +24,9 @@ created_after:
 
 ## Minor Goal
 
-Fix the orchestrator inject endpoint to filter out already-DONE chunks from `blocked_by` before setting the initial work unit status. Currently, when a work unit is injected with `blocked_by=["chunk_x"]` and `chunk_x` is already DONE, the work unit is created with status=BLOCKED and never gets unblocked.
+The orchestrator inject endpoint filters already-DONE chunks out of `blocked_by` before determining the initial work unit status. A work unit injected with `blocked_by=["chunk_x"]` where `chunk_x` is already DONE starts as READY rather than BLOCKED, since `unblock_dependents()` only runs on a transition **to** DONE and would never fire for blockers that completed before the dependent was injected.
 
-**Root cause**: In `src/orchestrator/api.py#inject_endpoint`, the logic is:
-```python
-initial_status = WorkUnitStatus.BLOCKED if blocked_by else WorkUnitStatus.READY
-```
-
-This doesn't check if the blocking chunks are already DONE. The `unblock_dependents()` function only runs when something **transitions** to DONE, so if a blocker was already DONE before the dependent was injected, there's no mechanism to unblock it.
-
-**Related**: This is distinct from F020 (`orch_manual_done_unblock`) which handles the case where work units already exist and then their blocker is manually marked DONE. This bug is about new work units injected with blockers that are already DONE.
+The filter handles the inject path specifically. The case of work units already existing when their blocker is manually marked DONE is owned by `orch_manual_done_unblock` (F020); this chunk owns the new-injection case.
 
 ## Success Criteria
 

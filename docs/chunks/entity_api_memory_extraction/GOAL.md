@@ -35,18 +35,18 @@ via the Anthropic API, without requiring a live Claude Code session.
 
 ### Context
 
-The existing entity shutdown flow works like this:
+The primary entity shutdown flow works like this:
 1. Inside a live Claude Code session, the agent reflects on its conversation
 2. The agent writes extracted memories as JSON to a temp file
 3. `ve entity shutdown <name> --memories-file <file>` runs consolidation
 
-This chunk adds a **fallback path** for when the agent can't self-reflect (e.g., the
-user hit Ctrl+C). Instead of relying on the agent, we:
-1. Read the archived JSONL transcript
-2. Parse it into a SessionTranscript via entity_transcript.py
-3. Format it as a readable conversation
-4. Call the Anthropic API with the existing `EXTRACTION_PROMPT` + conversation text
-5. Parse the result into memory JSON compatible with `run_consolidation()`
+A **fallback path** handles cases when the agent can't self-reflect (e.g., the
+user hit Ctrl+C). Instead of relying on the agent, the fallback:
+1. Reads the archived JSONL transcript
+2. Parses it into a SessionTranscript via entity_transcript.py
+3. Formats it as a readable conversation
+4. Calls the Anthropic API with the existing `EXTRACTION_PROMPT` + conversation text
+5. Parses the result into memory JSON compatible with `run_consolidation()`
 
 ### What to build
 

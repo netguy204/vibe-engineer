@@ -67,9 +67,9 @@ created_after:
 
 ## Minor Goal
 
-Remove all legacy `{NNNN}-{short_name}` prefix directory format support from the codebase. The only directory format going forward is `{short_name}`. There is no usage of the legacy format in the wild -- all artifact directories already use the new format.
+The codebase supports only the `{short_name}` directory format. Legacy `{NNNN}-{short_name}` prefix support is fully removed — no artifact directories in the wild use the legacy format, and no resolution, validation, naming, or rename code path accepts it.
 
-This chunk eliminates dual-format handling scattered across the artifact resolution, validation, naming, and rename logic. Specifically:
+Dual-format handling is removed from the artifact resolution, validation, naming, and rename logic, specifically:
 
 - **`src/models.py`**: Remove the legacy branch from `extract_short_name()` (the `re.match(r"^\d{4}-", ...)` conditional), simplify `ARTIFACT_ID_PATTERN` and `CHUNK_ID_PATTERN` to only accept `{short_name}` format, remove legacy format validation branches in `ChunkRelationship.validate_chunk_id()` and `SubsystemRelationship.validate_subsystem_id()`, and update docstrings/comments that reference the dual format.
 - **`src/chunks.py`**: Remove the legacy prefix match strategy from `resolve_chunk_id()` (the `name.startswith(f"{chunk_id}-")` branch) and update `find_duplicates()` to no longer call `extract_short_name` (since directory names are now always the short name).
@@ -82,7 +82,7 @@ This chunk eliminates dual-format handling scattered across the artifact resolut
 - **`docs/trunk/SPEC.md`**: Update directory naming sections for chunks, subsystems, and investigations to document only the `{short_name}` format. Remove references to `{NNNN}-` prefixes and chunk IDs as 4-digit numbers.
 - **Tests**: Update all tests that create directories with legacy `{NNNN}-` format names, validate legacy patterns, or test legacy prefix matching. This includes tests across `test_models.py`, `test_chunks.py`, `test_subsystems.py`, `test_cluster_rename.py`, `test_narratives.py`, `test_investigations.py`, and others.
 
-This simplification reduces code complexity and eliminates a class of confusing edge cases where the same artifact could be referenced by either its full `NNNN-name` directory or just `name`, enabling the downstream `models_subpackage` chunk (which depends on this one) to work with cleaner, simpler ID patterns.
+The single-format invariant eliminates a class of confusing edge cases where the same artifact could be referenced by either its full `NNNN-name` directory or just `name`, and gives the dependent `models_subpackage` decomposition cleaner, simpler ID patterns to organize around.
 
 ## Success Criteria
 

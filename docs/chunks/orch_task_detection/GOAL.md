@@ -10,7 +10,7 @@ code_paths:
 - src/orchestrator/worktree.py
 - src/orchestrator/api/common.py
 - src/orchestrator/api/scheduling.py
-- tests/test_orch_task_context.py
+- tests/test_orchestrator_task_detection.py
 code_references:
   - ref: src/orchestrator/models.py#TaskContextInfo
     implements: "Task context detection data model with is_task_context, root_dir, external_repo, project_paths fields"
@@ -51,13 +51,13 @@ created_after:
 
 ## Minor Goal
 
-Add task context detection to the orchestrator daemon so it can run from a task directory with `.ve/` at that level.
+The orchestrator daemon detects task contexts and runs from a task directory with `.ve/` at that level.
 
-Currently the orchestrator assumes it runs from a single git repository and places `.ve/` there. In a task context, the orchestrator should:
-1. Detect `.ve-task.yaml` in the current directory (task directory mode)
-2. Place `.ve/` at the task directory level, not inside any individual repo
-3. Read chunk definitions from the external artifacts repo
-4. Determine which project repos are affected by each chunk (via `dependents` field)
+In single-repo mode the orchestrator runs from a git repository and places `.ve/` there. In a task context, the daemon:
+1. Detects `.ve-task.yaml` in the current directory (task directory mode)
+2. Places `.ve/` at the task directory level, not inside any individual repo
+3. Reads chunk definitions from the external artifacts repo
+4. Determines which project repos are affected by each chunk (via `dependents` field)
 
 ## Success Criteria
 

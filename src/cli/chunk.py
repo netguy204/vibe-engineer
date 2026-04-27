@@ -267,7 +267,7 @@ def _start_task_chunks(
     "status_filter",
     multiple=True,
     help="Filter by status (case-insensitive). Can specify multiple times or comma-separated. "
-    "Valid statuses: FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL",
+    "Valid statuses: FUTURE, IMPLEMENTING, ACTIVE, COMPOSITE, SUPERSEDED, HISTORICAL",
 )
 @click.option("--future", "future_flag", is_flag=True, help="Show only FUTURE chunks (shortcut for --status FUTURE)")
 @click.option("--active", "active_flag", is_flag=True, help="Show only ACTIVE chunks (shortcut for --status ACTIVE)")

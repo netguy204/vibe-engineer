@@ -40,20 +40,21 @@ created_after:
 
 ## Minor Goal
 
-Remove the alarm-based server-side heartbeat from the DO worker and rely on the Cloudflare runtime's built-in WebSocket ping/pong instead. Per [Cloudflare's DO WebSocket best practices](https://developers.cloudflare.com/durable-objects/best-practices/websockets/):
+The DO worker leaves WebSocket keepalive to the Cloudflare runtime's built-in ping/pong rather than running an application-level heartbeat. Per [Cloudflare's DO WebSocket best practices](https://developers.cloudflare.com/durable-objects/best-practices/websockets/):
 
-- **Alarms prevent hibernation**: "Events such as alarms, incoming requests, and scheduled callbacks prevent hibernation." The `ensureHeartbeatAlarm()` added by `websocket_keepalive` keeps the DO awake continuously, defeating the Hibernation API that's already in use (`ctx.acceptWebSocket()`).
+- **Alarms prevent hibernation**: "Events such as alarms, incoming requests, and scheduled callbacks prevent hibernation." A heartbeat alarm would keep the DO awake continuously, defeating the Hibernation API in use via `ctx.acceptWebSocket()`.
 - **Ping/pong is automatic**: "Incoming ping frames receive automatic pong responses" and "Ping/pong handling does not interrupt hibernation." The runtime handles keepalive at the protocol level without waking the DO.
-- **Cost impact**: "Billable Duration (GB-s) charges do not accrue during hibernation." With alarm-based heartbeats, the DO never hibernates, meaning continuous GB-s charges for every idle connection.
+- **Cost impact**: "Billable Duration (GB-s) charges do not accrue during hibernation." Without alarm-based heartbeats, the DO hibernates between events and only accrues GB-s when there is real work to do.
 
-Changes needed:
-1. **Remove `ensureHeartbeatAlarm()`** and the heartbeat logic from `alarm()` in `swarm-do.ts`
-2. **Remove application-level PingFrame** from `protocol.ts` — use WebSocket-level pings instead
-3. **Keep client-side reconnect logic** from `websocket_keepalive` (that part is correct and valuable)
-4. **Keep client-side `ping_interval`/`ping_timeout`** on the `websockets` connection — the client sends protocol-level pings that the runtime auto-responds to without waking the DO
-5. **Remove `_recv_data_frame` ping filtering** in `client.py` since there won't be application-level ping frames
+The arrangement that delivers this:
 
-The compaction alarm scheduling in `alarm()` should remain — it only runs when there's actual work (compaction), not on a heartbeat timer.
+1. `SwarmDO::alarm` only runs storage compaction and re-schedules itself on the compaction interval — there is no heartbeat path.
+2. `SwarmDO::ensureAlarm` schedules a compaction alarm only when none exists; no heartbeat-only schedule is created.
+3. `protocol.ts` and `protocol.py` define `ServerFrame` without a `PingFrame` variant — application-level pings are no longer part of the wire protocol.
+4. `src/leader_board/server.py#websocket_handler` runs without a heartbeat task or loop; the local server relies on the same protocol-level ping/pong.
+5. `BoardClient` sets `ping_interval=20` / `ping_timeout=30` on its `websockets` connection so the client emits protocol-level pings the runtime auto-responds to without waking the DO.
+6. `BoardClient::send`, `BoardClient::watch`, and `BoardClient::list_channels` call `recv()` directly rather than a ping-filtering wrapper, since no application-level ping frames remain to filter.
+7. Client-side reconnect logic from `websocket_keepalive` remains as a safety net.
 
 ## Success Criteria
 
@@ -65,4 +66,4 @@ The compaction alarm scheduling in `alarm()` should remain — it only runs when
 
 ## Relationship to Parent
 
-Parent chunk `websocket_keepalive` added both server-side alarm heartbeats and client-side reconnect. The server-side heartbeats conflict with the existing Hibernation API usage, preventing cost-efficient idle behavior. This chunk removes the server-side heartbeat while preserving the valuable client-side reconnect.
+Parent chunk `websocket_keepalive` introduced both server-side alarm heartbeats and client-side reconnect. The server-side heartbeats conflicted with the Hibernation API and prevented cost-efficient idle behavior. This chunk owns the present arrangement: the server-side heartbeat is gone, the client-side reconnect remains.

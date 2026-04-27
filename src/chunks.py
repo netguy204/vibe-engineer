@@ -206,12 +206,12 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
     # Chunk: docs/chunks/artifact_list_ordering - Updated for new list_chunks return type
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses ChunkStatus.IMPLEMENTING for status comparison
-    # Chunk: docs/chunks/future_chunk_creation - Returns the first IMPLEMENTING chunk in causal order, ignoring FUTURE/ACTIVE/SUPERSEDED/HISTORICAL
+    # Chunk: docs/chunks/future_chunk_creation - Returns the first IMPLEMENTING chunk in causal order, ignoring FUTURE/ACTIVE/COMPOSITE/SUPERSEDED/HISTORICAL
     def get_current_chunk(self) -> str | None:
         """Return the first IMPLEMENTING chunk in causal order.
 
         This finds the "current" chunk that is actively being worked on,
-        ignoring FUTURE, ACTIVE, SUPERSEDED, and HISTORICAL chunks.
+        ignoring FUTURE, ACTIVE, COMPOSITE, SUPERSEDED, and HISTORICAL chunks.
 
         Returns:
             The chunk directory name if an IMPLEMENTING chunk exists, None otherwise.

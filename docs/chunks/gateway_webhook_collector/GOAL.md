@@ -24,17 +24,17 @@ created_after:
 
 ## Minor Goal
 
-Add a generic webhook collector endpoint to the cleartext gateway that accepts any payload format and marshals it into a swarm message. This enables external systems (GitHub webhooks, Stripe webhooks, CI systems, etc.) to POST directly to a gateway URL without needing a translation layer.
+A generic webhook collector endpoint on the cleartext gateway accepts any payload format and marshals it into a swarm message. This enables external systems (GitHub webhooks, Stripe webhooks, CI systems, etc.) to POST directly to a gateway URL without needing a translation layer.
 
-The current `POST /gateway/{token}/channels/{channel}/messages` endpoint requires a JSON body with a `body` field. External webhook producers send arbitrary formats (form-encoded, XML, plain text, arbitrary JSON) that don't match this schema.
+The strict `POST /gateway/{token}/channels/{channel}/messages` endpoint requires a JSON body with a `body` field. External webhook producers send arbitrary formats (form-encoded, XML, plain text, arbitrary JSON) that don't match this schema, so a separate collector endpoint handles them.
 
-New endpoint: `POST /gateway/{token}/channels/{channel}/webhook`
+Endpoint: `POST /gateway/{token}/channels/{channel}/webhook`
 
 Behavior:
-- Accept ANY content type and payload format
-- Marshal the raw payload into an envelope: `{"content_type": "<original Content-Type header>", "raw_body": "<base64 of body>", "source": "webhook"}`
-- Encrypt and store via the same token-based encryption path as the existing POST endpoint
-- Return 200 with the message position on success
+- Accepts ANY content type and payload format
+- Marshals the raw payload into an envelope: `{"content_type": "<original Content-Type header>", "raw_body": "<base64 of body>", "source": "webhook"}`
+- Encrypts and stores via the same token-based encryption path as the strict POST endpoint
+- Returns 200 with the message position on success
 
 This preserves the security model (token-based encryption) while making the gateway a universal webhook receiver.
 

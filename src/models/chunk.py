@@ -4,7 +4,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from models.friction import FrictionEntryReference
 from models.references import (
@@ -16,33 +16,28 @@ from models.references import (
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Chunk lifecycle status StrEnum
+# Chunk: docs/chunks/intent_principles - COMPOSITE status added; see docs/trunk/CHUNKS.md
 class ChunkStatus(StrEnum):
-    """Status values for chunk lifecycle."""
+    """Status values for chunk lifecycle.
 
-    FUTURE = "FUTURE"  # Queued for future work, not yet being implemented
-    IMPLEMENTING = "IMPLEMENTING"  # Currently being implemented
-    ACTIVE = "ACTIVE"  # Accurately describes current or recently-merged work
-    SUPERSEDED = "SUPERSEDED"  # Another chunk has modified the code this chunk governed
-    HISTORICAL = "HISTORICAL"  # Significant drift; kept for archaeology only
-
-
-# Chunk: docs/chunks/bug_type_field - BugType enum with SEMANTIC and IMPLEMENTATION values
-class BugType(StrEnum):
-    """Classification of bug fix chunks to guide completion behavior.
-
-    When a chunk is a bug fix, this field distinguishes between:
-    - semantic: The bug revealed new understanding of intended behavior (discovery)
-    - implementation: The bug corrected known-wrong code (we knew how it should work)
+    Status answers a single question: how much of the intent does this chunk
+    own? See docs/trunk/CHUNKS.md for the full principle.
     """
 
-    SEMANTIC = "semantic"  # Bug revealed new understanding; code backreferences required
-    IMPLEMENTATION = "implementation"  # Bug corrected known-wrong code; backreferences optional
+    FUTURE = "FUTURE"  # Not yet owned. Queued for later.
+    IMPLEMENTING = "IMPLEMENTING"  # Being taken into ownership. At most one per worktree.
+    ACTIVE = "ACTIVE"  # Fully owns the intent that governs the code.
+    COMPOSITE = "COMPOSITE"  # Shares ownership with other chunks. Read alongside its co-owners.
+    SUPERSEDED = "SUPERSEDED"  # Legacy; being retired by intent_ownership narrative.
+    HISTORICAL = "HISTORICAL"  # No longer owns intent. Kept for archaeological context.
 
 
+# Chunk: docs/chunks/intent_principles - COMPOSITE transitions added; see docs/trunk/CHUNKS.md
 VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.FUTURE: {ChunkStatus.IMPLEMENTING, ChunkStatus.HISTORICAL},
-    ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
-    ChunkStatus.ACTIVE: {ChunkStatus.SUPERSEDED, ChunkStatus.HISTORICAL},
+    ChunkStatus.IMPLEMENTING: {ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL},
+    ChunkStatus.ACTIVE: {ChunkStatus.SUPERSEDED, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL},
+    ChunkStatus.COMPOSITE: {ChunkStatus.ACTIVE, ChunkStatus.HISTORICAL},
     ChunkStatus.SUPERSEDED: {ChunkStatus.HISTORICAL},
     ChunkStatus.HISTORICAL: set(),  # Terminal state
 }
@@ -57,7 +52,6 @@ class ChunkDependent(BaseModel):
 
 
 # Chunk: docs/chunks/chunk_frontmatter_model - Pydantic model for chunk GOAL.md frontmatter validation
-# Chunk: docs/chunks/bug_type_field - bug_type field added to ChunkFrontmatter model
 # Chunk: docs/chunks/investigation_chunk_refs - Optional investigation field in chunk frontmatter schema
 # Chunk: docs/chunks/friction_chunk_linking - Added friction_entries field to chunk frontmatter schema
 # Chunk: docs/chunks/consolidate_ext_refs - Updated dependents field to use ExternalArtifactRef
@@ -66,6 +60,10 @@ class ChunkFrontmatter(BaseModel):
 
     Validates the YAML frontmatter in chunk documentation.
     """
+
+    # Allow extra fields so existing GOAL.md files with removed fields (e.g. bug_type)
+    # parse cleanly during the transition period.
+    model_config = ConfigDict(extra="ignore")
 
     status: ChunkStatus
     ticket: str | None = None
@@ -79,7 +77,6 @@ class ChunkFrontmatter(BaseModel):
     dependents: list[ExternalArtifactRef] = []  # For cross-repo artifacts
     created_after: list[str] = []
     friction_entries: list[FrictionEntryReference] = []
-    bug_type: BugType | None = None
     depends_on: list[str] | None = None
 
 

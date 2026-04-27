@@ -2,7 +2,182 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 ---
 
-<DocsLayout title="Getting Started">
-  <h2>Getting Started</h2>
-  <p>Documentation coming soon.</p>
+<DocsLayout title="Quickstart">
+  <h2>Quickstart</h2>
+  <p>
+    <code>ve</code> is a CLI for organizing AI-assisted code changes
+    around architectural intent. Engineering isn't about writing code;
+    it's about making architectural choices that hold the
+    implementation in productive shape over time.
+  </p>
+  <p>
+    Code owns <em>how</em> the system works: mutable, refactorable,
+    tactical. <strong>Chunks</strong> own <em>why</em> a piece of the
+    system has the shape it has, and stay current as the implementation
+    evolves underneath them. Most engineering effort with
+    <code>ve</code> goes into chunks; agents handle the typing.
+  </p>
+  <p>
+    This page gets you from zero to a completed first chunk.
+  </p>
+
+  <h3>1. Install</h3>
+  <pre><code>$ uv tool install vibe-engineer</code></pre>
+  <p>
+    <code>pip install vibe-engineer</code> works too. <code>ve</code> is a
+    Python package; it has no opinions about your project's language.
+  </p>
+
+  <h3>2. Initialize a project</h3>
+  <pre><code>$ cd path/to/your/project
+$ ve init</code></pre>
+
+  <p>What this creates:</p>
+  <ul>
+    <li><code>docs/trunk/</code>: project-level docs (GOAL, SPEC, DECISIONS, TESTING_PHILOSOPHY, and others)</li>
+    <li><code>docs/chunks/</code>: where each chunk lives</li>
+    <li><code>AGENTS.md</code> and <code>.agents/skills/</code>: agents-standard orientation and skill layout. This is the source of truth.</li>
+    <li><code>CLAUDE.md</code> and <code>.claude/commands/</code>: symlinks into the above, so Claude Code finds the orientation and skills in the layout it expects. No duplication; just a shim. Other harnesses get similar shims as we add them.</li>
+  </ul>
+
+  <div class="evolving-notice">
+    <span class="evolving-label">Evolving</span>
+    <p>
+      Claude Code is the only harness that's well-tested today. Other
+      harnesses are works in progress; the agents-standard files are
+      there to support them as they mature.
+    </p>
+  </div>
+
+  <p>
+    <code>ve init</code> is safe to run repeatedly, and you should
+    re-run it as new versions of <code>ve</code> ship. Files that
+    describe the ve workflow itself (skill templates, command files,
+    internal docs) get overwritten with the latest versions. Files
+    you also edit, like <code>AGENTS.md</code>, use marked sections:
+    ve refreshes its own content and leaves your additions untouched.
+  </p>
+
+  <h3>3. Complete the trunk docs</h3>
+  <p>
+    Brain-dump the big purpose and intent of your project to the agent
+    and ask it to complete the <code>docs/trunk/</code> directory. The
+    agent is good at turning a vibey intent into a clean breakdown
+    across the templates: <code>GOAL.md</code> captures the problem
+    and success criteria, <code>SPEC.md</code> the technical shape,
+    <code>DECISIONS.md</code> the early architectural choices,
+    <code>TESTING_PHILOSOPHY.md</code> the testing approach.
+  </p>
+  <p>
+    This is the anchor every chunk traces back to. You don't have to
+    get it perfect on the first pass; revise as you learn.
+  </p>
+
+  <h3>4. Pick something chunk-worthy</h3>
+  <p>
+    Not every change earns a chunk. Apply one test:
+    <strong>does this code need to remember why it exists?</strong>
+  </p>
+  <ul>
+    <li><strong>Yes:</strong> there's a contested design decision, a constraint that future contributors will accidentally break, or a tradeoff worth recording. Make a chunk.</li>
+    <li><strong>No:</strong> typo, dep bump, mechanical rename, an off-by-one that was just wrong. Vibe it. A chunk would add ceremony without adding memory.</li>
+  </ul>
+  <p>
+    Both paths end in a commit; the difference is whether you're
+    recording architectural intent on the way.
+  </p>
+  <p>
+    For your first chunk, pick something on the "yes" side. A small
+    but real architectural decision is the cleanest first run.
+  </p>
+
+  <h3>5. Run <code>/chunk-create</code></h3>
+  <p>
+    Describe the chunk-worthy thing you picked and ask your agent to
+    use <code>/chunk-create</code>. The skill scaffolds the chunk
+    directory and walks you through writing <code>GOAL.md</code>,
+    refining your vibey intent in light of the existing code and the
+    project's trunk goal. This is where the architecture work happens.
+  </p>
+  <p>
+    Under the hood the skill calls <code>ve chunk create</code> to
+    instantiate the templates. You'll see this pattern across
+    <code>ve</code>: skills are the operator-facing surface where
+    intent gets shaped, CLI commands are plumbing.
+  </p>
+  <p>
+    A chunk directory now exists at
+    <code>docs/chunks/&lt;your_chunk&gt;/</code> with two files:
+  </p>
+  <ul>
+    <li><code>GOAL.md</code>: the architectural record. Why the code has the shape it has, written in present tense so it ages well.</li>
+    <li><code>PLAN.md</code>: still a template at this point. The next skill fills it in.</li>
+  </ul>
+  <p>
+    Status is <code>IMPLEMENTING</code>. Only one chunk can be
+    <code>IMPLEMENTING</code> at a time per worktree, which keeps an
+    agent's attention bounded.
+  </p>
+
+  <h3>6. Run <code>/chunk-plan</code></h3>
+  <p>
+    The skill writes <code>PLAN.md</code> as a literate-programming
+    bridge from the codebase as it stands today to the codebase that
+    satisfies the goal. Read it. If the plan goes somewhere surprising,
+    the goal didn't constrain the solution tightly enough; refine the
+    goal and regenerate the plan. If the plan reads as the path you'd
+    have taken, the goal was specific enough.
+  </p>
+
+  <h3>7. Run <code>/chunk-implement</code></h3>
+  <p>
+    The agent works through the plan. When it writes code that the
+    chunk's intent governs, it adds a backreference comment near the
+    top:
+  </p>
+  <pre><code># Chunk: docs/chunks/&lt;your_chunk&gt; - Brief description</code></pre>
+  <p>
+    The next agent that reads the code follows that comment back to
+    the chunk and learns why the code is the way it is. Backreferences
+    accumulate as chunks land; the codebase teaches the next agent
+    instead of handing it a blank slate.
+  </p>
+
+  <h3>8. Run <code>/chunk-complete</code></h3>
+  <p>
+    The skill walks the chunk's <code>code_references</code>, verifies
+    they resolve to real symbols, fills in any references the agent
+    collected during implement, and flips status from
+    <code>IMPLEMENTING</code> to <code>ACTIVE</code>. It also scans for
+    other chunks that govern the same code, surfacing potential
+    <a href="/docs/chunks/#status-values">COMPOSITE</a> situations
+    early. The chunk now owns the intent that governs the code it
+    produced.
+  </p>
+
+  <h3>Greenfield or legacy</h3>
+  <p>
+    These steps work the same on a brand-new project and on a legacy
+    codebase you're retrofitting. The difference is when you can hand
+    things off to the
+    <a href="/docs/orchestrator/">orchestrator</a>.
+  </p>
+  <p>
+    Greenfield projects can reach for the orchestrator immediately,
+    because you've been articulating the architecture as chunks from
+    day one. Legacy projects need a few chunks of scaffolding first:
+    a clean trunk and a handful of chunks that stake out the parts
+    of the architecture the agent will need to reason about. Once
+    that's in place, the orchestrator works just as well on the
+    legacy project.
+  </p>
+
+  <h3>What next</h3>
+  <ul>
+    <li>Most days are a sequence of chunks. The <a href="/docs/chunks/">chunks</a> page goes deeper.</li>
+    <li>When work is too big for one chunk, write a <a href="/docs/narratives/">narrative</a> first.</li>
+    <li>When you don't yet know what the work should be, run an <a href="/docs/investigations/">investigation</a>.</li>
+    <li>Pain points you keep hitting? Log them in the <a href="/docs/friction/">friction log</a>.</li>
+    <li>To run multiple chunks in parallel, use the <a href="/docs/orchestrator/">orchestrator</a>.</li>
+  </ul>
 </DocsLayout>

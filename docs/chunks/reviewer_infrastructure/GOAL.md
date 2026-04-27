@@ -3,19 +3,19 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
+  - src/models/reviewer.py
   - tests/test_models.py
   - docs/reviewers/baseline/METADATA.yaml
   - docs/reviewers/baseline/PROMPT.md
   - docs/reviewers/baseline/DECISION_LOG.md
 code_references:
-  - ref: src/models.py#TrustLevel
+  - ref: src/models/reviewer.py#TrustLevel
     implements: "Trust level enum for reviewer agent autonomy (observation/calibration/delegation/full)"
-  - ref: src/models.py#LoopDetectionConfig
+  - ref: src/models/reviewer.py#LoopDetectionConfig
     implements: "Loop detection settings validation for reviewer escalation"
-  - ref: src/models.py#ReviewerStats
+  - ref: src/models/reviewer.py#ReviewerStats
     implements: "Review statistics tracking for trust calibration"
-  - ref: src/models.py#ReviewerMetadata
+  - ref: src/models/reviewer.py#ReviewerMetadata
     implements: "Pydantic schema for reviewer METADATA.yaml validation"
   - ref: tests/test_models.py#TestReviewerMetadata
     implements: "Unit tests for ReviewerMetadata schema validation"

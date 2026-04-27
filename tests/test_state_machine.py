@@ -54,6 +54,27 @@ class TestStateMachine:
             sm.validate_transition(ChunkStatus.HISTORICAL, ChunkStatus.ACTIVE)
         assert "terminal state" in str(exc_info.value).lower()
 
+    # Chunk: docs/chunks/intent_principles - COMPOSITE transition tests
+    def test_active_to_composite_allowed(self):
+        """ACTIVE -> COMPOSITE is valid when intent overlap with a peer is recognized."""
+        sm = StateMachine(VALID_CHUNK_TRANSITIONS, ChunkStatus)
+        sm.validate_transition(ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE)
+
+    def test_composite_to_active_allowed(self):
+        """COMPOSITE -> ACTIVE is valid when a co-owner is removed and sole ownership returns."""
+        sm = StateMachine(VALID_CHUNK_TRANSITIONS, ChunkStatus)
+        sm.validate_transition(ChunkStatus.COMPOSITE, ChunkStatus.ACTIVE)
+
+    def test_composite_to_historical_allowed(self):
+        """COMPOSITE -> HISTORICAL is valid when intent is abandoned."""
+        sm = StateMachine(VALID_CHUNK_TRANSITIONS, ChunkStatus)
+        sm.validate_transition(ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL)
+
+    def test_implementing_to_composite_allowed(self):
+        """IMPLEMENTING -> COMPOSITE is valid when completion lands as a co-owner."""
+        sm = StateMachine(VALID_CHUNK_TRANSITIONS, ChunkStatus)
+        sm.validate_transition(ChunkStatus.IMPLEMENTING, ChunkStatus.COMPOSITE)
+
     def test_narrative_valid_transition(self):
         """Valid narrative transition should not raise."""
         sm = StateMachine(VALID_NARRATIVE_TRANSITIONS, NarrativeStatus)
@@ -116,8 +137,8 @@ class TestStateMachine:
         with pytest.raises(ValueError) as exc_info:
             sm.validate_transition(ChunkStatus.ACTIVE, ChunkStatus.FUTURE)
         error_msg = str(exc_info.value)
-        # ACTIVE can transition to SUPERSEDED or HISTORICAL
-        assert "SUPERSEDED" in error_msg or "HISTORICAL" in error_msg
+        # ACTIVE can transition to SUPERSEDED, COMPOSITE, or HISTORICAL
+        assert any(s in error_msg for s in ("SUPERSEDED", "COMPOSITE", "HISTORICAL"))
 
     def test_unmapped_state_raises_explicit_error(self):
         """Unmapped state should raise a configuration error, not be treated as terminal."""

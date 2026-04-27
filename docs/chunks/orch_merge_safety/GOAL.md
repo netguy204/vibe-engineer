@@ -54,14 +54,13 @@ created_after:
 
 ## Minor Goal
 
-The orchestrator's `merge_to_base()` function currently performs `git checkout` on the main repository when merging completed work (line 731 in worktree.py). If the user is actively working in the main repository during parallel orchestrator execution, this checkout disrupts their working tree by switching branches unexpectedly. Additionally, `_get_repo_current_branch()` has a race condition: the base branch is captured at worktree creation time, but if someone changes branches between worktree creation and merge, the merge targets the wrong branch. Finally, created worktrees are not locked, so `git worktree prune` could remove active worktrees.
+The orchestrator's `merge_to_base()` performs checkout-free merges so that parallel orchestrator execution does not disrupt a user's active work in the main repository. Three safety properties hold:
 
-This chunk addresses these safety issues by:
-1. Eliminating the disruptive `git checkout` in merge operations (investigate `git merge --no-checkout`, bare-repo merging, or worktree-based merge strategies)
-2. Capturing the base branch at worktree creation time and storing it for use during merge, eliminating the race condition
-3. Investigating `git worktree lock` to prevent premature pruning of active worktrees
+1. **No `git checkout` in the main repo during merge.** Merges route through `git merge-tree --write-tree` (Git 2.38+) with a plumbing-level fallback (`merge_via_index`) for older Git, so the user's checked-out branch is never switched.
+2. **Base branch captured at worktree creation time.** The base branch each chunk should merge into is persisted when the worktree is created and reloaded at merge time, so changing branches in the main repo between creation and merge does not redirect the merge.
+3. **Active worktrees are locked.** `git worktree lock` is applied at creation and released before removal, preventing `git worktree prune` from collecting in-flight worktrees.
 
-This ensures parallel orchestrator execution cannot disrupt a user's active work in the main repository and prevents race conditions or accidental cleanup during multi-chunk execution.
+Together these properties make parallel orchestrator execution safe to run alongside interactive work in the host repository.
 
 ## Success Criteria
 

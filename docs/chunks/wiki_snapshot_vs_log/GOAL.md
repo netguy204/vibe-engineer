@@ -73,6 +73,7 @@ right fix — propagates to every future entity scaffold.
 ## Relationship to Parent
 
 Parent `wiki_identity_routing` refined the schema's routing guidance for
-identity.md. This chunk adds a new orthogonal concept (snapshot vs log page
-shapes) to the same schema template.
+identity.md. The same schema template now also distinguishes snapshot
+pages from log pages — an orthogonal concept layered onto the routing
+guidance.
 

@@ -53,19 +53,19 @@ created_after:
 
 ## Minor Goal
 
-Populate the `created_after` field automatically when new workflow artifacts are created. This is the third chunk in the causal ordering initiative from `docs/investigations/0001-artifact_sequence_numbering`.
+The `created_after` field is populated automatically when new workflow artifacts are created. This is the third chunk in the causal ordering initiative from `docs/investigations/0001-artifact_sequence_numbering`.
 
 This chunk connects the foundation work:
 - `ordering_field` added the `created_after` field to all frontmatter models
 - `0038-artifact_ordering_index` implemented `ArtifactIndex` with `find_tips()` functionality
 
-Now we need to use these to set `created_after` when creating new artifacts. Each artifact creation function must:
-1. Query `ArtifactIndex.find_tips()` to get current tip artifacts (those with no dependents)
-2. Extract the short names from the tips
-3. Pass the list of tip short names to the template for frontmatter generation
-4. The new artifact's `created_after` will reference these tips, establishing its place in the causal graph
+Each artifact creation function:
+1. Queries `ArtifactIndex.find_tips()` to get current tip artifacts (those with no dependents)
+2. Extracts the short names from the tips
+3. Passes the list of tip short names to the template for frontmatter generation
+4. Sets the new artifact's `created_after` to reference those tips, establishing its place in the causal graph
 
-After this chunk, new artifacts will automatically capture their causal relationship to existing work, enabling merge-friendly parallel development.
+New artifacts automatically capture their causal relationship to existing work, enabling merge-friendly parallel development.
 
 ## Success Criteria
 

@@ -33,14 +33,12 @@ created_after: ["scratchpad_remove_infra"]
 
 ## Minor Goal
 
-Update all documentation templates to remove references to user-global scratchpad
-storage (`~/.vibe/scratchpad/`) for chunks and narratives. After the previous chunks
-in the `revert_scratchpad_chunks` narrative migrated artifacts back to `docs/` and
-removed the scratchpad infrastructure, the documentation still contains outdated
-references that confuse agents.
-
-This is the final chunk in the narrative - completing it restores full consistency
-between the codebase behavior and its documentation.
+Documentation templates describe chunks and narratives as living in `docs/chunks/`
+and `docs/narratives/`, with no remaining references to user-global scratchpad
+storage (`~/.vibe/scratchpad/`). Earlier chunks in the `revert_scratchpad_chunks`
+narrative migrated artifacts back to `docs/` and removed the scratchpad
+infrastructure; this chunk closes the loop by aligning the templates with that
+storage model.
 
 ## Success Criteria
 

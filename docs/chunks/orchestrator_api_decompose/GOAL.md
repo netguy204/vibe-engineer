@@ -3,7 +3,6 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/api.py
   - src/orchestrator/api/__init__.py
   - src/orchestrator/api/common.py
   - src/orchestrator/api/work_units.py
@@ -69,14 +68,14 @@ created_after:
 
 ## Minor Goal
 
-Split the monolithic `src/orchestrator/api.py` (1,832 lines, 7+ distinct domains) into domain-specific sub-modules under `src/orchestrator/api/`. The current file mixes CRUD endpoints, scheduling logic, attention queue management, conflict analysis, merge retry logic, worktree management, WebSocket log streaming, and dashboard rendering into a single file. This makes the orchestrator difficult to navigate, test in isolation, and modify safely.
+The orchestrator HTTP API lives in domain-specific sub-modules under `src/orchestrator/api/` rather than a single 1,832-line `src/orchestrator/api.py`. Sub-modules separate CRUD endpoints, scheduling logic, attention queue management, conflict analysis, merge retry logic, worktree management, WebSocket log streaming, and dashboard rendering, so the orchestrator is easier to navigate, test in isolation, and modify safely.
 
-This decomposition advances the project's maintainability goals by:
+This decomposition advances the project's maintainability goals through:
 
-- **Reducing cognitive load**: Each sub-module owns a single domain, making it easier for agents and developers to locate and reason about specific functionality.
-- **Improving testability**: Replacing module-level mutable globals (`_store`, `_project_dir`, `_started_at`, `_task_info`) with Starlette application state enables proper test isolation without monkeypatching module globals.
-- **Cleaning up the dependency graph**: Moving mid-file imports (e.g., `from chunks import plan_has_content, Chunks` at line 363) to the top of their respective modules makes dependencies explicit and traceable.
-- **Consolidating git operations**: Replacing direct `subprocess.run` git calls with `git_utils` or `WorktreeManager` reduces duplication and ensures consistent error handling for git operations across the orchestrator.
+- **Reduced cognitive load**: Each sub-module owns a single domain, making it easier for agents and developers to locate and reason about specific functionality.
+- **Improved testability**: Starlette application state (`app.state.store`, `app.state.project_dir`, `app.state.started_at`, `app.state.task_info`) replaces module-level mutable globals, enabling proper test isolation without monkeypatching.
+- **Explicit dependency graph**: All imports sit at module top level rather than inline mid-file, making dependencies traceable.
+- **Consolidated git operations**: `git_utils` and `WorktreeManager` mediate git operations rather than direct `subprocess.run` calls, reducing duplication and ensuring consistent error handling.
 
 ## Success Criteria
 

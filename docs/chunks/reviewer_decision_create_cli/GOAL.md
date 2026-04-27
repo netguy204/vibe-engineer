@@ -38,7 +38,7 @@ created_after:
 
 ## Minor Goal
 
-Add CLI command to instantiate decision templates for the reviewer agent. This ensures decisions follow a consistent format and contain the expected fields.
+The CLI exposes a command to instantiate decision templates for the reviewer agent. New decisions follow a consistent format and contain the expected fields, derived from the chunk's success criteria.
 
 ## Success Criteria
 

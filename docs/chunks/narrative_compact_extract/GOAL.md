@@ -33,13 +33,13 @@ created_after:
 
 ## Minor Goal
 
-Extract the file manipulation logic from the `narrative compact` CLI command into a domain method on the `Narratives` class.
+The `narrative compact` workflow follows the project's CLI-to-domain delegation convention: file manipulation lives in a domain method, and the CLI command handles only argument parsing, validation, and user-facing output.
 
-Currently, the `compact` command in `src/cli/narrative.py` (lines 233-304) is the only CLI command that directly reads an artifact file, regex-parses its YAML frontmatter, modifies the parsed dict, re-serializes it, and writes the file back. Every other CLI command delegates file manipulation to its corresponding domain class. This inconsistency violates the layering convention that CLI commands handle argument parsing, validation, and user-facing output while domain classes handle artifact I/O.
+`Narratives.compact(chunk_ids, name, description)` in `src/narratives.py` performs the consolidation. It calls `self.create_narrative(name)` to create the narrative directory (reusing existing creation logic), then uses `frontmatter.update_frontmatter_field` to set `proposed_chunks` (with entries for each chunk ID) and `advances_trunk_goal` (with the description) on the generated `OVERVIEW.md`, and returns the created narrative path. No regex-based frontmatter parsing or inline `yaml.safe_load`/`yaml.dump` lives in this layer.
 
-The fix is to create a `Narratives.compact()` method in `src/narratives.py` that accepts the validated chunk IDs and description, performs the OVERVIEW.md frontmatter manipulation (setting `proposed_chunks` and `advances_trunk_goal`), and returns the created narrative path. The CLI command should then delegate to this method, keeping only its input validation and output formatting responsibilities.
+The `compact` CLI command in `src/cli/narrative.py` delegates all file manipulation to `Narratives.compact()`, retaining only chunk-existence validation (via `Chunks`), CLI output formatting, and error handling. It does not import `re` or `yaml` directly.
 
-This aligns with the project goal that "following the workflow must maintain the health of documents over time and should not grow more difficult over time" -- a consistent CLI-to-domain delegation pattern makes each layer independently testable and easier to modify as the project evolves. The existing `frontmatter.py` utilities (`extract_frontmatter_dict`, `update_frontmatter_field`) can be leveraged rather than reimplementing regex-based frontmatter parsing in the new domain method.
+This consistent CLI-to-domain delegation pattern makes each layer independently testable and easier to modify as the project evolves, in line with the project goal that following the workflow must maintain the health of documents over time and not grow more difficult.
 
 ## Success Criteria
 

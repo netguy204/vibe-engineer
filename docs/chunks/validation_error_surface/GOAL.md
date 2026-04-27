@@ -42,13 +42,13 @@ created_after:
 
 ## Minor Goal
 
-Surface validation errors consistently across all artifact types to enable better debugging and error reporting when frontmatter parsing fails.
+Validation errors surface consistently across all artifact types so callers can debug and report failures when frontmatter parsing fails.
 
-Currently, only `parse_chunk_frontmatter_with_errors()` provides detailed Pydantic validation error messages. All other artifact types (narratives, investigations, subsystems) silently swallow `ValidationError` exceptions at parse time and return None, making it impossible for callers to understand why parsing failed.
+Every artifact type exposes a `_with_errors` parser variant that returns `tuple[Frontmatter | None, list[str]]`: `parse_frontmatter_with_errors()` on the base `ArtifactManager`, plus type-specific variants on narratives, investigations, and subsystems. Narratives' variant carries the legacy `chunks` field mapping; investigations and subsystems delegate to the base class.
 
-Additionally, `plan_has_content()` at chunks.py line 1452 uses a bare `except Exception: return False`, which masks file read errors and other failures.
+`plan_has_content()` in `src/chunk_validation.py` handles `FileNotFoundError` and `PermissionError` explicitly, returning `False` for those cases while letting other exceptions propagate to the caller.
 
-This chunk establishes a consistent error surfacing convention across all frontmatter parsers, fixing the inconsistent None-vs-ValueError pattern and ensuring validation failures are debuggable.
+This establishes a consistent error-surfacing convention across all frontmatter parsers — the regular parsers retain the None-on-failure shape for backward compatibility, while the `_with_errors` variants make validation failures debuggable.
 
 ## Success Criteria
 

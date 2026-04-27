@@ -58,16 +58,9 @@ created_after:
 
 ## Minor Goal
 
-Extract duplicated YAML frontmatter parsing and updating logic into a single shared utility module (`src/frontmatter.py`). This consolidates ~10 duplicated implementations across chunks.py, narratives.py, investigations.py, subsystems.py, friction.py, and artifact_ordering.py into a unified parse/validate/update interface.
+`src/frontmatter.py` is the single shared utility module for YAML frontmatter parsing and updating. The artifact modules — `chunks.py`, `narratives.py`, `investigations.py`, `subsystems.py`, `friction.py`, and `artifact_ordering.py` — route their frontmatter I/O through this module instead of carrying their own copies of the read-regex-yaml-validate pipeline.
 
-Each artifact module currently implements the same pattern independently:
-- Read file content
-- Regex match `^---\n(.*?)\n---` to extract frontmatter
-- Parse with `yaml.safe_load()`
-- Validate with pydantic `model_validate()`
-- Update with `_update_overview_frontmatter()` (write pattern)
-
-This duplication creates maintenance burden when the frontmatter format evolves. A shared utility enables consistent behavior, reduces duplication, and provides a single place to enhance frontmatter I/O (e.g., better error messages, validation hooks, or format migrations).
+The module exposes a unified parse/validate/update interface: extract YAML between `^---\n(.*?)\n---` markers, parse with `yaml.safe_load()`, validate against a caller-supplied Pydantic model with `model_validate()`, and update single fields while preserving the body. Format evolution, error-message improvements, and validation hooks have one place to land rather than ~10 near-duplicate sites.
 
 ## Success Criteria
 

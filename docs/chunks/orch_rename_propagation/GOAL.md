@@ -43,18 +43,19 @@ created_after:
 ## Minor Goal
 
 When a chunk is renamed during the orchestrator's PLAN phase (via `ve chunk
-suggest-prefix` and the operator accepting), the orchestrator's work unit still
-references the old chunk name. This stale reference causes failures in
-subsequent phases — most critically during finalization, where
-`verify_chunk_active_status` looks for the old directory name and fails with
-"Chunk not found or GOAL.md missing", leaving the work unit stuck in
-NEEDS_ATTENTION.
+suggest-prefix` and the operator accepting), the scheduler detects the rename
+after the phase completes and propagates the new name through the work unit's
+identity. Without this propagation, the work unit's stale reference to the old
+name would cause failures in subsequent phases — most critically during
+finalization, where `verify_chunk_active_status` would look for the old
+directory name, fail with "Chunk not found or GOAL.md missing", and leave the
+work unit stuck in NEEDS_ATTENTION.
 
-This chunk adds post-phase rename detection to the orchestrator scheduler so
-that when a chunk directory is renamed inside a worktree during any phase, the
-work unit's identity is updated to match — propagating the new name through the
-database primary key, `.ve/chunks/` directory structure, git branch name,
-conflict verdicts, and blocked_by lists in other work units.
+The orchestrator scheduler runs post-phase rename detection so that when a
+chunk directory is renamed inside a worktree during any phase, the work unit's
+identity updates to match — propagating the new name through the database
+primary key, `.ve/chunks/` directory structure, git branch name, conflict
+verdicts, and blocked_by lists in other work units.
 
 ## Success Criteria
 

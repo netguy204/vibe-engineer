@@ -27,20 +27,16 @@ created_after: []
 
 ## Goal
 
-Enhance `ve external resolve` to output local filesystem path and directory listing
-alongside content, making it a single-command solution for agents needing to work
-with external artifacts.
+`ve external resolve` is a single-command solution for agents working with external
+artifacts: it outputs the goal file content, the local filesystem path, and a
+directory listing for the resolved artifact.
 
-**Problem**: When agents encounter an `external.yaml` file in a project context, they see a
-pointer but not the content. The existing `ve external resolve` command shows content but doesn't
-provide:
-- The **local filesystem path** (so agents can use standard tools)
-- A **directory listing** (so agents know what files exist in the artifact)
-
-**Solution**: Enhance the command output to include all three:
-1. The goal file content (GOAL.md for chunks, OVERVIEW.md for others)
-2. The local filesystem path to the artifact
-3. A directory listing of the artifact's contents
+**Why all three**: An `external.yaml` file is a pointer, not the content. Agents
+encountering one need:
+- The **goal file content** (GOAL.md for chunks, OVERVIEW.md for others)
+- The **local filesystem path** so they can use standard tools against the
+  resolved artifact directory
+- A **directory listing** so they know what files exist alongside the goal file
 
 Local paths are always available because VE either uses an existing clone or creates
 a cache clone when dereferencing.

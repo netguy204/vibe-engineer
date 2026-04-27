@@ -37,15 +37,15 @@ created_after:
 
 ## Minor Goal
 
-When background agents running under the orchestrator attempt to use the `AskUserQuestion` tool, forward those requests to the attention queue system rather than blocking or failing silently.
+When background agents running under the orchestrator attempt to use the `AskUserQuestion` tool, the orchestrator forwards those requests to the attention queue system rather than letting the call fail silently.
 
-Currently, as discovered in the transcript audit, when background agents call `AskUserQuestion`, the tool returns an error (`is_error=True` with message "Answer questions?") and agents silently proceed without getting answers. This leads to unresolved uncertainty and potential implementation issues.
+Without interception, background agents calling `AskUserQuestion` receive an error (`is_error=True` with message "Answer questions?") and silently proceed without an answer, leaving uncertainty unresolved.
 
-This chunk enables:
+The orchestrator enables:
 - Background agents to ask questions that surface in the attention queue
 - Operators to answer agent questions via `ve orch answer` (from orch_attention_queue)
 - Agent sessions to resume with the operator's answer injected
-- Proper handling of uncertainty rather than silent failure
+- Explicit handling of uncertainty rather than silent failure
 
 ## Success Criteria
 

@@ -29,11 +29,17 @@ created_after: ["ordering_audit_seqnums", "cluster_rename", "cluster_prefix_sugg
 
 ## Minor Goal
 
-Add a `ve artifact copy-external` command that creates an external reference to an artifact in the external artifact repository within a specified project repository.
+The `ve artifact copy-external` command creates an external reference to an
+artifact in the external artifact repository within a specified project
+repository.
 
-**Use Case**: When an artifact is created in the wrong project and later promoted to the external artifact repository, the other project(s) participating in the task need a way to reference it. Currently, `ve artifact promote` creates an external reference in the source project automatically, but there's no command to add external references to the remaining projects.
-
-This command fills that gap by allowing users to "copy" an artifact from the external repo as an external reference into any project in the task.
+**Use Case**: When an artifact is created in the wrong project and later
+promoted to the external artifact repository, the other project(s)
+participating in the task need a way to reference it. `ve artifact promote`
+creates an external reference in the source project automatically; this
+command extends the same capability to the remaining projects in the task,
+so any participating project can pick up an external reference to a
+promoted artifact.
 
 ## Success Criteria
 

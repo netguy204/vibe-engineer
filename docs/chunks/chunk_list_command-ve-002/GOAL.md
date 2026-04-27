@@ -1,11 +1,12 @@
 ---
-status: ACTIVE
+status: HISTORICAL
 ticket: ve-002
 parent_chunk: null
 code_paths:
 - src/ve.py
 - src/chunks.py
-- tests/test_ve.py
+- tests/test_chunks.py
+- tests/test_chunk_list.py
 code_references:
 - ref: src/chunks.py#Chunks::list_chunks
   implements: Lists chunks in causal order (newest first) using ArtifactIndex

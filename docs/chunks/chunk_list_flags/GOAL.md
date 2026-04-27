@@ -40,9 +40,7 @@ created_after:
 
 ## Minor Goal
 
-Rename `ve chunk list --latest` to `--current` and add a `--recent` flag showing the 10 most recently created ACTIVE chunks.
-
-Discovered during the progressive disclosure investigation: the `--latest` flag is a misnomer. It shows the currently IMPLEMENTING chunk, not recent work. "Latest" implies recency, but the flag's actual semantics are "current". Additionally, there's no way to see what work was done recently, which is useful for context when starting a new session.
+`ve chunk list --current` shows the currently IMPLEMENTING chunk (the flag previously named `--latest`, renamed because "latest" implied recency while the flag's actual semantics are "current"). `ve chunk list --recent` shows the 10 most recently created ACTIVE chunks, providing context when starting a new session.
 
 ## Success Criteria
 

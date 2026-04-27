@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/chunk/GOAL.md
+- src/templates/chunk/GOAL.md.jinja2
 - tests/test_chunks.py
 code_references:
-- ref: src/templates/chunk/GOAL.md
+- ref: src/templates/chunk/GOAL.md.jinja2
   implements: Jinja2 template using default filter to render null for missing ticket_id
 - ref: tests/test_chunks.py#TestTicketFrontmatter
   implements: Unit tests verifying ticket field renders correctly in frontmatter
@@ -23,11 +23,11 @@ created_after:
 
 ## Minor Goal
 
-Fix the chunk GOAL.md template to output valid YAML `null` instead of Python's `None` when no ticket ID is provided.
+The chunk GOAL.md template outputs valid YAML `null` instead of Python's `None` when no ticket ID is provided.
 
-Currently, `src/templates/chunk/GOAL.md` uses `{{ ticket_id }}` which renders Python's `None` value as the literal string `None`. YAML interprets this as the string "None" rather than a null value, producing invalid frontmatter.
+`src/templates/chunk/GOAL.md.jinja2` renders `ticket: {{ ticket_id | default('null', true) }}`, so a missing `ticket_id` produces YAML `null` rather than the literal string `None`. The `default` filter with `true` as its second argument treats `None` as undefined and substitutes the `null` literal.
 
-This advances the trunk goal's **Required Properties** by ensuring generated artifacts are immediately valid without manual correction—a prerequisite for maintaining document health over time.
+This advances the trunk goal's **Required Properties** by keeping generated artifacts immediately valid without manual correction—a prerequisite for maintaining document health over time.
 
 ## Success Criteria
 

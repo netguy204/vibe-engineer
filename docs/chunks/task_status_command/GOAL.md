@@ -48,9 +48,9 @@ created_after: ["task_aware_investigations", "task_aware_subsystem_cmds"]
 
 ## Minor Goal
 
-Enhance artifact list commands (`ve chunk list`, `ve narrative list`, `ve subsystem list`, `ve investigation list`) to show grouped-by-location output when running from a task context. Currently, these commands only show artifacts from the external repo when at task root. The new behavior shows the complete cross-project picture: external repo artifacts first, then each participating project's local artifacts, with each group preserving its own causal ordering.
+Artifact list commands (`ve chunk list`, `ve narrative list`, `ve subsystem list`, `ve investigation list`) show grouped-by-location output when running from a task context. The complete cross-project picture is rendered: external repo artifacts first, then each participating project's local artifacts, with each group preserving its own causal ordering.
 
-This is an extension to the workflow_artifacts subsystem—the grouped listing concept should be documented there and the implementation should comply with subsystem patterns.
+This extends the workflow_artifacts subsystem—the grouped listing concept is documented there and the implementation complies with subsystem patterns.
 
 ## Success Criteria
 

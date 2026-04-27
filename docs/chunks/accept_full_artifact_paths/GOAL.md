@@ -69,7 +69,7 @@ ve artifact copy-external docs/investigations/foo dotter                  # just
 ve artifact copy-external docs/investigations/foo cloudcapitalco/dotter   # full org/repo
 ```
 
-Currently, commands require exact formats that users must memorize. This creates friction and breaks the copy-paste workflow that's essential for efficient agentic development.
+Without shared normalization, commands require exact formats that users must memorize. This creates friction and breaks the copy-paste workflow that's essential for efficient agentic development.
 
 ## Success Criteria
 

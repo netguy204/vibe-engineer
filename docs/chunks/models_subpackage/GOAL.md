@@ -15,8 +15,6 @@ code_paths:
 code_references:
   - ref: src/models/__init__.py
     implements: "Re-exports all public names for backward compatibility"
-  - ref: src/models/shared.py#extract_short_name
-    implements: "Identity function for directory name extraction"
   - ref: src/models/shared.py#_require_valid_dir_name
     implements: "Directory name validation utility"
   - ref: src/models/shared.py#_require_valid_repo_ref
@@ -37,8 +35,6 @@ code_references:
     implements: "Proposed chunk entry for narratives/investigations"
   - ref: src/models/chunk.py#ChunkStatus
     implements: "Chunk lifecycle status enum"
-  - ref: src/models/chunk.py#BugType
-    implements: "Bug type classification enum"
   - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Chunk GOAL.md frontmatter validation model"
   - ref: src/models/subsystem.py#SubsystemStatus

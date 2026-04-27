@@ -34,7 +34,7 @@ created_after:
 
 ## Minor Goal
 
-Revise the entity-startup skill to load from the new wiki-based entity structure. At startup, the entity loads core memories for fast identity establishment, then the wiki index for structured knowledge overview, then recent consolidated memories. The entity's session instructions include the wiki schema so it knows to maintain its wiki during the session.
+The entity-startup skill loads from the wiki-based entity structure. At startup, the entity loads core memories for fast identity establishment, then the wiki index for structured knowledge overview, then recent consolidated memories. The entity's session instructions include the wiki schema so it knows to maintain its wiki during the session.
 
 ### Context for implementing agent
 
@@ -42,9 +42,9 @@ Revise the entity-startup skill to load from the new wiki-based entity structure
 
 **The big picture**: Entities are portable specialists whose knowledge lives in a wiki they maintain during every work session. The wiki is a structured, interlinked collection of markdown files (identity, domain knowledge, techniques, relationships, project notes, session log). The entity updates wiki pages in real time as it works — this is the entity's notebook, and taking notes is part of working, not a post-hoc extraction step. **This is the critical contract**: if the entity doesn't maintain its wiki during the session, the shutdown diff will be empty and no journal entries will be produced. Getting the wiki schema instructions into the session context correctly is what makes the entire pipeline work.
 
-**Existing startup code**:
-- `src/entities.py` — `startup_payload(name)` generates the full startup context. Currently loads identity file, core memories, consolidated memory index, and touch protocol instructions. This is what needs to be revised.
-- `src/templates/commands/entity-startup.md.jinja2` — the `/entity-startup` skill template. 8-step process: identity adoption, core memory internalization, consolidated index, touch protocol, episodic search, active state restoration. This needs to be updated to include wiki loading and schema injection.
+**Startup code**:
+- `src/entities.py` — `startup_payload(name)` generates the full startup context. It branches on `has_wiki()` to include the wiki index and maintenance protocol for wiki entities, while preserving the legacy load order (identity, core memories, consolidated index, touch protocol) for legacy entities.
+- `src/templates/commands/entity-startup.md.jinja2` — the `/entity-startup` skill template. Multi-step process covering identity adoption, core memory internalization, wiki orientation, wiki maintenance commitment, consolidated index, touch protocol, and episodic search.
 - `src/models/entity.py` — `MemoryTier` enum (JOURNAL, CONSOLIDATED, CORE), `MemoryFrontmatter` model, `EntityIdentity` model.
 
 **The LLM Wiki pattern** (full doc at `docs/investigations/entity_wiki_memory/prototypes/llm_wiki_prompt.md`): The wiki has three layers — raw sources (immutable), the wiki itself (entity-maintained), and the schema (conventions document). The schema tells the entity how to maintain its wiki: when to create new pages, how to update existing ones, how to maintain cross-references, when to lint for contradictions. Two key files: **index.md** (content catalog the entity reads first to orient) and **log.md** (chronological session record). The entity reads the index to find relevant pages, drills into them as needed, and files new knowledge back into the wiki as it works.

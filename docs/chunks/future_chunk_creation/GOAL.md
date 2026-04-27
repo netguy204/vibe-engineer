@@ -45,7 +45,7 @@ created_after:
 
 ## Minor Goal
 
-Add the ability to create "future" chunks while a chunk is actively in progress. Currently, when working through a chunk, developers often recognize related work that should be captured for later execution. This feature enables capturing those future chunks without disrupting the current work.
+Developers can create "future" chunks while another chunk is actively in progress. When working through a chunk, developers often recognize related work that should be captured for later execution; the FUTURE status and `--future` flag let them record that work without disrupting the current focus.
 
 This supports the vibe-engineer workflow (docs/trunk/GOAL.md) by allowing continuous capture of work items during implementation, preventing loss of context and ensuring related work is properly sequenced.
 

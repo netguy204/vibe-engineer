@@ -28,15 +28,14 @@ created_after:
 
 ## Minor Goal
 
-Migrate `src/chunks.py` from its local `render_template` function to use the
-canonical `template_system` module. This is the first of four consolidation
-chunks to eliminate duplicate template rendering code and enable include
-support across all template collections.
+`src/chunks.py` uses the canonical `template_system` module for chunk template
+rendering rather than maintaining its own local `render_template`. This is one
+of the consolidation chunks that eliminate duplicate template rendering code
+and enable include support across all template collections.
 
-This advances the template_system subsystem from REFACTORING toward STABLE by
-reducing NON_COMPLIANT code references. After this chunk, `chunks.py` will use
-the shared Jinja2 Environment with include support instead of creating bare
-`jinja2.Template` instances.
+This advances the template_system subsystem toward STABLE by reducing
+NON_COMPLIANT code references. `chunks.py` uses the shared Jinja2 Environment
+with include support rather than creating bare `jinja2.Template` instances.
 
 ## Success Criteria
 

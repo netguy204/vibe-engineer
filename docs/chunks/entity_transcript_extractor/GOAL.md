@@ -33,11 +33,11 @@ created_after:
 
 ## Minor Goal
 
-Build a transcript extractor module (`src/entity_transcript.py`) that reads Claude
-Code JSONL session transcripts and produces clean, structured data suitable for both
+The transcript extractor module (`src/entity_transcript.py`) reads Claude Code
+JSONL session transcripts and produces clean, structured data suitable for both
 memory extraction and episodic search indexing.
 
-This module is a shared foundation used by:
+The module is a shared foundation used by:
 1. `entity_api_memory_extraction` — feeds transcript text to the EXTRACTION_PROMPT
 2. `entity_episodic_search` — chunks transcript text for BM25 indexing
 3. `entity_claude_wrapper` — uses both of the above
@@ -56,7 +56,7 @@ Content blocks in assistant messages are typed:
 - `{"type": "tool_use", "name": "...", "input": {...}}` — record the tool name but skip the input (noisy)
 - `{"type": "tool_result", ...}` — skip (very noisy, contains full file contents etc.)
 
-### What to build
+### Module surface
 
 **1. Dataclasses:**
 
@@ -89,14 +89,14 @@ class SessionTranscript:
 
 - `resolve_session_jsonl_path(project_path: str, session_id: str) -> Path | None` — find a session's JSONL file. First check the entity's archived transcripts at `.entities/<name>/sessions/<session_id>.jsonl` (preferred), then fall back to Claude Code's location at `~/.claude/projects/<encoded-path>/<session_id>.jsonl`. The encoded path convention: `-` + absolute path with `/` replaced by `-`.
 
-**Important**: Do NOT rely on `sessions-index.json` — the investigation found it has zero overlap with JSONL files actually on disk. Always scan for the file directly.
+**Important**: The module does not rely on `sessions-index.json` — that index has zero overlap with JSONL files actually on disk. Path resolution always scans for the file directly.
 
 ### Reference prototype
 
-A working prototype exists at `docs/investigations/entity_session_harness/prototypes/transcript_extractor.py`.
-It was tested on 12 real sessions and the extraction logic works correctly. Use it as
-a reference for the parsing and cleaning logic, but build the production version as a
-proper module in `src/`.
+A reference prototype lives at
+`docs/investigations/entity_session_harness/prototypes/transcript_extractor.py`
+and informs the parsing and cleaning logic. The production module lives in
+`src/entity_transcript.py`.
 
 ## Success Criteria
 

@@ -56,9 +56,9 @@ created_after:
 
 ## Minor Goal
 
-This chunk adds optimistic locking to work unit updates in the orchestrator's state store to prevent stale writes. The orchestrator uses separate `StateStore` instances for the scheduler and the API (by design, for WAL-mode concurrent access). This means the scheduler can read a work unit, then the API can update that same work unit (e.g., priority change), and then the scheduler can write its now-stale version back, silently overwriting the API-driven change.
+Work unit updates in the orchestrator's state store use optimistic locking to prevent stale writes. The orchestrator uses separate `StateStore` instances for the scheduler and the API (by design, for WAL-mode concurrent access), so without coordination the scheduler could read a work unit, the API could update that same work unit (e.g., priority change), and the scheduler could then write its now-stale version back, silently overwriting the API-driven change.
 
-The fix adds an `updated_at` check to `update_work_unit` in `src/orchestrator/state.py` -- before writing, verify that the work unit's `updated_at` timestamp matches the expected value. If it doesn't, the write is rejected with a clear error indicating a concurrent modification, allowing the caller to re-read and retry.
+`update_work_unit` in `src/orchestrator/state.py` accepts an `expected_updated_at` parameter and verifies the work unit's `updated_at` timestamp matches before writing. When the timestamps disagree, the write is rejected with `StaleWriteError` indicating a concurrent modification, and the caller re-reads and retries (or skips, as appropriate).
 
 ## Success Criteria
 

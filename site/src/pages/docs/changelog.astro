@@ -1,0 +1,250 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Changelog">
+  <h2>Changelog</h2>
+  <p>
+    Notable changes to the <code>vibe-engineer</code> CLI and the
+    workflow it ships. Releases use semantic versioning: minor bumps
+    add features and stay backwards compatible; major bumps would
+    break the chunk schema or the runtime contract.
+  </p>
+
+  <h3>0.2.0</h3>
+  <p>
+    Feature release. Fully backwards compatible. The headline change
+    is the <strong>intent-ownership shift</strong>: chunks now have a
+    canonical statement of what they're for, a sharpened five-status
+    taxonomy, and tooling to migrate older corpora into the new
+    standard. Substantial body of work outside the headline too:
+    wiki-based entity memory, the leader-board cross-agent messaging
+    layer, orchestrator reliability improvements.
+  </p>
+
+  <h4>Intent ownership</h4>
+  <ul>
+    <li>
+      <a href="/docs/chunks/"><code>docs/trunk/CHUNKS.md</code></a>:
+      canonical statement of the four principles. Code owns
+      implementation; chunks own intent; chunks exist only for
+      intent-bearing work; goals describe intent in present tense;
+      status answers a single ownership question.
+    </li>
+    <li>
+      Five-status taxonomy: <code>FUTURE</code>,
+      <code>IMPLEMENTING</code>, <code>ACTIVE</code>,
+      <code>COMPOSITE</code> (new), <code>HISTORICAL</code>.
+      <code>COMPOSITE</code> captures chunks that share intent
+      ownership with peers.
+    </li>
+    <li>
+      <code>SUPERSEDED</code> deprecated. The runtime keeps parsing
+      it for backward compatibility, but the
+      <code>ACTIVE &rarr; SUPERSEDED</code> transition is removed
+      (no new chunk becomes SUPERSEDED) and the
+      <code>SUPERSEDED &rarr; HISTORICAL</code> off-ramp stays open
+      so the existing set drains organically. Parsing a SUPERSEDED
+      chunk emits a <code>DeprecationWarning</code>.
+    </li>
+    <li>
+      <code>/audit-intent</code> skill: full-corpus migration tool.
+      Walks every <code>ACTIVE</code> chunk, applies one of six
+      actions per chunk (rewrite tense, log over-claim, fix broken
+      <code>code_paths</code>, historicalize, log cross-artifact
+      inconsistency, leave clean), and produces a structured report.
+      Designed for parallel sub-agent fan-out at 5 chunks per agent.
+    </li>
+    <li>
+      <a href="/docs/migrations/active-tense-chunks/">Migration guide</a>
+      covering the operator-led-to-full-auto rollout pattern. Reference
+      numbers from the self-migration of this project's own corpus
+      (341 chunks, 11 waves, ~180 rewrites, 7 historicalizations,
+      62 inconsistency entries logged for triage).
+    </li>
+    <li>
+      <code>docs/trunk/INCONSISTENCIES/</code> log: concurrent-safe
+      record of mismatches between what chunks claim and what code
+      delivers. Designed to outlive any individual audit.
+    </li>
+  </ul>
+
+  <h4>Entity system v2 (wiki-based memory)</h4>
+  <ul>
+    <li>
+      Entities now keep their long-running memory as a structured
+      wiki rather than a flat memory tier. Wiki schema with
+      identity, knowledge domains, and structured pages.
+    </li>
+    <li>
+      <code>ve entity create</code>, <code>attach</code>,
+      <code>detach</code>, <code>fork</code>, <code>merge</code>,
+      <code>push</code>, <code>pull</code>: lifecycle commands for
+      entities backed by git submodules.
+    </li>
+    <li>
+      <code>ve entity startup</code> / <code>shutdown</code>: load
+      identity + recent memory; consolidate session work back into
+      the wiki at session end.
+    </li>
+    <li>
+      <code>ve entity ingest-transcript</code>,
+      <code>from-transcript</code>: bootstrap an entity from prior
+      session transcripts.
+    </li>
+    <li>
+      <code>ve entity touch</code> + episodic-memory commands for
+      retrieval-as-reinforcement and on-demand search across past
+      sessions.
+    </li>
+  </ul>
+
+  <h4>Leader board (cross-agent messaging)</h4>
+
+  <div class="evolving-notice">
+    <span class="evolving-label">Evolving</span>
+    <p>
+      The leader-board protocol and CLI work today, and all the code
+      ships for self-hosting your own instance. The hosting model is
+      what's evolving: we're looking for sponsors to support a free
+      shared tier the community can use. Until that lands,
+      self-hosting is the path.
+    </p>
+  </div>
+
+  <ul>
+    <li>
+      End-to-end-encrypted append-only log channels between agents
+      across machines. Cloudflare Durable Objects backend with a
+      local-server adapter for dev/test.
+    </li>
+    <li>
+      <code>ve board send</code>, <code>watch</code>,
+      <code>watch-multi</code>, <code>ack</code>,
+      <code>channels</code>: cursor-based at-least-once delivery
+      with manual ack semantics.
+    </li>
+    <li>
+      Steward skills (<code>/steward-setup</code>,
+      <code>/steward-watch</code>, <code>/steward-send</code>,
+      <code>/steward-changelog</code>): persistent project-watching
+      agents that triage inbound work via the board.
+    </li>
+    <li>
+      Swarm-level monitoring via <code>/swarm-monitor</code> and
+      request-response patterns via <code>/swarm-request-response</code>.
+    </li>
+  </ul>
+
+  <h4>Orchestrator</h4>
+  <ul>
+    <li>
+      Mandatory review phase between implement and complete with a
+      structured <code>ReviewDecision</code> tool. Review feedback
+      file (<code>REVIEW_FEEDBACK.md</code>) drives a bounded
+      review &harr; implement loop (max 3 iterations on the
+      orchestrator path).
+    </li>
+    <li>
+      Worktree retain mode (<code>ve orch inject --retain</code>)
+      preserves the worktree for inspection after completion.
+    </li>
+    <li>
+      Phase-aware crash recovery, optimistic locking on state
+      transactions, deferred worktree creation, finalization recovery,
+      session auto-resume on Anthropic API rate limits.
+    </li>
+    <li>
+      Conflict oracle: detects whether two in-flight chunks touch
+      compatible code regions; supports parallelize / serialize
+      operator decisions.
+    </li>
+    <li>
+      Sandbox enforcement: blocks agents from running git commands
+      outside the chunk's worktree.
+    </li>
+    <li>
+      Dashboard live-tail for streaming agent logs over WebSocket;
+      <code>ve orch tail</code> for terminal access to the same.
+    </li>
+  </ul>
+
+  <h4>Workflow / chunk lifecycle</h4>
+  <ul>
+    <li>
+      <code>/chunk-execute</code> with built-in review loop.
+      <code>/chunk-review</code> as a standalone skill that spawns a
+      fresh subagent for an independent read of intent vs.
+      implementation.
+    </li>
+    <li>
+      Reviewer infrastructure: per-reviewer trust levels, decision
+      file format, auto-curation hooks, decision template rendering.
+    </li>
+    <li>
+      <code>/narrative-execute</code> walks a narrative's proposed
+      chunks in dependency order, dispatching parallel agents.
+    </li>
+    <li>
+      <code>/validate-fix</code> iteratively fixes validation errors
+      until clean, gated by max-iteration and error-classification
+      caps.
+    </li>
+  </ul>
+
+  <h4>CLI / templates / refactors</h4>
+  <ul>
+    <li>
+      <code>src/ve.py</code> reduced to a thin entry point;
+      operational logic lives in <code>src/cli/</code> per artifact
+      type.
+    </li>
+    <li>
+      <code>src/models.py</code> split into the
+      <code>src/models/</code> package, one module per artifact.
+    </li>
+    <li>
+      <code>src/orchestrator/api.py</code> split into the
+      <code>src/orchestrator/api/</code> package by endpoint family.
+    </li>
+    <li>
+      Chunk and subsystem directory naming dropped the
+      <code>NNNN-</code> sequence prefix in favor of pure
+      short-name directories. Causal ordering moved to the
+      <code>created_after</code> frontmatter field.
+    </li>
+    <li>
+      <code>ve chunk start</code> renamed to <code>ve chunk create</code>
+      (with <code>start</code> kept as an alias).
+    </li>
+    <li>
+      Investigation artifact type added; subsystem artifact type
+      gained richer status transitions and CLI surface.
+    </li>
+    <li>
+      Friction log workflow: capture pain points, accumulate them,
+      promote to chunks when patterns emerge.
+    </li>
+    <li>
+      Task directories: cross-repository workflows where a single
+      task coordinates artifacts across multiple project
+      repositories via <code>external.yaml</code> pointers.
+    </li>
+  </ul>
+
+  <h4>Backwards compatibility</h4>
+  <p>
+    The runtime continues to parse <code>status: SUPERSEDED</code>
+    on existing chunks. Older chunks that haven't been migrated keep
+    working; they'll just emit a deprecation warning when read.
+    Projects can upgrade <code>ve</code> at any time and migrate at
+    their own pace using <code>/audit-intent</code>.
+  </p>
+
+  <h3>0.1.0</h3>
+  <p>
+    Initial release. Core chunk lifecycle (create, plan, implement,
+    complete), trunk documentation scaffolding, project init,
+    template rendering, basic CLI surface for chunks and narratives.
+  </p>
+</DocsLayout>

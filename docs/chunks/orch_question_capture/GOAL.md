@@ -25,11 +25,15 @@ created_after:
 
 ## Minor Goal
 
-Capture AskUserQuestion tool calls from AssistantMessage content instead of relying on PreToolUse hooks, which don't fire for built-in tools.
+`AgentRunner.run_phase` captures AskUserQuestion tool calls by scanning AssistantMessage content blocks rather than relying on a PreToolUse hook. PreToolUse hooks in the Claude Agent SDK do not fire for built-in tools like AskUserQuestion (the same limitation observed for MCP tools in `orch_reviewer_decision_mcp`), so the message-stream path is the actual capture mechanism.
 
-**The problem:** The `orch_question_forward` chunk implemented a PreToolUse hook to intercept AskUserQuestion calls and forward them to the attention queue. However, testing reveals that PreToolUse hooks **don't fire for built-in tools** (same limitation discovered for MCP tools in `orch_reviewer_decision_mcp`).
+When a `ToolUseBlock` with `name == "AskUserQuestion"` appears in the assistant content, the runner extracts the question, options, header, and multiSelect fields, invokes `question_callback`, breaks out of the message loop, and returns `AgentResult(suspended=True, question=captured_question)` with `session_id` preserved for resume.
 
-Evidence from verification script (`scripts/verify_question_hook.py`):
+The `orch_question_forward` hook infrastructure (`create_question_intercept_hook`, the callback wiring, the `AgentResult.suspended` flow) remains in place but is unused for this tool — only the capture path differs.
+
+### Verification
+
+The `scripts/verify_question_hook.py` script demonstrates the capture pattern:
 ```
 Tool calls observed: ['AskUserQuestion']
 Hook fired: False
@@ -37,18 +41,11 @@ Question captured via hook: False
 Question captured via message: True
 ```
 
-Historical evidence from `.ve/chunks/deferred_worktree_creation/log/plan.txt`:
+Historical artifact from `.ve/chunks/deferred_worktree_creation/log/plan.txt` showing the pre-fix behavior (agent called AskUserQuestion, received an error, and kept executing instead of suspending):
 ```
 Line 7: ToolUseBlock(name='AskUserQuestion', input={...})
 Line 8: ToolResultBlock(content='Answer questions?', is_error=True)
 ```
-The agent called AskUserQuestion, received an error, and continued executing instead of being suspended.
-
-**The solution:** Apply the same pattern used for ReviewDecision at `agent.py:669-696`:
-1. Capture AskUserQuestion calls from AssistantMessage content blocks
-2. Extract question data when `block.name == "AskUserQuestion"`
-3. Break out of the message loop to suspend the agent
-4. Return `AgentResult(suspended=True, question=captured_question)`
 
 ## Success Criteria
 

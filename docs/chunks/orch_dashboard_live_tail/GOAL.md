@@ -3,18 +3,18 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/orchestrator/api.py
+- src/orchestrator/api/streaming.py
 - src/orchestrator/log_parser.py
 - src/orchestrator/templates/dashboard.html
 - tests/test_orchestrator_dashboard.py
 code_references:
-  - ref: src/orchestrator/api.py#log_stream_websocket_endpoint
+  - ref: src/orchestrator/api/streaming.py#log_stream_websocket_endpoint
     implements: "WebSocket endpoint for streaming parsed log output to dashboard"
-  - ref: src/orchestrator/api.py#_get_log_directory
+  - ref: src/orchestrator/api/streaming.py#_get_log_directory
     implements: "Log directory resolution for chunk log files"
-  - ref: src/orchestrator/api.py#_detect_current_phase
+  - ref: src/orchestrator/api/streaming.py#_detect_current_phase
     implements: "Phase detection from existing log files"
-  - ref: src/orchestrator/api.py#_stream_log_file
+  - ref: src/orchestrator/api/streaming.py#_stream_log_file
     implements: "Async log file streaming with HTML formatting"
   - ref: src/orchestrator/log_parser.py#format_entry_for_html
     implements: "HTML-safe formatting of log entries for dashboard display"

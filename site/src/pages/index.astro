@@ -50,13 +50,22 @@ import { heroLines } from '../data/hero-code';
     </div>
   </section>
 
-  <!-- Section 3: How Does It Get There -->
+  <!-- Section 3: Bridge: Engineering is judgment work -->
   <section>
     <div class="content">
-      <h2>How does it get there?</h2>
-      <p>VE organizes work into <strong>chunks</strong>. Small, documented units of change. Before you write code, you write what you're trying to do and why. The agent implements against that intent, and the documentation stays connected to the code it produced.</p>
+      <h2>Engineering isn't really writing code</h2>
+      <p>The valuable part is the architectural judgment: what constraints matter, what decisions to make, what tradeoffs to accept. The code is what implements that judgment.</p>
+      <p>Day 2 breaks because the codebase kept the implementation but not the judgment that produced it. The agent reads the code, can't reconstruct the why, and "fixes" things it shouldn't touch.</p>
+      <p><strong>VE adds the missing layer: a record of the judgment, bound to the code that implements it.</strong></p>
+    </div>
+  </section>
 
-      <p>This doesn't replace comments. You still want comments explaining what the code does. Chunks define something broader: the envelope of what correct looks like. An agent refactoring that code can see the invariants and the intent behind it, not just what each line does.</p>
+  <!-- Section 4: Chunks -->
+  <section>
+    <div class="content">
+      <h2>Chunks</h2>
+      <p>A chunk is a piece of architecture work bound to implementation. It captures the constraints, decisions, and boundaries that give a piece of the system its shape, then holds that record steady as the code evolves underneath it.</p>
+      <p>Code says <em>how</em> the system works: mutable, refactorable, tactical. Chunks say <em>why</em> a piece of the system has the shape it has. Together they're the architecture.</p>
 
       <div class="workflow-tabs">
         <input type="radio" name="workflow" id="wf-goal" checked class="workflow-input" />
@@ -75,23 +84,23 @@ import { heroLines } from '../data/hero-code';
         </div>
 
         <div class="workflow-panel wf-panel-goal">
-          <p><strong>Define what you're trying to do and why.</strong> The goal captures the problem, the success criteria, and the constraints. It's the contract between you and the agent. A well-written goal means the agent doesn't have to guess your intent.</p>
+          <p><strong>Capture the intent.</strong> The goal records the problem, the success criteria, and the constraints in present tense. It's the contract the chunk holds the code to, and it stays current as the code evolves.</p>
         </div>
 
         <div class="workflow-panel wf-panel-plan">
-          <p><strong>Break down how you'll get there.</strong> The plan is an ordered sequence of steps, each small enough to reason about in isolation. It references existing code, decisions, and subsystems so the agent knows what it's building on.</p>
+          <p><strong>Bridge the codebase to the goal.</strong> The plan is the agent's literate-programming pass through the work: ordered steps, references to existing code, an articulation a reviewer can verify. A surprising plan means the goal wasn't specific enough.</p>
         </div>
 
         <div class="workflow-panel wf-panel-implement">
-          <p><strong>The agent writes code against documented intent.</strong> With the goal and plan as context, the agent implements each step and adds backreference comments that link the code back to the documentation that produced it. The codebase gains context as it grows.</p>
+          <p><strong>Write the code.</strong> The agent works through the plan. When it writes code the chunk's intent governs, it adds a backreference comment pointing back to the chunk. The codebase gains context as it grows.</p>
         </div>
 
         <div class="workflow-panel wf-panel-complete">
-          <p><strong>Code references are updated and the chunk is closed.</strong> The documentation now accurately describes what shipped. Future agents discover this context by following backreferences in the code, learning progressively instead of needing everything upfront.</p>
+          <p><strong>Bind the chunk to the code it produced.</strong> The chunk records its code references, status flips to ACTIVE, and the linkage is permanent. Future agents follow backreferences from the code back to the architectural intent that shaped it.</p>
         </div>
       </div>
 
-      <p>Recent research confirms what VE practitioners already know: agents don't benefit from being told everything upfront. They need to discover context progressively, at the point where it's relevant. That's what backreferences and chunk documentation create. A codebase that teaches the agent as it navigates.</p>
+      <p>As chunks accumulate, the codebase teaches the next agent. Context gets discovered at the point it's relevant, not all at once.</p>
     </div>
   </section>
 
@@ -113,11 +122,12 @@ import { heroLines } from '../data/hero-code';
     </div>
   </section>
 
-  <!-- Section 5: Retrofit -->
+  <!-- Section 6: Greenfield or legacy + leverage -->
   <section>
     <div class="content">
-      <h2>Retrofit, don't rewrite</h2>
-      <p>You don't need to have used VE from the start. Run <code>ve init</code> in any existing project. Start documenting your next chunk of work. The backreferences accumulate. The codebase gets smarter one change at a time.</p>
+      <h2>Greenfield or legacy</h2>
+      <p>The same workflow works on a brand-new project and on a legacy codebase you're retrofitting. Run <code>ve init</code> in either, document your next chunk of work, and the backreferences accumulate as you go.</p>
+      <p>Once the architecture is staked out in chunks, the orchestrator turns implementation into a team. Each chunk runs in its own worktree with its own agent; they land in parallel as their work completes, each as its own commit on your branch. The judgment is yours. The typing isn't.</p>
     </div>
   </section>
 
@@ -136,13 +146,24 @@ import { heroLines } from '../data/hero-code';
       </details>
 
       <div class="cta-links">
-        <a href="https://analytics.veng.dev/q/bMiDbOK78" target="_blank" rel="noopener">GitHub</a>
+        <a href="/docs/">Read the docs</a>
+        <a
+          class="github-button"
+          href="https://github.com/netguy204/vibe-engineer"
+          data-color-scheme="no-preference: dark; light: light; dark: dark;"
+          data-icon="octicon-star"
+          data-size="large"
+          data-show-count="true"
+          aria-label="Star netguy204/vibe-engineer on GitHub"
+        >Star</a>
       </div>
 
       <div class="badge">Open Source</div>
     </div>
   </section>
 </BaseLayout>
+
+<script is:inline async defer src="https://buttons.github.io/buttons.js"></script>
 
 <script>
   // Chunk: docs/chunks/landing_page_umami_events

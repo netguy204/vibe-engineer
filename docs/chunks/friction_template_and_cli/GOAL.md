@@ -4,8 +4,8 @@ ticket: null
 parent_chunk: null
 code_paths:
   - src/friction.py
-  - src/models.py
-  - src/ve.py
+  - src/models/friction.py
+  - src/cli/friction.py
   - src/templates/trunk/FRICTION.md.jinja2
   - tests/test_friction.py
   - tests/test_friction_cli.py
@@ -18,19 +18,19 @@ code_references:
     implements: "Dataclass for parsed friction entry from log body"
   - ref: src/friction.py#Friction
     implements: "Business logic class for friction log management (parse, append, query)"
-  - ref: src/models.py#FrictionTheme
+  - ref: src/models/friction.py#FrictionTheme
     implements: "Pydantic model for friction theme/category in frontmatter"
-  - ref: src/models.py#FrictionProposedChunk
+  - ref: src/models/friction.py#FrictionProposedChunk
     implements: "Pydantic model for proposed chunk with addresses linking to entry IDs"
-  - ref: src/models.py#FrictionFrontmatter
+  - ref: src/models/friction.py#FrictionFrontmatter
     implements: "Pydantic model for FRICTION.md frontmatter schema"
-  - ref: src/ve.py#friction
+  - ref: src/cli/friction.py#friction
     implements: "CLI command group for friction log commands"
-  - ref: src/ve.py#log_entry
+  - ref: src/cli/friction.py#log_entry
     implements: "'ve friction log' command to append new friction entries"
-  - ref: src/ve.py#list_entries
+  - ref: src/cli/friction.py#list_entries
     implements: "'ve friction list' command with status and tag filtering"
-  - ref: src/ve.py#analyze
+  - ref: src/cli/friction.py#analyze
     implements: "'ve friction analyze' command grouping entries by theme"
   - ref: src/templates/trunk/FRICTION.md.jinja2
     implements: "Jinja2 template for friction log with agent guidance"

@@ -33,16 +33,16 @@ created_after:
 
 ## Minor Goal
 
-Make `ve orch` commands auto-resolve the project root to find the orchestrator daemon, using the same resolution chain as `ve board` commands (shipped in `board_cursor_root_resolution`).
+`ve orch` commands auto-resolve the project root to find the orchestrator daemon, using the same resolution chain as `ve board` commands (shipped in `board_cursor_root_resolution`).
 
-Currently, `ve orch ps`, `ve orch inject`, and other orchestrator commands assume the daemon is reachable relative to CWD. When an agent `cd`s into a subdirectory (e.g., `workers/leader-board` to run a deploy), subsequent `ve orch` commands fail with "Orchestrator daemon is not running" because they look for the daemon socket/state in the wrong directory.
+Without this, `ve orch ps`, `ve orch inject`, and other orchestrator commands would assume the daemon is reachable relative to CWD. When an agent `cd`s into a subdirectory (e.g., `workers/leader-board` to run a deploy), subsequent `ve orch` commands would fail with "Orchestrator daemon is not running" because they would look for the daemon socket/state in the wrong directory.
 
 Resolution algorithm (matching `resolve_board_root` from `src/board/storage.py`):
 1. Walk parent directories for `.ve-task.yaml` — if found, the orchestrator is running at that task root
 2. Otherwise, walk parent directories for `.git` — the orchestrator is running at the project root
 3. Use the resolved root to locate the daemon's connection info (PID file, socket, or HTTP port)
 
-This should reuse `resolve_board_root` (or extract a shared `resolve_project_root` utility) rather than duplicating the logic.
+The shared `resolve_project_root` utility in `src/board/storage.py` is reused (rather than duplicating the logic), with `resolve_orch_project_dir` in `src/cli/orch.py` providing the orch-specific wrapper.
 
 ## Success Criteria
 

@@ -28,48 +28,45 @@ created_after:
 
 ## Minor Goal
 
-Fix `ve entity shutdown` crash: "can't subtract offset-naive and offset-aware
-datetimes" during post-API consolidation.
+`ve entity shutdown` runs cleanly through post-API consolidation against
+entities whose memory files mix timezone-aware and timezone-naive
+timestamps, instead of raising "can't subtract offset-naive and
+offset-aware datetimes".
 
-### The bug
+### The crash shape
 
-`ve entity shutdown <name>` fails after the Anthropic API call returns
-successfully. The consolidation pipeline subtracts datetimes where one side
-is timezone-aware (from `datetime.now(timezone.utc)`) and the other is naive
-(parsed from memory files that lack timezone markers in their stored ISO 8601
-strings).
+The consolidation pipeline subtracts datetimes where one side is
+timezone-aware (from `datetime.now(timezone.utc)`) and the other had been
+naive (parsed from memory files whose stored ISO 8601 strings lacked
+timezone markers, e.g. `2026-04-20T14:30:00` vs
+`2026-04-20T14:30:00+00:00`). Long-running entities accumulate memory
+files written across different code versions, so a single sleep cycle
+can encounter both shapes. Without normalization, Python raises
+`TypeError: can't subtract offset-naive and offset-aware datetimes`
+after the Anthropic API call returns successfully — wiki updates land on
+disk but journal extraction, memory consolidation, and core memory
+recomputation are skipped.
 
-Error: `can't subtract offset-naive and offset-aware datetimes`
+### Where the timestamps come from
 
-### Root cause analysis
+`src/entity_shutdown.py` uses `datetime.now(timezone.utc)` (aware) for
+new timestamps. The `MemoryFrontmatter` model
+(`src/models/entity.py`) parses `last_reinforced` from stored YAML via
+Pydantic's datetime field, which produces a naive datetime when the
+stored string lacks timezone info. `entity_decay.py` has its own
+inline guard (`if lr.tzinfo is None: lr = lr.replace(tzinfo=timezone.utc)`)
+for the same problem on the decay path.
 
-The shutdown code (`src/entity_shutdown.py`) uses `datetime.now(timezone.utc)`
-(aware) for new timestamps. But the `MemoryFrontmatter` model
-(`src/models/entity.py:57`) parses `last_reinforced` from stored YAML via
-Pydantic's datetime field, which produces naive datetimes when the stored
-string lacks timezone info (e.g., `2026-04-20T14:30:00` vs
-`2026-04-20T14:30:00+00:00`).
+### The normalization
 
-Long-running entities accumulate memory files written across different code
-versions — some with timezone offsets, some without. When consolidation
-subtracts these mixed datetimes, Python raises TypeError.
-
-Note: `entity_decay.py` already handles this correctly with explicit
-normalization (`if lr.tzinfo is None: lr = lr.replace(tzinfo=timezone.utc)`).
-The consolidation pipeline in `entity_shutdown.py` lacks this same guard.
-
-### The fix
-
-1. Add a Pydantic validator on `MemoryFrontmatter.last_reinforced` (and any
-   other datetime fields) that normalizes naive datetimes to UTC-aware.
-   This fixes it at the model layer so all consumers get aware datetimes.
-
-2. Alternatively/additionally, add the same guard pattern used in
-   `entity_decay.py:68-71` to any datetime subtraction in
-   `entity_shutdown.py`.
-
-3. Add a regression test using a fixture entity with intentionally mixed-tz
-   timestamps in memory files.
+1. A Pydantic `field_validator` on `MemoryFrontmatter.last_reinforced`
+   normalizes naive datetimes to UTC-aware on construction, so every
+   consumer of the model — shutdown, decay, anything else — sees aware
+   datetimes.
+2. The existing inline guard pattern in `entity_decay.py` remains in
+   place; the model-layer fix is additive, not a replacement.
+3. A regression test exercises a fixture entity with intentionally mixed
+   naive and aware timestamps in its memory files.
 
 ### Cross-project context
 

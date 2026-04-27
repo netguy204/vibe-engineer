@@ -21,9 +21,9 @@ created_after:
 
 ## Minor Goal
 
-Add an explicit note to the steward-watch skill (`steward-watch.md` template) clarifying that **every handled message must be acked** via `ve board ack` before the next watch iteration — including bootstrap/initialization messages and messages that don't represent actionable work (e.g., questions answered inline, no-ops).
+The steward-watch skill (`steward-watch.md` template) explicitly notes that **every handled message must be acked** via `ve board ack` before the next watch iteration — including bootstrap/initialization messages and messages that don't represent actionable work (e.g., questions answered inline, no-ops).
 
-Without this note, an agent following the skill may skip the ack step for non-actionable messages, causing the cursor to never advance and the steward to re-receive the same message indefinitely on the next watch cycle.
+Without this callout, an agent following the skill may skip the ack step for non-actionable messages, causing the cursor to never advance and the steward to re-receive the same message indefinitely on the next watch cycle.
 
 ## Success Criteria
 

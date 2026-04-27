@@ -455,6 +455,7 @@ nav {
 
 .cta-links {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: var(--space-lg);
   margin-top: var(--space-lg);
@@ -522,6 +523,269 @@ nav {
 
 .skip-link:focus {
   top: 0;
+}
+
+/* ========== DOCS CONTENT ========== */
+
+.docs-content h2 {
+  font-size: 28px;
+  margin-bottom: var(--space-lg);
+}
+
+.docs-content h3 {
+  font-size: 20px;
+  margin-top: var(--space-2xl);
+  margin-bottom: var(--space-sm);
+}
+
+.docs-content h4 {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  margin-top: var(--space-lg);
+  margin-bottom: var(--space-xs);
+}
+
+.docs-content p {
+  max-width: var(--max-prose);
+}
+
+.docs-content ul,
+.docs-content ol {
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 0 0 var(--space-md) var(--space-lg);
+  max-width: var(--max-prose);
+}
+
+.docs-content li {
+  margin-bottom: var(--space-xs);
+}
+
+.docs-content li > strong,
+.docs-content li > code {
+  color: var(--text);
+}
+
+.docs-content pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md) var(--space-lg);
+  margin: var(--space-md) 0;
+  overflow-x: auto;
+  font-family: 'Geist Mono', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.docs-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  display: block;
+}
+
+.docs-content table {
+  width: 100%;
+  max-width: var(--max-prose);
+  border-collapse: collapse;
+  margin: var(--space-md) 0 var(--space-lg);
+  font-size: 14px;
+}
+
+.docs-content th,
+.docs-content td {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.docs-content th {
+  font-weight: 500;
+  color: var(--text);
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.docs-content td {
+  color: var(--text-muted);
+}
+
+.docs-content td code,
+.docs-content th code {
+  font-size: 0.85em;
+}
+
+.docs-content blockquote {
+  font-size: 16px;
+  margin: var(--space-lg) 0;
+  max-width: var(--max-prose);
+}
+
+.docs-callout {
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-md) var(--space-lg);
+  margin: var(--space-md) 0;
+  max-width: var(--max-prose);
+  font-size: 14px;
+}
+
+.docs-callout p {
+  font-size: 14px;
+  margin-bottom: var(--space-xs);
+}
+
+.docs-callout p:last-child {
+  margin-bottom: 0;
+}
+
+.docs-callout strong {
+  color: var(--text);
+}
+
+/* ========== EVOLVING NOTICE ========== */
+
+.evolving-notice {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-md) var(--space-lg);
+  margin: 0 0 var(--space-xl);
+  max-width: var(--max-prose);
+}
+
+.evolving-notice .evolving-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: var(--space-xs);
+  display: block;
+}
+
+.evolving-notice p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ========== CHUNK EVOLUTION (CSS-only tabs) ========== */
+
+.chunk-evolution {
+  margin: var(--space-lg) 0 var(--space-2xl);
+  max-width: var(--max-prose);
+}
+
+.evo-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chunk-evolution .evo-stepper {
+  margin-top: 0;
+  margin-bottom: var(--space-lg);
+}
+
+.chunk-evolution .evo-stepper .step {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.chunk-evolution .evo-stepper .step:hover {
+  color: var(--text);
+}
+
+.chunk-evolution #evo-create:checked ~ .evo-stepper label[for="evo-create"],
+.chunk-evolution #evo-plan:checked ~ .evo-stepper label[for="evo-plan"],
+.chunk-evolution #evo-implement:checked ~ .evo-stepper label[for="evo-implement"],
+.chunk-evolution #evo-review:checked ~ .evo-stepper label[for="evo-review"],
+.chunk-evolution #evo-complete:checked ~ .evo-stepper label[for="evo-complete"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+.evo-panel {
+  display: none;
+}
+
+.chunk-evolution #evo-create:checked ~ .evo-panel-create,
+.chunk-evolution #evo-plan:checked ~ .evo-panel-plan,
+.chunk-evolution #evo-implement:checked ~ .evo-panel-implement,
+.chunk-evolution #evo-review:checked ~ .evo-panel-review,
+.chunk-evolution #evo-complete:checked ~ .evo-panel-complete {
+  display: block;
+}
+
+.evo-caption {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-md);
+}
+
+.evo-caption code {
+  background: var(--surface);
+}
+
+.evo-tree {
+  margin-bottom: var(--space-md);
+}
+
+.evo-tree pre {
+  background: var(--surface-highlight);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: var(--space-md);
+  margin: 0;
+}
+
+.evo-changed {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.evo-dim {
+  color: var(--text-muted);
+}
+
+.evo-tag {
+  color: var(--accent);
+  font-size: 11px;
+  margin-left: var(--space-md);
+}
+
+.evo-tag-dim {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: var(--space-md);
+}
+
+.evo-filename {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-xs);
+  margin-top: 0;
+}
+
+.evo-bref {
+  color: var(--accent);
 }
 
 /* ========== RESPONSIVE ========== */

@@ -52,19 +52,18 @@ created_after:
 
 ## Minor Goal
 
-Introduce a user global config file at `~/.ve/board.toml` that stores the
-operator's default swarm, and per-swarm server bindings. All `ve board`
-client commands (`send`, `watch`, `ack`, `channels`, `swarm create`) read
-these defaults instead of hardcoding a server URL. Add a `ve board bind`
-command that binds a swarm to a server URL — this is how an operator points
-a swarm at the hosted Durable Objects coordination server (or back to
-localhost for development).
+A user-global config file at `~/.ve/board.toml` stores the operator's
+default swarm and per-swarm server bindings. All `ve board` client commands
+(`send`, `watch`, `ack`, `channels`, `swarm create`) read these defaults
+instead of hardcoding a server URL. The `ve board bind` command binds a
+swarm to a server URL — this is how an operator points a swarm at the
+hosted Durable Objects coordination server (or back to localhost for
+development).
 
-Today every client command takes `--server` with a hardcoded default and
-`--swarm` as a required option. After this chunk, the config provides the
-defaults: `--server` is resolved from the swarm's bound server in
-`board.toml`, and `--swarm` falls back to `board.toml`'s `default_swarm`.
-Explicit flags still override.
+Client commands resolve `--server` from the swarm's bound server in
+`board.toml` and resolve `--swarm` from `board.toml`'s `default_swarm` when
+flags are not provided. Explicit `--server` and `--swarm` flags override
+the config values.
 
 ### Config structure
 

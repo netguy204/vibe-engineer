@@ -28,11 +28,7 @@ created_after:
 
 ## Minor Goal
 
-Fix the invite path routing in the leader-board worker. When curling `https://leader-board.zack-98d.workers.dev/invite/<token>`, the request falls through to a generic handler that expects `?swarm=` as a query parameter, returning `{"error":"Missing required 'swarm' query parameter"}` instead of serving the invite instruction page.
-
-The worker entry point (`src/index.ts`) needs to route `/invite/{token}` requests to the correct Durable Object. The challenge is that invite paths don't carry a swarm ID in the URL — the swarm must be resolved from the token by looking up the gateway key blob (which stores `swarm_id`). The routing logic needs to either:
-- Look up the swarm from the token hash before forwarding to the DO, or
-- Route to a known DO that can resolve the token internally
+The leader-board worker routes `/invite/{token}` requests to the correct Durable Object without requiring a `?swarm=` query parameter. Because invite URLs don't carry a swarm ID, the worker entry point (`src/index.ts`) resolves the swarm from the token hash via a `TOKEN_SWARM_INDEX` KV namespace before forwarding to the DO. The KV index is maintained on every gateway key write, single-key delete, and bulk delete, so token→swarm lookups stay in sync with the gateway key store.
 
 ## Success Criteria
 
@@ -42,4 +38,4 @@ The worker entry point (`src/index.ts`) needs to route `/invite/{token}` request
 
 ## Relationship to Parent
 
-Parent chunk `invite_instruction_page` implemented the `handleInvitePage` and `renderInvitePage` methods on the DO, but the worker entry point routing doesn't correctly forward `/invite/{token}` requests to the DO because it can't determine the swarm without first resolving the token.
+Parent chunk `invite_instruction_page` owns the `handleInvitePage` and `renderInvitePage` methods on the DO. This chunk owns the entry-point routing that delivers `/invite/{token}` requests to that handler, including the token→swarm KV index that makes swarm-less invite URLs routable.

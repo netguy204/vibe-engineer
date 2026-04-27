@@ -1,0 +1,121 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="From investigations">
+  <h2>Chunks from investigations</h2>
+  <p>
+    An investigation is the right shape when you don't yet know what
+    work to do. The question can be diagnostic ("why does this
+    regress?", "is this safe to remove?") or it can be a wild
+    architectural idea you can't yet draw a line to ("I wish I could
+    run chunks in parallel in the background, but I have no idea how").
+    Either way, you can't yet sketch the chunks; you need to think
+    before you can plan.
+  </p>
+  <p>
+    The work of an investigation is conversation, experiment, and active
+    thinking in partnership with an agent. The output is usually a
+    realization that lets you spell out the chunks that get you there
+    ("a system like the orchestrator could do this, and here's how I'd
+    decompose it"). Sometimes the realization is that no work is
+    needed, or that the work doesn't carry enough intent to earn a
+    chunk and should just be vibed.
+  </p>
+
+  <h3>When to reach for one</h3>
+  <ul>
+    <li>You have a wild architectural idea and no idea how to make it real.</li>
+    <li>You're diagnosing an issue with no clear fix.</li>
+    <li>You're considering a change but want to validate it first.</li>
+    <li>You have hypotheses to test, not steps to execute.</li>
+  </ul>
+
+  <h3>Creating</h3>
+  <p>
+    Investigations are created with the <code>/investigation-create</code>
+    skill. The natural workflow is to brain-dump the question or wild
+    idea to the agent and ask it to use the skill. The skill scaffolds
+    <code>OVERVIEW.md</code> from a template (calling
+    <code>ve investigation create</code> underneath); you and the agent
+    then iterate on it as the investigation progresses.
+  </p>
+
+  <p><code>OVERVIEW.md</code> has four sections:</p>
+  <ul>
+    <li><strong>Trigger:</strong> what prompted the investigation.</li>
+    <li><strong>Success Criteria:</strong> what "answered" looks like.</li>
+    <li><strong>Testable Hypotheses:</strong> what you believe and how you'd disprove it.</li>
+    <li><strong>Proposed Chunks:</strong> work that emerges from findings.</li>
+  </ul>
+
+  <h3>Status flow</h3>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>ONGOING</code></td><td>Active. Exploring hypotheses, gathering evidence.</td></tr>
+      <tr><td><code>SOLVED</code></td><td>Question answered. Action taken or queued as proposed chunks.</td></tr>
+      <tr><td><code>NOTED</code></td><td>Answered but no action needed. Kept for future reference.</td></tr>
+      <tr><td><code>DEFERRED</code></td><td>Paused. Revisit when something changes.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <code>NOTED</code> is underused. A lot of investigation work is figuring
+    out that the right answer is "leave it alone for now," and recording that
+    is more useful than deleting the directory.
+  </p>
+
+  <h3>From findings to chunks</h3>
+  <p>
+    As the investigation surfaces specific work, append it to
+    <code>proposed_chunks</code>:
+  </p>
+  <pre><code>proposed_chunks:
+  - prompt: "Cache product lookups in the checkout path"
+    chunk_directory: null
+  - prompt: "Add a regression test for the bundle pricing path"
+    chunk_directory: null</code></pre>
+
+  <p>
+    When the investigation reaches <code>SOLVED</code> (or <code>NOTED</code>
+    with action), apply the intent test to each proposed chunk before
+    realizing it. A proposal earns a chunk when the resulting code needs
+    to remember why it exists: a constraint, a decision, or a tradeoff
+    worth recording. Proposals that don't pass get vibed instead.
+  </p>
+  <p>
+    For the ones that do, ask the agent to materialize them as FUTURE
+    chunks. The agent walks the proposed-chunk list, runs
+    <code>/chunk-create</code> for each, and refines each goal against
+    what the investigation found. Each chunk's <code>GOAL.md</code>
+    should reference the investigation in its frontmatter:
+  </p>
+  <pre><code>investigation: slow_checkout_january</code></pre>
+  <p>
+    This keeps the lineage intact. The chunk knows where the work came
+    from; a future agent reading the chunk can read the investigation
+    to understand the evidence behind the goal.
+  </p>
+
+  <h3>Finding the intent</h3>
+  <p>
+    Chunks need intent. If you don't yet know what the architectural
+    intent is (what constraint, decision, or tradeoff the code should
+    remember), you're not ready to write a chunk. Investigations exist
+    to find that intent.
+  </p>
+  <p>
+    Agents turn out to be very good at this. Hand one an
+    ambitious-but-confused engineer with a wild idea or a murky
+    question, and it can interview its way to the heart of the matter:
+    targeted follow-ups, small experiments, hypotheses tested aloud,
+    until an articulable intent surfaces. That intent is what becomes
+    the chunk.
+  </p>
+  <p>
+    Investigations are cheap. Reach for one whenever the intent isn't
+    clear yet.
+  </p>
+</DocsLayout>

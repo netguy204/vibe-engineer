@@ -22,13 +22,9 @@ created_after: ["claudemd_external_prompt"]
 
 ## Minor Goal
 
-Remove `uv run` prefix from `ve` command examples in CLAUDE.md template sections that are rendered for all VE-using projects, not just the vibe-engineer repository itself.
+CLAUDE.md template sections rendered for all VE-using projects use plain `ve` command examples, not `uv run ve`. Only the vibe-engineer source repository needs to invoke `ve` under `uv` to exercise the development version, so unconditional `uv run ve` examples would mislead projects that have installed `ve` as a package.
 
-Currently, the orchestrator documentation section in `src/templates/claude/CLAUDE.md.jinja2` uses `uv run ve` in code examples (lines 265-356). This is incorrect guidance for projects that have installed `ve` as a package—only the vibe-engineer source repository needs to run `ve` under `uv` to use the development version.
-
-The template already has conditional sections using `{% if ve_config is defined and ve_config.is_ve_source_repo %}` for VE-source-specific content (like the "Development" section warning about running under UV). The orchestrator examples should use plain `ve` commands since they are not wrapped in this conditional.
-
-Also check the `discover-subsystems.md.jinja2` skill template which has similar unconditional `uv run ve` examples.
+The template uses `{% if ve_config is defined and ve_config.is_ve_source_repo %}` blocks to gate VE-source-specific content (e.g., the "Development" section warning about running under UV). Code examples outside those conditional blocks — including the orchestrator documentation section in `src/templates/claude/CLAUDE.md.jinja2` and the migration CLI examples in `src/templates/commands/discover-subsystems.md.jinja2` — use plain `ve` commands.
 
 ## Success Criteria
 

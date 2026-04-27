@@ -52,19 +52,19 @@ created_after:
 
 ## Minor Goal
 
-Add `ChunkStatus` StrEnum and `ChunkFrontmatter` Pydantic model to `models.py` to bring chunks in line with the other workflow artifact types (narratives, investigations, subsystems). This resolves the "Chunk Status Not a StrEnum" deviation documented in the workflow_artifacts subsystem.
+Chunks have a `ChunkStatus` StrEnum and a `ChunkFrontmatter` Pydantic model in the models package, parity with the other workflow artifact types (narratives, investigations, subsystems). This resolves the "Chunk Status Not a StrEnum" deviation documented in the workflow_artifacts subsystem.
 
-Currently, chunk status values (FUTURE, IMPLEMENTING, ACTIVE, SUPERSEDED, HISTORICAL) are only defined in template comments. This means:
-- No compile-time validation of status values
-- Status checked via string comparison (`status == "IMPLEMENTING"`)
-- No `ChunkFrontmatter` Pydantic model for consistent frontmatter validation
-- Inconsistent with other workflow types that have proper StrEnums and models
+`ChunkStatus` defines the chunk lifecycle status values as a StrEnum rather than as comments in a template, providing:
+- Compile-time validation of status values
+- Type-safe status comparisons (`status == ChunkStatus.IMPLEMENTING`)
+- A `ChunkFrontmatter` Pydantic model for consistent frontmatter validation
+- Consistency with other workflow types that have StrEnums and models
 
-This chunk establishes parity with the other workflow types, enabling:
+The result is parity with the other workflow types, enabling:
 - Type-safe status handling in code
 - Consistent frontmatter validation using Pydantic
 - IDE support and autocompletion for chunk statuses
-- Foundation for adding `VALID_CHUNK_TRANSITIONS` in a future chunk
+- Foundation for adding `VALID_CHUNK_TRANSITIONS` in a follow-up chunk
 
 ## Success Criteria
 

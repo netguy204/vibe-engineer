@@ -19,11 +19,11 @@ created_after:
 
 ## Minor Goal
 
-Clarify the semantics of the `created_after` field in chunk GOAL.md templates to prevent agents from confusing **causal ordering** (what has shipped) with **implementation dependencies** (what must exist for this chunk to work).
+The chunk GOAL.md template documents the semantics of the `created_after` field so agents do not confuse **causal ordering** (what has shipped) with **implementation dependencies** (what must exist for this chunk to work).
 
-**The problem**: Agents commonly misinterpret `created_after` as "chunks that must be implemented before this one can work" and incorrectly set it to reference FUTURE chunks. This happened when creating `orch_conflict_oracle` - it was incorrectly set to `["orch_attention_queue"]` (a FUTURE chunk) instead of the actual tips.
+**Background**: Agents commonly misinterpret `created_after` as "chunks that must be implemented before this one can work" and incorrectly set it to reference FUTURE chunks. For example, `orch_conflict_oracle` was at one point set to `["orch_attention_queue"]` (a FUTURE chunk) instead of the actual tips.
 
-**The fix**: Update the GOAL.md template's comment block to explicitly contrast these concepts and guide agents to the correct behavior.
+**Approach**: The GOAL.md template's comment block explicitly contrasts these concepts and guides agents to the correct behavior.
 
 ## Success Criteria
 

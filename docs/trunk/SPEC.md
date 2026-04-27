@@ -197,7 +197,7 @@ Examples: `initial_setup`, `auth_feature`, `api_refactor`
 
 ```yaml
 ---
-status: FUTURE | IMPLEMENTING | ACTIVE | SUPERSEDED | HISTORICAL
+status: FUTURE | IMPLEMENTING | ACTIVE | COMPOSITE | SUPERSEDED | HISTORICAL
 ticket: {ticket_id} | null
 parent_chunk: {chunk_id} | null
 code_paths:
@@ -212,11 +212,14 @@ subsystems:
 ```
 
 **Status Values**:
-- `FUTURE`: Chunk is queued for future work but not yet being implemented
-- `IMPLEMENTING`: Chunk is actively being worked on (only one chunk can have this status at a time)
-- `ACTIVE`: Chunk accurately describes current or recently-merged work
-- `SUPERSEDED`: Another chunk has modified the code this chunk governed
-- `HISTORICAL`: Significant drift from current code; kept for archaeology only
+
+These statuses answer a single question — *how much of the intent does this chunk own?* See `docs/trunk/CHUNKS.md` for the full principle.
+
+- `FUTURE`: Not yet owned. Queued for later.
+- `IMPLEMENTING`: Being taken into ownership. At most one per worktree.
+- `ACTIVE`: Fully owns the intent that governs the code.
+- `COMPOSITE`: Shares ownership with other chunks. Must be read alongside its co-owners.
+- `HISTORICAL`: No longer owns intent. Kept for archaeological context — the approach was replaced, the code was rolled back, or the intent was abandoned.
 
 **Orchestrator and Parallel Worktrees**: The single-IMPLEMENTING constraint applies *per worktree*. When the orchestrator manages parallel execution, it creates isolated git worktrees for each chunk. Each worktree has at most one IMPLEMENTING chunk, preserving the constraint's intent (focused work, predictable state). This enables parallel chunk execution without violating the invariant that guides an agent's attention. See `docs/trunk/ORCHESTRATOR.md` for details on the worktree-based execution model.
 

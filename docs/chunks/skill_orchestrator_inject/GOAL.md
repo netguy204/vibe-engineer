@@ -42,9 +42,11 @@ Add the command to CLAUDE.md's available commands list.
 
 ### Context
 
-Currently, injecting chunks requires the agent to remember to commit first.
-Agents frequently forget this step, causing the orchestrator worktree to not
-have the chunk files. This skill automates the commit-then-inject pattern.
+Injecting a chunk via raw `ve orch inject` requires the agent to remember to
+commit the chunk's GOAL.md and PLAN.md first; otherwise the orchestrator
+worktree does not have the chunk files. The `/orchestrator-inject` skill
+automates the commit-then-inject pattern so the pre-flight check is enforced
+rather than remembered.
 
 ## Success Criteria
 

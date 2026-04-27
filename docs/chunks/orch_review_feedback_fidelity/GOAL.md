@@ -37,20 +37,11 @@ created_after:
 
 ## Minor Goal
 
-Fix the orchestrator's review→implement feedback loop so that ALL reviewer feedback items are reliably communicated to and addressed by the implementer agent.
+The orchestrator's review→implement feedback loop reliably communicates ALL reviewer feedback items to the implementer agent and requires them to be addressed.
 
-**Root cause confirmed**: The orchestrator does NOT pass review feedback to the implementer at all. When a reviewer gives FEEDBACK, the orchestrator re-runs the entire implementation phase from scratch with the original implementation prompt. The implementer never sees the reviewer's specific feedback items.
+When a reviewer returns FEEDBACK, the orchestrator writes the reviewer's specific issues to `REVIEW_FEEDBACK.md` in the chunk directory. On re-entry to IMPLEMENT, the implementer reads `REVIEW_FEEDBACK.md`, addresses every item (fix, defer with reason, or dispute with evidence), and deletes the file to signal completion. The code already exists in the worktree — the implementer fixes targeted issues rather than re-implementing from scratch.
 
-Items that happen to be in the original plan get "fixed" by coincidence on re-implementation. Items only identified by the reviewer (deviations doc, tick marks, test labels) never get fixed because the feedback is never injected into the implementer's context. Each unnecessary full re-implementation also costs ~$0.25 in inference vs ~$0.05 for a targeted fix prompt.
-
-Fix should:
-1. When review returns FEEDBACK, read the review decision file (e.g., `docs/reviewers/baseline/decisions/chunk_name_N.md`)
-2. Extract the specific issues list
-3. Send the implementer a targeted feedback prompt (NOT the full implementation prompt) listing the specific issues to address
-4. The code already exists in the worktree — the implementer should fix, not re-implement
-5. Add a feedback checklist mechanism where each issue must be explicitly acknowledged
-
-Reported by a design steward after manually fixing multiple escalated chunks. Root cause confirmed by examining orchestrator logs.
+Before re-entering REVIEW, the scheduler validates that `REVIEW_FEEDBACK.md` was deleted; if it still exists, the chunk is routed back to IMPLEMENT with an explicit instruction to address every remaining item. This ensures items only identified by the reviewer (deviations doc, tick marks, test labels, naming conventions) are always addressed rather than being silently dropped on re-implementation.
 
 ## Success Criteria
 

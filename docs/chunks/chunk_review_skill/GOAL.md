@@ -29,7 +29,7 @@ created_after:
 
 ## Minor Goal
 
-Create the `/chunk-review` skill that implements the review process. This skill acts as a "trusted lieutenant" that reviews chunk implementations for alignment with documented intent before completion is allowed.
+The `/chunk-review` skill acts as a "trusted lieutenant" that reviews chunk implementations for alignment with documented intent before completion is allowed.
 
 The skill reads reviewer configuration, gathers context from GOAL.md/PLAN.md/linked artifacts, produces a structured decision (APPROVE/FEEDBACK/ESCALATE), and logs the decision to the reviewer's DECISION_LOG.md.
 

@@ -1,5 +1,5 @@
 ---
-status: SUPERSEDED
+status: HISTORICAL
 ticket: null
 parent_chunk: null
 code_paths:
@@ -42,6 +42,7 @@ created_after: []
 ---
 
 # Chunk Goal
+<!-- HISTORICAL: The global_scratchpad narrative and its scratchpad approach were abandoned. Chunks remain in-repo under docs/chunks/. -->
 
 ## Minor Goal
 

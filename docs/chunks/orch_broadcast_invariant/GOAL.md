@@ -29,33 +29,23 @@ created_after:
 
 ## Minor Goal
 
-Fix missing WebSocket broadcasts in the orchestrator scheduler and establish discoverable documentation that ensures future agents know when to emit dashboard updates.
+Establish a WebSocket broadcast invariant for the orchestrator scheduler: every work unit state change must call `broadcast_work_unit_update()` so the dashboard receives real-time updates, with discoverable documentation so future agents follow the invariant when adding scheduler logic.
 
-### Problem
+### Invariant
 
-The orchestrator dashboard doesn't receive real-time updates for certain state transitions because the scheduler updates the database without broadcasting via WebSocket. This is a recurring pattern—each time we add scheduler logic that changes work unit state, we forget to broadcast.
+Every transition of a work unit's status (RUNNING, READY on phase advance, DONE, NEEDS_ATTENTION, etc.) is paired with a `broadcast_work_unit_update()` call. The scheduler must broadcast for the same reason API endpoints in `src/orchestrator/api.py` already do: dashboards reading from the database alone cannot observe transitions in real time.
 
-### Specific Bugs
+### Specific Transitions Covered
 
-1. **RUNNING transition** (`src/orchestrator/scheduler.py:405-409`): When a work unit transitions from READY to RUNNING, the scheduler updates the database but doesn't broadcast. Dashboard shows "ready" indefinitely until refresh.
+1. **RUNNING transition** (`src/orchestrator/scheduler.py` `_run_work_unit`): When a work unit transitions from READY to RUNNING, the scheduler broadcasts so the dashboard reflects the dispatch immediately.
 
-2. **READY transition on phase advance** (`src/orchestrator/scheduler.py:686-693`): When a work unit advances phases (e.g., PLAN → IMPLEMENT), the status changes to READY but no broadcast is sent.
+2. **READY / DONE transitions on phase advance** (`src/orchestrator/scheduler.py` `_advance_phase`): When a work unit advances phases (e.g., PLAN → IMPLEMENT) the status returns to READY, and on completion it transitions to DONE; both transitions broadcast.
 
-3. **NEEDS_ATTENTION conflict transition** (investigation needed): When a conflict is detected and `_mark_needs_attention` is called (`src/orchestrator/scheduler.py:785-789`), the code *does* call the broadcast functions, but the dashboard doesn't receive the update. The broadcast code exists at lines 888-894, but something prevents delivery. Possible causes to investigate:
-   - Race condition between WebSocket connection and scheduler loop
-   - Exception being swallowed in the broadcast path
-   - Timing issue where broadcast happens before dashboard reconnects after initial injection
+3. **NEEDS_ATTENTION conflict transition**: When `_mark_needs_attention` runs on a detected conflict, the broadcast is issued. (Earlier suspected delivery issues at this site—race conditions with WebSocket connect, swallowed exceptions, or timing relative to dashboard reconnect—remain open for separate investigation; the invariant only requires the broadcast call, not delivery guarantees, which are owned by the WebSocket layer.)
 
-### Root Cause
+### Discoverability
 
-The API endpoints (`src/orchestrator/api.py`) consistently broadcast after state changes, but the scheduler (`src/orchestrator/scheduler.py`) does not. There's no documentation establishing this as an invariant, so agents adding scheduler logic don't know they need to broadcast.
-
-### Solution
-
-1. Fix the immediate bugs by adding `broadcast_work_unit_update()` calls
-2. Create discoverable documentation (module docstring, subsystem doc, or inline comments) that establishes the invariant: **every work unit state change must broadcast via WebSocket**
-
-The documentation must be placed where future agents will naturally encounter it when modifying scheduler code.
+The invariant is documented at the `Scheduler` class docstring in `src/orchestrator/scheduler.py` so any agent modifying scheduler code encounters the rule alongside the code that must obey it. Module-level imports and inline comments at each broadcast call site reinforce the pattern.
 
 ## Success Criteria
 

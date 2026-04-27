@@ -54,9 +54,9 @@ created_after:
 
 ## Minor Goal
 
-Update `ve chunk list`, `ve narrative list`, `ve investigation list`, and `ve subsystem list` to use `ArtifactIndex` for causal ordering instead of parsing sequence numbers from directory names. This advances the project's goal of supporting parallel work (teams, worktrees) without sequence number conflicts.
+`ve chunk list`, `ve narrative list`, `ve investigation list`, and `ve subsystem list` use `ArtifactIndex` for causal ordering instead of parsing sequence numbers from directory names. This advances the project's goal of supporting parallel work (teams, worktrees) without sequence number conflicts.
 
-Currently, all listing commands derive ordering from directory name prefixes (0001-, 0002-, etc.). This chunk transitions them to use the `created_after` frontmatter field via `ArtifactIndex`, enabling correct ordering even when artifacts are created in parallel branches and merged.
+Listing commands derive ordering from the `created_after` frontmatter field via `ArtifactIndex` rather than from directory name prefixes (e.g., `0001-`, `0002-`), enabling correct ordering even when artifacts are created in parallel branches and merged.
 
 ## Success Criteria
 

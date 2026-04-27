@@ -151,19 +151,19 @@ created_after:
 
 ## Minor Goal
 
-Decompose `src/task_utils.py` (2,629 lines, 37 public functions, 10+ exception classes) into a focused `src/task/` package with cohesive modules. This file has become a dumping ground for all task-related operations spanning at least six distinct responsibilities: config loading, artifact CRUD, promotion, external operations, friction management, and overlap detection. The "utils" name itself signals the lack of a coherent organizing principle.
+Task-related operations live in a focused `src/task/` package with cohesive modules rather than a single 2,629-line `src/task_utils.py` dumping ground. The package separates at least six distinct responsibilities: config loading, artifact CRUD, promotion, external operations, friction management, and overlap detection. `src/task_utils.py` remains as a thin re-export shim so legacy `from task_utils import ...` callers continue to work.
 
-This decomposition directly supports the project's goal of maintaining healthy, comprehensible documentation and code over time. Every CLI command module depends on `task_utils.py`, making it a bottleneck for understanding and change. Agents working on any feature must parse thousands of lines to find the relevant operation, and changes to one responsibility risk breaking unrelated ones.
+This structure supports the project's goal of maintaining healthy, comprehensible documentation and code over time. Every CLI command module depends on task operations, so a single bottleneck file would obscure understanding and force unrelated risks into the same change.
 
-The core structural problems are:
+The package addresses three structural concerns:
 
-1. **Duplicated artifact operations**: The create/list/add-dependents patterns are repeated nearly identically for chunks, narratives, investigations, and subsystems (four parallel implementations of `create_task_*`, `list_task_*`, `add_dependents_to_*`). These should be consolidated into generic artifact operations parameterized by artifact type.
+1. **Generic artifact operations**: A single `add_dependents_to_artifact()` (with type-specific wrappers for backward compatibility) and shared create/list helpers replace four parallel implementations (`create_task_*`, `list_task_*`, `add_dependents_to_*`) that previously diverged across chunks, narratives, investigations, and subsystems.
 
-2. **Scattered exception classes**: Ten exception classes (`TaskChunkError`, `TaskNarrativeError`, `TaskInvestigationError`, `TaskSubsystemError`, `TaskPromoteError`, `TaskArtifactListError`, `TaskCopyExternalError`, `TaskRemoveExternalError`, `TaskFrictionError`, `TaskOverlapError`) plus `TaskActivateError` have no shared base class, making consistent error handling impossible.
+2. **Unified exception hierarchy**: All exception classes (`TaskChunkError`, `TaskNarrativeError`, `TaskInvestigationError`, `TaskSubsystemError`, `TaskPromoteError`, `TaskArtifactListError`, `TaskCopyExternalError`, `TaskRemoveExternalError`, `TaskFrictionError`, `TaskOverlapError`, `TaskActivateError`) inherit from a common `TaskError` base class, enabling consistent error handling.
 
-3. **Unrelated responsibilities in one module**: Config resolution, artifact promotion, external artifact management, friction logging, and overlap detection share no state or abstraction but are forced into a single file.
+3. **Cohesive module boundaries**: Config resolution, artifact promotion, external artifact management, friction logging, and overlap detection each live in their own module, sharing no forced coupling.
 
-Splitting this file will make individual responsibilities discoverable, reduce cognitive load for agents, and enable independent evolution of each concern.
+This structure makes individual responsibilities discoverable, reduces cognitive load for agents, and lets each concern evolve independently.
 
 ## Success Criteria
 

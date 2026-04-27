@@ -21,7 +21,7 @@ code_references:
     implements: "cluster_subsystem_threshold configuration field"
   - ref: src/template_system.py#load_ve_config
     implements: "Load cluster_subsystem_threshold from config"
-  - ref: src/ve.py#create
+  - ref: src/cli/chunk.py#create
     implements: "Cluster size warning at chunk creation"
   - ref: tests/test_cluster_subsystem_prompt.py
     implements: "Tests for cluster size warning feature"

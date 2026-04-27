@@ -26,11 +26,11 @@ created_after:
 
 ## Minor Goal
 
-Auto-load `.env` files in the `ve` CLI entrypoint so environment variables like `ANTHROPIC_API_KEY` are available without manual `export`.
+The `ve` CLI auto-loads `.env` files at startup so environment variables like `ANTHROPIC_API_KEY` are available to every subcommand without manual `export`.
 
-Currently, `ve entity shutdown` requires `ANTHROPIC_API_KEY` for memory consolidation, but the key must be manually exported or prefixed on each invocation. The CLI should check for `.env` files using the same project root resolution chain (`.ve-task.yaml` → `.git` → CWD) and load them early in the CLI startup.
+The CLI's Click group callback resolves the project root (`.ve-task.yaml` → `.git` → CWD) and loads any `.env` found there into `os.environ` before dispatching to a subcommand. Existing environment variables always win — `.env` values are only set when a key is not already present. A missing `.env` is silently ignored so CLI startup is never broken by dotenv issues.
 
-This makes it convenient for operators to drop a `.env` file in their project root with API keys and other config that the CLI needs.
+Operators can therefore drop a `.env` file in their project root with API keys and other config that any `ve` subcommand needs.
 
 ## Success Criteria
 

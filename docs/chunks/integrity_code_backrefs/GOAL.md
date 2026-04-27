@@ -32,9 +32,9 @@ created_after:
 
 ## Minor Goal
 
-Validate that code backreferences (`# Chunk:` and `# Subsystem:` comments in source code) point to existing artifacts. Currently these comments are parsed but not validated—they can reference chunks or subsystems that have been deleted or renamed.
+Validate that code backreferences (`# Chunk:` and `# Subsystem:` comments in source code) point to existing artifacts. Without validation, these comments can reference chunks or subsystems that have been deleted or renamed.
 
-This extends the `ve validate` command to catch orphaned code backreferences.
+The `ve validate` command catches orphaned code backreferences and reports the offending file path and line number.
 
 ## Success Criteria
 

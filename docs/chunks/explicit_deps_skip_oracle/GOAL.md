@@ -4,11 +4,11 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
-- tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_scheduler_injection.py
 code_references:
   - ref: src/orchestrator/scheduler.py#Scheduler::_check_conflicts
     implements: "Oracle bypass logic for explicit-dep work units - skips oracle analysis when explicit_deps=True and only checks blocked_by against RUNNING chunks"
-  - ref: tests/test_orchestrator_scheduler.py#TestExplicitDepsOracleBypass
+  - ref: tests/test_orchestrator_scheduler_injection.py#TestExplicitDepsOracleBypass
     implements: "Test coverage for oracle bypass behavior including skipping oracle calls, blocking on RUNNING blockers, unblocking when done/nonexistent, multiple blockers, and non-explicit units still using oracle"
 narrative: explicit_chunk_deps
 investigation: null
@@ -25,11 +25,11 @@ created_after:
 
 ## Minor Goal
 
-Modify the scheduler's `_check_conflicts` method to bypass the oracle entirely when a work unit has `explicit_deps=True`. For these work units, conflict detection relies solely on the `blocked_by` list that was set during injection, eliminating oracle false positives for well-structured batches.
+The scheduler's `_check_conflicts` method bypasses the oracle entirely when a work unit has `explicit_deps=True`. For these work units, conflict detection relies solely on the `blocked_by` list set during injection, eliminating oracle false positives for well-structured batches.
 
-Currently, all work units go through the oracle's `analyze_conflict` heuristic, which can produce false positives for semantically-related chunks that don't actually share file-level overlap. When agents explicitly declare dependencies during batch injection, they've already encoded the intended execution order - the oracle's heuristic detection is redundant and potentially counterproductive.
+Work units without `explicit_deps` go through the oracle's `analyze_conflict` heuristic, which can produce false positives for semantically-related chunks that don't actually share file-level overlap. When agents explicitly declare dependencies during batch injection, they've already encoded the intended execution order - the oracle's heuristic detection is redundant and potentially counterproductive for those units.
 
-This chunk implements the "trust the declaration" path: if `explicit_deps=True`, the scheduler skips oracle analysis entirely. The only conflict check needed is whether any chunk in `blocked_by` is currently RUNNING - if so, block; if DONE or not running, allow dispatch. This makes explicit-dependency batches immune to oracle false positives.
+The "trust the declaration" path works as follows: if `explicit_deps=True`, the scheduler skips oracle analysis entirely. The only conflict check is whether any chunk in `blocked_by` is currently RUNNING - if so, block; if DONE or not running, allow dispatch. This makes explicit-dependency batches immune to oracle false positives.
 
 ## Success Criteria
 

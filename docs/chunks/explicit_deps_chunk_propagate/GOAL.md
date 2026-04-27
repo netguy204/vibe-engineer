@@ -33,7 +33,7 @@ depends_on:
 
 ## Minor Goal
 
-When creating chunks from a narrative's `proposed_chunks` array, the `/chunk-create` command should automatically translate index-based `depends_on` references to chunk directory names. This enables the explicit dependency workflow described in the `explicit_chunk_deps` narrative: agents declare dependencies using array indices in the narrative (which are stable during planning), and the tooling resolves these to actual chunk directory names at creation time.
+When creating chunks from a narrative's `proposed_chunks` array, the `/chunk-create` command automatically translates index-based `depends_on` references to chunk directory names. This enables the explicit dependency workflow described in the `explicit_chunk_deps` narrative: agents declare dependencies using array indices in the narrative (which are stable during planning), and the tooling resolves these to actual chunk directory names at creation time.
 
 For example, given a narrative with:
 ```yaml
@@ -46,16 +46,16 @@ proposed_chunks:
     depends_on: [0]
 ```
 
-When creating a chunk for prompt at index 1, the command should:
-1. Look up index 0 in the `proposed_chunks` array
-2. Find its `chunk_directory` value (which may have been set by a previous `/chunk-create`)
-3. Translate `depends_on: [0]` to `depends_on: ["auth_core"]` (or whatever the actual chunk directory name is)
+When creating a chunk for the prompt at index 1, the command:
+1. Looks up index 0 in the `proposed_chunks` array
+2. Finds its `chunk_directory` value (which may have been set by a previous `/chunk-create`)
+3. Translates `depends_on: [0]` to `depends_on: ["auth_core"]` (or whatever the actual chunk directory name is)
 
-This requires the chunk-create command to:
-- Detect when it's creating a chunk from a narrative's `proposed_chunks`
-- Read the narrative's frontmatter to find the proposed_chunks array
-- Resolve index-based dependencies to chunk directory names
-- Populate the created chunk's `depends_on` frontmatter field
+The chunk-create command:
+- Detects when it's creating a chunk from a narrative's `proposed_chunks`
+- Reads the narrative's frontmatter to find the proposed_chunks array
+- Resolves index-based dependencies to chunk directory names
+- Populates the created chunk's `depends_on` frontmatter field
 
 ## Success Criteria
 

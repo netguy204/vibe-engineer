@@ -42,15 +42,15 @@ created_after:
 
 ## Minor Goal
 
-This chunk addresses three high-priority coupling issues identified in an architecture review:
+Three coupling boundaries between the `Chunks` class and adjacent modules are kept clean:
 
-(a) `list_proposed_chunks` in `src/chunks.py` (around lines 813-877) iterates over investigations, narratives, and subsystems — a cross-artifact query that doesn't belong on the `Chunks` class. It should be moved to `Project` where all managers are accessible.
+(a) The cross-artifact query that iterates over investigations, narratives, and subsystems lives on `Project.list_proposed_chunks` in `src/project.py`, where all artifact managers are accessible. `Chunks.list_proposed_chunks` remains as a deprecated forwarding shim for backward compatibility.
 
-(b) Circular import patterns between `chunks.py` and `integrity.py` are resolved via late imports inside method bodies. The fix is to have integrity functions accept protocols/interfaces instead of concrete `Chunks` instances, breaking the bidirectional coupling.
+(b) `chunks.py` and `integrity.py` are coupled only through the `ChunksProtocol` interface defined in `src/integrity.py`. Validation methods on `Chunks` (`validate_subsystem_refs`, `validate_investigation_ref`, `validate_narrative_ref`, `validate_friction_entries_ref`) pass `self` to integrity routines via that protocol, so neither module needs late imports of the other.
 
-(c) `Reviewers.parse_decision_frontmatter` in `src/reviewers.py` (lines 79-104) manually parses YAML frontmatter with its own regex, duplicating the logic in `frontmatter.py`. It should use the shared `parse_frontmatter()` function.
+(c) `Reviewers.parse_decision_frontmatter` in `src/reviewers.py` calls the shared `parse_frontmatter()` from `frontmatter.py` rather than carrying its own YAML regex.
 
-These changes reduce coupling, eliminate late imports, and consolidate onto shared utilities — directly supporting the project's maintainability goals.
+Together these properties keep coupling shallow, eliminate cross-module late imports, and consolidate parsing onto shared utilities.
 
 ## Success Criteria
 

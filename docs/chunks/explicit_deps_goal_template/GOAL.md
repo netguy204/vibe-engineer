@@ -21,7 +21,7 @@ created_after:
 
 ## Minor Goal
 
-Add a `depends_on` field to the chunk GOAL.md Jinja2 template, enabling agents to explicitly declare dependencies on other chunks. This field provides an escape hatch from the orchestrator's conflict oracle - when a chunk has explicit dependencies, those dependencies become authoritative and bypass heuristic auto-detection entirely.
+The chunk GOAL.md Jinja2 template carries a `depends_on` field, so agents can explicitly declare dependencies on other chunks. This field provides an escape hatch from the orchestrator's conflict oracle - when a chunk has explicit dependencies, those dependencies become authoritative and bypass heuristic auto-detection entirely.
 
 This is the foundational schema change for the explicit_chunk_deps narrative. The field must exist in the template before other narrative chunks can implement propagation logic (chunk-create translation) or orchestrator integration (batch injection, oracle bypass).
 

@@ -32,16 +32,16 @@ created_after:
 
 ## Minor Goal
 
-Make `ve board ack` (and other cursor-writing commands) automatically resolve the project/task root before writing cursor files, eliminating CWD-relative cursor drift.
+`ve board ack` (and other cursor-writing commands) automatically resolve the project/task root before writing cursor files, eliminating CWD-relative cursor drift.
 
-Currently, `ve board ack` writes the cursor to a CWD-relative `.ve/board/cursors/` path. When a steward `cd`s into a subdirectory (e.g., to run git/gh commands), subsequent ack calls write the cursor to the wrong location. The watch command reads from the original root cursor (which never advances), causing it to re-deliver the same message repeatedly while the subdirectory cursor silently advances.
+Without automatic resolution, ack would write the cursor to a CWD-relative `.ve/board/cursors/` path. When a steward `cd`s into a subdirectory (e.g., to run git/gh commands), ack calls would write the cursor to the wrong location, while the watch command would read from the original root cursor (which never advances) and re-deliver the same message repeatedly.
 
 Root resolution algorithm:
 1. Walk parent directories for `.ve-task.yaml` — if found, that directory is the task root
 2. Otherwise, walk parent directories for `.git` — that directory is the project root
-3. Write cursors relative to the resolved root, not CWD
+3. Cursors are written relative to the resolved root, not CWD
 
-The `--project-root` flag exists but is easy to forget. Making root resolution automatic eliminates this class of bug entirely.
+The `--project-root` flag remains available as an explicit override. Automatic resolution eliminates this class of bug by default.
 
 ## Success Criteria
 

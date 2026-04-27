@@ -30,14 +30,11 @@ created_after:
 
 ## Minor Goal
 
-Refactor CLAUDE.md template with progressive disclosure to reduce token consumption while maintaining agent effectiveness. Extract orchestrator documentation to `docs/trunk/ORCHESTRATOR.md`, extract artifact documentation (narratives, investigations, subsystems) to `docs/trunk/ARTIFACTS.md`, and update `CLAUDE.md.jinja2` with a signpost structure that enables agents to discover and follow links to detailed documentation when needed.
+The CLAUDE.md template uses progressive disclosure to reduce token consumption while preserving agent effectiveness. Orchestrator documentation lives in `docs/trunk/ORCHESTRATOR.md`, artifact documentation (narratives, investigations, subsystems) lives in `docs/trunk/ARTIFACTS.md`, and `CLAUDE.md.jinja2` carries signposts that point agents at the detailed documentation when needed.
 
-This chunk addresses the investigation finding that CLAUDE.md consumes significant tokens (~3573) with 77% being situational content that could be extracted. The prototypes demonstrate a 77% reduction is achievable while preserving agent discovery patterns.
+The investigation found CLAUDE.md previously consumed ~3573 tokens, with 77% being situational content extractable to linked references. The signpost pattern realizes that reduction while preserving agent discovery.
 
-Use the prototypes in `docs/investigations/claudemd_progressive_disclosure/prototypes/` as the starting point:
-- `CLAUDE-slim.md` - The slim CLAUDE.md structure with signposts
-- `ORCHESTRATOR.md` - Extracted orchestrator documentation
-- `ARTIFACTS.md` - Extracted narratives/investigations/subsystems documentation
+Prototypes in `docs/investigations/claudemd_progressive_disclosure/prototypes/` (`CLAUDE-slim.md`, `ORCHESTRATOR.md`, `ARTIFACTS.md`) seeded the structure of the rendered files.
 
 ## Success Criteria
 

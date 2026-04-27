@@ -40,11 +40,11 @@ created_after:
 
 ## Minor Goal
 
-Add a `ve orch work-unit retry <chunk>` command that properly transitions a NEEDS_ATTENTION work unit back to READY with correct state cleanup. Currently, the only way to retry is the generic PATCH endpoint (`ve orch work-unit status <chunk> READY`), which does NOT clear stale state — leaving `session_id` pointing to a dead Claude session, stale `attention_reason`, and unreset retry counters. This causes the scheduler to attempt resuming a dead session on the next dispatch.
+`ve orch work-unit retry <chunk>` transitions a NEEDS_ATTENTION work unit back to READY with correct state cleanup. It clears `session_id` (so the scheduler does not try to resume a dead Claude session), `attention_reason`, `api_retry_count`, and `next_retry_at`, and clears the `worktree` field if the path no longer exists on disk. The command refuses to retry work units not in NEEDS_ATTENTION status.
 
-The "answer" endpoint (`attention.py:155`) is a good model — it properly clears `attention_reason`, sets `pending_answer`, and transitions to READY. The retry command should do the same minus the answer, plus reset `api_retry_count`, `next_retry_at`, and verify worktree validity.
+This behaves like the "answer" endpoint (`attention.py#answer_endpoint`) minus the answer payload — both properly clear stale state before transitioning to READY — and stands apart from the generic PATCH endpoint (`ve orch work-unit status <chunk> READY`), which only updates explicitly provided fields and leaves stale session/attention state intact.
 
-Also add `ve orch retry-all` for batch retry of all NEEDS_ATTENTION work units, with optional `--phase` filter (e.g., `--phase REVIEW` to only retry chunks stuck at a specific phase).
+`ve orch retry-all` performs the same reset across every NEEDS_ATTENTION work unit in one operation, with an optional `--phase` filter (e.g., `--phase REVIEW`) to scope the retry to chunks stuck at a specific phase. Both commands report how many work units were retried.
 
 ## Success Criteria
 

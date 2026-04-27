@@ -179,8 +179,13 @@ the symbol:
 # Subsystem: docs/subsystems/short_name - Brief subsystem description
 ```
 
-Subsystems are the only valid code backreference type. Only subsystems represent
-enduring architectural patterns that warrant code backreferences.
+Both `# Subsystem:` and `# Chunk:` are valid code backreference types. Use
+`# Subsystem:` for canonical implementations of an architectural pattern; use
+`# Chunk:` for incremental implementation work owned by a specific chunk. Code
+sites often carry both — the subsystem comment names the enduring pattern, and
+chunk comments accumulate as successive chunks add to or refine that code. See
+`docs/trunk/ARTIFACTS.md#code-backreferences` and the chunk PLAN template for
+the full convention.
 
 Delete this comment block once context is provided.
 -->

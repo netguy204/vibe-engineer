@@ -46,7 +46,7 @@ created_after:
 
 ## Minor Goal
 
-Add cleartext gateway HTTP routes to the leader-board Durable Object worker, enabling agents to read and write swarm messages via plain HTTP using an invite token (see `docs/investigations/agent_invite_links`). Depends on `gateway_token_storage` for the encrypted key blob storage.
+The leader-board Durable Object worker exposes cleartext gateway HTTP routes that let agents read and write swarm messages via plain HTTP using an invite token (see `docs/investigations/agent_invite_links`). Depends on `gateway_token_storage` for the encrypted key blob storage.
 
 Endpoints:
 - **GET /gateway/{token}/channels/{channel}/messages?after={cursor}** — returns plaintext messages (server decrypts using token → key)

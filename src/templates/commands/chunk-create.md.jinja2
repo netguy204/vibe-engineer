@@ -1,6 +1,6 @@
 ---
 name: chunk-create
-description: Create a new chunk of work and refine its goal. Use when the operator wants to start new work, chunk something, define a piece of work, or break work into a chunk.
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.
 ---
 {% set source_template = "chunk-create.md.jinja2" %}
 {% include "partials/auto-generated-header.md.jinja2" %}
@@ -57,7 +57,41 @@ completely in order:
 
    Substitute this path below for the <chunk directory> placeholder.
 
-4. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
+4. **Apply the intent-judgment gate before refining the goal.**
+
+   <!-- This gate enforces docs/trunk/CHUNKS.md principle 2 — chunks exist only
+        for intent-bearing work. The asymmetry is load-bearing: operators routinely
+        spawn entire narratives' worth of chunks in one prompt. Re-confirming each
+        would be unbearable. The agent only interrupts on suspected scope creep. -->
+
+   Before investing time in goal refinement, judge whether the proposed work is
+   **intent-bearing** — i.e., whether the resulting code needs to remember *why*
+   it exists (per `docs/trunk/CHUNKS.md` principle 2).
+
+   Route based on your judgment:
+
+   - **Clearly intent-bearing** (architectural decision, constraint to remember,
+     contract being established, behavioral invariant, design boundary) →
+     proceed silently to step 5. No operator prompt needed.
+
+   - **Orchestrator-execution signals detected** in the operator's request
+     (phrases like: "in the background", "in parallel", "via the orchestrator",
+     "queue these up", "have an agent do this", "spawn all the chunks in this
+     narrative", or semantically equivalent variants) → proceed silently to
+     step 5 regardless of intent-bearing judgment. The operator has signaled
+     they want a unit of delegated work.
+
+   - **Suspected non-intent-bearing** (mechanical change, typo fix, dependency
+     bump, performance tweak that doesn't change shape, comment cleanup, one-off
+     bug patch) → surface to the operator with a one-line summary of *why* the
+     work looks like it could be vibed, and ask:
+
+     *"This looks like it could be vibed — [your one-line reason]. Create the
+     chunk anyway?"*
+
+     If the operator declines, stop. If the operator confirms, proceed to step 5.
+
+5. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
    the user has described, ask them any questions required to complete the
    template and cohesively and thoroughly define the goal of what they're trying
    to accomplish.
@@ -86,7 +120,7 @@ completely in order:
    The goal is **self-contained**: an agent reading only the GOAL.md should have
    everything needed to plan and implement without asking follow-up questions.
 
-5. **Check if this chunk comes from a narrative or investigation with dependencies.**
+6. **Check if this chunk comes from a narrative or investigation with dependencies.**
 
    If the work being created matches a prompt in a narrative's or investigation's
    `proposed_chunks` array, check for `depends_on` references:
@@ -113,7 +147,7 @@ completely in order:
       source artifact's `proposed_chunks` array to set `chunk_directory: "<shortname>"`
       for the entry matching this chunk's prompt.
 
-6. **Understand the `depends_on` null vs empty semantics.**
+7. **Understand the `depends_on` null vs empty semantics.**
 
    The `depends_on` field in GOAL.md has three meaningful states, and the default
    template value of `depends_on: []` is an **explicit assertion**, not a placeholder.
@@ -131,21 +165,21 @@ completely in order:
 
    **When to change the default:**
 
-   - If step 5 above found dependencies from a narrative/investigation, populate them.
+   - If step 6 above found dependencies from a narrative/investigation, populate them.
    - If this chunk is part of a batch and you're uncertain about inter-dependencies,
      **change `depends_on: []` to `depends_on: null`** so the oracle can analyze.
    - If you're creating a standalone chunk and have verified it's independent, leave `[]`.
 
    See the GOAL.md template's DEPENDS_ON section for the full semantics table.
 
-7. **Check if this is a bug fix.** Look for these signals that indicate bug fix
+8. **Check if this is a bug fix.** Look for these signals that indicate bug fix
    work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
    "incorrect", "wrong", "failing".
 
    If the work is a bug fix, note this in the GOAL.md success criteria so that
    when implementation is complete, the fix can be verified.
 
-8. **Check for existing implementing chunk.** Run `ve chunk list --current` to
+9. **Check for existing implementing chunk.** Run `ve chunk list --current` to
    check if there's already an IMPLEMENTING chunk.
 
    If there IS an existing IMPLEMENTING chunk, inform the user:
@@ -153,20 +187,20 @@ completely in order:
    on this new chunk by completing the current one first with `ve chunk complete`,
    or create this one with `--future` to work on it later."
 
-9. **IMPORTANT: When committing a new chunk, commit the entire chunk directory.**
+10. **IMPORTANT: When committing a new chunk, commit the entire chunk directory.**
 
-   The `ve chunk create` command creates both GOAL.md and PLAN.md files. When
-   committing after refinement and approval, add the **entire chunk directory**
-   to the commit, not just the files you modified:
+    The `ve chunk create` command creates both GOAL.md and PLAN.md files. When
+    committing after refinement and approval, add the **entire chunk directory**
+    to the commit, not just the files you modified:
 
-   ```bash
-   git add docs/chunks/<shortname>/
-   ```
+    ```bash
+    git add docs/chunks/<shortname>/
+    ```
 
-   **Why this matters:** If you only commit GOAL.md (the file you edited), PLAN.md
-   remains untracked on main. When the orchestrator later creates a worktree to
-   run the PLAN phase, the merge will fail with "untracked working tree files
-   would be overwritten" because PLAN.md exists in both places.
+    **Why this matters:** If you only commit GOAL.md (the file you edited), PLAN.md
+    remains untracked on main. When the orchestrator later creates a worktree to
+    run the PLAN phase, the merge will fail with "untracked working tree files
+    would be overwritten" because PLAN.md exists in both places.
 
-   This is especially critical for FUTURE chunks being prepared for orchestrator
-   injection—always commit both files together.
+    This is especially critical for FUTURE chunks being prepared for orchestrator
+    injection—always commit both files together.

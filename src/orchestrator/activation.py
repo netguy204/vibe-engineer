@@ -44,8 +44,10 @@ class VerificationResult:
 def _is_post_implementing(status: ChunkStatus) -> bool:
     """Check if a chunk status is reachable from IMPLEMENTING in the state machine.
 
-    Returns True for ACTIVE, SUPERSEDED, and HISTORICAL — any status that
-    indicates the chunk has moved past the IMPLEMENTING phase.
+    Returns True for ACTIVE, COMPOSITE, SUPERSEDED, and HISTORICAL — any status
+    that indicates the chunk has moved past the IMPLEMENTING phase. Computed
+    dynamically from VALID_CHUNK_TRANSITIONS so new post-IMPLEMENTING statuses
+    are picked up automatically.
     """
     reachable: set[ChunkStatus] = set()
     frontier = set(VALID_CHUNK_TRANSITIONS.get(ChunkStatus.IMPLEMENTING, set()))
@@ -60,8 +62,9 @@ def verify_chunk_active_status(worktree_path: Path, chunk: str) -> VerificationR
     """Verify that a chunk's GOAL.md has moved past IMPLEMENTING.
 
     Checks whether the chunk status is reachable from IMPLEMENTING in
-    the chunk state machine (ACTIVE, SUPERSEDED, HISTORICAL). IMPLEMENTING
-    means the agent hasn't finished yet; FUTURE is unexpected at this point.
+    the chunk state machine (ACTIVE, COMPOSITE, SUPERSEDED, HISTORICAL).
+    IMPLEMENTING means the agent hasn't finished yet; FUTURE is unexpected
+    at this point.
 
     Args:
         worktree_path: Path to the worktree containing the chunk
