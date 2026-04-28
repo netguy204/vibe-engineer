@@ -170,7 +170,13 @@ class TestMergeCLI:
         assert "Merged" in result.output or "up to date" in result.output.lower()
 
     def test_merge_conflicts_with_yes_flag_commits(self, tmp_path):
-        """With --yes flag, LLM resolutions are auto-approved and committed."""
+        """With --yes flag, LLM resolutions are auto-approved.
+
+        When two unrelated entities are merged, non-wiki files (e.g. ENTITY.md) may
+        be unresolvable. In that case the wiki files are staged and the command exits
+        non-zero to tell the operator to finish the remaining conflicts manually.
+        If all conflicts happen to be wiki files the command exits 0 and commits.
+        """
         # Set up conflicting entities
         project, target = _setup_project_with_entity(tmp_path, "target-entity")
         source_dir = tmp_path / "source-entity"
@@ -207,9 +213,15 @@ class TestMergeCLI:
                     "--project-dir", str(project),
                 ])
 
-        # Should succeed (either clean merge or conflicts auto-approved)
-        # exit code 0 means it completed
-        assert result.exit_code == 0, result.output
+        # With unrelated histories, ENTITY.md and other non-wiki files may be
+        # unresolvable, so exit code can be 0 (all wiki, no unresolvable) or 1
+        # (some unresolvable files remain). Both are valid outcomes — the key
+        # assertion is that the command didn't crash unexpectedly and that any
+        # resolvable conflicts were handled (not silently aborted).
+        assert result.exit_code in (0, 1), result.output
+        # If non-zero, the output should guide the operator on next steps
+        if result.exit_code != 0:
+            assert "manual resolution" in result.output or "conflict" in result.output.lower()
 
     def test_merge_unknown_entity_fails(self, tmp_path):
         project, _ = _setup_project_with_entity(tmp_path, "original")
@@ -309,3 +321,168 @@ class TestMergeCLI:
 
         assert result.exit_code != 0
         assert any(word in result.output.lower() for word in ("origin", "remote"))
+
+
+# ---------------------------------------------------------------------------
+# Merge conflict preservation tests
+# Chunk: docs/chunks/entity_merge_preserve_conflicts
+# ---------------------------------------------------------------------------
+
+
+class TestMergeConflictPreservation:
+    """Tests for conflict-preservation behaviour in 've entity merge'."""
+
+    def _make_project(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Return (project_dir, entity_path) for a basic entity-with-project."""
+        project, entity_path = _setup_project_with_entity(tmp_path, "target-entity")
+        return project, entity_path
+
+    def test_merge_zero_resolutions_preserves_merge_state(self, tmp_path):
+        """When resolver returns no resolutions, abort_merge is NOT called; exit non-zero."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[],
+            unresolvable=["wiki/log.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "merge_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "abort_merge") as mock_abort:
+                result = runner.invoke(entity, [
+                    "merge", "target-entity", "/some/source",
+                    "--project-dir", str(project),
+                ])
+
+        assert result.exit_code != 0
+        mock_abort.assert_not_called()
+        assert "wiki/log.md" in result.output
+
+    def test_merge_zero_resolutions_shows_recovery_instructions(self, tmp_path):
+        """Zero-resolutions path prints git add / git commit recovery guidance."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[],
+            unresolvable=["wiki/conflict.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "merge_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "abort_merge"):
+                result = runner.invoke(entity, [
+                    "merge", "target-entity", "/some/source",
+                    "--project-dir", str(project),
+                ])
+
+        assert result.exit_code != 0
+        # The output includes "git -C <path> add <files>" and "git -C <path> commit"
+        assert "add" in result.output and "commit" in result.output
+
+    def test_merge_mixed_resolutions_approved_stages_only_resolved(self, tmp_path):
+        """Mixed path: apply_resolutions called, abort_merge NOT called, exit non-zero."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/resolved.md",
+                    synthesized="# Resolved\n",
+                    is_wiki=True,
+                )
+            ],
+            unresolvable=["wiki/domain/unresolvable.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "merge_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "apply_resolutions") as mock_apply:
+                with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                    with patch.object(entity_repo, "abort_merge") as mock_abort:
+                        result = runner.invoke(entity, [
+                            "merge", "target-entity", "/some/source",
+                            "--yes",
+                            "--project-dir", str(project),
+                        ])
+
+        assert result.exit_code != 0
+        mock_apply.assert_called_once()
+        mock_commit.assert_not_called()
+        mock_abort.assert_not_called()
+        assert "wiki/domain/unresolvable.md" in result.output
+
+    def test_merge_all_resolved_commits_and_exits_zero(self, tmp_path):
+        """All-resolved path: commit_resolved_merge called, apply_resolutions NOT called."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/page.md",
+                    synthesized="# Page\n",
+                    is_wiki=True,
+                ),
+            ],
+            unresolvable=[],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "merge_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                with patch.object(entity_repo, "apply_resolutions") as mock_apply:
+                    result = runner.invoke(entity, [
+                        "merge", "target-entity", "/some/source",
+                        "--yes",
+                        "--project-dir", str(project),
+                    ])
+
+        assert result.exit_code == 0, result.output
+        mock_commit.assert_called_once()
+        mock_apply.assert_not_called()
+
+    def test_merge_in_progress_detected_before_merge(self, tmp_path):
+        """If merge is already in progress, merge shows recovery message without calling merge_entity."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "is_merge_in_progress", return_value=True):
+            with patch.object(entity_repo, "merge_entity") as mock_merge:
+                result = runner.invoke(entity, [
+                    "merge", "target-entity", "/some/source",
+                    "--project-dir", str(project),
+                ])
+
+        assert result.exit_code != 0
+        mock_merge.assert_not_called()
+        assert "--abort" in result.output or "merge" in result.output.lower()
+
+    def test_merge_abort_flag_calls_abort_merge(self, tmp_path):
+        """--abort flag calls abort_merge and exits 0."""
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "abort_merge") as mock_abort:
+            result = runner.invoke(entity, [
+                "merge", "target-entity",
+                "--abort",
+                "--project-dir", str(project),
+            ])
+
+        assert result.exit_code == 0, result.output
+        mock_abort.assert_called_once_with(entity_path)

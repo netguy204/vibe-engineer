@@ -287,3 +287,162 @@ class TestDeriveEntityNameFromUrl:
         assert derive_entity_name_from_url(
             "https://github.com/user/entity-ops-specialist"
         ) == "ops-specialist"
+
+
+# ---------------------------------------------------------------------------
+# is_merge_in_progress
+# Chunk: docs/chunks/entity_merge_preserve_conflicts - Merge-in-progress detection tests
+# ---------------------------------------------------------------------------
+
+
+class TestIsMergeInProgress:
+    """Tests for is_merge_in_progress()."""
+
+    def test_false_when_no_merge_head(self, tmp_path):
+        """Returns False when .git/MERGE_HEAD does not exist."""
+        entity_path = create_entity_repo(tmp_path, "test-entity")
+        assert entity_repo.is_merge_in_progress(entity_path) is False
+
+    def test_true_when_merge_head_present(self, tmp_path):
+        """Returns True when .git/MERGE_HEAD exists."""
+        entity_path = create_entity_repo(tmp_path, "test-entity")
+        merge_head = entity_path / ".git" / "MERGE_HEAD"
+        merge_head.write_text("deadbeef\n")
+        assert entity_repo.is_merge_in_progress(entity_path) is True
+
+
+# ---------------------------------------------------------------------------
+# apply_resolutions
+# Chunk: docs/chunks/entity_merge_preserve_conflicts - apply_resolutions tests
+# ---------------------------------------------------------------------------
+
+
+def _make_conflicting_entity_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """Set up two entity repos with shared history, a conflicting file, and a merge in progress.
+
+    Returns (target_path, source_path) where target has a merge in progress.
+    The conflicting file is wiki/domain/shared.md.
+
+    Strategy: clone target → source (shared history), diverge both sides on the same
+    file, then start a merge in target from source's branch so MERGE_HEAD is set.
+    """
+    # Create target with the initial wiki page
+    target = create_entity_repo(tmp_path / "target-parent", "target")
+    _git(target, "config", "user.email", "test@test.com")
+    _git(target, "config", "user.name", "Test User")
+
+    wiki_dir = target / "wiki" / "domain"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    (wiki_dir / "shared.md").write_text("# Shared\n\nOriginal content.\n")
+    _git(target, "add", "-A")
+    _git(target, "commit", "-m", "Add shared page")
+
+    # Clone target to create source (shared history)
+    source = tmp_path / "source"
+    subprocess.run(
+        ["git", "clone", str(target), str(source)],
+        capture_output=True, text=True, check=True,
+    )
+    _git(source, "config", "user.email", "test@test.com")
+    _git(source, "config", "user.name", "Test User")
+
+    # Diverge source: modify shared.md
+    (source / "wiki" / "domain" / "shared.md").write_text("# Shared\n\nSource content.\n")
+    _git(source, "add", "-A")
+    _git(source, "commit", "-m", "Source modification")
+
+    # Diverge target: modify shared.md differently
+    (target / "wiki" / "domain" / "shared.md").write_text("# Shared\n\nTarget content.\n")
+    _git(target, "add", "-A")
+    _git(target, "commit", "-m", "Target modification")
+
+    # Fetch source's main branch into target and start a conflicting merge
+    _git(target, "fetch", str(source), "main:refs/remotes/source/main")
+    # This will conflict and leave MERGE_HEAD set
+    _git(target, "merge", "--no-commit", "--no-ff", "refs/remotes/source/main")
+
+    return target, source
+
+
+class TestApplyResolutions:
+    """Tests for apply_resolutions()."""
+
+    def test_writes_synthesized_content_and_stages(self, tmp_path):
+        """After apply_resolutions, the resolved file has synthesized content and is staged."""
+        target, _ = _make_conflicting_entity_pair(tmp_path)
+
+        # Confirm merge is in progress
+        assert entity_repo.is_merge_in_progress(target)
+
+        resolution = entity_repo.ConflictResolution(
+            relative_path="wiki/domain/shared.md",
+            synthesized="# Shared\n\nSynthesized content.\n",
+            is_wiki=True,
+        )
+        entity_repo.apply_resolutions(target, [resolution])
+
+        # File should have synthesized content
+        content = (target / "wiki" / "domain" / "shared.md").read_text()
+        assert content == "# Shared\n\nSynthesized content.\n"
+
+        # File should be staged (no longer UU in git status --porcelain)
+        status = _git(target, "status", "--porcelain", "wiki/domain/shared.md")
+        # A staged file shows as "M " (modified, staged) not "UU"
+        assert "UU" not in status.stdout
+
+    def test_does_not_touch_unresolvable_files(self, tmp_path):
+        """apply_resolutions with one resolution leaves other conflicting files untouched."""
+        # Create target with two conflicting files
+        target = create_entity_repo(tmp_path / "target-parent", "target")
+        _git(target, "config", "user.email", "test@test.com")
+        _git(target, "config", "user.name", "Test User")
+
+        wiki_dir = target / "wiki" / "domain"
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        (wiki_dir / "file_a.md").write_text("# A\n\nOriginal A.\n")
+        (wiki_dir / "file_b.md").write_text("# B\n\nOriginal B.\n")
+        _git(target, "add", "-A")
+        _git(target, "commit", "-m", "Initial commit")
+
+        # Clone to create source with shared history
+        source = tmp_path / "source"
+        subprocess.run(
+            ["git", "clone", str(target), str(source)],
+            capture_output=True, text=True, check=True,
+        )
+        _git(source, "config", "user.email", "test@test.com")
+        _git(source, "config", "user.name", "Test User")
+
+        # Diverge source on both files
+        (source / "wiki" / "domain" / "file_a.md").write_text("# A\n\nSource A.\n")
+        (source / "wiki" / "domain" / "file_b.md").write_text("# B\n\nSource B.\n")
+        _git(source, "add", "-A")
+        _git(source, "commit", "-m", "Source modifications")
+
+        # Diverge target on both files
+        (target / "wiki" / "domain" / "file_a.md").write_text("# A\n\nTarget A.\n")
+        (target / "wiki" / "domain" / "file_b.md").write_text("# B\n\nTarget B.\n")
+        _git(target, "add", "-A")
+        _git(target, "commit", "-m", "Target modifications")
+
+        # Start conflicting merge in target
+        _git(target, "fetch", str(source), "main:refs/remotes/source/main")
+        _git(target, "merge", "--no-commit", "--no-ff", "refs/remotes/source/main")
+
+        assert entity_repo.is_merge_in_progress(target)
+
+        # Resolve only file_a
+        resolution_a = entity_repo.ConflictResolution(
+            relative_path="wiki/domain/file_a.md",
+            synthesized="# A\n\nSynthesized A.\n",
+            is_wiki=True,
+        )
+        entity_repo.apply_resolutions(target, [resolution_a])
+
+        # file_a should be staged
+        status_a = _git(target, "status", "--porcelain", "wiki/domain/file_a.md")
+        assert "UU" not in status_a.stdout
+
+        # file_b should still be in conflict (UU)
+        status_b = _git(target, "status", "--porcelain", "wiki/domain/file_b.md")
+        assert "UU" in status_b.stdout

@@ -1,19 +1,22 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/entity.py
-  - src/entity_repo.py
+- src/cli/entity.py
+- src/entity_repo.py
+- tests/test_entity_push_pull_cli.py
+- tests/test_entity_fork_merge_cli.py
+- tests/test_entity_repo.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["entity_sync_ergonomics"]
+created_after:
+- entity_sync_ergonomics
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

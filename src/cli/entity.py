@@ -858,6 +858,17 @@ def pull(name: str, yes: bool, project_dir: pathlib.Path | None) -> None:
     """
     project_dir = resolve_entity_project_dir(project_dir)
     entity_path = project_dir / ".entities" / name
+
+    # Chunk: docs/chunks/entity_merge_preserve_conflicts - Preserve merge state on unresolvable conflicts
+    if entity_repo.is_merge_in_progress(entity_path):
+        raise click.ClickException(
+            "A merge is already in progress in this entity. "
+            f"Resolve the conflicting files, then run:\n"
+            f"  git -C {entity_path} add <files>\n"
+            f"  git -C {entity_path} commit\n"
+            "Or run 've entity merge --abort' to discard the in-progress merge."
+        )
+
     try:
         result = entity_repo.pull_entity(entity_path)
     except (ValueError, RuntimeError) as e:
@@ -882,24 +893,21 @@ def pull(name: str, yes: bool, project_dir: pathlib.Path | None) -> None:
     # MergeConflictsPending: show resolutions and prompt
     assert isinstance(result, entity_repo.MergeConflictsPending)
 
-    if result.unresolvable:
-        click.echo(
-            f"Warning: {len(result.unresolvable)} file(s) could not be auto-resolved "
-            f"(resolve manually): {', '.join(result.unresolvable)}",
-            err=True,
-        )
-
     if not result.resolutions:
+        # Zero auto-resolved: leave every conflicted file with markers; tell operator.
+        files_list = "\n  ".join(result.unresolvable)
         click.echo(
-            "No resolvable conflicts found. Aborting merge. "
-            "Resolve unresolvable conflicts manually and commit.",
+            f"The following file(s) could not be auto-resolved and contain "
+            f"conflict markers:\n  {files_list}\n\n"
+            f"Edit the files to resolve conflicts, then run:\n"
+            f"  git -C {entity_path} add <files>\n"
+            f"  git -C {entity_path} commit\n"
+            "Or run 've entity merge --abort' to discard this merge.",
             err=True,
         )
-        try:
-            entity_repo.abort_merge(entity_path)
-        except RuntimeError:
-            pass
-        raise click.ClickException("Merge aborted — manual resolution required")
+        raise click.ClickException(
+            f"{len(result.unresolvable)} conflict(s) require manual resolution"
+        )
 
     all_approved = True
     for resolution in result.resolutions:
@@ -918,19 +926,36 @@ def pull(name: str, yes: bool, project_dir: pathlib.Path | None) -> None:
                 break
 
     if all_approved:
-        try:
-            entity_repo.commit_resolved_merge(
-                entity_path, result.resolutions, result.source
-            )
-        except (RuntimeError, Exception) as e:
-            raise click.ClickException(f"Failed to commit resolved merge: {e}")
-        click.echo(
-            f"Merge committed — {len(result.resolutions)} conflict(s) resolved"
-        )
         if result.unresolvable:
+            # Partial resolution: stage auto-resolved files but do NOT commit.
+            # The operator must manually resolve the remaining files and commit.
+            try:
+                entity_repo.apply_resolutions(entity_path, result.resolutions)
+            except (RuntimeError, Exception) as e:
+                raise click.ClickException(f"Failed to apply resolutions: {e}")
+            files_list = "\n  ".join(result.unresolvable)
             click.echo(
-                f"Note: {len(result.unresolvable)} file(s) still need manual resolution: "
-                f"{', '.join(result.unresolvable)}"
+                f"Applied {len(result.resolutions)} auto-resolved conflict(s). "
+                f"The following file(s) still need manual resolution:\n  {files_list}\n\n"
+                f"Edit the remaining files, then run:\n"
+                f"  git -C {entity_path} add <files>\n"
+                f"  git -C {entity_path} commit\n"
+                "Or run 've entity merge --abort' to discard this merge.",
+                err=True,
+            )
+            raise click.ClickException(
+                f"{len(result.unresolvable)} conflict(s) still require manual resolution"
+            )
+        else:
+            # All conflicts auto-resolved and approved: commit and finish.
+            try:
+                entity_repo.commit_resolved_merge(
+                    entity_path, result.resolutions, result.source
+                )
+            except (RuntimeError, Exception) as e:
+                raise click.ClickException(f"Failed to commit resolved merge: {e}")
+            click.echo(
+                f"Merge committed — {len(result.resolutions)} conflict(s) resolved"
             )
     else:
         try:
@@ -1130,11 +1155,19 @@ def fork(
     type=click.Path(exists=True, path_type=pathlib.Path),
     default=None,
 )
+@click.option(
+    "--abort",
+    "do_abort",
+    is_flag=True,
+    default=False,
+    help="Abort an in-progress merge and restore the entity to its pre-merge state.",
+)
 def merge(
     name: str,
     source: str | None,
     yes: bool,
     project_dir: pathlib.Path | None,
+    do_abort: bool,
 ) -> None:
     """Merge learnings from a source entity into a target entity.
 
@@ -1151,6 +1184,25 @@ def merge(
 
     if not entity_path.exists():
         raise click.ClickException(f"Entity '{name}' not found at '{entity_path}'")
+
+    # Chunk: docs/chunks/entity_merge_preserve_conflicts - Preserve merge state on unresolvable conflicts
+    if do_abort:
+        try:
+            entity_repo.abort_merge(entity_path)
+        except RuntimeError as e:
+            raise click.ClickException(f"Could not abort merge: {e}")
+        click.echo("Merge aborted — entity restored to pre-merge state.")
+        return
+
+    # Chunk: docs/chunks/entity_merge_preserve_conflicts - Preserve merge state on unresolvable conflicts
+    if entity_repo.is_merge_in_progress(entity_path):
+        raise click.ClickException(
+            "A merge is already in progress in this entity. "
+            f"Resolve the conflicting files, then run:\n"
+            f"  git -C {entity_path} add <files>\n"
+            f"  git -C {entity_path} commit\n"
+            "Or run 've entity merge --abort' to discard the in-progress merge."
+        )
 
     # Resolve source: check if it's an attached entity name first (only when given)
     if source is not None:
@@ -1177,24 +1229,21 @@ def merge(
     # MergeConflictsPending: show resolutions and prompt
     assert isinstance(result, entity_repo.MergeConflictsPending)
 
-    if result.unresolvable:
-        click.echo(
-            f"Warning: {len(result.unresolvable)} file(s) could not be auto-resolved "
-            f"(resolve manually): {', '.join(result.unresolvable)}",
-            err=True,
-        )
-
     if not result.resolutions:
+        # Zero auto-resolved: leave every conflicted file with markers; tell operator.
+        files_list = "\n  ".join(result.unresolvable)
         click.echo(
-            "No resolvable conflicts found. Aborting merge. "
-            "Resolve unresolvable conflicts manually and commit.",
+            f"The following file(s) could not be auto-resolved and contain "
+            f"conflict markers:\n  {files_list}\n\n"
+            f"Edit the files to resolve conflicts, then run:\n"
+            f"  git -C {entity_path} add <files>\n"
+            f"  git -C {entity_path} commit\n"
+            "Or run 've entity merge --abort' to discard this merge.",
             err=True,
         )
-        try:
-            entity_repo.abort_merge(entity_path)
-        except RuntimeError:
-            pass
-        raise click.ClickException("Merge aborted — manual resolution required")
+        raise click.ClickException(
+            f"{len(result.unresolvable)} conflict(s) require manual resolution"
+        )
 
     all_approved = True
     for resolution in result.resolutions:
@@ -1213,19 +1262,36 @@ def merge(
                 break
 
     if all_approved:
-        try:
-            entity_repo.commit_resolved_merge(
-                entity_path, result.resolutions, result.source
-            )
-        except (RuntimeError, Exception) as e:
-            raise click.ClickException(f"Failed to commit resolved merge: {e}")
-        click.echo(
-            f"Merge committed — {len(result.resolutions)} conflict(s) resolved"
-        )
         if result.unresolvable:
+            # Partial resolution: stage auto-resolved files but do NOT commit.
+            # The operator must manually resolve the remaining files and commit.
+            try:
+                entity_repo.apply_resolutions(entity_path, result.resolutions)
+            except (RuntimeError, Exception) as e:
+                raise click.ClickException(f"Failed to apply resolutions: {e}")
+            files_list = "\n  ".join(result.unresolvable)
             click.echo(
-                f"Note: {len(result.unresolvable)} file(s) still need manual resolution: "
-                f"{', '.join(result.unresolvable)}"
+                f"Applied {len(result.resolutions)} auto-resolved conflict(s). "
+                f"The following file(s) still need manual resolution:\n  {files_list}\n\n"
+                f"Edit the remaining files, then run:\n"
+                f"  git -C {entity_path} add <files>\n"
+                f"  git -C {entity_path} commit\n"
+                "Or run 've entity merge --abort' to discard this merge.",
+                err=True,
+            )
+            raise click.ClickException(
+                f"{len(result.unresolvable)} conflict(s) still require manual resolution"
+            )
+        else:
+            # All conflicts auto-resolved and approved: commit and finish.
+            try:
+                entity_repo.commit_resolved_merge(
+                    entity_path, result.resolutions, result.source
+                )
+            except (RuntimeError, Exception) as e:
+                raise click.ClickException(f"Failed to commit resolved merge: {e}")
+            click.echo(
+                f"Merge committed — {len(result.resolutions)} conflict(s) resolved"
             )
     else:
         try:

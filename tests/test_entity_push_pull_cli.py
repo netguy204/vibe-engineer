@@ -386,3 +386,157 @@ class TestSetOriginCLI:
         )
 
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# Tests for pull conflict-resolution paths
+# Chunk: docs/chunks/entity_merge_preserve_conflicts
+# ---------------------------------------------------------------------------
+
+
+class TestPullConflictResolution:
+    """Tests for 'entity pull' conflict preservation behaviour."""
+
+    def _make_project(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Return (project_dir, entity_path) for a simple entity-with-project."""
+        project, entity_path = make_entity_submodule_no_origin(tmp_path)
+        return project, entity_path
+
+    def test_pull_zero_resolutions_preserves_merge_state(self, tmp_path):
+        """When resolver returns no resolutions, abort_merge is NOT called; exit non-zero."""
+        from unittest.mock import patch, MagicMock
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[],
+            unresolvable=["wiki/log.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "abort_merge") as mock_abort:
+                result = runner.invoke(
+                    entity, ["pull", "my-entity", "--project-dir", str(project)]
+                )
+
+        assert result.exit_code != 0
+        mock_abort.assert_not_called()
+        combined = result.output + (result.exception and str(result.exception) or "")
+        assert "wiki/log.md" in combined or "wiki/log.md" in result.output
+
+    def test_pull_zero_resolutions_shows_recovery_instructions(self, tmp_path):
+        """Zero-resolutions path prints git add / git commit recovery guidance."""
+        from unittest.mock import patch
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[],
+            unresolvable=["wiki/conflict.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "abort_merge"):
+                result = runner.invoke(
+                    entity, ["pull", "my-entity", "--project-dir", str(project)]
+                )
+
+        assert result.exit_code != 0
+        # The output includes "git -C <path> add <files>" and "git -C <path> commit"
+        assert "add" in result.output and "commit" in result.output
+
+    def test_pull_mixed_resolutions_approved_stages_only_resolved(self, tmp_path):
+        """Mixed path: apply_resolutions called, abort_merge NOT called, exit non-zero."""
+        from unittest.mock import patch, MagicMock
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/resolved.md",
+                    synthesized="# Resolved\n",
+                    is_wiki=True,
+                )
+            ],
+            unresolvable=["wiki/domain/unresolvable.md"],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "apply_resolutions") as mock_apply:
+                with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                    with patch.object(entity_repo, "abort_merge") as mock_abort:
+                        result = runner.invoke(
+                            entity,
+                            ["pull", "my-entity", "--yes", "--project-dir", str(project)],
+                        )
+
+        assert result.exit_code != 0
+        mock_apply.assert_called_once()
+        mock_commit.assert_not_called()
+        mock_abort.assert_not_called()
+        assert "wiki/domain/unresolvable.md" in result.output
+
+    def test_pull_all_resolved_commits_and_exits_zero(self, tmp_path):
+        """All-resolved path: commit_resolved_merge called, apply_resolutions NOT called."""
+        from unittest.mock import patch
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/page.md",
+                    synthesized="# Page\n",
+                    is_wiki=True,
+                ),
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/page2.md",
+                    synthesized="# Page2\n",
+                    is_wiki=True,
+                ),
+            ],
+            unresolvable=[],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                with patch.object(entity_repo, "apply_resolutions") as mock_apply:
+                    result = runner.invoke(
+                        entity,
+                        ["pull", "my-entity", "--yes", "--project-dir", str(project)],
+                    )
+
+        assert result.exit_code == 0, result.output
+        mock_commit.assert_called_once()
+        mock_apply.assert_not_called()
+
+    def test_pull_merge_in_progress_shows_recovery_message(self, tmp_path):
+        """If merge is already in progress, pull shows recovery message without calling pull_entity."""
+        from unittest.mock import patch
+        import entity_repo
+
+        project, entity_path = self._make_project(tmp_path)
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "is_merge_in_progress", return_value=True):
+            with patch.object(entity_repo, "pull_entity") as mock_pull:
+                result = runner.invoke(
+                    entity, ["pull", "my-entity", "--project-dir", str(project)]
+                )
+
+        assert result.exit_code != 0
+        mock_pull.assert_not_called()
+        assert "--abort" in result.output or "merge" in result.output.lower()

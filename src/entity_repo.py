@@ -1288,6 +1288,38 @@ def abort_merge(entity_path: Path) -> None:
     _run_git(entity_path, "merge", "--abort")
 
 
+# Chunk: docs/chunks/entity_merge_preserve_conflicts - Merge-in-progress detection
+def is_merge_in_progress(entity_path: Path) -> bool:
+    """Return True when a git merge is already in progress in entity_path.
+
+    A merge is in progress when .git/MERGE_HEAD exists — git creates this file
+    when a merge has been started but not yet committed or aborted.
+    """
+    return (entity_path / ".git" / "MERGE_HEAD").exists()
+
+
+# Chunk: docs/chunks/entity_merge_preserve_conflicts - Stage resolved conflicts without committing
+def apply_resolutions(
+    entity_path: Path,
+    resolutions: list[ConflictResolution],
+) -> None:
+    """Write synthesized conflict resolutions and stage them, leaving unresolvable files untouched.
+
+    Unlike commit_resolved_merge, this function does NOT call git commit.
+    It is used when some conflicts were resolved but others remain — the operator
+    must resolve the remaining files and run git add + git commit to finish.
+
+    Args:
+        entity_path: Path to the entity repo directory.
+        resolutions: List of resolved conflicts (each with synthesized content).
+    """
+    for resolution in resolutions:
+        dest = entity_path / resolution.relative_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(resolution.synthesized)
+        _run_git(entity_path, "add", resolution.relative_path)
+
+
 def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
     """List all entities attached as git submodules.
 
