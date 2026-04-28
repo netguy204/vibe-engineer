@@ -73,15 +73,18 @@ def _build_resolver_prompt(
     """Build the conflict-resolution prompt used by both SDK paths."""
     return (
         f"You are {entity_name}, an AI specialist with persistent knowledge across projects.\n"
-        f"You are merging two versions of your wiki page: {filename}.\n\n"
+        f"You are merging two versions of your knowledge file: {filename}.\n\n"
         f"The file has {n} conflict(s) where your knowledge diverged. For each conflict,\n"
-        f"Version A reflects knowledge from one context and Version B reflects knowledge\n"
-        f"from another context.\n\n"
+        f"the content between <<<<<<< HEAD and ======= is Version A, and the content\n"
+        f"between ======= and >>>>>>> is Version B.\n\n"
         f"Your task: synthesize these conflicts into a single coherent version that preserves\n"
         f"ALL valuable knowledge from both contexts. Do not discard either side — find the\n"
-        f"synthesis that a single expert would write having had both experiences.\n\n"
-        f"Return the COMPLETE file content with all conflict markers resolved.\n"
-        f"Output only the file content, no commentary.\n\n"
+        f"synthesis that a single expert would write having had both experiences. For\n"
+        f"structured content like tables, take the more-progressed status of each row.\n\n"
+        f"The complete file body is included below. You do NOT need to read any files or\n"
+        f"call any tools — respond directly with the synthesized file content.\n\n"
+        f"Return the COMPLETE file content with EVERY conflict marker (<<<<<<<, =======,\n"
+        f">>>>>>>) removed. Output only the file content, no commentary, no code fence.\n\n"
         f"--- File with conflict markers ---\n"
         f"{conflicted_content}"
     )
@@ -96,7 +99,7 @@ async def _resolve_with_agent_sdk(prompt: str, cwd: pathlib.Path) -> str:
     options = ClaudeAgentOptions(
         cwd=str(cwd),
         permission_mode="bypassPermissions",
-        max_turns=1,
+        max_turns=5,
     )
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt)

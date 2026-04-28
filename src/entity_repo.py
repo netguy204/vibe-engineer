@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -1224,20 +1225,27 @@ def merge_entity(
 
         for filepath in conflict_files:
             full_path = entity_path / filepath
-            is_wiki = filepath.startswith("wiki/") and filepath.endswith(".md")
-            if full_path.exists() and is_wiki:
+            is_markdown = filepath.endswith(".md")
+            if full_path.exists() and is_markdown:
                 content = full_path.read_text()
                 try:
                     synthesized = _entity_merge.resolve_wiki_conflict(
                         filepath, content, entity_path.name,
                         entity_dir=entity_path,
                     )
+                    if "<<<<<<<" in synthesized or "=======" in synthesized or ">>>>>>>" in synthesized:
+                        raise RuntimeError(
+                            "synthesis incomplete: resolver output still contains conflict markers"
+                        )
                     resolutions.append(ConflictResolution(
                         relative_path=filepath,
                         synthesized=synthesized,
-                        is_wiki=True,
+                        is_wiki=filepath.startswith("wiki/"),
                     ))
-                except RuntimeError:
+                except RuntimeError as exc:
+                    sys.stderr.write(
+                        f"Resolver could not synthesize {filepath}: {exc}\n"
+                    )
                     unresolvable.append(filepath)
             else:
                 unresolvable.append(filepath)
