@@ -10,153 +10,111 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The entire change lives in one file: `src/templates/chunk/GOAL.md.jinja2`. The
+`## Minor Goal` placeholder comment (lines 236–242 in the current template) is
+replaced with new guidance that teaches stative, intent-owning prose at the
+point of authorship. After editing the template, `ve init` re-renders all
+derived files so the change is immediately live for new chunks.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+No schema, no validator, no CLI code touches — this is a pure template-wording
+change, consistent with the chunk's out-of-scope statement.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/chunk_goal_stative_voice/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new decisions need to be recorded in DECISIONS.md; the existing principle
+("ACTIVE: Fully owns the intent that governs the code") already captures the
+architectural intent — this chunk just surfaces it at the right moment.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Rewrite the `## Minor Goal` placeholder in the GOAL.md template
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**File:** `src/templates/chunk/GOAL.md.jinja2`
 
-Example:
+Replace the current placeholder comment:
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+<!--
+What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
+Why is this the right next step? What does completing this enable?
+
+Keep this focused. If you're describing multiple independent outcomes,
+you may need multiple chunks.
+-->
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+With new guidance that:
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+1. **Anchors the author to the ACTIVE status definition** — a short inline
+   reminder that "ACTIVE: Fully owns the intent that governs the code" means
+   the goal must read as a present-tense architectural fact, not a description
+   of work being done.
 
-## Dependencies
+2. **Removes all transitory phrasings** — eliminate "accomplish", "next step",
+   "completing this", "enable". These verbs make the author describe an
+   in-flight action rather than a durable state.
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+3. **Gives concrete positive direction** — instruct the author to:
+   - Describe the state of the architecture *once this chunk owns its intent*
+   - Write as if the chunk is already ACTIVE (present tense, evergreen)
+   - Prefer state verbs: "emits", "enforces", "exposes", "tolerates", "owns",
+     "validates"
+   - Avoid action verbs: "add", "wire", "make", "implement", "migrate"
+   - Phrase it so the sentence remains true years later if the intent persists
 
-If there are no dependencies, delete this section.
--->
+4. **Includes a concrete contrast** — show a transitory example (bad) and its
+   stative rewrite (good) so the author can self-correct:
+
+   > ❌ Transitory: "Wire progress() calls into the snapshot pipeline so the
+   >    CLI can show completion estimates."
+   >
+   > ✅ Stative: "The snapshot pipeline emits progress() events at each
+   >    natural unit-of-work boundary, enabling downstream consumers to
+   >    report completion estimates."
+
+5. **Keeps the single-chunk scope reminder** in stative form: "If multiple
+   independent architectural states are described, split into separate chunks."
+
+### Step 2: Re-render templates
+
+Run `uv run ve init` to regenerate all derived files from the updated Jinja2
+template. Confirm the rendered `CLAUDE.md` and any other rendered outputs are
+unchanged (only the chunk GOAL template content is affected).
+
+### Step 3: Verify with a test chunk creation
+
+Run:
+```
+uv run ve chunk create test_stative_voice_verification
+```
+
+Open the generated `docs/chunks/test_stative_voice_verification/GOAL.md` and
+confirm the `## Minor Goal` section displays the new stative-voice guidance.
+
+Then delete the test chunk directory:
+```
+rm -rf docs/chunks/test_stative_voice_verification
+```
+
+### Step 4: Update `code_paths` in this chunk's GOAL.md
+
+Update the `code_paths` frontmatter field in
+`docs/chunks/chunk_goal_stative_voice/GOAL.md` to reflect the actual file
+touched:
+
+```yaml
+code_paths:
+- src/templates/chunk/GOAL.md.jinja2
+```
+
+(This field is already set correctly per the chunk's current GOAL.md
+frontmatter — confirm it is accurate after implementation.)
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The Jinja2 template comment block is inside an HTML comment (`<!-- -->`).
+  Care must be taken not to accidentally close the comment early or introduce
+  syntax errors. Verify the rendered output is valid Markdown after editing.
+- `ve init` re-renders `CLAUDE.md` and slash command templates. A quick diff
+  after running it will confirm no unintended changes snuck through.
 
 ## Deviations
 
@@ -167,13 +125,4 @@ When reality diverges from the plan, document it here:
 - What changed?
 - Why?
 - What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
