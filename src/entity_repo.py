@@ -136,6 +136,7 @@ class EntityRepoMetadata(BaseModel):
     specialization: Optional[str] = None
     origin: Optional[str] = None
     role: Optional[str] = None
+    forked_from: Optional[str] = None
 
 
 def create_entity_repo(
