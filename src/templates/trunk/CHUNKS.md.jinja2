@@ -1,0 +1,27 @@
+<!--
+# Chunk: docs/chunks/init_chunks_md_template - Adds CHUNKS.md to ve init trunk set
+-->
+# Chunks and Intent
+
+This project rests on four principles. Read them before making your first chunk; reference them when writing or completing one.
+
+**1. Code owns implementation; chunks own intent; together they are the architecture.** Code says *how* the system works — mutable, refactorable, tactical. Chunks say *why* a piece of the system has the shape it has — the constraints, contracts, and boundaries that should outlive any particular implementation. Implementation without intent is code that future contributors will accidentally break. Intent without implementation is a wish.
+
+**2. Chunks exist only for intent-bearing work.** Intent-less work — typos, dependency bumps, mechanical renames, one-off bug patches, performance tweaks that don't change shape, comment cleanup — bypasses the chunk system entirely. Just edit the code, commit, move on. The test is a single question: *does this code need to remember why it exists?* If yes, make a chunk. If no, don't. Over-chunking drowns the architectural signal in noise.
+
+**3. A chunk's GOAL.md describes intent in present tense.** Written so it reads true at every status the chunk passes through. Goals describe how the system works (or, for FUTURE chunks, how it will work) — never what changed, never what we did, never the world as it was. Git owns the past. Avoid framing that ages into a lie:
+
+- ❌ *"Currently the orchestrator does X, but we'll change it to Y."* — true at write time, false once ACTIVE.
+- ✅ *"The orchestrator does Y when Z, because..."* — true at every status.
+
+**4. Status answers a single question — how much of the intent does this chunk own?**
+
+| Status | Ownership |
+|--------|-----------|
+| FUTURE | Not yet owned. Queued for later. |
+| IMPLEMENTING | Being taken into ownership. At most one per worktree. |
+| ACTIVE | Fully owns the intent that governs the code. |
+| COMPOSITE | Shares ownership with other chunks. Must be read alongside its co-owners. |
+| HISTORICAL | No longer owns intent. Kept for archaeological context — the approach was replaced, the code was rolled back, or the intent was abandoned. |
+
+Each transition is an answer to the question, not a separate concept.

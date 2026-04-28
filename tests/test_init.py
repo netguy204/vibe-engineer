@@ -174,6 +174,25 @@ class TestInitCommand:
         # Entry should appear exactly once
         assert content.count(".artifact-order.json") == 1
 
+    # Chunk: docs/chunks/init_chunks_md_template - Adds CHUNKS.md to ve init trunk set
+    def test_init_creates_chunks_md(self, runner, temp_project):
+        """ve init creates docs/trunk/CHUNKS.md from template."""
+        result = runner.invoke(
+            cli,
+            ["init", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+        chunks_md_path = temp_project / "docs" / "trunk" / "CHUNKS.md"
+        assert chunks_md_path.exists()
+
+        content = chunks_md_path.read_text()
+        # Verify key phrases from each of the four principles
+        assert "Code owns implementation" in content
+        assert "Chunks exist only for intent-bearing work" in content
+        assert "present tense" in content
+        assert "Status answers a single question" in content
+
     # Subsystem: docs/subsystems/friction_tracking - Friction log management
     def test_init_creates_friction_log(self, runner, temp_project):
         """ve init creates docs/trunk/FRICTION.md from template."""

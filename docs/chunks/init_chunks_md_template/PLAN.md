@@ -10,170 +10,96 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The fix is surgical: add one new Jinja2 template file and one new test.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+`_init_trunk` in `src/project.py` already calls `render_to_directory("trunk", ...)`,
+which renders every `.jinja2` file found in `src/templates/trunk/`. Adding
+`src/templates/trunk/CHUNKS.md.jinja2` is therefore sufficient to make `ve init`
+produce `docs/trunk/CHUNKS.md` on every fresh project — no changes to `project.py`
+are needed.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The template content is the static prose from `docs/trunk/CHUNKS.md` (the four
+chunk principles). CHUNKS.md contains no Jinja2 delimiters (`{{ }}` or `{% %}`),
+so no `{% raw %}...{% endraw %}` wrapper is required.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/init_chunks_md_template/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The existing `overwrite=False` semantics of `render_to_directory` mean re-running
+`ve init` on a project that already has `docs/trunk/CHUNKS.md` skips the file —
+preserving any user edits. This behaviour is already tested for other trunk docs and
+does not need a new test.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write the failing test
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a test to `tests/test_init.py` that:
+- Invokes `ve init` in a fresh temp directory.
+- Asserts that `docs/trunk/CHUNKS.md` exists.
+- Asserts that the file contains the four principles by checking for a key phrase
+  from each (e.g., `"Code owns implementation"`, `"Chunks exist only for
+  intent-bearing work"`, `"present tense"`, `"Status answers a single question"`).
 
-Example:
+Run the test suite to confirm the new test fails (red phase).
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+uv run pytest tests/test_init.py -k chunks -v
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 2: Create `src/templates/trunk/CHUNKS.md.jinja2`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Copy the content of `docs/trunk/CHUNKS.md` verbatim into the new template file.
+No Jinja2 variable substitutions are needed — the four principles are static prose.
+Add a backreference comment at the top (inside an HTML comment so it does not appear
+in rendered output):
 
-## Dependencies
+```
+# Chunk: docs/chunks/init_chunks_md_template - Adds CHUNKS.md to ve init trunk set
+```
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+Location: `src/templates/trunk/CHUNKS.md.jinja2`
 
-If there are no dependencies, delete this section.
--->
+### Step 3: Verify the test passes
+
+Run the full test suite:
+
+```
+uv run pytest tests/
+```
+
+The new test should now be green. All previously passing tests must still pass —
+in particular `test_init_skips_existing_files` (or equivalent) should continue to
+demonstrate that `overwrite=False` is preserved.
+
+### Step 4: Smoke-test `ve init` in a temp directory
+
+```bash
+tmp=$(mktemp -d)
+uv run ve init --project-dir "$tmp"
+cat "$tmp/docs/trunk/CHUNKS.md"
+rm -rf "$tmp"
+```
+
+Confirm the file renders with the four principles intact.
+
+### Step 5: Update `code_paths` in GOAL.md
+
+Update the `code_paths` field in `docs/chunks/init_chunks_md_template/GOAL.md` to
+list both files touched by this chunk:
+
+```yaml
+code_paths:
+- src/templates/trunk/CHUNKS.md.jinja2
+- tests/test_init.py
+```
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Jinja2 delimiter collision**: If a future edit to `docs/trunk/CHUNKS.md` adds
+  text that looks like a Jinja2 expression, the template will break at render time.
+  The current content has no such text; if it ever does, wrap the affected section in
+  `{% raw %}...{% endraw %}`.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

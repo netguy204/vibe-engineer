@@ -1,18 +1,19 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/trunk/CHUNKS.md.jinja2
+- src/templates/trunk/CHUNKS.md.jinja2
+- tests/test_init.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["narrative_proposed_chunks_doc"]
+created_after:
+- narrative_proposed_chunks_doc
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
