@@ -195,16 +195,17 @@ class TestMergeCLI:
         runner = CliRunner()
         synthesized = "# Shared\n\nBoth knowledge merged.\n"
 
-        with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
-            mock_msg = MagicMock()
-            mock_msg.content = [MagicMock(text=synthesized)]
-            mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
+        with patch.object(entity_merge, "ClaudeSDKClient", None):
+            with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
+                mock_msg = MagicMock()
+                mock_msg.content = [MagicMock(text=synthesized)]
+                mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
 
-            result = runner.invoke(entity, [
-                "merge", "target-entity", str(source),
-                "--yes",
-                "--project-dir", str(project),
-            ])
+                result = runner.invoke(entity, [
+                    "merge", "target-entity", str(source),
+                    "--yes",
+                    "--project-dir", str(project),
+                ])
 
         # Should succeed (either clean merge or conflicts auto-approved)
         # exit code 0 means it completed
@@ -249,3 +250,62 @@ class TestMergeCLI:
 
         # Should not fail with "repository not found" — should resolve by name
         assert result.exit_code == 0, result.output
+
+    def test_merge_cli_without_source_uses_remote(self, tmp_path):
+        """ve entity merge <name> (no SOURCE) merges from the configured origin."""
+        import subprocess as _subprocess
+        from entity_repo import create_entity_repo, fork_entity
+
+        # Build: entity with a bare origin that has a new commit
+        project, target = _setup_project_with_entity(tmp_path, "target-entity")
+        target_dir = project / ".entities" / "target-entity"
+
+        # Create bare origin from target
+        bare_origin = tmp_path / "origin.git"
+        _subprocess.run(
+            ["git", "clone", "--bare", str(target_dir), str(bare_origin)],
+            capture_output=True, text=True,
+        )
+        _git(target_dir, "remote", "add", "origin", str(bare_origin))
+        _git(target_dir, "push", "origin", "main")
+
+        # Clone origin and push a new commit
+        second_clone = tmp_path / "second"
+        _subprocess.run(
+            ["git", "clone", str(bare_origin), str(second_clone)],
+            capture_output=True, text=True,
+            env={**__import__("os").environ,
+                 "GIT_CONFIG_COUNT": "1",
+                 "GIT_CONFIG_KEY_0": "protocol.file.allow",
+                 "GIT_CONFIG_VALUE_0": "always"},
+        )
+        _git(second_clone, "config", "user.email", "other@test.com")
+        _git(second_clone, "config", "user.name", "Other User")
+        wiki_dir = second_clone / "wiki" / "domain"
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        (wiki_dir / "new_page.md").write_text("# New Knowledge\n")
+        _git(second_clone, "add", "-A")
+        _git(second_clone, "commit", "-m", "Add new knowledge")
+        _git(second_clone, "push", "origin", "main")
+
+        runner = CliRunner()
+        result = runner.invoke(entity, [
+            "merge", "target-entity",
+            "--project-dir", str(project),
+        ])
+
+        assert result.exit_code == 0, result.output
+        assert any(word in result.output.lower() for word in ("merged", "up to date"))
+
+    def test_merge_cli_without_source_no_remote_fails(self, tmp_path):
+        """ve entity merge <name> (no SOURCE) fails when no origin is configured."""
+        project, _ = _setup_project_with_entity(tmp_path, "target-entity")
+
+        runner = CliRunner()
+        result = runner.invoke(entity, [
+            "merge", "target-entity",
+            "--project-dir", str(project),
+        ])
+
+        assert result.exit_code != 0
+        assert any(word in result.output.lower() for word in ("origin", "remote"))

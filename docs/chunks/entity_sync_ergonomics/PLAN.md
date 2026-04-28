@@ -1,5 +1,4 @@
 
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +9,444 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Four distinct changes span three files. Each change is self-contained enough
+to implement and test independently, but they compose into the full ergonomic
+story the GOAL describes.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Uncommitted-changes gate** (`src/entity_repo.py`): replace the
+   `git status --porcelain` check in `merge_entity` with a helper that
+   filters out `??` (untracked) lines, so intentionally-untracked entity
+   artifacts (session transcripts in `episodic/`, decay logs, snapshot
+   directories) don't block the operation.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Optional SOURCE in merge** (`src/entity_repo.py` + `src/cli/entity.py`):
+   make the `source` parameter of `merge_entity` optional (`None` resolves from
+   the entity's configured `origin` remote). Mirror this in the CLI by making
+   the `SOURCE` argument optional.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_sync_ergonomics/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **`pull` auto-merge** (`src/entity_repo.py` + `src/cli/entity.py`): when
+   `pull_entity` detects diverged histories (currently raises `MergeNeededError`),
+   delegate to `merge_entity` instead. The CLI `pull` command handles
+   `MergeConflictsPending` the same way `merge` does, including `--yes` bypass.
 
-## Subsystem Considerations
+4. **Agent SDK resolver** (`src/entity_merge.py`): rewrite
+   `resolve_wiki_conflict` to try the Claude Code agent SDK first (routes
+   through the operator's Claude Max subscription — no `ANTHROPIC_API_KEY`
+   required) and fall back to the Anthropic SDK. Replace the retired
+   `claude-3-5-haiku-latest` with a single centralized model constant
+   (`_RESOLVER_MODEL`) used only on the fallback path.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests are written first (TDD per TESTING_PHILOSOPHY.md). All tests must pass
+before marking the chunk complete.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `_has_tracked_uncommitted_changes` helper to `entity_repo.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create a private helper that returns `True` only when there are uncommitted
+changes to *tracked* files — ignoring `??` untracked lines:
 
-Example:
+```python
+# Chunk: docs/chunks/entity_sync_ergonomics - Uncommitted gate ignores untracked artifacts
+def _has_tracked_uncommitted_changes(entity_path: Path) -> bool:
+    """Return True if any tracked files have uncommitted changes.
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Ignores intentionally-untracked entity artifacts (session transcripts,
+    decay logs, snapshot directories) which appear as '??' in git status --porcelain.
+    """
+    status_out = _run_git_output(entity_path, "status", "--porcelain")
+    return any(
+        line and not line.startswith("??")
+        for line in status_out.splitlines()
+    )
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Place it near the existing `_run_git_output` helper (around line 330).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Tests first** — add to `tests/test_entity_push_pull.py` in a new
+`TestUncommittedGate` class:
+
+- `test_clean_repo_not_flagged` — a newly created entity repo has no tracked
+  changes; helper returns `False`.
+- `test_untracked_file_not_flagged` — writing an untracked file returns `False`.
+- `test_modified_tracked_file_flagged` — modifying a tracked file (e.g. `ENTITY.md`)
+  returns `True`.
+- `test_staged_change_flagged` — staging a new tracked file returns `True`.
+
+### Step 2: Swap `merge_entity`'s uncommitted check to use the helper
+
+Location: `src/entity_repo.py`, inside `merge_entity`, around line 1094.
+
+Replace:
+```python
+status_out = _run_git_output(entity_path, "status", "--porcelain")
+if status_out.strip():
+    raise RuntimeError(
+        f"Entity '{entity_path.name}' has uncommitted changes. "
+        "Commit or stash changes before merging."
+    )
+```
+
+With:
+```python
+if _has_tracked_uncommitted_changes(entity_path):
+    raise RuntimeError(
+        f"Entity '{entity_path.name}' has uncommitted changes to tracked files. "
+        "Commit or stash changes before merging."
+    )
+```
+
+**Tests first** — add to `tests/test_entity_fork_merge.py` (or
+`tests/test_entity_push_pull.py`):
+
+- `test_merge_not_blocked_by_untracked_transcript` — create an entity with a
+  bare origin, make an untracked `episodic/session.jsonl` file, then call
+  `merge_entity` and verify it does NOT raise `RuntimeError` for uncommitted
+  changes (it may raise for other reasons like nothing to merge; that's fine to
+  catch separately).
+
+### Step 3: Make `source` optional in `merge_entity`
+
+Change the signature from:
+```python
+def merge_entity(entity_path: Path, source: str, ...) -> ...:
+```
+to:
+```python
+def merge_entity(entity_path: Path, source: str | None = None, ...) -> ...:
+```
+
+When `source` is `None`, resolve it from the entity's configured origin:
+
+```python
+if source is None:
+    remote_result = subprocess.run(
+        ["git", "-C", str(entity_path), "remote", "get-url", "origin"],
+        capture_output=True, text=True,
+    )
+    if remote_result.returncode != 0:
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' has no remote origin configured. "
+            "Provide SOURCE explicitly or use 've entity set-origin' to add one."
+        )
+    source = remote_result.stdout.strip()
+```
+
+Insert this block after the `is_entity_repo` validation, before the
+`_has_tracked_uncommitted_changes` check.
+
+**Tests first** — add to `tests/test_entity_push_pull.py` in a new
+`TestMergeEntityOptionalSource` class (or extend the existing fork/merge test):
+
+- `test_merge_without_source_uses_configured_remote` — set up an entity with
+  a bare origin that has diverged commits; call `merge_entity(entity_path)` with
+  no source and verify the merge succeeds (returns `MergeResult` with
+  `commits_merged > 0`).
+- `test_merge_without_source_raises_when_no_remote` — entity with no origin;
+  calling `merge_entity(entity_path)` raises `RuntimeError` mentioning `origin`.
+
+### Step 4: Make SOURCE optional in the `merge` CLI command
+
+Location: `src/cli/entity.py`, the `merge` command definition around line 1044.
+
+Change:
+```python
+@click.argument("source")
+```
+to:
+```python
+@click.argument("source", required=False, default=None)
+```
+
+Update the docstring to reflect that SOURCE is now optional.
+
+Update the resolver logic: when `source is None` and the entity directory is
+not an existing attached entity name, pass `None` directly to `merge_entity`
+(the library will resolve from remote). The existing "check if it's an attached
+entity name" block should only run when `source` is not `None`:
+
+```python
+# Resolve source: check if it's an attached entity name first (only when given)
+if source is not None:
+    candidate = project_dir / ".entities" / source
+    resolved_source = str(candidate) if candidate.exists() else source
+else:
+    resolved_source = None
+```
+
+**Tests first** — add to `tests/test_entity_fork_merge_cli.py`:
+
+- `test_merge_cli_without_source_uses_remote` — set up an entity with a remote
+  that has new commits; invoke `ve entity merge <name>` (no SOURCE argument);
+  assert exit code 0 and output mentions merged commits.
+- `test_merge_cli_without_source_no_remote_fails` — entity with no remote;
+  invoke `ve entity merge <name>` (no SOURCE); assert non-zero exit and error
+  mentions remote/origin.
+
+### Step 5: Update `pull_entity` to auto-merge on diverged histories
+
+Location: `src/entity_repo.py`, inside `pull_entity`, around line 635.
+
+Currently, diverged histories raise `MergeNeededError`. Replace both
+`MergeNeededError` raises (the "both sides diverged" and "local-only ahead"
+cases) with calls to `merge_entity`.
+
+**Return type change**: `pull_entity` currently returns `PullResult`. After
+this change it may also return `MergeConflictsPending` (when the auto-merge
+encounters wiki conflicts). Update the type annotation to
+`PullResult | MergeConflictsPending`.
+
+Diverged case implementation sketch:
+```python
+if incoming and local_only:
+    # Auto-merge: delegate to merge_entity using the known remote URL
+    remote_url = remote_check.stdout.strip()
+    return merge_entity(entity_path, remote_url)
+
+if local_only and not incoming:
+    # Local is strictly ahead — nothing to merge. Inform operator to push.
+    raise RuntimeError(
+        f"Entity '{entity_path.name}' is ahead of origin with "
+        f"{len(local_only)} local commit(s). Push first."
+    )
+```
+
+Note: the "local-only ahead" case stays as a `RuntimeError` (not a merge — no
+remote commits to merge in). The "both diverged" case auto-merges.
+
+Also: save the remote URL earlier in the function (after the remote check
+succeeds) so it's available for the diverged case:
+```python
+remote_url = remote_check.stdout.strip()
+```
+
+**Tests first** — add to `tests/test_entity_push_pull.py` in `TestPullEntity`:
+
+- `test_pull_diverged_auto_merges` — set up two diverged entities (local commit
+  + remote commit); call `pull_entity`; assert the result is a `MergeResult`
+  (not a `MergeNeededError`) and the remote file is present locally.
+- `test_pull_diverged_returns_merge_result_with_commit_count` — verify
+  `commits_merged` in the returned `MergeResult` is accurate.
+- Keep `test_pull_diverged_raises_merge_needed` and **invert its expectation**:
+  rename to `test_pull_diverged_auto_merges_not_raises` and assert no
+  `MergeNeededError` is raised.
+
+### Step 6: Update the `pull` CLI command
+
+Location: `src/cli/entity.py`, the `pull` command (around line 838).
+
+Changes:
+1. Add `--yes / -y` flag (mirrors `merge` command).
+2. Remove the `MergeNeededError` catch (the exception is no longer raised).
+3. Add handling for `MergeConflictsPending` — same flow as in the `merge`
+   command: display each resolution, prompt for approval (or auto-approve with
+   `--yes`), then call `commit_resolved_merge` or `abort_merge`.
+4. Handle both return types from `pull_entity`:
+   - `PullResult` → existing up-to-date / commits-merged output
+   - `MergeResult` → "Merged N commit(s)" output (auto-merge succeeded cleanly)
+   - `MergeConflictsPending` → conflict resolution flow
+
+Updated command skeleton:
+```python
+@entity.command("pull")
+@click.argument("name")
+@click.option("--yes", "-y", is_flag=True, default=False,
+              help="Auto-approve all LLM conflict resolutions without prompting")
+@click.option("--project-dir", ...)
+def pull(name: str, yes: bool, project_dir: pathlib.Path | None) -> None:
+    ...
+    try:
+        result = entity_repo.pull_entity(entity_path)
+    except (ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e))
+
+    if isinstance(result, entity_repo.PullResult):
+        if result.up_to_date:
+            click.echo("Already up to date")
+        else:
+            click.echo(f"Merged {result.commits_merged} new commit(s) from origin")
+    elif isinstance(result, entity_repo.MergeResult):
+        if result.commits_merged == 0:
+            click.echo("Already up to date")
+        else:
+            click.echo(f"Auto-merged {result.commits_merged} diverged commit(s) from origin")
+    elif isinstance(result, entity_repo.MergeConflictsPending):
+        # conflict resolution flow (same as merge command)
+        ...
+```
+
+**Tests first** — update `tests/test_entity_push_pull_cli.py`:
+
+- Rename/update `test_pull_cli_diverged_warns_merge_needed` →
+  `test_pull_cli_diverged_auto_merges` — assert exit 0 and output mentions
+  "merged" or "auto-merged".
+- Add `test_pull_cli_diverged_with_conflicts_prompts` — mock
+  `MergeConflictsPending` being returned; verify the conflict flow runs.
+- Add `test_pull_cli_yes_flag_auto_approves_conflicts` — with `--yes`, assert
+  conflicts are resolved without prompting.
+
+### Step 7: Centralize model constant and add agent SDK to `entity_merge.py`
+
+Location: `src/entity_merge.py`.
+
+**7a. Add agent SDK import guard** (pattern from `entity_shutdown.py`):
+```python
+# Chunk: docs/chunks/entity_sync_ergonomics - Guard claude_agent_sdk import for wiki resolver
+try:
+    from claude_agent_sdk import ClaudeSDKClient
+    from claude_agent_sdk.types import ClaudeAgentOptions, ResultMessage
+except ModuleNotFoundError:
+    ClaudeSDKClient = None
+    ClaudeAgentOptions = None
+    ResultMessage = None
+```
+
+**7b. Add centralized model constant** for the Anthropic SDK fallback path:
+```python
+# Chunk: docs/chunks/entity_sync_ergonomics - Centralized model for Anthropic SDK fallback
+_RESOLVER_MODEL = "claude-haiku-4-20250514"
+```
+
+**7c. Add an async helper** that runs the resolver via agent SDK:
+```python
+async def _resolve_with_agent_sdk(prompt: str, cwd: pathlib.Path) -> str:
+    """Run the conflict-resolution prompt via Claude Code agent SDK.
+
+    Uses the operator's claude CLI subscription — no ANTHROPIC_API_KEY needed.
+    """
+    options = ClaudeAgentOptions(
+        cwd=str(cwd),
+        permission_mode="bypassPermissions",
+        max_turns=1,
+    )
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(prompt)
+        async for message in client.receive_response():
+            if isinstance(message, ResultMessage):
+                if message.is_error or not message.result:
+                    raise RuntimeError(
+                        f"Agent SDK conflict resolver returned an error: {message.result}"
+                    )
+                return message.result
+    raise RuntimeError("Agent SDK conflict resolver did not return a result")
+```
+
+**7d. Rewrite `resolve_wiki_conflict`** to accept an optional `entity_dir`
+parameter and try agent SDK first:
+
+```python
+def resolve_wiki_conflict(
+    filename: str,
+    conflicted_content: str,
+    entity_name: str,
+    entity_dir: pathlib.Path | None = None,
+) -> str:
+    """Use the Claude Code agent SDK (or Anthropic API fallback) to synthesize
+    conflicting wiki page versions.
+    ...
+    """
+    import asyncio, pathlib as _pathlib
+
+    hunks = parse_conflict_markers(conflicted_content)
+    n = len(hunks)
+    prompt = _build_resolver_prompt(entity_name, filename, n, conflicted_content)
+
+    cwd = entity_dir if entity_dir is not None else _pathlib.Path.cwd()
+
+    # Primary: Claude Code agent SDK (uses operator's Max subscription)
+    if ClaudeSDKClient is not None:
+        return asyncio.run(_resolve_with_agent_sdk(prompt, cwd))
+
+    # Fallback: Anthropic SDK (requires ANTHROPIC_API_KEY)
+    if anthropic is None:
+        raise RuntimeError(
+            "Wiki conflict resolution requires either the 'claude_agent_sdk' package "
+            "(install with: pip install claude-agent-sdk) or the 'anthropic' package "
+            "with ANTHROPIC_API_KEY set."
+        )
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model=_RESOLVER_MODEL,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text
+```
+
+Extract the prompt-building logic into a `_build_resolver_prompt` helper to
+keep both paths using the same prompt.
+
+**7e. Pass `entity_path` through** the call chain from `merge_entity` →
+`resolve_wiki_conflict`. In `merge_entity` (in `entity_repo.py`), update the
+call to:
+```python
+synthesized = _entity_merge.resolve_wiki_conflict(
+    relative_path, conflicted_content, entity_path.name,
+    entity_dir=entity_path,
+)
+```
+
+**Tests first** — in `tests/test_entity_merge.py`:
+
+- `test_model_constant_is_not_haiku_latest` — assert
+  `entity_merge._RESOLVER_MODEL != "claude-3-5-haiku-latest"`.
+- `test_agent_sdk_path_used_when_available` — patch `ClaudeSDKClient` to a mock
+  and verify `resolve_wiki_conflict` calls it (not `anthropic.Anthropic()`).
+- `test_agent_sdk_result_returned` — mock agent SDK to return a known string;
+  verify `resolve_wiki_conflict` returns that string.
+- `test_fallback_to_anthropic_sdk_when_agent_unavailable` — patch
+  `ClaudeSDKClient = None` and provide a mock anthropic module; verify the
+  Anthropic SDK is called.
+- `test_fallback_error_mentions_api_key` — patch both `ClaudeSDKClient = None`
+  and `anthropic = None`; verify `RuntimeError` message mentions
+  `ANTHROPIC_API_KEY`.
+- Update `test_raises_if_anthropic_not_available` to also set
+  `ClaudeSDKClient = None`, so the existing test still covers the "both
+  unavailable" case consistently.
+
+### Step 8: Run full test suite and fix any failures
+
+```bash
+uv run pytest tests/ -x -q
+```
+
+Expected: all existing tests still pass (no regressions), and all new tests
+pass. Pay attention to:
+- `test_entity_push_pull.py` — the renamed/inverted diverged-history tests
+- `test_entity_push_pull_cli.py` — the updated pull-diverged CLI test
+- `test_entity_merge.py` — new agent SDK path tests
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+No new external libraries. `claude_agent_sdk` and `anthropic` are already
+conditional dependencies (import-guarded). Both packages are already in the
+project's dependency tree via other usages.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **`asyncio.run` in `resolve_wiki_conflict`**: If the caller is already in
+  an async context (unlikely here — `merge_entity` is sync), `asyncio.run`
+  will fail. Given the current call stack is fully synchronous, this is fine.
+  If the concern materializes, wrap in `asyncio.get_event_loop().run_until_complete`.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Agent SDK `max_turns=1`**: The conflict resolver prompt asks for a single
+  text output (no tool use). `max_turns=1` is appropriate. If the agent decides
+  to use a tool (unlikely for a text-only prompt with
+  `permission_mode="bypassPermissions"`), the turn count may exhaust.
+  Watch for this in testing.
+
+- **`_RESOLVER_MODEL` selection**: The fallback uses `claude-haiku-4-20250514`
+  (current fast model, same family as the retired `claude-3-5-haiku-latest`).
+  Validate this model identifier is accepted by the Anthropic API before
+  finalizing.
+
+- **`pull_entity` return type breadth**: The CLI must `isinstance`-check
+  `MergeResult` vs `PullResult` — both have a `commits_merged` field but
+  different semantics. Take care not to conflate them in the output messages.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

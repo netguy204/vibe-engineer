@@ -1,20 +1,21 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/entity.py
-  - src/entity_repo.py
-  - src/entity_merge.py
+- src/cli/entity.py
+- src/entity_repo.py
+- src/entity_merge.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["chunk_goal_stative_voice", "init_chunks_md_template"]
+created_after:
+- chunk_goal_stative_voice
+- init_chunks_md_template
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

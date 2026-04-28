@@ -346,6 +346,20 @@ def _run_git_output(path: Path, *args: str, extra_env: dict | None = None) -> st
     return result.stdout
 
 
+# Chunk: docs/chunks/entity_sync_ergonomics - Uncommitted gate ignores untracked artifacts
+def _has_tracked_uncommitted_changes(entity_path: Path) -> bool:
+    """Return True if any tracked files have uncommitted changes.
+
+    Ignores intentionally-untracked entity artifacts (session transcripts,
+    decay logs, snapshot directories) which appear as '??' in git status --porcelain.
+    """
+    status_out = _run_git_output(entity_path, "status", "--porcelain")
+    return any(
+        line and not line.startswith("??")
+        for line in status_out.splitlines()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Name derivation
 # ---------------------------------------------------------------------------
@@ -577,20 +591,30 @@ def push_entity(entity_path: Path) -> PushResult:
 
 
 # Chunk: docs/chunks/entity_push_pull - Pull entity repo from remote origin
-def pull_entity(entity_path: Path) -> PullResult:
+def pull_entity(
+    entity_path: Path,
+) -> "PullResult | MergeResult | MergeConflictsPending":
     """Fetch and fast-forward merge the entity repo from its remote origin.
+
+    When histories have diverged (both local and remote have new commits),
+    automatically delegates to merge_entity to reconcile them. If the local
+    branch is strictly ahead of origin (nothing incoming), raises RuntimeError
+    to prompt the operator to push first.
 
     Args:
         entity_path: Path to the entity repo directory.
 
     Returns:
-        PullResult with commits_merged count and up_to_date flag.
+        PullResult when a fast-forward succeeded or the repo was already up to
+        date. MergeResult when diverged histories were auto-merged cleanly.
+        MergeConflictsPending when auto-merge produced wiki conflicts that
+        require operator approval.
 
     Raises:
         ValueError: If entity_path is not a valid entity repo.
-        RuntimeError: If no remote origin is configured or if the entity is
-            in detached HEAD state.
-        MergeNeededError: If histories have diverged (fast-forward not possible).
+        RuntimeError: If no remote origin is configured, if the entity is in
+            detached HEAD state, or if the local branch is ahead of origin
+            with no incoming commits (push first).
     """
     if not is_entity_repo(entity_path):
         raise ValueError(
@@ -607,6 +631,7 @@ def pull_entity(entity_path: Path) -> PullResult:
             f"Entity '{entity_path.name}' has no remote origin configured. "
             "Use 've entity set-origin' to add one."
         )
+    remote_url = remote_check.stdout.strip()
 
     # Determine current branch
     branch = _run_git_output(entity_path, "rev-parse", "--abbrev-ref", "HEAD").strip()
@@ -633,18 +658,14 @@ def pull_entity(entity_path: Path) -> PullResult:
     local_only = [l for l in local_only_out.splitlines() if l.strip()]
 
     if incoming and local_only:
-        raise MergeNeededError(
-            f"Entity '{entity_path.name}' histories have diverged "
-            f"({len(incoming)} incoming, {len(local_only)} local). "
-            "Use 've entity merge' to resolve."
-        )
+        # Auto-merge: delegate to merge_entity using the known remote URL
+        return merge_entity(entity_path, remote_url)
 
     if local_only and not incoming:
-        # Local is strictly ahead — also a diverged case (merge needed if we
-        # ever want a rebase, but for now treat as MergeNeeded)
-        raise MergeNeededError(
-            f"Entity '{entity_path.name}' is ahead of origin with {len(local_only)} "
-            "local commit(s). Push first or use 've entity merge'."
+        # Local is strictly ahead — nothing to merge in. Inform operator to push.
+        raise RuntimeError(
+            f"Entity '{entity_path.name}' is ahead of origin with "
+            f"{len(local_only)} local commit(s). Push first."
         )
 
     if not incoming:
@@ -1059,7 +1080,7 @@ def fork_entity(
 # Chunk: docs/chunks/entity_fork_merge - Merge entity repo implementation
 def merge_entity(
     entity_path: Path,
-    source: str,
+    source: str | None = None,
     resolve_conflicts: bool = True,
 ) -> "MergeResult | MergeConflictsPending":
     """Fetch and merge learnings from a source entity into entity_path.
@@ -1071,7 +1092,8 @@ def merge_entity(
 
     Args:
         entity_path: Path to the target entity repo directory.
-        source: URL or local path to the source entity repo.
+        source: URL or local path to the source entity repo. When None,
+            resolves from the entity's configured 'origin' remote.
         resolve_conflicts: If False, abort and raise on conflicts.
 
     Returns:
@@ -1080,8 +1102,9 @@ def merge_entity(
 
     Raises:
         ValueError: If entity_path is not a valid entity repo.
-        RuntimeError: If entity has uncommitted changes, or merge fails for a
-                      non-conflict reason, or resolve_conflicts=False with conflicts.
+        RuntimeError: If entity has uncommitted changes to tracked files, no
+                      remote origin configured (when source is None), merge fails
+                      for a non-conflict reason, or resolve_conflicts=False with conflicts.
     """
     import os
     import entity_merge as _entity_merge
@@ -1091,11 +1114,23 @@ def merge_entity(
             f"'{entity_path}' is not a valid entity repo (missing ENTITY.md)."
         )
 
-    # Require clean working tree
-    status_out = _run_git_output(entity_path, "status", "--porcelain")
-    if status_out.strip():
+    # Resolve source from configured remote when not explicitly provided
+    if source is None:
+        remote_result = subprocess.run(
+            ["git", "-C", str(entity_path), "remote", "get-url", "origin"],
+            capture_output=True, text=True,
+        )
+        if remote_result.returncode != 0:
+            raise RuntimeError(
+                f"Entity '{entity_path.name}' has no remote origin configured. "
+                "Provide SOURCE explicitly or use 've entity set-origin' to add one."
+            )
+        source = remote_result.stdout.strip()
+
+    # Require clean working tree (ignores intentionally-untracked artifacts)
+    if _has_tracked_uncommitted_changes(entity_path):
         raise RuntimeError(
-            f"Entity '{entity_path.name}' has uncommitted changes. "
+            f"Entity '{entity_path.name}' has uncommitted changes to tracked files. "
             "Commit or stash changes before merging."
         )
 
@@ -1193,7 +1228,8 @@ def merge_entity(
                 content = full_path.read_text()
                 try:
                     synthesized = _entity_merge.resolve_wiki_conflict(
-                        filepath, content, entity_path.name
+                        filepath, content, entity_path.name,
+                        entity_dir=entity_path,
                     )
                     resolutions.append(ConflictResolution(
                         relative_path=filepath,

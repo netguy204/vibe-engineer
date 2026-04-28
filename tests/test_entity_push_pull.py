@@ -10,9 +10,11 @@ import pytest
 
 from entity_repo import (
     MergeNeededError,
+    MergeResult,
     PullResult,
     PushResult,
     create_entity_repo,
+    merge_entity,
     pull_entity,
     push_entity,
     set_entity_origin,
@@ -188,8 +190,8 @@ class TestPullEntity:
         assert result.up_to_date is True
         assert result.commits_merged == 0
 
-    def test_pull_diverged_raises_merge_needed(self, tmp_path):
-        """pull_entity raises MergeNeededError when histories have diverged."""
+    def test_pull_diverged_auto_merges_not_raises(self, tmp_path):
+        """pull_entity auto-merges diverged histories; MergeNeededError is NOT raised."""
         entity_path, bare_origin, second_clone = self._setup_with_second_clone(tmp_path)
 
         # Push a commit from second clone
@@ -203,11 +205,51 @@ class TestPullEntity:
         _git(entity_path, "add", "local_commit.txt")
         _git(entity_path, "commit", "-m", "Local commit")
 
-        with pytest.raises(MergeNeededError):
-            pull_entity(entity_path)
+        # Should NOT raise MergeNeededError — should auto-merge instead
+        result = pull_entity(entity_path)
+        assert not isinstance(result, MergeNeededError)
 
-        # Local branch should NOT be modified
-        assert not (entity_path / "remote_commit.txt").exists()
+    def test_pull_diverged_auto_merges(self, tmp_path):
+        """pull_entity returns a MergeResult when histories have diverged."""
+        entity_path, bare_origin, second_clone = self._setup_with_second_clone(tmp_path)
+
+        # Push a commit from second clone
+        (second_clone / "remote_commit.txt").write_text("remote")
+        _git(second_clone, "add", "remote_commit.txt")
+        _git(second_clone, "commit", "-m", "Remote commit")
+        _git(second_clone, "push", "origin", "main")
+
+        # Make a local commit on entity_path (diverges from origin)
+        (entity_path / "local_commit.txt").write_text("local")
+        _git(entity_path, "add", "local_commit.txt")
+        _git(entity_path, "commit", "-m", "Local commit")
+
+        result = pull_entity(entity_path)
+
+        assert isinstance(result, MergeResult)
+        # Remote file should now exist locally after merge
+        assert (entity_path / "remote_commit.txt").exists()
+
+    def test_pull_diverged_returns_merge_result_with_commit_count(self, tmp_path):
+        """MergeResult.commits_merged reflects the number of incoming commits merged."""
+        entity_path, bare_origin, second_clone = self._setup_with_second_clone(tmp_path)
+
+        # Push 2 commits from second clone
+        for i in range(2):
+            (second_clone / f"remote_{i}.txt").write_text(f"remote {i}")
+            _git(second_clone, "add", f"remote_{i}.txt")
+            _git(second_clone, "commit", "-m", f"Remote commit {i}")
+        _git(second_clone, "push", "origin", "main")
+
+        # Make a local commit (diverge)
+        (entity_path / "local_commit.txt").write_text("local")
+        _git(entity_path, "add", "local_commit.txt")
+        _git(entity_path, "commit", "-m", "Local commit")
+
+        result = pull_entity(entity_path)
+
+        assert isinstance(result, MergeResult)
+        assert result.commits_merged == 2
 
     def test_pull_raises_if_no_remote(self, tmp_path):
         """Raises RuntimeError when entity has no remote configured."""
@@ -282,3 +324,112 @@ class TestSetEntityOrigin:
 
         with pytest.raises(ValueError, match="[Uu][Rr][Ll]|empty"):
             set_entity_origin(entity_path, "")
+
+
+# ---------------------------------------------------------------------------
+# Tests for _has_tracked_uncommitted_changes helper
+# ---------------------------------------------------------------------------
+
+
+class TestUncommittedGate:
+    """Tests for _has_tracked_uncommitted_changes()."""
+
+    def test_clean_repo_not_flagged(self, tmp_path):
+        """A freshly created entity repo has no uncommitted changes."""
+        from entity_repo import _has_tracked_uncommitted_changes
+        entity_path = make_entity_no_origin(tmp_path)
+
+        assert _has_tracked_uncommitted_changes(entity_path) is False
+
+    def test_untracked_file_not_flagged(self, tmp_path):
+        """An untracked file does not trigger the uncommitted gate."""
+        from entity_repo import _has_tracked_uncommitted_changes
+        entity_path = make_entity_no_origin(tmp_path)
+
+        # Write a file but don't stage or commit it
+        (entity_path / "session.jsonl").write_text('{"event": "start"}')
+
+        assert _has_tracked_uncommitted_changes(entity_path) is False
+
+    def test_modified_tracked_file_flagged(self, tmp_path):
+        """Modifying a tracked file triggers the uncommitted gate."""
+        from entity_repo import _has_tracked_uncommitted_changes
+        entity_path = make_entity_no_origin(tmp_path)
+
+        # ENTITY.md is created by create_entity_repo and committed — modify it
+        entity_md = entity_path / "ENTITY.md"
+        original = entity_md.read_text()
+        entity_md.write_text(original + "\n# Extra section\n")
+
+        assert _has_tracked_uncommitted_changes(entity_path) is True
+
+    def test_staged_change_flagged(self, tmp_path):
+        """A staged (but not yet committed) new file triggers the uncommitted gate."""
+        from entity_repo import _has_tracked_uncommitted_changes
+        entity_path = make_entity_no_origin(tmp_path)
+
+        # Stage a new file
+        new_file = entity_path / "new_tracked.txt"
+        new_file.write_text("new content")
+        _git(entity_path, "add", "new_tracked.txt")
+
+        assert _has_tracked_uncommitted_changes(entity_path) is True
+
+
+# ---------------------------------------------------------------------------
+# Tests for merge_entity optional source
+# ---------------------------------------------------------------------------
+
+
+class TestMergeEntityOptionalSource:
+    """Tests for merge_entity() with optional source parameter."""
+
+    def _setup_diverged_entities(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Set up entity with a bare origin that has a commit entity doesn't have.
+
+        Returns (entity_path, bare_origin).
+        """
+        from entity_repo import fork_entity
+
+        # Create entity and bare origin
+        entity_path, bare_origin = make_entity_with_origin(tmp_path)
+        _git(entity_path, "push", "origin", "main")
+
+        # Add a commit to origin via a second clone
+        second_clone = tmp_path / "second"
+        subprocess.run(
+            ["git", "clone", str(bare_origin), str(second_clone)],
+            capture_output=True, text=True,
+        )
+        _git(second_clone, "config", "user.email", "other@test.com")
+        _git(second_clone, "config", "user.name", "Other User")
+
+        (second_clone / "new_knowledge.txt").write_text("new")
+        _git(second_clone, "add", "new_knowledge.txt")
+        _git(second_clone, "commit", "-m", "New knowledge")
+        _git(second_clone, "push", "origin", "main")
+
+        return entity_path, bare_origin
+
+    def test_merge_without_source_uses_configured_remote(self, tmp_path):
+        """merge_entity with no source resolves from the entity's origin remote."""
+        from entity_repo import MergeResult, merge_entity
+
+        entity_path, bare_origin = self._setup_diverged_entities(tmp_path)
+
+        # Fetch so the local tracking ref exists
+        _git(entity_path, "fetch", "origin")
+
+        result = merge_entity(entity_path)
+
+        assert isinstance(result, MergeResult)
+        assert result.commits_merged > 0
+
+    def test_merge_without_source_raises_when_no_remote(self, tmp_path):
+        """merge_entity with no source raises RuntimeError when no origin is configured."""
+        from entity_repo import merge_entity
+
+        entity_path = make_entity_no_origin(tmp_path)
+
+        with pytest.raises(RuntimeError, match="[Oo]rigin|remote"):
+            merge_entity(entity_path)

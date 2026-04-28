@@ -5,11 +5,13 @@
 When two entity repos are merged and wiki pages have conflicting edits,
 the conflicts are knowledge synthesis problems — not code conflicts. This
 module parses git conflict markers from wiki markdown files and uses the
-Anthropic API to synthesize both versions into a single coherent page.
+Claude Code agent SDK (or Anthropic API as fallback) to synthesize both
+versions into a single coherent page.
 """
 
 from __future__ import annotations
 
+import pathlib
 import re
 from dataclasses import dataclass
 
@@ -18,6 +20,18 @@ try:
     import anthropic
 except ModuleNotFoundError:
     anthropic = None
+
+# Chunk: docs/chunks/entity_sync_ergonomics - Guard claude_agent_sdk import for wiki resolver
+try:
+    from claude_agent_sdk import ClaudeSDKClient
+    from claude_agent_sdk.types import ClaudeAgentOptions, ResultMessage
+except ModuleNotFoundError:
+    ClaudeSDKClient = None
+    ClaudeAgentOptions = None
+    ResultMessage = None
+
+# Chunk: docs/chunks/entity_sync_ergonomics - Centralized model for Anthropic SDK fallback
+_RESOLVER_MODEL = "claude-haiku-4-20250514"
 
 
 @dataclass
@@ -50,34 +64,14 @@ def parse_conflict_markers(content: str) -> list[ConflictHunk]:
     return hunks
 
 
-def resolve_wiki_conflict(
-    filename: str,
-    conflicted_content: str,
+def _build_resolver_prompt(
     entity_name: str,
+    filename: str,
+    n: int,
+    conflicted_content: str,
 ) -> str:
-    """Use the Anthropic API to synthesize conflicting wiki page versions.
-
-    Args:
-        filename: Relative path of the file (for context in prompt).
-        conflicted_content: Full file content including git conflict markers.
-        entity_name: Name of the entity being merged (for prompt context).
-
-    Returns:
-        Synthesized content with all conflict markers resolved.
-
-    Raises:
-        RuntimeError: If anthropic is not installed or the API call fails.
-    """
-    if anthropic is None:
-        raise RuntimeError(
-            "The 'anthropic' package is not installed. "
-            "Install it with: pip install anthropic"
-        )
-
-    hunks = parse_conflict_markers(conflicted_content)
-    n = len(hunks)
-
-    prompt = (
+    """Build the conflict-resolution prompt used by both SDK paths."""
+    return (
         f"You are {entity_name}, an AI specialist with persistent knowledge across projects.\n"
         f"You are merging two versions of your wiki page: {filename}.\n\n"
         f"The file has {n} conflict(s) where your knowledge diverged. For each conflict,\n"
@@ -92,11 +86,76 @@ def resolve_wiki_conflict(
         f"{conflicted_content}"
     )
 
+
+# Chunk: docs/chunks/entity_sync_ergonomics - Agent SDK async resolver for wiki conflicts
+async def _resolve_with_agent_sdk(prompt: str, cwd: pathlib.Path) -> str:
+    """Run the conflict-resolution prompt via Claude Code agent SDK.
+
+    Uses the operator's claude CLI subscription — no ANTHROPIC_API_KEY needed.
+    """
+    options = ClaudeAgentOptions(
+        cwd=str(cwd),
+        permission_mode="bypassPermissions",
+        max_turns=1,
+    )
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(prompt)
+        async for message in client.receive_response():
+            if isinstance(message, ResultMessage):
+                if message.is_error or not message.result:
+                    raise RuntimeError(
+                        f"Agent SDK conflict resolver returned an error: {message.result}"
+                    )
+                return message.result
+    raise RuntimeError("Agent SDK conflict resolver did not return a result")
+
+
+def resolve_wiki_conflict(
+    filename: str,
+    conflicted_content: str,
+    entity_name: str,
+    entity_dir: pathlib.Path | None = None,
+) -> str:
+    """Use the Claude Code agent SDK (or Anthropic API fallback) to synthesize
+    conflicting wiki page versions.
+
+    Args:
+        filename: Relative path of the file (for context in prompt).
+        conflicted_content: Full file content including git conflict markers.
+        entity_name: Name of the entity being merged (for prompt context).
+        entity_dir: Path to the entity directory (used as cwd for agent SDK).
+            Defaults to the current working directory when not provided.
+
+    Returns:
+        Synthesized content with all conflict markers resolved.
+
+    Raises:
+        RuntimeError: If neither SDK is available, or the API call fails.
+    """
+    import asyncio
+
+    hunks = parse_conflict_markers(conflicted_content)
+    n = len(hunks)
+    prompt = _build_resolver_prompt(entity_name, filename, n, conflicted_content)
+
+    cwd = entity_dir if entity_dir is not None else pathlib.Path.cwd()
+
+    # Primary: Claude Code agent SDK (uses operator's Max subscription)
+    if ClaudeSDKClient is not None:
+        return asyncio.run(_resolve_with_agent_sdk(prompt, cwd))
+
+    # Fallback: Anthropic SDK (requires ANTHROPIC_API_KEY)
+    if anthropic is None:
+        raise RuntimeError(
+            "Wiki conflict resolution requires either the 'claude_agent_sdk' package "
+            "(install with: pip install claude-agent-sdk) or the 'anthropic' package "
+            "with ANTHROPIC_API_KEY set."
+        )
+
     client = anthropic.Anthropic()
     message = client.messages.create(
-        model="claude-3-5-haiku-latest",
+        model=_RESOLVER_MODEL,
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
-
     return message.content[0].text

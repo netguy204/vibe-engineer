@@ -182,12 +182,24 @@ class TestMergeEntityClean:
         with pytest.raises(ValueError, match="[Ee]ntity"):
             merge_entity(not_entity, str(source))
 
-    def test_merge_raises_if_dirty(self, tmp_path):
+    def test_merge_raises_if_tracked_file_is_dirty(self, tmp_path):
+        """Uncommitted changes to tracked files block merge_entity."""
         target, source = self._setup_source_with_new_page(tmp_path)
-        # Dirty the target
-        (target / "dirty.txt").write_text("uncommitted")
+        # Modify a tracked file (ENTITY.md is committed by create_entity_repo)
+        entity_md = target / "ENTITY.md"
+        entity_md.write_text(entity_md.read_text() + "\n# Extra\n")
         with pytest.raises(RuntimeError, match="[Uu]ncommitted|[Cc]hange"):
             merge_entity(target, str(source))
+
+    def test_merge_not_blocked_by_untracked_file(self, tmp_path):
+        """Untracked files do NOT block merge_entity (e.g. session transcripts)."""
+        target, source = self._setup_source_with_new_page(tmp_path)
+        # Write an untracked file (never staged)
+        (target / "dirty.txt").write_text("uncommitted")
+        # Should NOT raise — untracked files are intentionally ignored
+        result = merge_entity(target, str(source))
+        from entity_repo import MergeResult
+        assert isinstance(result, MergeResult)
 
 
 # ---------------------------------------------------------------------------
@@ -237,13 +249,14 @@ class TestMergeEntityWithConflicts:
 
     def test_conflict_returns_merge_conflicts_pending(self, tmp_path):
         target, source = self._setup_conflicting_entities(tmp_path)
-        with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
-            # Set up mock to return synthesized content
-            mock_msg = MagicMock()
-            mock_msg.content = [MagicMock(text="# Shared\n\nSynthesized knowledge.\n")]
-            mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
+        with patch.object(entity_merge, "ClaudeSDKClient", None):
+            with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
+                # Set up mock to return synthesized content
+                mock_msg = MagicMock()
+                mock_msg.content = [MagicMock(text="# Shared\n\nSynthesized knowledge.\n")]
+                mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
 
-            result = merge_entity(target, str(source))
+                result = merge_entity(target, str(source))
 
         assert isinstance(result, MergeConflictsPending)
 
@@ -251,12 +264,13 @@ class TestMergeEntityWithConflicts:
         target, source = self._setup_conflicting_entities(tmp_path)
         synthesized = "# Shared\n\nBest of both worlds.\n"
 
-        with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
-            mock_msg = MagicMock()
-            mock_msg.content = [MagicMock(text=synthesized)]
-            mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
+        with patch.object(entity_merge, "ClaudeSDKClient", None):
+            with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
+                mock_msg = MagicMock()
+                mock_msg.content = [MagicMock(text=synthesized)]
+                mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
 
-            result = merge_entity(target, str(source))
+                result = merge_entity(target, str(source))
 
         assert isinstance(result, MergeConflictsPending)
         assert len(result.resolutions) >= 1
@@ -266,12 +280,13 @@ class TestMergeEntityWithConflicts:
         target, source = self._setup_conflicting_entities(tmp_path)
         synthesized = "# Shared\n\nFinal synthesized content.\n"
 
-        with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
-            mock_msg = MagicMock()
-            mock_msg.content = [MagicMock(text=synthesized)]
-            mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
+        with patch.object(entity_merge, "ClaudeSDKClient", None):
+            with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
+                mock_msg = MagicMock()
+                mock_msg.content = [MagicMock(text=synthesized)]
+                mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
 
-            result = merge_entity(target, str(source))
+                result = merge_entity(target, str(source))
 
         assert isinstance(result, MergeConflictsPending)
 
@@ -288,13 +303,14 @@ class TestMergeEntityWithConflicts:
     def test_abort_merge_restores_clean_state(self, tmp_path):
         target, source = self._setup_conflicting_entities(tmp_path)
 
-        with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
-            mock_msg = MagicMock()
-            mock_msg.content = [MagicMock(text="synthesized")]
-            mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
+        with patch.object(entity_merge, "ClaudeSDKClient", None):
+            with patch.object(entity_merge, "anthropic", MagicMock()) as mock_anthropic:
+                mock_msg = MagicMock()
+                mock_msg.content = [MagicMock(text="synthesized")]
+                mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_msg
 
-            # Get the pending result (merge is in-progress)
-            result = merge_entity(target, str(source))
+                # Get the pending result (merge is in-progress)
+                result = merge_entity(target, str(source))
 
         assert isinstance(result, MergeConflictsPending)
 
@@ -304,3 +320,29 @@ class TestMergeEntityWithConflicts:
         # Status should be clean
         status = _git(target, "status", "--porcelain").stdout
         assert not status.strip()
+
+    def test_merge_not_blocked_by_untracked_transcript(self, tmp_path):
+        """Untracked files like session transcripts do not block merge_entity."""
+        # Use fork to ensure shared history (clean merge — no ENTITY.md conflict)
+        target = _make_entity(tmp_path / "target")
+        fork_result = fork_entity(target, tmp_path / "forks", "source-entity")
+        source = fork_result.dest_path
+        _git(source, "config", "user.email", "test@test.com")
+        _git(source, "config", "user.name", "Test User")
+
+        # Add a unique wiki page to source only
+        wiki_dir = source / "wiki" / "domain"
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        (wiki_dir / "source_page.md").write_text("# Source Knowledge\n")
+        _git(source, "add", "-A")
+        _git(source, "commit", "-m", "Source knowledge page")
+
+        # Add an untracked transcript file to target — should NOT block merge
+        episodic_dir = target / "episodic"
+        episodic_dir.mkdir(parents=True, exist_ok=True)
+        (episodic_dir / "session.jsonl").write_text('{"event": "start"}\n')
+
+        # merge_entity should NOT raise RuntimeError for uncommitted changes
+        # (the transcript is untracked, so it should be ignored by the gate)
+        result = merge_entity(target, str(source))
+        assert isinstance(result, MergeResult)

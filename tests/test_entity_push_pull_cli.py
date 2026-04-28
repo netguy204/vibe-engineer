@@ -221,8 +221,8 @@ class TestPullCLI:
         assert result.exit_code == 0, result.output
         assert "up to date" in result.output.lower()
 
-    def test_pull_cli_diverged_warns_merge_needed(self, tmp_path):
-        """Non-zero exit and output suggests 've entity merge' on diverged histories."""
+    def test_pull_cli_diverged_auto_merges(self, tmp_path):
+        """Exit 0 and output mentions merged/auto-merged on diverged histories."""
         project, entity_path, second_clone = self._setup_with_second_clone(tmp_path)
 
         # Push new commit from second clone
@@ -241,8 +241,8 @@ class TestPullCLI:
             entity, ["pull", "my-entity", "--project-dir", str(project)]
         )
 
-        assert result.exit_code != 0
-        assert "merge" in result.output.lower()
+        assert result.exit_code == 0, result.output
+        assert any(word in result.output.lower() for word in ("merged", "auto-merged"))
 
     def test_pull_cli_error_no_remote(self, tmp_path):
         """Non-zero exit and error mentions remote when entity has no remote."""
@@ -255,6 +255,67 @@ class TestPullCLI:
 
         assert result.exit_code != 0
         assert any(word in result.output.lower() for word in ("remote", "origin"))
+
+    def test_pull_cli_diverged_with_conflicts_prompts(self, tmp_path):
+        """When diverged pull produces MergeConflictsPending, the conflict flow runs."""
+        from unittest.mock import MagicMock, patch
+        import entity_merge
+        import entity_repo
+
+        project, entity_path, _ = self._setup_with_second_clone(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/shared.md",
+                    synthesized="# Synthesized\n",
+                    is_wiki=True,
+                )
+            ],
+            unresolvable=[],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                result = runner.invoke(
+                    entity, ["pull", "my-entity", "--yes", "--project-dir", str(project)]
+                )
+
+        assert result.exit_code == 0, result.output
+        mock_commit.assert_called_once()
+
+    def test_pull_cli_yes_flag_auto_approves_conflicts(self, tmp_path):
+        """With --yes, MergeConflictsPending is committed without prompting."""
+        from unittest.mock import MagicMock, patch
+        import entity_repo
+
+        project, entity_path, _ = self._setup_with_second_clone(tmp_path)
+
+        mock_pending = entity_repo.MergeConflictsPending(
+            source=str(entity_path),
+            resolutions=[
+                entity_repo.ConflictResolution(
+                    relative_path="wiki/domain/page.md",
+                    synthesized="# Page\n\nContent.\n",
+                    is_wiki=True,
+                )
+            ],
+            unresolvable=[],
+        )
+
+        runner = CliRunner()
+        with patch.object(entity_repo, "pull_entity", return_value=mock_pending):
+            with patch.object(entity_repo, "commit_resolved_merge") as mock_commit:
+                result = runner.invoke(
+                    entity, ["pull", "my-entity", "--yes", "--project-dir", str(project)]
+                )
+
+        # Should succeed and commit without user input
+        assert result.exit_code == 0, result.output
+        assert "conflict" in result.output.lower() or "resolved" in result.output.lower()
+        mock_commit.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
