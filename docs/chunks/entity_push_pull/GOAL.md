@@ -23,7 +23,7 @@ code_references:
 - ref: src/cli/entity.py#push
   implements: "CLI push command for ve entity push <name>"
 - ref: src/cli/entity.py#pull
-  implements: "CLI pull command for ve entity pull <name>; handles PullResult (fast-forward), MergeResult (auto-merge succeeded), and MergeConflictsPending (conflict resolution flow); accepts --yes flag"
+  implements: "CLI pull command for ve entity pull <name>; handles PullResult (fast-forward), MergeResult (auto-merge succeeded), and MergeConflictsPending (three-branch conflict resolution: all-resolved/mixed/zero); detects merge-in-progress and exits cleanly; never auto-aborts on unresolvable conflicts (see entity_merge_preserve_conflicts); accepts --yes flag"
 - ref: src/cli/entity.py#set_origin
   implements: "CLI set-origin command for ve entity set-origin <name> <url>"
 - ref: tests/test_entity_push_pull.py

@@ -24,7 +24,7 @@ code_references:
   - ref: src/entity_repo.py#commit_resolved_merge
     implements: "Writes resolved conflict content and completes the merge commit"
   - ref: src/entity_repo.py#abort_merge
-    implements: "Aborts an in-progress merge and restores pre-merge state"
+    implements: "Aborts an in-progress merge and restores pre-merge state; called explicitly via 've entity merge --abort' (not silently on unresolvable conflicts — see entity_merge_preserve_conflicts)"
   - ref: src/entity_merge.py#ConflictHunk
     implements: "Parsed git conflict hunk (ours/theirs)"
   - ref: src/entity_merge.py#parse_conflict_markers
@@ -34,7 +34,7 @@ code_references:
   - ref: src/cli/entity.py#fork
     implements: "CLI command: ve entity fork <name> <new-name>"
   - ref: src/cli/entity.py#merge
-    implements: "CLI command: ve entity merge <name> [source] with optional SOURCE argument and operator approval gate"
+    implements: "CLI command: ve entity merge <name> [source] with optional SOURCE argument and operator approval gate; also supports --abort flag and merge-in-progress detection (see entity_merge_preserve_conflicts)"
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

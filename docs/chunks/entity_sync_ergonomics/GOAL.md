@@ -22,9 +22,9 @@ code_references:
   - ref: src/entity_merge.py#resolve_wiki_conflict
     implements: "Wiki conflict resolver that tries agent SDK first, falls back to Anthropic SDK with clear error"
   - ref: src/cli/entity.py#pull
-    implements: "pull CLI command with --yes flag, auto-merge result handling, and conflict resolution flow"
+    implements: "pull CLI command with --yes flag, auto-merge result handling, and conflict resolution flow; three-outcome branch handling and merge-in-progress guard added in entity_merge_preserve_conflicts"
   - ref: src/cli/entity.py#merge
-    implements: "merge CLI command with optional SOURCE argument resolving from configured remote"
+    implements: "merge CLI command with optional SOURCE argument resolving from configured remote; --abort flag and merge-in-progress guard added in entity_merge_preserve_conflicts"
 narrative: null
 investigation: null
 subsystems: []
