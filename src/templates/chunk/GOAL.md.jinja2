@@ -234,11 +234,30 @@ VALIDATION:
 ## Minor Goal
 
 <!--
-What does this chunk accomplish? Frame it in terms of docs/trunk/GOAL.md.
-Why is this the right next step? What does completing this enable?
+Write this as a present-tense architectural fact — the state of the system
+once this chunk is ACTIVE and fully owns its intent. ("ACTIVE: Fully owns
+the intent that governs the code.")
 
-Keep this focused. If you're describing multiple independent outcomes,
-you may need multiple chunks.
+Ask yourself: "If this chunk has been merged and is governing its code for
+the next three years, what is true about the architecture?"
+
+PREFER state verbs: "emits", "enforces", "exposes", "tolerates", "owns",
+"validates", "accepts", "rejects", "routes", "propagates"
+
+AVOID action verbs: "add", "wire", "make", "implement", "migrate", "fix"
+
+AVOID transitory framing: "accomplishes", "enables", "next step",
+"completing this", "in order to"
+
+Contrast:
+  ❌ Transitory: "Wire progress() calls into the snapshot pipeline so the
+     CLI can show completion estimates."
+  ✅ Stative: "The snapshot pipeline emits progress() events at each
+     natural unit-of-work boundary, enabling downstream consumers to
+     report completion estimates."
+
+Keep this focused on a single architectural state. If you find yourself
+describing multiple independent states, split into separate chunks.
 -->
 
 ## Success Criteria
