@@ -9,7 +9,7 @@ code_paths:
 - tests/test_entity_push_pull_cli.py
 code_references:
 - ref: src/entity_repo.py#MergeNeededError
-  implements: "Custom exception for diverged histories during pull"
+  implements: "Custom exception class for diverged histories; defined but no longer raised by pull_entity (preserved for backward compat / external callers)"
 - ref: src/entity_repo.py#PushResult
   implements: "Result dataclass for push_entity operations"
 - ref: src/entity_repo.py#PullResult
@@ -17,13 +17,13 @@ code_references:
 - ref: src/entity_repo.py#push_entity
   implements: "Push entity repo's current branch to remote origin"
 - ref: src/entity_repo.py#pull_entity
-  implements: "Fetch and fast-forward merge entity repo from remote origin"
+  implements: "Fetch and merge entity repo from remote origin; auto-merges diverged histories and returns PullResult | MergeResult | MergeConflictsPending"
 - ref: src/entity_repo.py#set_entity_origin
   implements: "Set or update the remote origin URL for an entity's repo"
 - ref: src/cli/entity.py#push
   implements: "CLI push command for ve entity push <name>"
 - ref: src/cli/entity.py#pull
-  implements: "CLI pull command for ve entity pull <name>"
+  implements: "CLI pull command for ve entity pull <name>; handles PullResult (fast-forward), MergeResult (auto-merge succeeded), and MergeConflictsPending (conflict resolution flow); accepts --yes flag"
 - ref: src/cli/entity.py#set_origin
   implements: "CLI set-origin command for ve entity set-origin <name> <url>"
 - ref: tests/test_entity_push_pull.py
