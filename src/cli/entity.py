@@ -389,8 +389,8 @@ def _find_most_recent_session(
 @click.option(
     "--resume-timeout",
     type=int,
-    default=300,
-    help="Seconds to wait for resume-based shutdown (default: 300)",
+    default=1500,
+    help="Seconds to wait for resume-based shutdown (default: 1500)",
 )
 @click.option(
     "--megaclaude",
