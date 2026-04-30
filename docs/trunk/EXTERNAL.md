@@ -126,3 +126,83 @@ VE commands recognize both patterns and handle them appropriately.
 - Work is contained within a single repository
 - The overhead of cross-repo coordination isn't justified
 - You need offline access to all documentation
+
+## Demoting External Artifacts
+
+Over time a cross-repo chunk's scope may collapse — the implementation ended up
+landing entirely in one repository. When that happens, carrying the architecture
+source directory and all the pointer directories is unnecessary overhead. The
+demotion commands let you collapse this bookkeeping.
+
+### Two demotion commands
+
+| Command | When to use | What it does |
+|---------|-------------|--------------|
+| `ve task demote <name>` | Standard demotion — scope may still span multiple repos | Copies artifact to target project, removes the target's pointer, updates the `dependents` list in the architecture source. Architecture source stays in place. |
+| `ve chunk demote <name> <target>` | Full-collapse — scope has definitively landed in one repo | Strips `org/repo::` prefixes from `code_paths` and `code_references`, removes the `dependents` block, deletes pointer dirs in all other participating projects, and removes the architecture source directory entirely. |
+
+### When to use `ve chunk demote`
+
+Use `ve chunk demote` when **all** of the following are true:
+
+1. The chunk is implemented — `status` is `ACTIVE` or `IMPLEMENTING` and the
+   work is known to be single-project.
+2. Every `code_path` in the chunk's GOAL.md references only the target project
+   (or carries no cross-repo prefix at all).
+3. All other participating projects only have `external.yaml` pointer directories
+   (not real GOAL.md content).
+
+The command **refuses** with a clear error if any `code_path` references a repo
+other than the target, pointing at the offending entries. This prevents silent
+corruption of frontmatter.
+
+### What `ve chunk demote` does
+
+Running `ve chunk demote <chunk_name> <target_project>` from a task directory:
+
+1. Validates the architecture source exists and the target project has a pointer.
+2. Verifies all `code_paths` are scoped to the target (or bare).
+3. Copies `GOAL.md` and `PLAN.md` to `<target_project>/docs/chunks/<chunk_name>/`.
+4. Rewrites frontmatter in the target:
+   - Strips `org/repo::` prefix from `code_paths` and `code_references[].ref`
+   - Removes the `dependents` block entirely
+5. Deletes `external.yaml` pointer directories in every other participating project.
+6. Removes `architecture/docs/chunks/<chunk_name>/` from the filesystem.
+
+Decision documents at `architecture/docs/reviewers/baseline/decisions/<chunk_name>_*.md`
+are **preserved** — these are review-history artifacts, not chunk artifacts.
+
+### Invariants enforced
+
+- No dangling pointer directories left after demotion.
+- No `org/repo::` prefix pollution in the demoted chunk's frontmatter.
+- No silent demotion when scope hasn't actually collapsed (scope validator rejects it).
+- The operation is **idempotent**: re-running a partially-completed demotion
+  finishes the remaining steps rather than failing or duplicating state.
+
+### After demotion: commit changes
+
+`ve chunk demote` makes filesystem changes only — it does not run `git` commands.
+After a successful demotion, commit the changes in each affected repository:
+
+```bash
+# In the target project
+git add docs/chunks/<chunk_name>/
+git commit -m "Demote <chunk_name> from architecture (full-collapse)"
+
+# In each other participating project
+git rm -r docs/chunks/<chunk_name>/
+git commit -m "Remove external pointer for demoted chunk <chunk_name>"
+
+# In the architecture repo
+git rm -r docs/chunks/<chunk_name>/   # or verify it's already absent
+git commit -m "Remove architecture source for demoted chunk <chunk_name>"
+```
+
+### When NOT to use `ve chunk demote`
+
+- When implementation is **not yet complete** and scope is still uncertain.
+- When any `code_path` references more than one repository — use `ve task demote`
+  (which leaves the architecture source intact) or split the chunk first.
+- When another participating project has real GOAL.md content (not a pointer) — the
+  command will refuse and tell you which project has conflicting content.

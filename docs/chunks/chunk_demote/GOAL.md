@@ -1,20 +1,21 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/chunk.py
-  - src/chunk/demote.py
-  - src/templates/commands/chunk-demote.md.jinja2
+- src/cli/chunk.py
+- src/chunk_demote.py
+- src/templates/commands/chunk-demote.md.jinja2
+- docs/trunk/EXTERNAL.md
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["entity_merge_preserve_conflicts"]
+created_after:
+- entity_merge_preserve_conflicts
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

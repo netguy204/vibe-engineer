@@ -1332,3 +1332,50 @@ def cluster_list_cmd(project_dir, suggest_merges):
 
     output = format_cluster_output(categories, merge_suggestions)
     click.echo(output)
+
+
+# Chunk: docs/chunks/chunk_demote - ve chunk demote command
+@chunk.command("demote")
+@click.argument("chunk_name")
+@click.argument("target_project")
+@click.option(
+    "--cwd",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=".",
+    help="Task directory (default: current directory).",
+)
+def demote_cmd(chunk_name, target_project, cwd):
+    """Demote a cross-repo chunk to a single project.
+
+    Moves CHUNK_NAME from architecture/docs/chunks/ into
+    TARGET_PROJECT/docs/chunks/, rewrites frontmatter to remove cross-repo
+    prefixes and the dependents block, removes external.yaml pointers in
+    all other participating projects, and deletes the architecture source
+    directory.
+
+    Must be run from a task directory (or pass --cwd pointing at one).
+
+    \b
+    Example:
+        ve chunk demote my_feature dotter
+        ve chunk demote my_feature dotter --cwd /path/to/task
+    """
+    from chunk_demote import demote_chunk, ChunkDemoteError
+
+    try:
+        result = demote_chunk(
+            task_dir=cwd,
+            chunk_name=chunk_name,
+            target_project_ref=target_project,
+        )
+        click.echo(
+            f"Demoted chunk '{result['demoted_chunk']}' to {result['target_project']}"
+        )
+        click.echo(f"  Pointer dirs removed: {result['pointers_removed']}")
+        if result["source_removed"]:
+            click.echo("  Architecture source directory removed")
+        else:
+            click.echo("  Architecture source was already absent (idempotent)")
+    except ChunkDemoteError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
