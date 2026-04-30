@@ -1,6 +1,7 @@
 """Full-collapse demotion of cross-repo chunks to a single project.
 
 # Chunk: docs/chunks/chunk_demote - Full-collapse demotion path for cross-repo chunks
+# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 This module handles demoting a chunk that lives in an architecture/external
 repository (with external.yaml pointers in all participating projects) down
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from frontmatter import extract_frontmatter_dict
 from task.config import load_task_config, resolve_repo_directory, resolve_project_ref
 
 
@@ -25,25 +27,6 @@ class ChunkDemoteError(Exception):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _read_goal_frontmatter(chunk_dir: Path) -> dict:
-    """Read and parse YAML frontmatter from GOAL.md in chunk_dir.
-
-    Returns an empty dict if the file is missing or has no frontmatter.
-    """
-    goal_path = chunk_dir / "GOAL.md"
-    if not goal_path.exists():
-        return {}
-
-    content = goal_path.read_text()
-
-    import re
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
-    if not match:
-        return {}
-
-    return yaml.safe_load(match.group(1)) or {}
-
 
 def _is_pointer_dir(chunk_dir: Path) -> bool:
     """Return True if chunk_dir is an external.yaml pointer (not a real chunk)."""
@@ -73,7 +56,7 @@ def validate_chunk_scope(chunk_dir: Path, target_repo: str) -> list[str]:
     Returns:
         List of offending code_path strings (empty means all-clear).
     """
-    fm = _read_goal_frontmatter(chunk_dir)
+    fm = extract_frontmatter_dict(chunk_dir / "GOAL.md") or {}
     code_paths = fm.get("code_paths") or []
 
     offenders = []
@@ -240,7 +223,7 @@ def demote_chunk(
     # Decide where to read the dependents list from
     if arch_exists:
         # Normal case: read from architecture source
-        arch_fm = _read_goal_frontmatter(arch_chunk_dir)
+        arch_fm = extract_frontmatter_dict(arch_chunk_dir / "GOAL.md") or {}
         dependents = arch_fm.get("dependents") or []
     elif target_has_content:
         # Architecture already removed (idempotent re-run after full completion or
