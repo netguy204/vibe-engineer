@@ -25,7 +25,7 @@ code_references:
 - ref: src/entity_migration.py#synthesize_knowledge_pages
   implements: "LLM grouping of domain/skill memories into focused wiki pages"
 - ref: src/entity_migration.py#migrate_entity
-  implements: "Full migration orchestration: read → classify → create repo → synthesize wiki → copy memories → commit"
+  implements: "Full migration orchestration with atomicity: read → classify → create repo → synthesize wiki → copy memories → commit; cleans up partial repo on any failure to enable safe retries"
 - ref: src/cli/entity.py#migrate
   implements: "ve entity migrate CLI command: resolves paths, calls migrate_entity, prints summary"
 narrative: null
