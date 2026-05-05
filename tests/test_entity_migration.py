@@ -627,3 +627,60 @@ class TestMigrationPromptContent:
             kw in _KNOWLEDGE_PAGES_PROMPT.lower()
             for kw in ("cross-reference", "wikilink")
         )
+
+
+# ---------------------------------------------------------------------------
+# TestMigrateEntityAtomicity
+# ---------------------------------------------------------------------------
+
+
+class TestMigrateEntityAtomicity:
+    """Tests that migrate_entity() cleans up on failure (atomicity).
+
+    Chunk: docs/chunks/entity_migration_retry - atomicity on failure
+    """
+
+    def test_failed_migration_leaves_no_directory_and_retries_successfully(
+        self, legacy_entity_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed migration must not leave a partial directory on disk.
+
+        A second invocation after the failure is resolved must succeed
+        without the operator manually deleting any directory.
+        """
+        import entity_migration
+
+        dest = tmp_path / "output"
+        dest.mkdir()
+
+        # Patch anthropic to a mock (so anthropic.Anthropic() doesn't fail on
+        # auth at construction time) and patch synthesize_identity_page to
+        # simulate an LLM failure mid-migration.
+        monkeypatch.setattr(
+            entity_migration,
+            "anthropic",
+            MagicMock(Anthropic=MagicMock()),
+        )
+        monkeypatch.setattr(
+            entity_migration,
+            "synthesize_identity_page",
+            MagicMock(side_effect=RuntimeError("simulated LLM failure")),
+        )
+
+        with pytest.raises(RuntimeError, match="simulated LLM failure"):
+            migrate_entity(legacy_entity_dir, dest, "slack-watcher")
+
+        # After a failed migration the destination must NOT exist.
+        assert not (dest / "slack-watcher").exists(), (
+            "Partial migration directory must be cleaned up on failure"
+        )
+
+        # A second attempt with the failure removed must succeed.
+        # Set anthropic=None to stay hermetic (skips LLM synthesis entirely,
+        # uses the mechanical fallback path — no real API calls needed).
+        monkeypatch.setattr(entity_migration, "anthropic", None)
+
+        result = migrate_entity(legacy_entity_dir, dest, "slack-watcher")
+
+        assert result.entity_name == "slack-watcher"
+        assert (dest / "slack-watcher").exists()

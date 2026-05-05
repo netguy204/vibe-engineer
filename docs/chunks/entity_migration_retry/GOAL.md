@@ -1,17 +1,19 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: ["src/entity_migration.py", "src/cli/entity.py"]
+code_paths:
+- src/entity_migration.py
+- src/cli/entity.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["chunk_demote"]
+created_after:
+- chunk_demote
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

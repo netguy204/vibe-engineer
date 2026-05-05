@@ -10,170 +10,181 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The fix is Approach 1 from the GOAL: **cleanup-on-failure**. After
+`create_entity_repo()` creates the stub directory, all subsequent work (LLM
+synthesis, memory copy, session migration, git commit) is wrapped in a
+`try/except BaseException` block. If anything raises, the partial directory is
+removed with `shutil.rmtree` before re-raising the original exception.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+This is a minimal, localized change to `src/entity_migration.py#migrate_entity`.
+No public interface changes, no disk-shape changes, no CLI signature changes.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_migration_retry/GOAL.md)
-with references to the files that you expect to touch.
--->
+The test follows TDD: write the failing test first (it fails today because the
+directory is left on disk), implement the fix, then confirm the test passes.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No subsystems are relevant. The change is confined to a single function.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1 (TDD): Write the failing regression test
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**Location**: `tests/test_entity_migration.py`
 
-Example:
+Add a new test class `TestMigrateEntityAtomicity` with one test:
 
-### Step 1: Define the SegmentHeader struct
+```python
+def test_failed_migration_leaves_no_directory_and_retries_successfully(
+    self, legacy_entity_dir: Path, tmp_path: Path
+) -> None:
+    """
+    Chunk: docs/chunks/entity_migration_retry - atomicity on failure
+    """
+    dest = tmp_path / "output"
+    dest.mkdir()
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+    # Patch synthesize_identity_page to simulate an LLM failure.
+    with patch(
+        "entity_migration.synthesize_identity_page",
+        side_effect=RuntimeError("simulated LLM failure"),
+    ):
+        with pytest.raises(RuntimeError, match="simulated LLM failure"):
+            migrate_entity(legacy_entity_dir, dest, "slack-watcher")
 
-Location: src/segment/format.rs
+    # After a failed migration the destination must NOT exist.
+    assert not (dest / "slack-watcher").exists(), (
+        "Partial migration directory must be cleaned up on failure"
+    )
 
-### Step 2: Implement header serialization
+    # A second attempt (with no injected failure) must succeed.
+    with patch("entity_migration.anthropic", None):
+        result = migrate_entity(legacy_entity_dir, dest, "slack-watcher")
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    assert result.entity_name == "slack-watcher"
+    assert (dest / "slack-watcher").exists()
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Run the test and confirm it **fails** (the partial directory is currently left
+behind, causing the retry to raise `ValueError: Entity directory '...' already
+exists`).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+**Why `patch("entity_migration.anthropic", None)` on retry**: The test
+environment won't have a real Anthropic API key. Patching `anthropic` to `None`
+causes `migrate_entity` to skip LLM synthesis and use the mechanical fallback
+path, keeping the test hermetic.
+
+### Step 2: Implement cleanup-on-failure in `migrate_entity`
+
+**Location**: `src/entity_migration.py`, function `migrate_entity`
+
+After the call to `create_entity_repo()` (currently line ~631), wrap all
+subsequent work in a `try/except BaseException`:
+
+```python
+# Step 4: Create new entity repo (creates stub wiki pages + git init + initial commit)
+repo_path = create_entity_repo(dest_parent, new_name, role=effective_role)
+
+# Chunk: docs/chunks/entity_migration_retry - cleanup partial repo on failure
+try:
+    wiki_pages_created: list[str] = []
+    created_date = datetime.now(timezone.utc).isoformat()
+
+    # Step 5: Synthesize and overwrite wiki pages
+    ... (existing code, unchanged) ...
+
+    # Step 6: Preserve legacy memories
+    ... (existing code, unchanged) ...
+
+    # Step 7: Migrate sessions → episodic
+    ... (existing code, unchanged) ...
+
+    # Step 8: Commit migration result
+    ... (existing code, unchanged) ...
+
+    return MigrationResult(...)
+
+except BaseException as exc:
+    # Remove the partially-created repo so a retry starts clean.
+    cleanup_error: BaseException | None = None
+    if repo_path.exists():
+        try:
+            shutil.rmtree(repo_path)
+        except Exception as cleanup_exc:
+            cleanup_error = cleanup_exc
+
+    if cleanup_error is not None:
+        # Surface the cleanup failure as context but don't mask the primary cause.
+        raise RuntimeError(
+            f"Migration failed (see __cause__), and cleanup of '{repo_path}' "
+            f"also failed: {cleanup_error}"
+        ) from exc
+
+    raise
+```
+
+Key points:
+- Use `BaseException` (not `Exception`) so `KeyboardInterrupt` and
+  `SystemExit` also trigger cleanup — preventing partial dirs from lingering
+  after a user cancels mid-migration.
+- Preserve the original exception: `raise` re-raises it unchanged, keeping the
+  chain transparent for the `ValueError`/`RuntimeError` catch in
+  `src/cli/entity.py#migrate`.
+- If cleanup itself errors, wrap it as a `RuntimeError` chained to the original
+  cause via `from exc` — the primary cause remains visible.
+- Add the backreference comment `# Chunk: docs/chunks/entity_migration_retry`
+  on the try block so future readers can trace the intent.
+
+`shutil` is already imported in `entity_migration.py`; no new imports needed.
+
+### Step 3: Verify the test now passes
+
+Run the full entity migration test suite:
+
+```
+uv run pytest tests/test_entity_migration.py -v
+```
+
+Confirm:
+- The new `test_failed_migration_leaves_no_directory_and_retries_successfully`
+  test passes.
+- No existing tests regress.
+
+Also run the CLI migration tests:
+
+```
+uv run pytest tests/test_entity_migrate_cli.py -v
+```
+
+### Step 4: Spot-check the happy-path and error messages
+
+Manually verify (via test or inspection) that:
+- A successful `migrate_entity` call returns the expected `MigrationResult` and
+  leaves `dest/new_name` intact (the `try` block exits normally).
+- The CLI still surfaces `ValueError` (e.g., invalid name) as a
+  `click.ClickException` with the original message — the new `try` block only
+  triggers on post-`create_entity_repo` failures, not on pre-creation
+  validation errors which are raised before `repo_path` is set.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `shutil` is already imported in `entity_migration.py`.
+- No new libraries required.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`BaseException` scope**: Wrapping in `BaseException` means a
+  `KeyboardInterrupt` mid-synthesis also triggers cleanup. This is desirable
+  (no partial dirs) but worth noting.
+- **Cleanup failure masking**: If `shutil.rmtree` fails (e.g., permissions
+  issue), we chain it onto the original exception. The CLI catch in
+  `entity.py#migrate` catches `ValueError | RuntimeError`, so a wrapped
+  `RuntimeError` will still surface to the user cleanly.
+- **`anthropic` patch in test**: The retry path patches `anthropic` to `None`
+  to stay hermetic. This means the test exercises the no-LLM code path on
+  retry, which is sufficient to verify atomicity but doesn't test
+  LLM-synthesis success. That path is already covered by existing tests.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populate during implementation, not at planning time. -->

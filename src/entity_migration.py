@@ -630,96 +630,118 @@ def migrate_entity(
     # Step 4: Create new entity repo (creates stub wiki pages + git init + initial commit)
     repo_path = create_entity_repo(dest_parent, new_name, role=effective_role)
 
-    wiki_pages_created: list[str] = []
-    created_date = datetime.now(timezone.utc).isoformat()
+    # Chunk: docs/chunks/entity_migration_retry - cleanup partial repo on failure
+    try:
+        wiki_pages_created: list[str] = []
+        created_date = datetime.now(timezone.utc).isoformat()
 
-    # Step 5: Synthesize and overwrite wiki pages
-    if anthropic is not None:
-        client = anthropic.Anthropic()
+        # Step 5: Synthesize and overwrite wiki pages
+        if anthropic is not None:
+            client = anthropic.Anthropic()
 
-        # 5a. wiki/identity.md — synthesize from identity memories + identity body
-        identity_content = synthesize_identity_page(
-            identity, identity_body, classified.identity, client
+            # 5a. wiki/identity.md — synthesize from identity memories + identity body
+            identity_content = synthesize_identity_page(
+                identity, identity_body, classified.identity, client
+            )
+            identity_page = repo_path / "wiki" / "identity.md"
+            identity_page.write_text(identity_content)
+            wiki_pages_created.append("wiki/identity.md")
+
+            # 5b. wiki/domain/ pages
+            domain_pages = synthesize_knowledge_pages(classified.domain, "domain", client)
+            domain_dir = repo_path / "wiki" / "domain"
+            for filename, content in domain_pages:
+                page_path = domain_dir / filename
+                page_path.write_text(content)
+                wiki_pages_created.append(f"wiki/domain/{filename}")
+
+            # 5c. wiki/techniques/ pages
+            technique_pages = synthesize_knowledge_pages(
+                classified.techniques, "techniques", client
+            )
+            techniques_dir = repo_path / "wiki" / "techniques"
+            for filename, content in technique_pages:
+                page_path = techniques_dir / filename
+                page_path.write_text(content)
+                wiki_pages_created.append(f"wiki/techniques/{filename}")
+
+            # 5d. wiki/log.md — mechanical conversion of journal entries
+            log_content = format_log_page(classified.log, created_date)
+            log_page = repo_path / "wiki" / "log.md"
+            log_page.write_text(log_content)
+            wiki_pages_created.append("wiki/log.md")
+
+        else:
+            # anthropic not available — keep stub pages, warn, still migrate memories
+            print(
+                "Warning: anthropic package not available. "
+                "Wiki stub pages will be kept as-is. Install 'anthropic' for full synthesis.",
+                file=sys.stderr,
+            )
+            # Still write the log page mechanically (no LLM needed)
+            log_content = format_log_page(classified.log, created_date)
+            log_page = repo_path / "wiki" / "log.md"
+            log_page.write_text(log_content)
+            wiki_pages_created.append("wiki/log.md")
+
+        # Step 6: Preserve legacy memories
+        source_memories = source_dir / "memories"
+        memories_preserved = 0
+        if source_memories.exists():
+            dest_memories = repo_path / "memories"
+            shutil.copytree(str(source_memories), str(dest_memories), dirs_exist_ok=True)
+            # Count .md files copied
+            for tier_name in ("journal", "consolidated", "core"):
+                tier_dir = dest_memories / tier_name
+                if tier_dir.exists():
+                    memories_preserved += len(list(tier_dir.glob("*.md")))
+
+        # Step 7: Migrate sessions → episodic
+        sessions_dir = source_dir / "sessions"
+        sessions_migrated = 0
+        if sessions_dir.exists():
+            episodic_dir = repo_path / "episodic"
+            for jsonl_file in sessions_dir.glob("*.jsonl"):
+                dest_file = episodic_dir / jsonl_file.name
+                shutil.copy2(str(jsonl_file), str(dest_file))
+                sessions_migrated += 1
+
+        # Step 8: Commit migration result
+        _run_git(repo_path, "add", "-A")
+        _run_git(
+            repo_path,
+            "commit",
+            "--allow-empty",
+            "-m",
+            f"Migration: {source_dir.name} \u2192 {new_name}",
         )
-        identity_page = repo_path / "wiki" / "identity.md"
-        identity_page.write_text(identity_content)
-        wiki_pages_created.append("wiki/identity.md")
 
-        # 5b. wiki/domain/ pages
-        domain_pages = synthesize_knowledge_pages(classified.domain, "domain", client)
-        domain_dir = repo_path / "wiki" / "domain"
-        for filename, content in domain_pages:
-            page_path = domain_dir / filename
-            page_path.write_text(content)
-            wiki_pages_created.append(f"wiki/domain/{filename}")
-
-        # 5c. wiki/techniques/ pages
-        technique_pages = synthesize_knowledge_pages(
-            classified.techniques, "techniques", client
+        return MigrationResult(
+            entity_name=new_name,
+            source_dir=source_dir,
+            dest_dir=repo_path,
+            wiki_pages_created=wiki_pages_created,
+            memories_preserved=memories_preserved,
+            sessions_migrated=sessions_migrated,
+            unclassified_count=len(classified.unclassified),
         )
-        techniques_dir = repo_path / "wiki" / "techniques"
-        for filename, content in technique_pages:
-            page_path = techniques_dir / filename
-            page_path.write_text(content)
-            wiki_pages_created.append(f"wiki/techniques/{filename}")
 
-        # 5d. wiki/log.md — mechanical conversion of journal entries
-        log_content = format_log_page(classified.log, created_date)
-        log_page = repo_path / "wiki" / "log.md"
-        log_page.write_text(log_content)
-        wiki_pages_created.append("wiki/log.md")
+    except BaseException as exc:
+        # Remove the partially-created repo so a retry starts clean.
+        # Using BaseException (not Exception) ensures cleanup also runs for
+        # KeyboardInterrupt and SystemExit — preventing lingering partial dirs.
+        cleanup_error: BaseException | None = None
+        if repo_path.exists():
+            try:
+                shutil.rmtree(repo_path)
+            except Exception as cleanup_exc:
+                cleanup_error = cleanup_exc
 
-    else:
-        # anthropic not available — keep stub pages, warn, still migrate memories
-        print(
-            "Warning: anthropic package not available. "
-            "Wiki stub pages will be kept as-is. Install 'anthropic' for full synthesis.",
-            file=sys.stderr,
-        )
-        # Still write the log page mechanically (no LLM needed)
-        log_content = format_log_page(classified.log, created_date)
-        log_page = repo_path / "wiki" / "log.md"
-        log_page.write_text(log_content)
-        wiki_pages_created.append("wiki/log.md")
+        if cleanup_error is not None:
+            # Surface the cleanup failure as context but don't mask the primary cause.
+            raise RuntimeError(
+                f"Migration failed (see __cause__), and cleanup of '{repo_path}' "
+                f"also failed: {cleanup_error}"
+            ) from exc
 
-    # Step 6: Preserve legacy memories
-    source_memories = source_dir / "memories"
-    memories_preserved = 0
-    if source_memories.exists():
-        dest_memories = repo_path / "memories"
-        shutil.copytree(str(source_memories), str(dest_memories), dirs_exist_ok=True)
-        # Count .md files copied
-        for tier_name in ("journal", "consolidated", "core"):
-            tier_dir = dest_memories / tier_name
-            if tier_dir.exists():
-                memories_preserved += len(list(tier_dir.glob("*.md")))
-
-    # Step 7: Migrate sessions → episodic
-    sessions_dir = source_dir / "sessions"
-    sessions_migrated = 0
-    if sessions_dir.exists():
-        episodic_dir = repo_path / "episodic"
-        for jsonl_file in sessions_dir.glob("*.jsonl"):
-            dest_file = episodic_dir / jsonl_file.name
-            shutil.copy2(str(jsonl_file), str(dest_file))
-            sessions_migrated += 1
-
-    # Step 8: Commit migration result
-    _run_git(repo_path, "add", "-A")
-    _run_git(
-        repo_path,
-        "commit",
-        "--allow-empty",
-        "-m",
-        f"Migration: {source_dir.name} \u2192 {new_name}",
-    )
-
-    return MigrationResult(
-        entity_name=new_name,
-        source_dir=source_dir,
-        dest_dir=repo_path,
-        wiki_pages_created=wiki_pages_created,
-        memories_preserved=memories_preserved,
-        sessions_migrated=sessions_migrated,
-        unclassified_count=len(classified.unclassified),
-    )
+        raise
