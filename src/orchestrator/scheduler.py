@@ -1861,7 +1861,7 @@ def create_scheduler(
         base_branch=base_branch,
         task_info=task_info,
     )
-    agent_runner = AgentRunner(project_dir)
+    agent_runner = AgentRunner(project_dir, config=config)
 
     return Scheduler(
         store=store,

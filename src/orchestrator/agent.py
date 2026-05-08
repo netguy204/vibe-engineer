@@ -31,7 +31,7 @@ from claude_agent_sdk.types import (
     McpSdkServerConfig,
 )
 
-from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
+from orchestrator.models import AgentResult, OrchestratorConfig, ReviewToolDecision, WorkUnitPhase
 
 
 class AgentRunnerError(Exception):
@@ -470,14 +470,18 @@ class AgentRunner:
     """
 
     # Chunk: docs/chunks/orch_sandbox_enforcement - Store host_repo_path for sandbox enforcement
-    def __init__(self, project_dir: Path):
+    # Chunk: docs/chunks/orch_max_turns_config - Accept config for per-phase turn budgets
+    def __init__(self, project_dir: Path, config: Optional[OrchestratorConfig] = None):
         """Initialize the agent runner.
 
         Args:
             project_dir: The root project directory (host repo path)
+            config: Orchestrator config used for per-phase turn budgets.
+                Defaults to a fresh OrchestratorConfig (today's literal values).
         """
         self.project_dir = project_dir.resolve()
         self.host_repo_path = self.project_dir
+        self.config = config if config is not None else OrchestratorConfig()
 
     # Chunk: docs/chunks/orchestrator_skill_path_fix - Use canonical .agents/skills/ paths
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
@@ -620,7 +624,7 @@ class AgentRunner:
         options = ClaudeAgentOptions(
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",  # Trust agent in orchestrator context
-            max_turns=100,  # Reasonable limit per phase
+            max_turns=self.config.max_turns_implement,
             setting_sources=["project"],  # Enable project-level skills/commands
             env=env,  # Restrict git operations to worktree
             max_buffer_size=10 * 1024 * 1024,  # 10MB - default 1MB too small for COMPLETE phase
@@ -869,7 +873,7 @@ class AgentRunner:
         options = ClaudeAgentOptions(
             cwd=str(worktree_path),
             permission_mode="bypassPermissions",
-            max_turns=20,  # Should be quick - just editing one file
+            max_turns=self.config.max_turns_complete,
             setting_sources=["project"],  # Enable project-level skills/commands
             resume=session_id,
             env=env,  # Restrict git operations to worktree
