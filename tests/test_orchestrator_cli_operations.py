@@ -358,3 +358,74 @@ class TestOrchConfig:
 
             assert result.exit_code == 0
             assert "worktree_warning_threshold: 15" in result.output
+
+    # Chunk: docs/chunks/orch_max_turns_config - Test per-phase turn budget config
+    def test_config_set_max_turns_implement(self, runner, tmp_path):
+        """Sets max_turns_implement."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+                "worktree_warning_threshold": 10,
+                "max_turns_implement": 200,
+                "max_turns_complete": 20,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--max-turns-implement", "200", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "PATCH", "/config", json={"max_turns_implement": 200}
+            )
+            assert "max_turns_implement: 200" in result.output
+
+    def test_config_set_max_turns_complete(self, runner, tmp_path):
+        """Sets max_turns_complete."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+                "worktree_warning_threshold": 10,
+                "max_turns_implement": 100,
+                "max_turns_complete": 40,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--max-turns-complete", "40", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            mock_client._request.assert_called_with(
+                "PATCH", "/config", json={"max_turns_complete": 40}
+            )
+            assert "max_turns_complete: 40" in result.output
+
+    def test_config_shows_max_turns(self, runner, tmp_path):
+        """Config output includes max_turns_implement and max_turns_complete."""
+        with patch("orchestrator.client.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_client._request.return_value = {
+                "max_agents": 2,
+                "dispatch_interval_seconds": 1.0,
+                "worktree_warning_threshold": 10,
+                "max_turns_implement": 150,
+                "max_turns_complete": 30,
+            }
+            mock_create.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["orch", "config", "--project-dir", str(tmp_path)],
+            )
+
+            assert result.exit_code == 0
+            assert "max_turns_implement: 150" in result.output
+            assert "max_turns_complete: 30" in result.output

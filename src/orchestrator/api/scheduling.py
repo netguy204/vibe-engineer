@@ -329,6 +329,21 @@ async def get_config_endpoint(request: Request) -> JSONResponse:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/orch_max_turns_config - Read max_turns_* from config
+    max_turns_implement_str = store.get_config("max_turns_implement")
+    if max_turns_implement_str:
+        try:
+            config.max_turns_implement = int(max_turns_implement_str)
+        except ValueError:
+            pass
+
+    max_turns_complete_str = store.get_config("max_turns_complete")
+    if max_turns_complete_str:
+        try:
+            config.max_turns_complete = int(max_turns_complete_str)
+        except ValueError:
+            pass
+
     return JSONResponse(config.model_dump_json_serializable())
 
 
@@ -362,6 +377,20 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
             return error_response("worktree_warning_threshold must be a positive integer")
         store.set_config("worktree_warning_threshold", str(threshold))
 
+    # Chunk: docs/chunks/orch_max_turns_config - Update max_turns_implement if provided
+    if "max_turns_implement" in body:
+        max_turns_implement = body["max_turns_implement"]
+        if not isinstance(max_turns_implement, int) or max_turns_implement < 1:
+            return error_response("max_turns_implement must be a positive integer")
+        store.set_config("max_turns_implement", str(max_turns_implement))
+
+    # Chunk: docs/chunks/orch_max_turns_config - Update max_turns_complete if provided
+    if "max_turns_complete" in body:
+        max_turns_complete = body["max_turns_complete"]
+        if not isinstance(max_turns_complete, int) or max_turns_complete < 1:
+            return error_response("max_turns_complete must be a positive integer")
+        store.set_config("max_turns_complete", str(max_turns_complete))
+
     # Return updated config
     config = OrchestratorConfig()
 
@@ -384,6 +413,21 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
     if threshold_str:
         try:
             config.worktree_warning_threshold = int(threshold_str)
+        except ValueError:
+            pass
+
+    # Chunk: docs/chunks/orch_max_turns_config - Read max_turns_* from config
+    max_turns_implement_str = store.get_config("max_turns_implement")
+    if max_turns_implement_str:
+        try:
+            config.max_turns_implement = int(max_turns_implement_str)
+        except ValueError:
+            pass
+
+    max_turns_complete_str = store.get_config("max_turns_complete")
+    if max_turns_complete_str:
+        try:
+            config.max_turns_complete = int(max_turns_complete_str)
         except ValueError:
             pass
 

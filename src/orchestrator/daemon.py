@@ -582,6 +582,21 @@ def _load_config(store: StateStore) -> OrchestratorConfig:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/orch_max_turns_config - Load per-phase turn budgets
+    max_turns_implement_str = store.get_config("max_turns_implement")
+    if max_turns_implement_str is not None:
+        try:
+            config.max_turns_implement = int(max_turns_implement_str)
+        except ValueError:
+            pass
+
+    max_turns_complete_str = store.get_config("max_turns_complete")
+    if max_turns_complete_str is not None:
+        try:
+            config.max_turns_complete = int(max_turns_complete_str)
+        except ValueError:
+            pass
+
     return config
 
 

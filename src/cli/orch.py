@@ -503,10 +503,21 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
 @click.option("--dispatch-interval", type=float, help="Dispatch interval in seconds")
 # Chunk: docs/chunks/orch_worktree_retain - CLI option for worktree warning threshold
 @click.option("--worktree-threshold", type=int, help="Warning threshold for retained worktrees (default: 10)")
+# Chunk: docs/chunks/orch_max_turns_config - CLI options for per-phase turn budgets
+@click.option("--max-turns-implement", type=int, help="Turn budget per IMPLEMENT/PLAN/COMPLETE/REVIEW phase (default: 100)")
+@click.option("--max-turns-complete", type=int, help="Turn budget for COMPLETE-phase status fixup resume (default: 20)")
 # Chunk: docs/chunks/orch_scheduling - ve orch config CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
-def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, project_dir):
+def orch_config(
+    max_agents,
+    dispatch_interval,
+    worktree_threshold,
+    max_turns_implement,
+    max_turns_complete,
+    json_output,
+    project_dir,
+):
     """Get or set orchestrator configuration.
 
     If no options are provided, shows current configuration.
@@ -515,7 +526,14 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
     import json
 
     with orch_client(project_dir) as client:
-        if max_agents is None and dispatch_interval is None and worktree_threshold is None:
+        update_flags = (
+            max_agents,
+            dispatch_interval,
+            worktree_threshold,
+            max_turns_implement,
+            max_turns_complete,
+        )
+        if all(v is None for v in update_flags):
             # Get config
             result = client._request("GET", "/config")
         else:
@@ -528,6 +546,11 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
             # Chunk: docs/chunks/orch_worktree_retain - Update worktree threshold
             if worktree_threshold is not None:
                 body["worktree_warning_threshold"] = worktree_threshold
+            # Chunk: docs/chunks/orch_max_turns_config - Update per-phase turn budgets
+            if max_turns_implement is not None:
+                body["max_turns_implement"] = max_turns_implement
+            if max_turns_complete is not None:
+                body["max_turns_complete"] = max_turns_complete
 
             result = client._request("PATCH", "/config", json=body)
 
@@ -539,6 +562,9 @@ def orch_config(max_agents, dispatch_interval, worktree_threshold, json_output, 
             click.echo(f"  dispatch_interval_seconds: {result['dispatch_interval_seconds']}")
             # Chunk: docs/chunks/orch_worktree_retain - Display worktree threshold
             click.echo(f"  worktree_warning_threshold: {result.get('worktree_warning_threshold', 10)}")
+            # Chunk: docs/chunks/orch_max_turns_config - Display per-phase turn budgets
+            click.echo(f"  max_turns_implement: {result.get('max_turns_implement', 100)}")
+            click.echo(f"  max_turns_complete: {result.get('max_turns_complete', 20)}")
 
 
 # Chunk: docs/chunks/orch_attention_queue - ve orch attention CLI command showing attention queue

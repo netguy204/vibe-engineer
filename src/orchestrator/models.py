@@ -225,6 +225,9 @@ class OrchestratorConfig(BaseModel):
     api_retry_initial_delay_ms: int = 100  # Initial backoff delay for API retries
     api_retry_max_delay_ms: int = 5000  # Maximum backoff delay for API retries
     api_retry_max_attempts: int = 30  # Maximum retry attempts for API errors
+    # Chunk: docs/chunks/orch_max_turns_config - Per-phase agent turn budget
+    max_turns_implement: int = 100  # Turn budget for IMPLEMENT/PLAN/COMPLETE/REVIEW phases
+    max_turns_complete: int = 20  # Turn budget for resume_for_active_status fixup
 
     def model_dump_json_serializable(self) -> dict:
         """Return a JSON-serializable dict representation."""
@@ -236,6 +239,8 @@ class OrchestratorConfig(BaseModel):
             "api_retry_initial_delay_ms": self.api_retry_initial_delay_ms,
             "api_retry_max_delay_ms": self.api_retry_max_delay_ms,
             "api_retry_max_attempts": self.api_retry_max_attempts,
+            "max_turns_implement": self.max_turns_implement,
+            "max_turns_complete": self.max_turns_complete,
         }
 
 
