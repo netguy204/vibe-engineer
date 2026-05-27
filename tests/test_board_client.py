@@ -2391,3 +2391,224 @@ async def test_watch_multi_reconnect_intermittent_transients_do_not_accumulate(k
     assert results[0]["position"] == 7
     # One sleep per transient failure (5 total).
     assert sleep_mock.call_count == transient_count
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/watch_handshake_timeout_retry - Opening-handshake timeout on idle reconnect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_idle_handshake_timeout_retries(keypair):
+    """A handshake timeout on an idle reconnect is retried, not fatal.
+
+    Scenario:
+      Connection 1 (initial): auth OK, two consecutive recv timeouts → StaleWatchError.
+      Connection 2 (idle reconnect attempt 1): raises TimeoutError on connect().
+      Connection 3 (idle reconnect attempt 2): auth OK, delivers message.
+
+    The watch must survive and return the message. asyncio.sleep must be called
+    (backoff fired for the handshake timeout). websockets.connect must be called
+    exactly 3 times.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 5,
+        "body": "recovered==",
+        "sent_at": "2026-05-27T00:00:00Z",
+    })
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 2:
+            # Second connect() call: simulate opening-handshake timeout
+            raise TimeoutError("timed out during opening handshake")
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if connect_call_count == 1:
+            # Initial connection: auth OK, two timeouts → StaleWatchError
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(),  # first timeout → re-register
+                asyncio.TimeoutError(),  # second timeout → StaleWatchError
+            ])
+        else:
+            # Third connection: delivers the message
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                result = await client.watch_with_reconnect(
+                    "ch1", 0, max_retries=3, stale_timeout=0.01
+                )
+
+    assert result["position"] == 5
+    assert result["body"] == "recovered=="
+    # Backoff sleep fired once for the handshake timeout
+    assert sleep_mock.call_count >= 1
+    # initial + failed-handshake + successful = 3 calls to websockets.connect
+    assert connect_call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_idle_handshake_timeout_retries(keypair):
+    """Same handshake-timeout-on-idle-reconnect recovery for watch_multi_with_reconnect.
+
+    Scenario:
+      Connection 1 (initial): auth OK, two consecutive recv timeouts → StaleWatchError.
+      Connection 2 (idle reconnect attempt 1): raises TimeoutError on connect().
+      Connection 3 (idle reconnect attempt 2): auth OK, delivers message.
+
+    Exactly one message must be yielded. websockets.connect must be called 3 times.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 3,
+        "body": "multi-recovered==",
+        "sent_at": "2026-05-27T00:00:00Z",
+    })
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 2:
+            raise TimeoutError("timed out during opening handshake")
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        if connect_call_count == 1:
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                asyncio.TimeoutError(),
+                asyncio.TimeoutError(),
+            ])
+        else:
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+        return _async_ctx(ws)
+
+    results = []
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                async for m in client.watch_multi_with_reconnect(
+                    {"ch-a": 0}, max_retries=3, count=1, stale_timeout=0.01
+                ):
+                    results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 3
+    assert connect_call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_idle_handshake_timeout_exhausts_budget(keypair):
+    """Repeated handshake timeouts on idle reconnect exhaust max_retries (safety valve).
+
+    Scenario:
+      Connection 1 (initial): auth OK, two consecutive recv timeouts → StaleWatchError.
+      All subsequent connect() calls raise TimeoutError.
+
+    With max_retries=2, the third handshake failure must propagate.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count > 1:
+            raise TimeoutError("timed out during opening handshake")
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge, auth_ok,
+            asyncio.TimeoutError(),
+            asyncio.TimeoutError(),
+        ])
+        return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                with pytest.raises((TimeoutError, OSError)):
+                    await client.watch_with_reconnect(
+                        "ch1", 0, max_retries=2, stale_timeout=0.01
+                    )
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_idle_handshake_timeout_exhausts_budget(keypair):
+    """Repeated handshake timeouts on idle reconnect exhaust max_retries in watch_multi
+    (safety valve).
+
+    Scenario:
+      Connection 1 (initial): auth OK, two consecutive recv timeouts → StaleWatchError.
+      All subsequent connect() calls raise TimeoutError.
+
+    With max_retries=2, TimeoutError must propagate after budget is exhausted.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count > 1:
+            raise TimeoutError("timed out during opening handshake")
+        ws = AsyncMock()
+        ws.send = AsyncMock()
+        ws.close = AsyncMock()
+        ws.recv = AsyncMock(side_effect=[
+            challenge, auth_ok,
+            asyncio.TimeoutError(),
+            asyncio.TimeoutError(),
+        ])
+        return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                with pytest.raises((TimeoutError, OSError)):
+                    async for _ in client.watch_multi_with_reconnect(
+                        {"ch-a": 0}, max_retries=2, count=1, stale_timeout=0.01
+                    ):
+                        pass

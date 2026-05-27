@@ -24,12 +24,14 @@ from board.crypto import sign
 logger = logging.getLogger(__name__)
 
 # Chunk: docs/chunks/board_watch_handshake_retry - Centralized retryable exception tuple
+# Chunk: docs/chunks/watch_handshake_timeout_retry - asyncio.TimeoutError for Python < 3.11 safety
 _RETRYABLE_ERRORS = (
     websockets.exceptions.ConnectionClosedError,
     websockets.exceptions.ConnectionClosedOK,
     ConnectionError,
     OSError,
     TimeoutError,
+    asyncio.TimeoutError,
     ssl.SSLCertVerificationError,
 )
 
@@ -299,12 +301,34 @@ class BoardClient:
                     channel, cursor,
                 )
                 # Reconnect without backoff sleep — the network is fine.
+                # If the opening handshake times out, route through the failure budget.
                 try:
                     await self.close()
                 except Exception:
                     pass
-                await self.connect()
-                backoff = 1.0  # reset failure backoff too
+                # Chunk: docs/chunks/watch_handshake_timeout_retry - Catch opening-handshake timeout on idle reconnect
+                while True:
+                    try:
+                        await self.connect()
+                        break  # Connected successfully
+                    except _RETRYABLE_ERRORS as connect_exc:
+                        attempt += 1
+                        if max_retries is not None and attempt > max_retries:
+                            raise connect_exc
+                        jitter = random.uniform(0, backoff * 0.5)
+                        wait_time = min(backoff + jitter, max_backoff)
+                        logger.warning(
+                            "Handshake timeout on idle reconnect, retrying in %.1fs "
+                            "(attempt %d) exc=%s",
+                            wait_time,
+                            attempt,
+                            type(connect_exc).__name__,
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff = min(backoff * 2, max_backoff)
+                backoff = 1.0  # reset failure backoff after successful connect
+                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after demonstrated-healthy reconnect
+                attempt = 0
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS as exc:
                 attempt += 1
@@ -609,12 +633,35 @@ class BoardClient:
                 logger.info(
                     "Idle reconnect (not counted against budget) channels=%s", list(cursors)
                 )
+                # Reconnect without backoff sleep — the network is fine.
+                # If the opening handshake times out, route through the failure budget.
                 try:
                     await self.close()
                 except Exception:
                     pass
-                await self.connect()
-                backoff = 1.0
+                # Chunk: docs/chunks/watch_handshake_timeout_retry - Catch opening-handshake timeout on idle reconnect
+                while True:
+                    try:
+                        await self.connect()
+                        break  # Connected successfully
+                    except _RETRYABLE_ERRORS as connect_exc:
+                        attempt += 1
+                        if max_retries is not None and attempt > max_retries:
+                            raise connect_exc
+                        jitter = random.uniform(0, backoff * 0.5)
+                        wait_time = min(backoff + jitter, max_backoff)
+                        logger.warning(
+                            "Handshake timeout on idle reconnect, retrying in %.1fs "
+                            "(attempt %d) exc=%s",
+                            wait_time,
+                            attempt,
+                            type(connect_exc).__name__,
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff = min(backoff * 2, max_backoff)
+                backoff = 1.0  # reset failure backoff after successful connect
+                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after demonstrated-healthy reconnect
+                attempt = 0
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS:
                 attempt += 1

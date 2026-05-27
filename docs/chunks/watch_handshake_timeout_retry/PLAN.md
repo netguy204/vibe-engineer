@@ -1,5 +1,3 @@
-
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +8,205 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The watch reconnect loop (`watch_with_reconnect` and `watch_multi_with_reconnect`)
+already handles `_RETRYABLE_ERRORS` (including `TimeoutError`) via a
+retry-with-backoff branch. The gap is in the **idle reconnect path** (`except
+StaleWatchError`): when a stale-triggered reconnect calls `await self.connect()`,
+any exception raised there is inside an `except` handler. Python's exception
+handling rules prevent sibling `except` clauses from catching it — a
+`TimeoutError` from the WebSocket opening handshake therefore propagates
+uncaught out of the `while True:` loop, terminating the process with exit
+code 3.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix is minimal and surgical: wrap the `connect()` call inside each
+`StaleWatchError` handler with the same retry-with-backoff inner loop that the
+`_RETRYABLE_ERRORS` branch already uses. A handshake timeout during an idle
+reconnect increments `attempt`, backs off, and retries — exactly as any
+`_RETRYABLE_ERRORS` would. On eventual success the `attempt` counter is reset
+to 0 (consistent with `watch_reconnect_counter_reset`), and normal watch
+operation resumes.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+A defensive addition: `asyncio.TimeoutError` is added to `_RETRYABLE_ERRORS`.
+On Python < 3.11, `asyncio.TimeoutError` is not a subclass of the built-in
+`TimeoutError` (it is a subclass of `concurrent.futures.TimeoutError`), so
+without this any path that uses `asyncio.wait_for` during reconnect escapes
+the existing retry net on older Python versions.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/watch_handshake_timeout_retry/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No new architectural decisions are required. This extends two pre-existing
+patterns: the `_RETRYABLE_ERRORS` guard from `board_watch_handshake_retry` and
+the consecutive-failure reset from `watch_reconnect_counter_reset`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `asyncio.TimeoutError` to `_RETRYABLE_ERRORS`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+**File**: `src/board/client.py`
 
-Example:
+Extend the `_RETRYABLE_ERRORS` tuple (currently around line 27) to include
+`asyncio.TimeoutError`:
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+```python
+# Chunk: docs/chunks/board_watch_handshake_retry - Centralized retryable exception tuple
+# Chunk: docs/chunks/watch_handshake_timeout_retry - asyncio.TimeoutError for Python < 3.11 safety
+_RETRYABLE_ERRORS = (
+    websockets.exceptions.ConnectionClosedError,
+    websockets.exceptions.ConnectionClosedOK,
+    ConnectionError,
+    OSError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    ssl.SSLCertVerificationError,
+)
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+On Python 3.11+ `asyncio.TimeoutError is TimeoutError`, making this a
+duplicate. Python's `isinstance` deduplicates exception tuples at runtime —
+harmless. On Python < 3.11 this adds real coverage.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: Write failing tests (TDD — red phase)
 
-## Dependencies
+Add a new section in `tests/test_board_client.py` below the existing
+`watch_idle_reconnect_budget` tests (around line 2186), marked with:
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
+```python
+# Chunk: docs/chunks/watch_handshake_timeout_retry - Opening-handshake timeout on idle reconnect
+```
 
-If there are no dependencies, delete this section.
--->
+**Test 2a — `test_watch_with_reconnect_idle_handshake_timeout_retries`**
+
+Scenario: the initial connection succeeds. Stale detection fires (two
+consecutive `asyncio.TimeoutError` on `recv`), triggering an idle reconnect.
+The first `connect()` call raises `TimeoutError("timed out during opening
+handshake")`. The second `connect()` call succeeds and the watch delivers a
+message.
+
+Assert:
+- The message is delivered (watch did not exit code 3).
+- `asyncio.sleep` was called at least once (backoff fired for the handshake
+  timeout).
+- `websockets.connect` was called exactly 3 times (initial + idle-reconnect
+  attempt-1-fails + idle-reconnect-attempt-2-succeeds).
+
+**Test 2b — `test_watch_multi_with_reconnect_idle_handshake_timeout_retries`**
+
+Same scenario for `watch_multi_with_reconnect`: idle stale fires, first
+`connect()` raises `TimeoutError`, second succeeds, message delivered.
+
+Assert:
+- Exactly one message is yielded.
+- `websockets.connect` called 3 times.
+
+**Test 2c — `test_watch_with_reconnect_idle_handshake_timeout_exhausts_budget`**
+
+Scenario: stale fires once (idle reconnect), then every subsequent `connect()`
+call raises `TimeoutError`. `max_retries=2`.
+
+Assert:
+- `TimeoutError` (or its `OSError` parent) propagates after `max_retries`
+  consecutive handshake timeouts — the safety valve still applies.
+
+**Test 2d — `test_watch_multi_with_reconnect_idle_handshake_timeout_exhausts_budget`**
+
+Same safety-valve scenario for `watch_multi_with_reconnect` with `max_retries=2`.
+
+Assert:
+- `TimeoutError` propagates.
+
+Run tests; confirm all four are red (fail with `TimeoutError` or
+`ConnectionError`/`OSError` propagating instead of recovering).
+
+```bash
+uv run pytest tests/test_board_client.py -k "idle_handshake" -x -q
+```
+
+### Step 3: Fix `watch_with_reconnect` — guard `connect()` in the `StaleWatchError` handler
+
+**File**: `src/board/client.py`, `except StaleWatchError:` block in
+`watch_with_reconnect` (currently around line 302–307).
+
+Replace:
+```python
+# Reconnect without backoff sleep — the network is fine.
+try:
+    await self.close()
+except Exception:
+    pass
+await self.connect()
+backoff = 1.0  # reset failure backoff too
+```
+
+With a retry inner loop:
+
+```python
+# Reconnect without backoff sleep — the network is fine.
+# If the opening handshake times out, route through the failure budget.
+try:
+    await self.close()
+except Exception:
+    pass
+# Chunk: docs/chunks/watch_handshake_timeout_retry - Catch opening-handshake timeout on idle reconnect
+while True:
+    try:
+        await self.connect()
+        break  # Connected successfully
+    except _RETRYABLE_ERRORS as connect_exc:
+        attempt += 1
+        if max_retries is not None and attempt > max_retries:
+            raise connect_exc
+        jitter = random.uniform(0, backoff * 0.5)
+        wait_time = min(backoff + jitter, max_backoff)
+        logger.warning(
+            "Handshake timeout on idle reconnect, retrying in %.1fs "
+            "(attempt %d) exc=%s",
+            wait_time,
+            attempt,
+            type(connect_exc).__name__,
+        )
+        await asyncio.sleep(wait_time)
+        backoff = min(backoff * 2, max_backoff)
+backoff = 1.0  # reset failure backoff after successful connect
+# Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after demonstrated-healthy reconnect
+attempt = 0
+```
+
+### Step 4: Fix `watch_multi_with_reconnect` — same guard in its `StaleWatchError` handler
+
+**File**: `src/board/client.py`, `except StaleWatchError:` block in
+`watch_multi_with_reconnect` (currently around line 611–617).
+
+Apply the same replacement as Step 3 verbatim (same retry loop, same
+`backoff = 1.0` / `attempt = 0` resets after success).
+
+### Step 5: Run the full test suite (TDD — green phase)
+
+```bash
+uv run pytest tests/test_board_client.py -x -q
+```
+
+All four new tests must go green. All pre-existing reconnect, stale-reconnect,
+idle-budget, and counter-reset tests must continue to pass.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
+- **`attempt = 0` reset timing**: After the idle-reconnect connect loop
+  succeeds (possibly after some handshake-timeout retries), resetting
+  `attempt = 0` is intentional: a successful reconnect is evidence the network
+  is healthy, so the consecutive-failure counter should restart. This is the
+  `watch_reconnect_counter_reset` invariant applied uniformly.
 
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Backoff value at entry to idle path**: The idle reconnect handler resets
+  `backoff = 1.0` on success. If `connect()` fails first, backoff is updated
+  from whatever `backoff` is currently (could be `1.0` after a prior success,
+  or higher if prior `_RETRYABLE_ERRORS` retries didn't fully reset). This is
+  the correct behaviour — we inherit the current backoff state rather than
+  double-resetting it.
+
+- **Python exception tuple deduplication**: `(TimeoutError, asyncio.TimeoutError)`
+  on Python 3.11+ is equivalent to `(TimeoutError,)` for `isinstance` checks.
+  Python handles this transparently.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
