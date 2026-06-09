@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from git_utils import get_github_org_repo, is_git_repository
-from template_system import TaskContext, render_template, render_to_directory
+from template_system import TaskContext, render_template
 
 
 @dataclass
@@ -203,48 +203,7 @@ class TaskInit:
 
         return created
 
-    # Chunk: docs/chunks/agentskills_migration - Skills rendered to .agents/skills/ with symlinks
-    def _render_skills(self) -> list[str]:
-        """Render skill templates to .agents/skills/ with task context.
-
-        Creates per-file symlinks in .claude/commands/ for backwards compatibility.
-
-        Returns:
-            List of created file paths (relative to task root).
-        """
-        created = []
-        skills_dir = self.cwd / ".agents" / "skills"
-        commands_dir = self.cwd / ".claude" / "commands"
-
-        task_context = TaskContext(
-            external_artifact_repo=self.external,
-            projects=self.projects,
-        )
-        render_result = render_to_directory(
-            "commands", skills_dir, skill_layout=True, **task_context.as_dict()
-        )
-
-        # Map paths to relative strings
-        for path in render_result.created:
-            skill_name = path.parent.name
-            created.append(f".agents/skills/{skill_name}/SKILL.md")
-
-        # Create .claude/commands/ symlinks for backwards compatibility
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        for skill_subdir in sorted(skills_dir.iterdir()):
-            if not skill_subdir.is_dir():
-                continue
-            skill_md = skill_subdir / "SKILL.md"
-            if not skill_md.exists():
-                continue
-            skill_name = skill_subdir.name
-            link_path = commands_dir / f"{skill_name}.md"
-            relative_target = Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
-            if not link_path.exists():
-                link_path.symlink_to(relative_target)
-
-        return created
-
+    # Chunk: docs/chunks/plugin_init_slimdown - Task init writes config and AGENTS.md only; commands distributed via the Claude Code plugin
     def execute(self) -> TaskInitResult:
         """Create the .ve-task.yaml file and scaffolding.
 
@@ -273,9 +232,6 @@ class TaskInit:
 
         # Render AGENTS.md (with CLAUDE.md symlink)
         created_files.extend(self._render_agents_md())
-
-        # Render skill templates (with .claude/commands/ symlinks)
-        created_files.extend(self._render_skills())
 
         return TaskInitResult(
             config_path=config_path,

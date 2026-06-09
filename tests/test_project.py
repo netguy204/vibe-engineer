@@ -7,7 +7,7 @@ from chunks import Chunks
 from friction import Friction
 from investigations import Investigations
 from narratives import Narratives
-from project import Project, InitResult
+from project import Project, InitResult, _is_ve_generated_file
 from subsystems import Subsystems
 
 
@@ -146,71 +146,19 @@ class TestProjectInit:
         for filename in expected_files:
             assert (trunk_dir / filename).exists(), f"Missing {filename}"
 
-    def test_init_creates_agents_skills_directory(self, temp_project):
-        """init() creates .agents/skills/ directory with skill subdirectories."""
+    # Chunk: docs/chunks/plugin_init_slimdown - Fresh init renders no skills or command symlinks
+    def test_init_creates_no_agents_skills_directory(self, temp_project):
+        """init() does not create a .agents/ directory (commands live in the plugin)."""
         project = Project(temp_project)
         project.init()
-        skills_dir = temp_project / ".agents" / "skills"
-        assert skills_dir.exists()
-        assert skills_dir.is_dir()
+        assert not (temp_project / ".agents").exists()
 
-    def test_init_creates_skill_files(self, temp_project):
-        """init() creates SKILL.md files in skill subdirectories."""
+    # Chunk: docs/chunks/plugin_init_slimdown - Fresh init renders no skills or command symlinks
+    def test_init_creates_no_claude_commands_directory(self, temp_project):
+        """init() does not create a .claude/commands/ directory (commands live in the plugin)."""
         project = Project(temp_project)
         project.init()
-        skills_dir = temp_project / ".agents" / "skills"
-        expected_skills = [
-            "chunk-create",
-            "chunk-plan",
-            "chunk-complete",
-            "chunk-update-references",
-            "chunks-resolve-references",
-        ]
-        for skill in expected_skills:
-            skill_path = skills_dir / skill / "SKILL.md"
-            assert skill_path.exists(), f"Missing {skill}/SKILL.md"
-            assert skill_path.is_file(), f"{skill}/SKILL.md should be a file"
-
-    def test_init_creates_claude_commands_symlinks(self, temp_project):
-        """init() creates .claude/commands/ symlinks pointing to skills."""
-        project = Project(temp_project)
-        project.init()
-        commands_dir = temp_project / ".claude" / "commands"
-        assert commands_dir.exists()
-        assert commands_dir.is_dir()
-
-        # Check that symlinks exist and point to correct targets
-        link_path = commands_dir / "chunk-create.md"
-        assert link_path.is_symlink(), "chunk-create.md should be a symlink"
-        target = link_path.resolve()
-        expected_target = (temp_project / ".agents" / "skills" / "chunk-create" / "SKILL.md").resolve()
-        assert target == expected_target
-
-    def test_init_command_symlinks_are_relative(self, temp_project):
-        """init() creates relative symlinks in .claude/commands/."""
-        project = Project(temp_project)
-        project.init()
-        commands_dir = temp_project / ".claude" / "commands"
-
-        for link_path in commands_dir.iterdir():
-            if link_path.is_symlink():
-                import os
-                target = os.readlink(link_path)
-                assert not target.startswith("/"), f"Symlink {link_path.name} should be relative, got {target}"
-
-    def test_init_skill_files_have_content(self, temp_project):
-        """init() skill files have content rendered from templates."""
-        project = Project(temp_project)
-        project.init()
-        skills_dir = temp_project / ".agents" / "skills"
-
-        # Check that skill files are not empty
-        for skill_dir in skills_dir.iterdir():
-            if skill_dir.is_dir():
-                skill_md = skill_dir / "SKILL.md"
-                if skill_md.exists():
-                    content = skill_md.read_text()
-                    assert len(content) > 0, f"{skill_dir.name}/SKILL.md should have content"
+        assert not (temp_project / ".claude").exists()
 
     def test_init_creates_agents_md(self, temp_project):
         """init() creates AGENTS.md at project root."""
@@ -238,7 +186,9 @@ class TestProjectInit:
         assert "Vibe Engineering" in content
         assert "docs/trunk/" in content
         assert "docs/chunks/" in content
-        assert "/chunk-create" in content
+        # Chunk: docs/chunks/plugin_init_slimdown - Commands are documented by the plugin, not AGENTS.md
+        assert "/plugin install vibe-engineer" in content
+        assert "## Available Commands" not in content
 
     def test_init_claude_md_symlink_has_same_content(self, temp_project):
         """CLAUDE.md symlink reads same content as AGENTS.md."""
@@ -256,7 +206,9 @@ class TestProjectInit:
         assert len(result.created) > 0
         assert "AGENTS.md" in result.created
         assert any("docs/trunk/" in f for f in result.created)
-        assert any(".agents/skills/" in f for f in result.created)
+        # Chunk: docs/chunks/plugin_init_slimdown - No rendered skills in init output
+        assert not any(".agents/skills/" in f for f in result.created)
+        assert not any(".claude/commands/" in f for f in result.created)
 
 
 class TestProjectInitChunks:
@@ -588,16 +540,16 @@ class TestMagicMarkers:
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.
 
-    Note: Skills are always updated (overwrite=True) so they appear in
-    created on every run. Trunk docs are never overwritten (overwrite=False)
-    so they appear in skipped on subsequent runs. AGENTS.md with markers
-    has its managed content updated while preserving user content.
+    Note: Trunk docs are never overwritten (overwrite=False) so they appear
+    in skipped on subsequent runs. AGENTS.md with markers has its managed
+    content updated while preserving user content.
     """
 
-    def test_init_preserves_user_content_skips_skills(self, temp_project):
-        """Running init() twice: trunk skipped, skills and AGENTS.md updated.
+    # Chunk: docs/chunks/plugin_init_slimdown - Skills are no longer rendered by init
+    def test_init_preserves_user_content_updates_agents_md(self, temp_project):
+        """Running init() twice: trunk skipped, AGENTS.md updated.
 
-        Note: AGENTS.md with markers is now updated (in created) on subsequent runs,
+        Note: AGENTS.md with markers is updated (in created) on subsequent runs,
         preserving user content outside markers while refreshing managed content.
         """
         project = Project(temp_project)
@@ -612,8 +564,6 @@ class TestProjectInitIdempotency:
         assert "docs/narratives/" in result2.skipped
         assert "docs/chunks/" in result2.skipped
 
-        # Skills and AGENTS.md (with markers) are always updated
-        assert any(".agents/skills/" in f for f in result2.created)
         # AGENTS.md with markers is updated, not skipped
         assert "AGENTS.md" in result2.created
 
@@ -632,11 +582,16 @@ class TestProjectInitIdempotency:
         # Custom content should be preserved
         assert (trunk_dir / "GOAL.md").read_text() == custom_content
 
-    def test_init_overwrites_existing_skills(self, temp_project):
-        """init() always overwrites existing skill files (managed templates)."""
+    # Chunk: docs/chunks/plugin_init_slimdown - Init leaves legacy skill layouts untouched
+    def test_init_does_not_touch_existing_legacy_skills(self, temp_project):
+        """init() neither updates nor removes a pre-existing legacy .agents/skills/ layout.
+
+        Cleaning up legacy layouts is plugin_legacy_migration's job; the
+        slimmed init simply stops rendering skills.
+        """
         project = Project(temp_project)
 
-        # Create skills dir with existing file
+        # Create a legacy skills dir with existing file
         skill_dir = temp_project / ".agents" / "skills" / "chunk-create"
         skill_dir.mkdir(parents=True)
         existing_skill = skill_dir / "SKILL.md"
@@ -644,10 +599,10 @@ class TestProjectInitIdempotency:
 
         result = project.init()
 
-        # Skill should be updated (in created), not skipped
-        assert ".agents/skills/chunk-create/SKILL.md" in result.created
-        # Content should be updated from template
-        assert existing_skill.read_text() != "Old content"
+        # The legacy file is left exactly as it was and is not reported
+        assert existing_skill.read_text() == "Old content"
+        assert not any(".agents/skills/" in f for f in result.created)
+        assert not any(".agents/skills/" in f for f in result.skipped)
 
     def test_init_skips_existing_agents_md_without_markers(self, temp_project):
         """init() skips existing AGENTS.md without markers."""
@@ -672,11 +627,11 @@ class TestProjectInitIdempotency:
         assert len(result1.skipped) == 0
         assert len(result1.created) > 0
 
-        # Second run - user content skipped, skills created (updated)
+        # Second run - user content skipped, AGENTS.md managed block updated
         result2 = project.init()
-        # Trunk + AGENTS.md (without markers = skip) + narratives + chunks should be skipped
+        # Trunk + narratives + chunks + reviewers should be skipped
         assert len(result2.skipped) >= 6  # 4 trunk files + narratives + chunks + reviewers
-        # Skills should be in created (updated)
+        # AGENTS.md (with markers) should be in created (updated)
         assert len(result2.created) > 0
 
     def test_init_restores_deleted_agents_md(self, temp_project):
@@ -703,76 +658,36 @@ class TestProjectInitIdempotency:
         assert claude_md.is_symlink()
 
 
-class TestInitSkillsSymlinkMigration:
-    """Tests for migration of VE-generated regular files to symlinks in .claude/commands/."""
+# Chunk: docs/chunks/plugin_init_slimdown - Direct coverage for the kept helper (used by plugin_legacy_migration)
+class TestIsVeGeneratedFile:
+    """Tests for the _is_ve_generated_file() helper.
 
-    def test_ve_generated_regular_file_is_replaced_with_symlink(self, temp_project):
-        """A VE-generated regular file in .claude/commands/ is replaced with a symlink."""
-        project = Project(temp_project)
+    The helper is retained after the init slim-down because legacy-layout
+    cleanup (plugin_legacy_migration) uses it to identify VE-generated files
+    that are safe to remove.
+    """
 
-        # Pre-create .claude/commands/ with a VE-generated regular file
-        commands_dir = temp_project / ".claude" / "commands"
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        skill_file = commands_dir / "chunk-create.md"
-        skill_file.write_text(
+    def test_detects_auto_generated_header(self, tmp_path):
+        """Returns True for files containing the AUTO-GENERATED header."""
+        path = tmp_path / "chunk-create.md"
+        path.write_text(
             "<!--\nAUTO-GENERATED FILE - DO NOT EDIT DIRECTLY\n-->\n# chunk-create skill"
         )
+        assert _is_ve_generated_file(path) is True
 
-        result = project.init()
+    def test_user_authored_file_is_not_ve_generated(self, tmp_path):
+        """Returns False for files without the AUTO-GENERATED header."""
+        path = tmp_path / "custom.md"
+        path.write_text("# My custom command\nThis is user-authored content.")
+        assert _is_ve_generated_file(path) is False
 
-        # File should now be a symlink
-        assert skill_file.is_symlink(), "VE-generated file should be replaced with a symlink"
+    def test_missing_file_is_not_ve_generated(self, tmp_path):
+        """Returns False (no exception) when the file cannot be read."""
+        path = tmp_path / "does-not-exist.md"
+        assert _is_ve_generated_file(path) is False
 
-        # Symlink should resolve to the skill SKILL.md
-        expected_target = temp_project / ".agents" / "skills" / "chunk-create" / "SKILL.md"
-        assert skill_file.resolve() == expected_target.resolve()
-
-        # Should appear in result.created
-        assert ".claude/commands/chunk-create.md" in result.created
-
-        # No user-authored warning should be emitted for this file
-        assert not any("user-authored" in w for w in result.warnings)
-
-    def test_user_authored_regular_file_is_preserved_with_warning(self, temp_project):
-        """A user-authored regular file in .claude/commands/ is left alone with a warning."""
-        project = Project(temp_project)
-
-        # Pre-create .claude/commands/ with a user-authored regular file (no AUTO-GENERATED sentinel)
-        commands_dir = temp_project / ".claude" / "commands"
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        skill_file = commands_dir / "chunk-create.md"
-        original_content = "# My custom command\nThis is user-authored content."
-        skill_file.write_text(original_content)
-
-        result = project.init()
-
-        # File should remain a regular file (not a symlink)
-        assert not skill_file.is_symlink(), "User-authored file should not be converted to symlink"
-        assert skill_file.read_text() == original_content, "User-authored file content should be unchanged"
-
-        # Should NOT appear in result.created
-        assert ".claude/commands/chunk-create.md" not in result.created
-
-        # A warning about user-authored content should be present
-        assert any("user-authored" in w for w in result.warnings), (
-            "Expected a warning about skipping user-authored file"
-        )
-
-    def test_warning_messages_are_distinguishable(self, temp_project):
-        """Warnings for user-authored skips are distinct from VE-generated replacements."""
-        project = Project(temp_project)
-
-        # Pre-create a user-authored file for chunk-create
-        commands_dir = temp_project / ".claude" / "commands"
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        skill_file = commands_dir / "chunk-create.md"
-        skill_file.write_text("# User content — no AUTO-GENERATED header here")
-
-        result = project.init()
-
-        # Warning should mention user-authored, not "replaced"
-        user_authored_warnings = [w for w in result.warnings if "user-authored" in w]
-        assert len(user_authored_warnings) >= 1, "Should have at least one user-authored warning"
-        for w in user_authored_warnings:
-            assert "replaced" not in w, "User-authored skip warning should not say 'replaced'"
-            assert "chunk-create" in w, "Warning should identify the file"
+    def test_binary_file_is_not_ve_generated(self, tmp_path):
+        """Returns False for files that cannot be decoded as UTF-8."""
+        path = tmp_path / "binary.md"
+        path.write_bytes(b"\xff\xfe\x00\x01invalid utf-8 \x80\x81")
+        assert _is_ve_generated_file(path) is False

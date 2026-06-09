@@ -117,13 +117,15 @@ class InitResult:
 
 
 # Chunk: docs/chunks/init_skill_symlink_migration - VE-generated file detection for symlink migration
+# Chunk: docs/chunks/plugin_init_slimdown - Kept for legacy-layout cleanup (plugin_legacy_migration)
 def _is_ve_generated_file(path: pathlib.Path) -> bool:
     """Return True if the file appears to be a VE-generated command file.
 
-    Detects the AUTO-GENERATED header comment present in all VE-rendered
-    command files (injected via auto-generated-header.md.jinja2). Used to
-    determine whether a regular file in .claude/commands/ is safe to replace
-    with a symlink during migration.
+    Detects the AUTO-GENERATED header comment that was present in all
+    VE-rendered command files (historically injected via
+    auto-generated-header.md.jinja2). Used to determine whether a regular
+    file in a legacy .claude/commands/ layout is VE-generated and therefore
+    safe to remove or replace during legacy-layout migration.
 
     Returns False for any file that cannot be read (binary, permission error,
     encoding error) — treat unreadable files as user-authored to avoid data loss.
@@ -204,92 +206,6 @@ class Project:
             result.created.append(f"docs/trunk/{path.name}")
         for path in render_result.skipped:
             result.skipped.append(f"docs/trunk/{path.name}")
-
-        return result
-
-    # Subsystem: docs/subsystems/cross_repo_operations - Cross-repository operations
-    # Subsystem: docs/subsystems/template_system - Uses render_to_directory
-    # Chunk: docs/chunks/agentskills_migration - Migrated to agentskills.io skill layout
-    def _init_skills(self) -> InitResult:
-        """Set up agent skills by rendering templates to .agents/skills/.
-
-        Skills are always updated to the latest templates (overwrite=True)
-        because they are managed artifacts, not user content.
-
-        Skills are rendered with task_context=False to ensure the conditional
-        blocks for task-specific content are properly omitted in project context.
-
-        Creates per-file symlinks in .claude/commands/ for backwards compatibility
-        with Claude Code.
-        """
-        result = InitResult()
-        skills_dir = self.project_dir / ".agents" / "skills"
-        commands_dir = self.project_dir / ".claude" / "commands"
-
-        # Render templates to .agents/skills/<name>/SKILL.md
-        context = TemplateContext()
-        render_result = render_to_directory(
-            "commands",
-            skills_dir,
-            context=context,
-            overwrite=True,
-            skill_layout=True,
-            task_context=False,
-            ve_config=self.ve_config.as_dict(),
-        )
-
-        # Map RenderResult paths to relative path strings for InitResult
-        for path in render_result.created:
-            skill_name = path.parent.name
-            result.created.append(f".agents/skills/{skill_name}/SKILL.md")
-        for path in render_result.overwritten:
-            skill_name = path.parent.name
-            result.created.append(f".agents/skills/{skill_name}/SKILL.md")
-
-        # Create .claude/commands/ directory for backwards compatibility symlinks
-        commands_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create per-file symlinks: .claude/commands/<name>.md -> ../../.agents/skills/<name>/SKILL.md
-        # Use relative paths so the project remains relocatable
-        for skill_subdir in sorted(skills_dir.iterdir()):
-            if not skill_subdir.is_dir():
-                continue
-            skill_md = skill_subdir / "SKILL.md"
-            if not skill_md.exists():
-                continue
-            skill_name = skill_subdir.name
-            link_path = commands_dir / f"{skill_name}.md"
-            relative_target = pathlib.Path("..") / ".." / ".agents" / "skills" / skill_name / "SKILL.md"
-
-            if link_path.is_symlink():
-                # Update symlink if target changed
-                if link_path.resolve() != skill_md.resolve():
-                    link_path.unlink()
-                    link_path.symlink_to(relative_target)
-            # Chunk: docs/chunks/init_skill_symlink_migration - Migrate VE-generated regular files to symlinks
-            elif link_path.exists():
-                # Regular file exists - check if it's a VE-generated file we can safely replace
-                if _is_ve_generated_file(link_path):
-                    # VE-generated file: replace with symlink (migration from pre-agentskills layout)
-                    link_path.unlink()
-                    link_path.symlink_to(relative_target)
-                    result.created.append(f".claude/commands/{skill_name}.md")
-                else:
-                    # User-authored file: warn and skip to avoid data loss
-                    result.warnings.append(
-                        f".claude/commands/{skill_name}.md is a user-authored file; skipping symlink creation"
-                    )
-            else:
-                link_path.symlink_to(relative_target)
-
-        # Clean up stale symlinks in .claude/commands/ that no longer correspond to skills
-        if commands_dir.exists():
-            active_skill_names = {d.name for d in skills_dir.iterdir() if d.is_dir()}
-            for link_path in sorted(commands_dir.iterdir()):
-                if link_path.is_symlink():
-                    link_name = link_path.stem  # e.g., "chunk-create" from "chunk-create.md"
-                    if link_name not in active_skill_names:
-                        link_path.unlink()
 
         return result
 
@@ -462,17 +378,19 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/plugin_init_slimdown - Init scaffolds project-owned artifacts only; commands distributed via the Claude Code plugin
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
-        Creates trunk documents, agent skills, AGENTS.md, and baseline reviewer.
-        Idempotent: skips files that already exist.
+        Creates trunk documents, AGENTS.md, artifact directories, and the
+        baseline reviewer. Workflow commands are not rendered into the
+        project; they are distributed via the vibe-engineer Claude Code
+        plugin. Idempotent: skips files that already exist.
         """
         result = InitResult()
 
         for sub_result in [
             self._init_trunk(),
-            self._init_skills(),
             self._init_agents_md(),
             self._init_narratives(),
             self._init_chunks(),

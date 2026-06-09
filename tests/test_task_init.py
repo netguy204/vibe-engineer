@@ -359,11 +359,12 @@ class TestTaskInitAgentsMd:
         assert "./proj2/docs/trunk/TESTING_PHILOSOPHY.md" in content
 
 
-class TestTaskInitSkills:
-    """Tests for skill template rendering in task init."""
+# Chunk: docs/chunks/plugin_init_slimdown - Task init renders no skills or command symlinks
+class TestTaskInitNoSkills:
+    """Task init does not render skills; commands live in the Claude Code plugin."""
 
-    def test_creates_agents_skills_directory(self, tmp_path):
-        """Creates .agents/skills/ directory in task root."""
+    def test_creates_no_agents_skills_directory(self, tmp_path):
+        """Task init does not create .agents/ in the task root."""
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
         project = tmp_path / "proj"
@@ -373,11 +374,10 @@ class TestTaskInitSkills:
         init.validate()
         init.execute()
 
-        assert (tmp_path / ".agents" / "skills").exists()
-        assert (tmp_path / ".agents" / "skills").is_dir()
+        assert not (tmp_path / ".agents").exists()
 
-    def test_creates_claude_commands_symlinks(self, tmp_path):
-        """Creates .claude/commands/ directory with symlinks to skills."""
+    def test_creates_no_claude_commands_directory(self, tmp_path):
+        """Task init does not create .claude/commands/ in the task root."""
         external = tmp_path / "ext"
         make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
         project = tmp_path / "proj"
@@ -387,67 +387,7 @@ class TestTaskInitSkills:
         init.validate()
         init.execute()
 
-        assert (tmp_path / ".claude" / "commands").exists()
-        assert (tmp_path / ".claude" / "commands").is_dir()
-
-    def test_renders_all_skill_templates(self, tmp_path):
-        """All skill templates are rendered to .agents/skills/."""
-        external = tmp_path / "ext"
-        make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
-        project = tmp_path / "proj"
-        make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
-
-        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
-        init.validate()
-        init.execute()
-
-        skills_dir = tmp_path / ".agents" / "skills"
-        commands_dir = tmp_path / ".claude" / "commands"
-        # Check that key skills are rendered
-        assert (skills_dir / "chunk-create" / "SKILL.md").exists()
-        assert (skills_dir / "chunk-implement" / "SKILL.md").exists()
-        assert (skills_dir / "chunk-plan" / "SKILL.md").exists()
-        assert (skills_dir / "chunk-complete" / "SKILL.md").exists()
-        assert (skills_dir / "narrative-create" / "SKILL.md").exists()
-        assert (skills_dir / "subsystem-discover" / "SKILL.md").exists()
-        assert (skills_dir / "investigation-create" / "SKILL.md").exists()
-        # Check backwards compatibility symlinks
-        assert (commands_dir / "chunk-create.md").is_symlink()
-        assert (commands_dir / "chunk-implement.md").is_symlink()
-
-    def test_skills_contain_task_context_content(self, tmp_path):
-        """Skills contain task-context specific content."""
-        external = tmp_path / "ext"
-        make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
-        project = tmp_path / "proj"
-        make_ve_initialized_git_repo(project, remote_url="https://github.com/acme/proj.git")
-
-        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj"])
-        init.validate()
-        init.execute()
-
-        # Check chunk-create contains task context (read via symlink or direct)
-        chunk_create = (tmp_path / ".agents" / "skills" / "chunk-create" / "SKILL.md").read_text()
-        assert "Task Context:" in chunk_create
-        assert "acme/ext" in chunk_create
-
-    def test_skills_contain_project_list_in_task_context(self, tmp_path):
-        """Skills with project lists render them correctly."""
-        external = tmp_path / "ext"
-        make_ve_initialized_git_repo(external, remote_url="https://github.com/acme/ext.git")
-        proj1 = tmp_path / "proj1"
-        make_ve_initialized_git_repo(proj1, remote_url="https://github.com/acme/proj1.git")
-        proj2 = tmp_path / "proj2"
-        make_ve_initialized_git_repo(proj2, remote_url="https://github.com/acme/proj2.git")
-
-        init = TaskInit(cwd=tmp_path, external="acme/ext", projects=["acme/proj1", "acme/proj2"])
-        init.validate()
-        init.execute()
-
-        # Check chunk-implement contains project list
-        chunk_impl = (tmp_path / ".agents" / "skills" / "chunk-implement" / "SKILL.md").read_text()
-        assert "acme/proj1" in chunk_impl
-        assert "acme/proj2" in chunk_impl
+        assert not (tmp_path / ".claude").exists()
 
 
 class TestTaskInitCreatedFiles:
@@ -468,8 +408,8 @@ class TestTaskInitCreatedFiles:
         assert ".ve-task.yaml" in result.created_files
         # Should include AGENTS.md
         assert "AGENTS.md" in result.created_files
-        # Should include skills
-        assert any("chunk-create" in f for f in result.created_files)
+        # Chunk: docs/chunks/plugin_init_slimdown - No rendered skills in task init output
+        assert not any(".agents/skills/" in f for f in result.created_files)
 
     def test_created_files_are_relative_paths(self, tmp_path):
         """Created files are relative paths, not absolute."""

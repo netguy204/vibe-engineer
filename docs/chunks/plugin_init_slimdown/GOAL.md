@@ -1,17 +1,33 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/project.py
+- src/task_init.py
+- src/template_system.py
+- src/templates/claude/AGENTS.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/commands/
+- tests/test_project.py
+- tests/test_init.py
+- tests/test_task_init.py
+- tests/test_steward_skills.py
+- tests/test_chunk_review_skill.py
+- tests/test_template_system.py
+- tests/test_orchestrator_feedback_injection.py
 code_references: []
 narrative: claude_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["plugin_core_commands", "plugin_orch_commands"]
-created_after: ["orch_max_turns_config", "watch_handshake_timeout_retry"]
+depends_on:
+- plugin_core_commands
+- plugin_orch_commands
+created_after:
+- orch_max_turns_config
+- watch_handshake_timeout_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
