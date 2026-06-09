@@ -8,7 +8,7 @@ code_paths:
 - src/reviewers.py
 - tests/test_chunk_review_skill.py
 code_references:
-  - ref: src/templates/commands/chunk-review.md.jinja2
+  - ref: commands/chunk-review.md
     implements: "Updated skill template using per-file decision workflow"
   - ref: tests/test_chunk_review_skill.py
     implements: "Tests verifying skill template uses new decision commands"

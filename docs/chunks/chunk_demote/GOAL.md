@@ -18,7 +18,7 @@ code_references:
     implements: "Full-collapse demotion: validates, copies, rewrites, cleans up pointers, removes architecture source"
   - ref: src/cli/chunk.py#demote_cmd
     implements: "ve chunk demote CLI command — wires demote_chunk() to the chunk subcommand group"
-  - ref: src/templates/commands/chunk-demote.md.jinja2
+  - ref: commands/chunk-demote.md
     implements: "/chunk-demote skill template wrapping the CLI with operator confirmation"
   - ref: docs/trunk/EXTERNAL.md
     implements: "Documentation: when to demote, invariants enforced, step-by-step commit instructions"

@@ -6,9 +6,9 @@ code_paths:
 - src/templates/commands/steward-watch.md.jinja2
 - src/templates/commands/steward-setup.md.jinja2
 code_references:
-- ref: src/templates/commands/steward-watch.md.jinja2
+- ref: commands/steward-watch.md
   implements: "Conditional DO deploy step in orchestrator monitor loop for DONE chunks"
-- ref: src/templates/commands/steward-setup.md.jinja2
+- ref: commands/steward-setup.md
   implements: "Deploy step in autonomous mode suggested behavior section"
 narrative: null
 investigation: null

@@ -26,7 +26,7 @@ code_references:
     implements: "CLI command 've narrative compact' for consolidation"
   - ref: src/ve.py#update_refs
     implements: "CLI command 've narrative update-refs' for backreference updates"
-  - ref: src/templates/commands/narrative-compact.md.jinja2
+  - ref: commands/narrative-compact.md
     implements: "Slash command template for /narrative-compact workflow"
   - ref: tests/test_narrative_consolidation.py
     implements: "Test suite for consolidation workflow"

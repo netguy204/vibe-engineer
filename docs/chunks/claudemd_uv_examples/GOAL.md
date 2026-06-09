@@ -8,8 +8,8 @@ code_paths:
 code_references:
   - ref: src/templates/claude/CLAUDE.md.jinja2
     implements: "Orchestrator examples using plain ve commands for installed package usage"
-  - ref: src/templates/commands/discover-subsystems.md.jinja2
-    implements: "Migration CLI examples using plain ve commands"
+  - ref: commands/discover-subsystems.md
+    implements: "Migration CLI examples using plain ve commands (static plugin command)"
 narrative: null
 investigation: null
 subsystems: []

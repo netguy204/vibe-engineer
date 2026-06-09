@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/orchestrator-monitor.md.jinja2
 code_references:
-- ref: src/templates/commands/orchestrator-monitor.md.jinja2
+- ref: commands/orchestrator-monitor.md
   implements: "Guardrails DO NOT section, updated DONE handler, CWD verification reminders, and loop prompt guardrails"
 narrative: null
 investigation: null

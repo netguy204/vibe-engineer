@@ -25,7 +25,7 @@ code_references:
   implements: "Updated to iterate multi-channel watch array and remove only delivered channel entries"
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::removeWatcher
   implements: "Updated to clear all channel watches on disconnect"
-- ref: src/templates/commands/swarm-monitor.md.jinja2
+- ref: commands/swarm-monitor.md
   implements: "Updated swarm-monitor to use single watch-multi connection instead of N separate watches"
 narrative: null
 investigation: null

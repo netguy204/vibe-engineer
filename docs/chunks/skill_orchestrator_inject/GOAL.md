@@ -6,10 +6,8 @@ code_paths:
 - src/templates/commands/orchestrator-inject.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: src/templates/commands/orchestrator-inject.md.jinja2
-    implements: "Slash command template with pre-flight commit check and orchestrator injection workflow"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Added /orchestrator-inject to orchestrator commands listing"
+  - ref: commands/orchestrator-inject.md
+    implements: "Slash command with pre-flight commit check and orchestrator injection workflow (static plugin command)"
 narrative: null
 investigation: null
 subsystems: []

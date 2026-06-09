@@ -6,10 +6,8 @@ code_paths:
 - src/templates/commands/swarm-monitor.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-- ref: src/templates/commands/swarm-monitor.md.jinja2
-  implements: "Swarm monitor command template with four-phase workflow (discover, cursor check, background watch, report)"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Skill registration for /swarm-monitor in the Available Commands steward section"
+- ref: commands/swarm-monitor.md
+  implements: "Swarm monitor command with four-phase workflow (discover, cursor check, background watch, report) (static plugin command)"
 narrative: null
 investigation: null
 subsystems:

@@ -8,7 +8,7 @@ code_paths:
 code_references:
 - ref: src/entities.py#Entities::startup_payload
   implements: "Touch Protocol section showing correct 3-argument ve entity touch signature"
-- ref: src/templates/commands/entity-startup.md.jinja2
+- ref: commands/entity-startup.md
   implements: "Skill template Step 6 with corrected touch command signature and realistic example"
 narrative: null
 investigation: null

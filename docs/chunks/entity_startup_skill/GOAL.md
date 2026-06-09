@@ -19,7 +19,7 @@ code_references:
     implements: "CLI command 've entity startup <name>' — renders startup payload to stdout"
   - ref: src/cli/entity.py#recall
     implements: "CLI command 've entity recall <name> <query>' — retrieves memories matching a title query"
-  - ref: src/templates/commands/entity-startup.md.jinja2
+  - ref: commands/entity-startup.md
     implements: "/entity-startup slash command template — instructs agent to run startup CLI, adopt entity identity, internalize core memories, orient with wiki and commit to wiki maintenance (Steps 5-6, wiki entities only), note consolidated memory index (Step 7), follow touch protocol (Step 8), use episodic search (Step 9), and follow Standard Operating Procedures (Step 10)"
 narrative: null
 investigation: agent_memory_consolidation

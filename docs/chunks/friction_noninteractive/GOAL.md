@@ -10,7 +10,7 @@ code_references:
   implements: "Non-interactive friction log CLI command with conditional prompting"
 - ref: tests/test_friction_cli.py#TestFrictionLogNonInteractive
   implements: "Test coverage for non-interactive invocation path"
-- ref: src/templates/commands/friction-log.md.jinja2
+- ref: commands/friction-log.md
   implements: "Updated skill template for non-interactive usage"
 narrative: null
 investigation: null

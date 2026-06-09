@@ -19,7 +19,7 @@ code_references:
   implements: "Dispatcher routing wiki entities to wiki pipeline and legacy entities to legacy pipeline"
 - ref: src/cli/entity.py#shutdown
   implements: "CLI shutdown command with optional --memories-file and wiki-aware routing"
-- ref: src/templates/commands/entity-shutdown.md.jinja2
+- ref: commands/entity-shutdown.md
   implements: "Skill template with branching flow for wiki vs legacy entity shutdown"
 narrative: null
 investigation: entity_wiki_memory

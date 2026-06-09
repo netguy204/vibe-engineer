@@ -6,7 +6,7 @@ code_paths:
   - src/templates/commands/chunk-complete.md.jinja2
   - tests/test_friction_workflow.py
 code_references:
-  - ref: src/templates/commands/chunk-complete.md.jinja2
+  - ref: commands/chunk-complete.md
     implements: "Friction resolution reporting in step 12 - detects friction_entries in chunk, reports resolution status for full/partial scope"
   - ref: tests/test_friction_workflow.py#TestFrictionWorkflowIntegration
     implements: "Test helper base class with setup methods for friction log and chunk creation"

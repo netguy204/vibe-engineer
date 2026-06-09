@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/templates/commands/chunk-create.md.jinja2
 code_references:
-  - ref: src/templates/commands/chunk-create.md.jinja2
+  - ref: commands/chunk-create.md
     implements: "Intent-judgment gate (step 4) enforcing CHUNKS.md principle 2 before goal refinement"
 narrative: intent_ownership
 investigation: null

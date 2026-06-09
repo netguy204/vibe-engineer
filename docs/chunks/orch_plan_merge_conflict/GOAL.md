@@ -7,7 +7,7 @@ code_paths:
 - src/templates/chunk/GOAL.md.jinja2
 - .claude/commands/chunk-create.md
 code_references:
-  - ref: src/templates/commands/chunk-create.md.jinja2
+  - ref: commands/chunk-create.md
     implements: "Step 10 - IMPORTANT commit guidance instructing agents to add entire chunk directory"
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "COMMIT BOTH FILES section added to FUTURE CHUNK APPROVAL REQUIREMENT"

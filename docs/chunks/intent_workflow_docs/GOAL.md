@@ -10,11 +10,11 @@ code_paths:
   - README.md
 code_references:
   - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Chunks section framing, Available Commands description, and Getting Started section qualified for intent-bearing work"
+    implements: "Chunks section framing qualified for intent-bearing work"
   - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Mirror of CLAUDE.md.jinja2 intent-bearing framing for agent surfaces"
-  - ref: src/templates/commands/chunk-create.md.jinja2
-    implements: "Skill description qualified to signal chunks are for intent-bearing work"
+  - ref: commands/chunk-create.md
+    implements: "Command description qualified to signal chunks are for intent-bearing work (static plugin command)"
   - ref: docs/trunk/ARTIFACTS.md
     implements: "Choosing-between-artifacts table and backreference lifespan updated for intent framing"
   - ref: README.md

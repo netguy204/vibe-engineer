@@ -15,7 +15,7 @@ code_references:
   implements: "Count tracking across reconnects for total message cap"
 - ref: src/cli/board.py#watch_multi_cmd
   implements: "--count CLI flag wired through to client methods"
-- ref: src/templates/commands/swarm-monitor.md.jinja2
+- ref: commands/swarm-monitor.md
   implements: "Event-driven loop pattern using --count 1 with run_in_background"
 narrative: null
 investigation: null

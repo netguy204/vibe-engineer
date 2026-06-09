@@ -24,7 +24,7 @@ code_references:
   implements: IMPLEMENT→REBASE→REVIEW phase progression
 - ref: src/orchestrator/state.py#StateStore::_migrate_v13
   implements: Document REBASE as valid phase value in schema v13
-- ref: src/templates/commands/chunk-rebase.md.jinja2
+- ref: commands/chunk-rebase.md
   implements: Agent prompt template for commit-merge-resolve-test workflow
 narrative: arch_consolidation
 investigation: null

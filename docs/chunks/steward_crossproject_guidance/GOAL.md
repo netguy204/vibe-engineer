@@ -5,8 +5,8 @@ parent_chunk: null
 code_paths:
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Cross-project steward messaging guidance section in CLAUDE.md template"
+- ref: commands/steward-send.md
+  implements: "Cross-project steward messaging guidance (channel naming from target project, common-mistake warning) in the static plugin command"
 narrative: null
 investigation: null
 subsystems: []

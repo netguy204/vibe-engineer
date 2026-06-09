@@ -8,10 +8,8 @@ code_paths:
 - .claude/commands/narrative-execute.md
 - CLAUDE.md
 code_references:
-- ref: src/templates/commands/narrative-execute.md.jinja2
-  implements: "Slash command template with full narrative execution workflow: DAG parsing, wave computation, parallel Agent dispatch, failure handling, and finalization"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Registration of /narrative-execute in Available Commands section"
+- ref: commands/narrative-execute.md
+  implements: "Slash command with full narrative execution workflow: DAG parsing, wave computation, parallel Agent dispatch, failure handling, and finalization (static plugin command)"
 narrative: null
 investigation: null
 subsystems:

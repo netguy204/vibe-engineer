@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/templates/commands/chunk-create.md.jinja2
 code_references:
-  - ref: src/templates/commands/chunk-create.md.jinja2
+  - ref: commands/chunk-create.md
     implements: "Cluster seed naming guidance in step 1 of /chunk-create skill"
 narrative: null
 investigation: alphabetical_chunk_grouping
