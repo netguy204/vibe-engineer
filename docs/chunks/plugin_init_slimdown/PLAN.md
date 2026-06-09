@@ -252,3 +252,9 @@ deleted src/templates/commands/, and the five test files).
 - Step 4 also dropped the previously-unique `/audit-intent` line from
   CLAUDE.md.jinja2; the two claude templates are now content-identical apart
   from CLAUDE.md.jinja2's historical header comment.
+- **Review iteration 1**: per reviewer feedback, the template_system
+  subsystem OVERVIEW was updated after all — the dangling
+  `Project::_init_skills` code_reference was removed, the Scope bullet for
+  the commands collection was annotated as historical, and a Known
+  Deviations entry was added pointing remaining prose cleanup at
+  plugin_legacy_migration.
