@@ -1,6 +1,6 @@
 """Tests for the 've init' CLI command."""
 # Chunk: docs/chunks/project_init_command - CLI integration tests for 've init'
-# Chunk: docs/chunks/agentskills_migration - Updated for AGENTS.md and .agents/skills/ structure
+# Chunk: docs/chunks/plugin_init_slimdown - Init renders no skills or command symlinks
 
 import pathlib
 import tempfile
@@ -28,11 +28,12 @@ class TestInitCommand:
 
         # Verify files exist
         assert (temp_project / "docs" / "trunk" / "GOAL.md").exists()
-        assert (temp_project / ".agents" / "skills" / "chunk-create" / "SKILL.md").exists()
         assert (temp_project / "AGENTS.md").exists()
-        # Backwards compatibility: CLAUDE.md symlink and .claude/commands/ symlinks
+        # Backwards compatibility: CLAUDE.md symlink
         assert (temp_project / "CLAUDE.md").is_symlink()
-        assert (temp_project / ".claude" / "commands" / "chunk-create.md").is_symlink()
+        # Commands are distributed via the Claude Code plugin, not rendered
+        assert not (temp_project / ".agents").exists()
+        assert not (temp_project / ".claude").exists()
 
     def test_init_command_reports_created_files(self, runner, temp_project):
         """ve init reports each created file."""

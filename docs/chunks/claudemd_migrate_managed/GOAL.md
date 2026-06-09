@@ -6,7 +6,7 @@ code_paths:
   - src/templates/commands/migrate-managed-claude-md.md.jinja2
   - src/templates/migrations/managed_claude_md/MIGRATION.md.jinja2
 code_references:
-  - ref: src/templates/commands/migrate-managed-claude-md.md.jinja2
+  - ref: commands/migrate-managed-claude-md.md
     implements: "Slash command template providing step-by-step migration instructions"
   - ref: src/templates/migrations/managed_claude_md/MIGRATION.md.jinja2
     implements: "Migration state tracking template with phases and boundaries"

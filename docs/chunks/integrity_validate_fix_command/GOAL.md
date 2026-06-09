@@ -7,12 +7,8 @@ code_paths:
 - src/templates/claude/CLAUDE.md.jinja2
 - tests/test_template_system.py
 code_references:
-  - ref: src/templates/commands/validate-fix.md.jinja2
-    implements: "Slash command template defining the iterative fix loop logic and error classification"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Documents /validate-fix in the Available Commands section"
-  - ref: tests/test_template_system.py#TestValidateFixSlashCommand
-    implements: "Test suite verifying template rendering and content correctness"
+  - ref: commands/validate-fix.md
+    implements: "Slash command defining the iterative fix loop logic and error classification (static plugin command)"
 narrative: null
 investigation: referential_integrity
 subsystems: []

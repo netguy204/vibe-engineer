@@ -81,9 +81,6 @@ code_references:
 - ref: src/project.py#Project::_init_trunk
   implements: Trunk initialization using render_to_directory (overwrite=False)
   compliance: COMPLIANT
-- ref: src/project.py#Project::_init_skills
-  implements: Skills initialization using render_to_directory (overwrite=True, skill_layout=True)
-  compliance: COMPLIANT
 - ref: src/project.py#Project::_init_agents_md
   implements: AGENTS.md initialization using render_template
   compliance: COMPLIANT
@@ -176,8 +173,7 @@ template fragments.
 - **Template enumeration**: Centralized discovery of templates by collection (e.g., `list_templates("chunk")`)
 - **Include mechanism**: Jinja2 native `{% include %}` support with a `partials/` subdirectory in each template collection
 - **Base context**: A consistent set of parameters available to all templates
-- **Slash command templates**: The `src/templates/commands/` templates, rendered as Jinja2 (not just copied)
-- **Project initialization templates**: `src/project.py`'s template handling, migrated from copy/symlink to Jinja2 rendering
+- **Project initialization templates**: `src/project.py`'s template handling, migrated from copy/symlink to Jinja2 rendering. (Historical note: the `src/templates/commands/` slash-command collection was in scope until docs/chunks/plugin_init_slimdown removed it; commands are now distributed via the Claude Code plugin.)
 - **File writing with suffix stripping**: Render templates to a destination directory, stripping the `.jinja2` suffix from filenames
 
 ### Out of Scope
@@ -226,7 +222,12 @@ The canonical implementation provides:
 
 ## Known Deviations
 
-*All known deviations have been resolved. The subsystem is now STABLE.*
+- **Stale prose referencing the removed commands collection** - docs/chunks/plugin_init_slimdown
+  deleted the `src/templates/commands/` collection and `Project._init_skills`
+  (command distribution moved to the Claude Code plugin per DEC-010). Remaining
+  prose in this document and in trunk docs that describes rendered command
+  skills is historical; trunk-doc updates are handled by
+  docs/chunks/plugin_legacy_migration.
 
 ### Resolved Deviations
 

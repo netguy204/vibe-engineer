@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/steward-watch.md.jinja2
 code_references:
-  - ref: src/templates/commands/steward-watch.md.jinja2
+  - ref: commands/steward-watch.md
     implements: "Ack-all callout in Step 5 of steward-watch skill template"
 narrative: null
 investigation: null

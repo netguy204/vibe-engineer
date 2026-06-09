@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/steward-setup.md.jinja2
 code_references:
-  - ref: src/templates/commands/steward-setup.md.jinja2
+  - ref: commands/steward-setup.md
     implements: "Steward setup skill template with board.toml auto-suggest defaults and bootstrap channel messages"
 narrative: null
 investigation: null

@@ -12,7 +12,7 @@ code_references:
     implements: "Model with depends_on field for index-based dependencies in narrative proposed_chunks"
   - ref: src/models/references.py#ProposedChunk::validate_depends_on
     implements: "Field validator ensuring depends_on indices are non-negative"
-  - ref: src/templates/commands/chunk-create.md.jinja2
+  - ref: commands/chunk-create.md
     implements: "Agent instructions for detecting and resolving dependencies from narrative proposed_chunks"
   - ref: tests/test_models.py#TestProposedChunkDependsOn
     implements: "Unit tests for ProposedChunk.depends_on field validation"

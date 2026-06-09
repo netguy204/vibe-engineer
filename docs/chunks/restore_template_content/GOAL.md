@@ -6,7 +6,7 @@ code_paths:
 - src/templates/commands/chunk-plan.md.jinja2
 - docs/trunk/ARTIFACTS.md
 code_references:
-  - ref: src/templates/commands/chunk-plan.md.jinja2
+  - ref: commands/chunk-plan.md
     implements: "Cluster prefix suggestion step (Step 2) for semantic chunk naming"
   - ref: docs/trunk/ARTIFACTS.md
     implements: "Investigation frontmatter reference, Proposed Chunks section, and Investigation lifecycle details (moved from CLAUDE.md.jinja2 by progressive_disclosure_refactor)"

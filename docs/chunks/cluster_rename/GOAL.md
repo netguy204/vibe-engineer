@@ -33,10 +33,8 @@ code_references:
     implements: "Main orchestration function for cluster rename operation"
   - ref: src/cluster_rename.py#format_dry_run_output
     implements: "Dry-run output formatter"
-  - ref: src/templates/commands/cluster-rename.md.jinja2
-    implements: "Slash command template for /cluster-rename"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Updated CLAUDE.md template with cluster-rename command documentation"
+  - ref: commands/cluster-rename.md
+    implements: "Slash command for /cluster-rename (static plugin command)"
   - ref: tests/test_cluster_rename.py
     implements: "Test suite for cluster rename functionality"
   - ref: src/cli/chunk.py#cluster_rename_cmd

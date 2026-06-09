@@ -8,7 +8,7 @@ code_paths:
 code_references:
 - ref: src/entities.py#Entities::startup_payload
   implements: "Touch Protocol prose updated to acknowledge both timestamp-prefixed and slug ID formats"
-- ref: src/templates/commands/entity-startup.md.jinja2
+- ref: commands/entity-startup.md
   implements: "Step 8 examples show both tiered-memory and wiki-based entity ID formats"
 narrative: null
 investigation: null

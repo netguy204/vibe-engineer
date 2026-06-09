@@ -13,8 +13,8 @@ code_paths:
 code_references:
   - ref: src/templates/claude/CLAUDE.md.jinja2
     implements: "Backreference section updated to remove scratchpad language"
-  - ref: src/templates/commands/narrative-compact.md.jinja2
-    implements: "Background and Phase 4 sections updated to remove scratchpad references"
+  - ref: commands/narrative-compact.md
+    implements: "Background and Phase 4 sections free of scratchpad references (static plugin command)"
   - ref: src/templates/chunk/PLAN.md.jinja2
     implements: "Backreference comments section updated to remove scratchpad language"
   - ref: src/templates/task/CLAUDE.md.jinja2

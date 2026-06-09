@@ -6,10 +6,8 @@ code_paths:
   - src/templates/commands/chunk-review.md.jinja2
   - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: src/templates/commands/chunk-review.md.jinja2
-    implements: "Complete chunk-review skill template with four-phase review workflow"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Added /chunk-review to Available Commands section"
+  - ref: commands/chunk-review.md
+    implements: "Complete chunk-review command with four-phase review workflow (static plugin command)"
 narrative: null
 investigation: orchestrator_quality_assurance
 subsystems: []

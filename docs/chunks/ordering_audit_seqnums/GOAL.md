@@ -8,11 +8,11 @@ code_paths:
   - src/templates/commands/subsystem-discover.md.jinja2
   - CLAUDE.md
 code_references:
-  - ref: src/templates/commands/chunk-complete.md.jinja2
+  - ref: commands/chunk-complete.md
     implements: "Updated step 3 to use short name directly instead of extracting sequential ID"
-  - ref: src/templates/commands/chunk-update-references.md.jinja2
+  - ref: commands/chunk-update-references.md
     implements: "Updated backreference format example to use short name pattern"
-  - ref: src/templates/commands/subsystem-discover.md.jinja2
+  - ref: commands/subsystem-discover.md
     implements: "Updated pattern matching and example paths to use short name format"
   - ref: CLAUDE.md
     implements: "Updated examples to use short name format (e.g., docs/chunks/feature_name/, docs/chunks/symbolic_code_refs)"

@@ -29,7 +29,7 @@ code_references:
   implements: CLI investigation list command with --state filter
 - ref: src/template_system.py#ActiveInvestigation
   implements: Template context dataclass for investigation rendering
-- ref: src/templates/commands/investigation-create.md.jinja2
+- ref: commands/investigation-create.md
   implements: Slash command with scale assessment for investigation vs chunk decision
 narrative: investigations
 subsystems: []

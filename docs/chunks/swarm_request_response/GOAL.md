@@ -6,10 +6,8 @@ code_paths:
 - src/templates/commands/swarm-request-response.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-- ref: src/templates/commands/swarm-request-response.md.jinja2
-  implements: "Full request-response lifecycle skill template: argument parsing, cursor advance, background watch, request send, response filtering, and key concepts documentation"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Registration of /swarm-request-response skill in the Available Commands section"
+- ref: commands/swarm-request-response.md
+  implements: "Full request-response lifecycle command: argument parsing, cursor advance, background watch, request send, response filtering, and key concepts documentation (static plugin command)"
 narrative: null
 investigation: null
 subsystems: []

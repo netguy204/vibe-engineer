@@ -7,12 +7,10 @@ code_paths:
 - src/templates/commands/steward-watch.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-- ref: src/templates/commands/orchestrator-monitor.md.jinja2
-  implements: "Orchestrator monitor slash command skill template with status handler logic, loop setup, and lifecycle management"
-- ref: src/templates/commands/steward-watch.md.jinja2
-  implements: "Updated Step 6 to delegate monitoring to /orchestrator-monitor instead of inline loop construction"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Registered /orchestrator-monitor in the orchestrator commands list"
+- ref: commands/orchestrator-monitor.md
+  implements: "Orchestrator monitor slash command with status handler logic, loop setup, and lifecycle management (static plugin command)"
+- ref: commands/steward-watch.md
+  implements: "Step 6 delegates monitoring to /orchestrator-monitor instead of inline loop construction (static plugin command)"
 narrative: null
 investigation: null
 subsystems:

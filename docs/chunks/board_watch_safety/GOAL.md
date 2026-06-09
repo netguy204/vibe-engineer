@@ -21,7 +21,7 @@ code_references:
   implements: "Kill-previous-watch logic and PID lifecycle in single-channel watch"
 - ref: src/cli/board.py#watch_multi_cmd
   implements: "Kill-previous-watch logic and PID lifecycle in multi-channel watch"
-- ref: src/templates/commands/steward-watch.md.jinja2
+- ref: commands/steward-watch.md
   implements: "Watch Safety SOP guidance on ack discipline, multi-channel patterns, and timeout cleanup"
 narrative: null
 investigation: null

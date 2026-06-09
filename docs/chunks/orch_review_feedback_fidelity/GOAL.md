@@ -17,7 +17,7 @@ code_references:
   implements: "Checks whether implementer addressed review feedback by verifying REVIEW_FEEDBACK.md deletion"
 - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
   implements: "Pre-review validation that routes back to IMPLEMENT if REVIEW_FEEDBACK.md still exists"
-- ref: src/templates/commands/chunk-implement.md.jinja2
+- ref: commands/chunk-implement.md
   implements: "Template instructions for implementer to read, address, and delete REVIEW_FEEDBACK.md"
 narrative: null
 investigation: null

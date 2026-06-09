@@ -20,7 +20,7 @@ code_references:
     implements: "Empty-default SOP.md template with placeholder comment for role-specific startup procedures"
   - ref: src/templates/entity/wiki_schema.md.jinja2
     implements: "Document SOP.md in wiki directory structure and What Goes Where sections"
-  - ref: src/templates/commands/entity-startup.md.jinja2
+  - ref: commands/entity-startup.md
     implements: "Replace Active State guidance with SOP.md-aware startup instructions"
 narrative: null
 investigation: entity_wiki_memory

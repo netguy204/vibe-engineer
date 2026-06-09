@@ -27,7 +27,7 @@ code_references:
     implements: "Updates narrative status in frontmatter"
   - ref: tests/test_narrative_scratchpad.py
     implements: "Unit tests for scratchpad narrative commands"
-  - ref: src/templates/commands/narrative-create.md.jinja2
+  - ref: commands/narrative-create.md
     implements: "Updated skill template for scratchpad narrative creation"
 narrative: global_scratchpad
 investigation: bidirectional_doc_code_sync

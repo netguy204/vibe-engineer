@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/steward-setup.md.jinja2
 code_references:
-- ref: src/templates/commands/steward-setup.md.jinja2
+- ref: commands/steward-setup.md
   implements: "Interview question 7 (optional deploy command) and generic step 6 in autonomous mode behavior template"
 narrative: null
 investigation: null

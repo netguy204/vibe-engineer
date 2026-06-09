@@ -5,15 +5,15 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/orchestrator-investigate.md.jinja2
 code_references:
-  - ref: src/templates/commands/orchestrator-investigate.md.jinja2#Scenario F
+  - ref: commands/orchestrator-investigate.md#Scenario F
     implements: "Partial merge recovery - docs on main, implementation on branch"
-  - ref: src/templates/commands/orchestrator-investigate.md.jinja2#Scenario G
+  - ref: commands/orchestrator-investigate.md#Scenario G
     implements: "Systematic code bug recovery - batch retry affected chunks"
-  - ref: src/templates/commands/orchestrator-investigate.md.jinja2#Resolution F
+  - ref: commands/orchestrator-investigate.md#Resolution F
     implements: "Step-by-step recovery for partial merge scenario"
-  - ref: src/templates/commands/orchestrator-investigate.md.jinja2#Resolution G
+  - ref: commands/orchestrator-investigate.md#Resolution G
     implements: "Code bug fix and batch retry workflow"
-  - ref: src/templates/commands/orchestrator-investigate.md.jinja2#status DONE vs delete warning
+  - ref: commands/orchestrator-investigate.md#status DONE vs delete warning
     implements: "Critical warning distinguishing status DONE from delete"
 narrative: null
 investigation: orch_stuck_recovery

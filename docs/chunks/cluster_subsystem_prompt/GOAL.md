@@ -25,7 +25,7 @@ code_references:
     implements: "Cluster size warning at chunk creation"
   - ref: tests/test_cluster_subsystem_prompt.py
     implements: "Tests for cluster size warning feature"
-  - ref: src/templates/commands/chunk-plan.md.jinja2
+  - ref: commands/chunk-plan.md
     implements: "Rename guidance mentioning subsystem documentation"
 narrative: null
 investigation: bug_chunk_semantic_value

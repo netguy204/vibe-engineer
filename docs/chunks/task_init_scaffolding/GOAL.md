@@ -27,19 +27,19 @@ code_references:
     implements: "Project skills rendered with task_context=False for proper conditional block resolution"
   - ref: src/templates/task/CLAUDE.md.jinja2
     implements: "Task-specific CLAUDE.md template with project list and orientation"
-  - ref: src/templates/commands/chunk-create.md.jinja2
+  - ref: commands/chunk-create.md
     implements: "Chunk create command with task context conditional block"
-  - ref: src/templates/commands/chunk-implement.md.jinja2
+  - ref: commands/chunk-implement.md
     implements: "Chunk implement command with task context conditional block"
-  - ref: src/templates/commands/chunk-plan.md.jinja2
+  - ref: commands/chunk-plan.md
     implements: "Chunk plan command with task context conditional block"
-  - ref: src/templates/commands/chunk-complete.md.jinja2
+  - ref: commands/chunk-complete.md
     implements: "Chunk complete command with task context conditional block"
-  - ref: src/templates/commands/narrative-create.md.jinja2
+  - ref: commands/narrative-create.md
     implements: "Narrative create command template (no task context block)"
-  - ref: src/templates/commands/subsystem-discover.md.jinja2
+  - ref: commands/subsystem-discover.md
     implements: "Subsystem discover command with task context conditional block"
-  - ref: src/templates/commands/investigation-create.md.jinja2
+  - ref: commands/investigation-create.md
     implements: "Investigation create command with task context conditional block"
   - ref: tests/test_task_init.py#TestTaskInitAgentsMd
     implements: "Tests for agents.md generation in task init"

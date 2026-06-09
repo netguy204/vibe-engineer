@@ -9,18 +9,14 @@ code_paths:
 - src/templates/commands/steward-changelog.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: src/templates/commands/steward-setup.md.jinja2
-    implements: "Steward setup interview skill - guides operator through SOP creation"
-  - ref: src/templates/commands/steward-watch.md.jinja2
-    implements: "Steward watch-respond-rewatch loop skill with cursor management"
-  - ref: src/templates/commands/steward-send.md.jinja2
-    implements: "Steward message sending skill for cross-agent communication"
-  - ref: src/templates/commands/steward-changelog.md.jinja2
-    implements: "Changelog watching skill with independent cursor tracking"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
-    implements: "Registration of steward skills in Available Commands section"
-  - ref: tests/test_steward_skills.py
-    implements: "Template rendering tests for steward skill files"
+  - ref: commands/steward-setup.md
+    implements: "Steward setup interview command - guides operator through SOP creation (static plugin command)"
+  - ref: commands/steward-watch.md
+    implements: "Steward watch-respond-rewatch loop command with cursor management (static plugin command)"
+  - ref: commands/steward-send.md
+    implements: "Steward message sending command for cross-agent communication (static plugin command)"
+  - ref: commands/steward-changelog.md
+    implements: "Changelog watching command with independent cursor tracking (static plugin command)"
 narrative: leader_board
 investigation: null
 subsystems: []
