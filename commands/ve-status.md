@@ -1,14 +1,14 @@
 ---
 name: ve-status
 description: Report the current vibe-engineering workflow status for this project
-allowed-tools: Bash(ve chunk list:*), Bash(ve --version:*)
+allowed-tools: Bash(ve chunk list:*), Bash(ve --help:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_scaffold - Claude Code plugin scaffold pilot command -->
 
 ## Context
 
-- ve CLI version: !`ve --version 2>/dev/null || echo "(ve CLI not found)"`
+- ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Current chunk: !`ve chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"`
 - Recent chunks: !`ve chunk list --recent 2>/dev/null || echo "(no chunks)"`
 
