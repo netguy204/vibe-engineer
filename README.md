@@ -108,6 +108,16 @@ This creates `docs/trunk/` for project-level docs (GOAL, SPEC, DECISIONS, TESTIN
 
 Edit `docs/trunk/` next: this is where you describe what the project is for and the rules an agent should respect when working in it. The `docs/trunk/` of this repository is a worked example.
 
+#### Migrating from the legacy rendered layout
+
+Earlier versions of `ve init` rendered command files into `.agents/skills/`
+and symlinked them from `.claude/commands/`. Re-running `ve init` on such a
+project migrates it: ve-generated files (identified by their AUTO-GENERATED
+header) and the `.claude/commands/` symlinks are removed, the AGENTS.md
+managed block is rewritten to the slimmed form, and emptied directories are
+pruned. User-authored files in those directories are preserved (with a
+warning). The migration is idempotent — a second run changes nothing.
+
 ### Working in Chunks
 
 [Chunks](https://veng.dev/docs/chunks/) capture the *intent* behind your code: the constraints, decisions, and boundaries that should outlive any particular implementation. Not every change needs a chunk. Typo fixes, dependency bumps, and mechanical renames bypass the chunk system. The test: *does this code need to remember why it exists?* If yes, make a chunk. See `docs/trunk/CHUNKS.md` for the full principles.
@@ -116,7 +126,7 @@ Each chunk has two files. `GOAL.md` records the problem, the success criteria, a
 
 #### Claude Code Slash Commands
 
-When you run `ve init`, slash commands are installed to `.claude/commands/` for use with Claude Code:
+The workflow slash commands ship with the [vibe-engineer Claude Code plugin](#claude-code-plugin) — nothing is rendered into your repository, and command updates arrive via `/plugin update vibe-engineer` rather than by re-running `ve init`. The core chunk-lifecycle commands:
 
 | Command | Description |
 |---------|-------------|
@@ -267,12 +277,16 @@ For the full command reference and advanced topics (worktree retention, batch op
 
 ```
 vibe-engineer/
+├── .claude-plugin/       # Plugin + marketplace manifests (Claude Code plugin)
+├── commands/             # Plugin slash-command sources (also orchestrator phase prompts)
+├── agents/               # Plugin subagents
+├── hooks/                # Plugin hooks (SessionStart)
 ├── src/                  # `ve` CLI (Python)
 │   ├── ve.py             # CLI entry point
 │   ├── cli/              # Subcommands: chunk, orch, board, entity, ...
 │   ├── orchestrator/     # Parallel chunk execution across worktrees
 │   ├── board/            # Client for the leader-board worker
-│   └── templates/        # Jinja2 templates rendered into a project by `ve init`
+│   └── templates/        # Jinja2 templates for project docs scaffolded by `ve init`
 ├── site/                 # Marketing site (Astro) for veng.dev
 ├── workers/
 │   └── leader-board/     # Cloudflare Worker: cross-agent messaging backend

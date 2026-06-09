@@ -24,11 +24,25 @@ def init(project_dir):
     for path in result.created:
         click.echo(f"Created {path}")
 
+    # Chunk: docs/chunks/plugin_legacy_migration - Report legacy-layout cleanup and point at the plugin
+    for path in result.removed:
+        click.echo(f"Removed {path}")
+
     if result.skipped:
         click.echo(f"Skipped {len(result.skipped)} existing file(s)")
 
     for warning in result.warnings:
         click.echo(f"Warning: {warning}", err=True)
+
+    if result.removed:
+        click.echo(
+            "\nLegacy command layout removed. Workflow commands are now "
+            "distributed via the vibe-engineer Claude Code plugin:\n"
+            "  /plugin marketplace add netguy204/vibe-engineer\n"
+            "  /plugin install vibe-engineer\n"
+            "Command updates arrive via /plugin update vibe-engineer — "
+            "re-running `ve init` is no longer part of the upgrade story."
+        )
 
 
 @click.command()

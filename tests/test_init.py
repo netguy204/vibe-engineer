@@ -213,3 +213,239 @@ class TestInitCommand:
         assert "# Friction Log" in content
         assert "GUIDANCE FOR AGENTS" in content
         assert "## Entries" in content
+
+
+# Chunk: docs/chunks/plugin_legacy_migration - Legacy-layout migration on re-init
+AUTO_GENERATED_HEADER = """<!--
+AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+
+Run `ve init` to regenerate.
+-->
+"""
+
+LEGACY_SKILLS = ["chunk-create", "chunk-plan", "chunk-implement"]
+
+
+def make_legacy_layout(project_dir: pathlib.Path) -> None:
+    """Build a legacy render-channel layout in project_dir.
+
+    Reproduces what pre-plugin `ve init` left behind:
+    - .agents/skills/<name>/SKILL.md files with the AUTO-GENERATED header
+    - .claude/commands/<name>.md relative symlinks into .agents/skills/
+    - AGENTS.md with a marker-managed block carrying old command docs
+    - CLAUDE.md symlink to AGENTS.md
+    """
+    skills_dir = project_dir / ".agents" / "skills"
+    commands_dir = project_dir / ".claude" / "commands"
+    skills_dir.mkdir(parents=True)
+    commands_dir.mkdir(parents=True)
+
+    for name in LEGACY_SKILLS:
+        skill_dir = skills_dir / name
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\n---\n{AUTO_GENERATED_HEADER}\n## Instructions\n"
+        )
+        (commands_dir / f"{name}.md").symlink_to(
+            pathlib.Path("..") / ".." / ".agents" / "skills" / name / "SKILL.md"
+        )
+
+    agents_md = (
+        "# My project notes\n\n"
+        "<!-- VE:MANAGED:START -->\n"
+        "OLD COMMAND DOCS: run /chunk-create from .claude/commands\n"
+        "<!-- VE:MANAGED:END -->\n\n"
+        "User content after the managed block.\n"
+    )
+    (project_dir / "AGENTS.md").write_text(agents_md)
+    (project_dir / "CLAUDE.md").symlink_to("AGENTS.md")
+
+
+class TestLegacyMigration:
+    """ve init migrates projects off the legacy rendered layout."""
+
+    def test_removes_ve_generated_skills_and_symlinks(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+
+        # Legacy content is gone, empty dirs pruned
+        assert not (temp_project / ".agents").exists()
+        assert not (temp_project / ".claude").exists()
+
+    def test_reports_removed_paths(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "Removed .claude/commands/chunk-create.md" in result.output
+        assert "Removed .agents/skills/chunk-create/SKILL.md" in result.output
+
+    def test_prints_plugin_install_pointer(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "/plugin marketplace add netguy204/vibe-engineer" in result.output
+        assert "/plugin install vibe-engineer" in result.output
+
+    def test_rewrites_managed_block_to_slimmed_form(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+
+        content = (temp_project / "AGENTS.md").read_text()
+        # Old managed content replaced by the slimmed block
+        assert "OLD COMMAND DOCS" not in content
+        assert "Claude Code plugin" in content
+        # User content outside the markers preserved
+        assert "# My project notes" in content
+        assert "User content after the managed block." in content
+
+    def test_preserves_user_authored_command_file_with_warning(
+        self, runner, temp_project
+    ):
+        make_legacy_layout(temp_project)
+        custom = temp_project / ".claude" / "commands" / "custom.md"
+        custom.write_text("# My custom command\nDo my thing.\n")
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+
+        # User file survives; its parent dirs are therefore not pruned
+        assert custom.exists()
+        assert "custom.md" in result.output
+        assert "Warning" in result.output
+        # ve-generated content is still removed
+        assert not (temp_project / ".agents").exists()
+
+    def test_preserves_user_authored_skill_with_warning(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+        user_skill = temp_project / ".agents" / "skills" / "my-skill"
+        user_skill.mkdir()
+        (user_skill / "SKILL.md").write_text("---\nname: my-skill\n---\nMine.\n")
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+
+        assert (user_skill / "SKILL.md").exists()
+        assert "my-skill" in result.output
+        assert "Warning" in result.output
+        # ve-generated skills are still removed
+        assert not (temp_project / ".agents" / "skills" / "chunk-create").exists()
+        # .claude symlinks (all ve-generated) are removed and pruned
+        assert not (temp_project / ".claude").exists()
+
+    def test_preserves_foreign_symlink_with_warning(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+        target = temp_project / "somewhere-else.md"
+        target.write_text("# Not a ve file\n")
+        foreign = temp_project / ".claude" / "commands" / "foreign.md"
+        foreign.symlink_to(pathlib.Path("..") / ".." / "somewhere-else.md")
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+
+        assert foreign.is_symlink()
+        assert "foreign.md" in result.output
+        assert "Warning" in result.output
+
+    def test_removes_broken_symlink_into_agents_skills(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+        # A symlink whose .agents/skills target is already gone
+        broken = temp_project / ".claude" / "commands" / "chunk-review.md"
+        broken.symlink_to(
+            pathlib.Path("..") / ".." / ".agents" / "skills" / "chunk-review" / "SKILL.md"
+        )
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert not broken.exists() and not broken.is_symlink()
+
+    def test_removes_ve_generated_regular_command_file(self, runner, temp_project):
+        """Windows-era legacy installs copied command files instead of symlinking."""
+        make_legacy_layout(temp_project)
+        copied = temp_project / ".claude" / "commands" / "chunk-copy.md"
+        copied.write_text(f"---\nname: chunk-copy\n---\n{AUTO_GENERATED_HEADER}\nBody.\n")
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert not copied.exists()
+
+    def test_second_run_is_noop(self, runner, temp_project):
+        make_legacy_layout(temp_project)
+
+        first = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert first.exit_code == 0
+        assert "Removed" in first.output
+
+        second = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert second.exit_code == 0
+        assert "Removed" not in second.output
+        assert "/plugin install" not in second.output
+        assert "Skipped" in second.output
+
+    def test_fresh_project_has_no_migration_output(self, runner, temp_project):
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "Removed" not in result.output
+        assert "/plugin install" not in result.output
+
+
+class TestLegacyMigrationProjectLevel:
+    """Project.init() level assertions for the migration result channels."""
+
+    def test_init_result_removed_channel(self, temp_project):
+        from project import Project
+
+        make_legacy_layout(temp_project)
+        result = Project(temp_project).init()
+
+        assert ".claude/commands/chunk-create.md" in result.removed
+        assert ".agents/skills/chunk-create/SKILL.md" in result.removed
+        # Warnings channel untouched by a clean migration
+        assert not any("custom" in w for w in result.warnings)
+
+    def test_init_result_removed_empty_on_second_run(self, temp_project):
+        from project import Project
+
+        make_legacy_layout(temp_project)
+        Project(temp_project).init()
+        result = Project(temp_project).init()
+
+        assert result.removed == []
+        assert result.warnings == []
+
+    def test_user_only_layout_produces_no_warnings(self, runner, temp_project):
+        """A project whose .claude/commands holds only user files is left in peace.
+
+        No ve-generated content means no migration is happening, so ve init
+        has no business warning about the user's own files — on this run or
+        any later one.
+        """
+        commands_dir = temp_project / ".claude" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "mine.md").write_text("# My own command\n")
+
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "Removed" not in result.output
+        assert "mine.md" not in result.output
+        assert (commands_dir / "mine.md").exists()
+
+    def test_second_run_does_not_rewarn_about_preserved_files(
+        self, runner, temp_project
+    ):
+        make_legacy_layout(temp_project)
+        custom = temp_project / ".claude" / "commands" / "custom.md"
+        custom.write_text("# My custom command\n")
+
+        first = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert "custom.md" in first.output
+
+        second = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert second.exit_code == 0
+        assert "custom.md" not in second.output
+        assert custom.exists()

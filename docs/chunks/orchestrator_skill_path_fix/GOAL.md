@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: HISTORICAL
 ticket: null
 parent_chunk: agentskills_migration
 code_paths:
@@ -21,6 +21,15 @@ created_after:
 ---
 
 # Chunk Goal
+
+> **HISTORICAL** — superseded by `docs/chunks/plugin_legacy_migration`. The
+> orchestrator no longer reads phase prompts from a project's
+> `.agents/skills/` layout at all: prompts are the plugin command sources
+> shipped as package data with the vibe-engineer package
+> (`AgentRunner.get_skill_path` in src/orchestrator/agent.py). The
+> `.agents/skills/` layout this chunk targeted is itself removed from
+> projects by `ve init`'s legacy migration. Retained for archaeology of the
+> agentskills.io era.
 
 ## Minor Goal
 

@@ -114,6 +114,8 @@ class InitResult:
     created: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Chunk: docs/chunks/plugin_legacy_migration - Paths removed by legacy-layout migration
+    removed: list[str] = field(default_factory=list)
 
 
 # Chunk: docs/chunks/init_skill_symlink_migration - VE-generated file detection for symlink migration
@@ -190,6 +192,120 @@ class Project:
         if self._ve_config is None:
             self._ve_config = load_ve_config(self.project_dir)
         return self._ve_config
+
+    # Chunk: docs/chunks/plugin_legacy_migration - Remove the legacy render-channel layout on re-init
+    def _migrate_legacy_layout(self) -> InitResult:
+        """Remove ve-generated artifacts of the legacy render-based layout.
+
+        Pre-plugin `ve init` rendered command skills into `.agents/skills/`
+        and symlinked them from `.claude/commands/`. Commands are now
+        distributed via the vibe-engineer Claude Code plugin (DEC-010), so a
+        re-run of `ve init` cleans the legacy layout up:
+
+        - `.claude/commands/` symlinks pointing into `.agents/skills/` are
+          removed (including broken ones whose target is already gone).
+        - `.claude/commands/` regular files with the AUTO-GENERATED header
+          are removed (Windows installs copied instead of symlinking).
+        - `.agents/skills/<name>/SKILL.md` files with the AUTO-GENERATED
+          header are removed.
+        - User-authored files (no header, or symlinks pointing elsewhere)
+          are preserved with a warning. Warnings are only emitted when the
+          run actually removed something: once the migration is complete
+          (or on a project that never had ve-generated content), surviving
+          user files are simply the user's own and produce no noise.
+        - Directories emptied by the cleanup are pruned.
+
+        Idempotent: on an already-migrated (or fresh) project nothing
+        matches and the result is empty.
+        """
+        result = InitResult()
+        preserve_warnings: list[str] = []
+
+        def _points_into_agents_skills(link: pathlib.Path) -> bool:
+            """True if a symlink's target lies in this project's .agents/skills/."""
+            skills_dir = self.project_dir / ".agents" / "skills"
+            raw_target = pathlib.Path(link.readlink())
+            if not raw_target.is_absolute():
+                raw_target = link.parent / raw_target
+            # Lexical resolution (strict=False): works for broken links too
+            try:
+                resolved_target = raw_target.resolve()
+                resolved_skills = skills_dir.resolve()
+            except OSError:
+                return False
+            return resolved_target.is_relative_to(resolved_skills)
+
+        # 1. .claude/commands/ entries
+        commands_dir = self.project_dir / ".claude" / "commands"
+        if commands_dir.is_dir():
+            for entry in sorted(commands_dir.iterdir()):
+                rel = entry.relative_to(self.project_dir)
+                if entry.is_symlink():
+                    if _points_into_agents_skills(entry):
+                        entry.unlink()
+                        result.removed.append(str(rel))
+                    else:
+                        preserve_warnings.append(
+                            f"Preserved {rel}: symlink does not point into "
+                            ".agents/skills/ (not VE-generated)"
+                        )
+                elif entry.is_file():
+                    if _is_ve_generated_file(entry):
+                        entry.unlink()
+                        result.removed.append(str(rel))
+                    else:
+                        preserve_warnings.append(
+                            f"Preserved {rel}: no AUTO-GENERATED header "
+                            "(user-authored)"
+                        )
+
+        # 2. .agents/skills/ entries
+        skills_dir = self.project_dir / ".agents" / "skills"
+        if skills_dir.is_dir():
+            for entry in sorted(skills_dir.iterdir()):
+                rel = entry.relative_to(self.project_dir)
+                if entry.is_dir() and not entry.is_symlink():
+                    skill_md = entry / "SKILL.md"
+                    if skill_md.is_file() and _is_ve_generated_file(skill_md):
+                        skill_md.unlink()
+                        result.removed.append(
+                            str(skill_md.relative_to(self.project_dir))
+                        )
+                    elif skill_md.is_file():
+                        preserve_warnings.append(
+                            f"Preserved {rel}: SKILL.md has no AUTO-GENERATED "
+                            "header (user-authored)"
+                        )
+                    # Prune the skill directory if the cleanup emptied it
+                    if not any(entry.iterdir()):
+                        entry.rmdir()
+                elif entry.is_file() and _is_ve_generated_file(entry):
+                    entry.unlink()
+                    result.removed.append(str(rel))
+
+        # 3. Prune directories emptied by the cleanup
+        for rel_dir in (
+            pathlib.Path(".claude") / "commands",
+            pathlib.Path(".claude"),
+            pathlib.Path(".agents") / "skills",
+            pathlib.Path(".agents"),
+        ):
+            candidate = self.project_dir / rel_dir
+            if (
+                result.removed
+                and candidate.is_dir()
+                and not candidate.is_symlink()
+                and not any(candidate.iterdir())
+            ):
+                candidate.rmdir()
+
+        # Preserve-warnings only accompany an actual migration: a run that
+        # removed nothing has nothing to warn about (user files in these
+        # directories are simply the user's own).
+        if result.removed:
+            result.warnings.extend(preserve_warnings)
+
+        return result
 
     # Subsystem: docs/subsystems/template_system - Uses render_to_directory
     def _init_trunk(self) -> InitResult:
@@ -379,17 +495,23 @@ class Project:
         return result
 
     # Chunk: docs/chunks/plugin_init_slimdown - Init scaffolds project-owned artifacts only; commands distributed via the Claude Code plugin
+    # Chunk: docs/chunks/plugin_legacy_migration - Re-init migrates legacy rendered layouts
     def init(self) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
         Creates trunk documents, AGENTS.md, artifact directories, and the
         baseline reviewer. Workflow commands are not rendered into the
         project; they are distributed via the vibe-engineer Claude Code
-        plugin. Idempotent: skips files that already exist.
+        plugin. On projects carrying the legacy rendered layout, removes
+        ve-generated `.agents/skills/` content and `.claude/commands/`
+        symlinks (preserving user-authored files with a warning).
+        Idempotent: skips files that already exist; a second run removes
+        nothing.
         """
         result = InitResult()
 
         for sub_result in [
+            self._migrate_legacy_layout(),
             self._init_trunk(),
             self._init_agents_md(),
             self._init_narratives(),
@@ -400,6 +522,7 @@ class Project:
             result.created.extend(sub_result.created)
             result.skipped.extend(sub_result.skipped)
             result.warnings.extend(sub_result.warnings)
+            result.removed.extend(sub_result.removed)
 
         return result
 

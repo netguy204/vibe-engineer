@@ -101,37 +101,15 @@ def create_mock_claude_sdk_client(messages=None, exception=None):
     return ConfiguredMock
 
 
+# Chunk: docs/chunks/plugin_legacy_migration - Phase prompts ship with the
+# package; the target project needs no skill layout.
 @pytest.fixture
 def project_dir(tmp_path):
-    """Create a project directory with skill files for testing."""
-    # Create .agents/skills directory structure (canonical location)
-    skills_dir = tmp_path / ".agents" / "skills"
-    skills_dir.mkdir(parents=True)
+    """Create a bare project directory for testing.
 
-    # Create .claude/commands directory for backwards-compat symlinks
-    commands_dir = tmp_path / ".claude" / "commands"
-    commands_dir.mkdir(parents=True)
-
-    # Create skill files with minimal content
-    skill_content = """---
-description: Test skill
----
-
-## Instructions
-
-This is a test skill for {phase}.
-"""
-    for phase, skill_name in PHASE_SKILL_FILES.items():
-        # Create canonical skill directory and SKILL.md
-        skill_dir = skills_dir / skill_name
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text(
-            skill_content.format(phase=phase.value)
-        )
-        # Create backwards-compat symlink in .claude/commands/
-        symlink_path = commands_dir / f"{skill_name}.md"
-        symlink_path.symlink_to(skill_dir / "SKILL.md")
-
+    Phase prompts are loaded from the vibe-engineer package (plugin command
+    sources), so the project directory carries no skill files.
+    """
     return tmp_path
 
 
@@ -321,38 +299,55 @@ class TestErrorDetectionRemoval:
 class TestAgentRunner:
     """Tests for AgentRunner class."""
 
-    def test_get_skill_path(self, project_dir):
-        """Returns correct path under .agents/skills/ for each phase."""
+    # Chunk: docs/chunks/plugin_legacy_migration - Phase prompts resolve to
+    # package-shipped plugin command sources, independent of the project layout
+    def test_get_skill_path_resolves_packaged_command_source(self, project_dir):
+        """Every phase resolves to an existing plugin command source file.
+
+        In this development checkout the dev fallback resolves to the
+        repo-root commands/ directory; an installed wheel resolves to the
+        force-included orchestrator/skills/ package data. Either way the
+        file must exist and be named after the command.
+        """
         runner = AgentRunner(project_dir)
 
         for phase, skill_name in PHASE_SKILL_FILES.items():
             path = runner.get_skill_path(phase)
-            assert path == project_dir / ".agents" / "skills" / skill_name / "SKILL.md"
+            assert path.name == f"{skill_name}.md"
+            assert path.is_file(), f"Missing phase prompt source for {phase}: {path}"
+            # The prompt must not come from the target project (legacy layout)
+            assert not path.is_relative_to(project_dir)
+
+    def test_get_skill_path_independent_of_project_dir(self, project_dir, tmp_path_factory):
+        """The resolved phase prompt does not vary with the project directory."""
+        other_dir = tmp_path_factory.mktemp("other_project")
+        runner_a = AgentRunner(project_dir)
+        runner_b = AgentRunner(other_dir)
+
+        for phase in PHASE_SKILL_FILES:
+            assert runner_a.get_skill_path(phase) == runner_b.get_skill_path(phase)
 
     def test_get_phase_prompt_loads_content(self, project_dir):
-        """Phase prompt loads content from skill file."""
+        """Phase prompt loads the plugin command content, frontmatter stripped."""
         runner = AgentRunner(project_dir)
 
         prompt = runner.get_phase_prompt("test_chunk", WorkUnitPhase.PLAN)
 
-        # Should contain the skill content (frontmatter stripped)
+        # Should contain the command body (frontmatter stripped)
         assert "Instructions" in prompt
-        assert "---" not in prompt  # Frontmatter stripped
+        assert not prompt.startswith("---")
+        assert "allowed-tools:" not in prompt
 
     def test_get_phase_prompt_goal_replaces_arguments(self, project_dir):
-        """GOAL phase prompt replaces $ARGUMENTS placeholder."""
-        # Create a skill file with $ARGUMENTS
-        skills_dir = project_dir / ".agents" / "skills" / "chunk-create"
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        (skills_dir / "SKILL.md").write_text("""---
-description: Create chunk
----
+        """GOAL phase prompt replaces $ARGUMENTS placeholder.
 
-The operator wants: $ARGUMENTS
-""")
+        The real chunk-create command must carry the $ARGUMENTS placeholder —
+        an invariant the orchestrator's GOAL phase depends on.
+        """
+        skill_source = AgentRunner(project_dir).get_skill_path(WorkUnitPhase.GOAL)
+        assert "$ARGUMENTS" in skill_source.read_text()
 
         runner = AgentRunner(project_dir)
-
         prompt = runner.get_phase_prompt("my_chunk", WorkUnitPhase.GOAL)
 
         assert "my_chunk" in prompt

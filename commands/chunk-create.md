@@ -5,6 +5,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk create:*), Bash(ve 
 ---
 
 <!-- Chunk: docs/chunks/plugin_runtime_context - Runtime context-detection pilot port of chunk-create -->
+<!-- Chunk: docs/chunks/intent_workflow_docs - Command description qualified to signal chunks are for intent-bearing work -->
 
 ## Context
 

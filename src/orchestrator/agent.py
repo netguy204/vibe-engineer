@@ -483,24 +483,43 @@ class AgentRunner:
         self.host_repo_path = self.project_dir
         self.config = config if config is not None else OrchestratorConfig()
 
-    # Chunk: docs/chunks/orchestrator_skill_path_fix - Use canonical .agents/skills/ paths
+    # Chunk: docs/chunks/plugin_legacy_migration - Phase prompts ship with the
+    # vibe-engineer package (plugin command sources), not with the target project
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
-        """Get the path to the skill file for a phase.
+        """Get the path to the phase-prompt source file for a phase.
+
+        Phase prompts are the plugin command sources (DEC-010). They ship
+        with the vibe-engineer package: an installed wheel carries them as
+        package data at orchestrator/skills/<name>.md (hatch force-include
+        of the repo-root commands/ directory). In a development checkout
+        (editable install), the force-include is not materialized, so we
+        fall back to the repo-root commands/ directory.
+
+        The target project's layout is irrelevant: since plugin-based
+        distribution, projects no longer carry .agents/skills/ content.
 
         Args:
             phase: The work unit phase
 
         Returns:
-            Path to the skill file under .agents/skills/<name>/SKILL.md
+            Path to the phase-prompt markdown file
         """
         skill_name = PHASE_SKILL_FILES[phase]
-        return self.project_dir / ".agents" / "skills" / skill_name / "SKILL.md"
+
+        # Installed package: commands/ force-included as orchestrator/skills/
+        packaged = Path(__file__).resolve().parent / "skills" / f"{skill_name}.md"
+        if packaged.is_file():
+            return packaged
+
+        # Development checkout: src/orchestrator/agent.py -> repo root
+        repo_root = Path(__file__).resolve().parents[2]
+        return repo_root / "commands" / f"{skill_name}.md"
 
     def get_phase_prompt(self, chunk: str, phase: WorkUnitPhase) -> str:
         """Build the prompt for a phase execution.
 
-        Loads the skill content from the .agents/skills/ directory and
-        injects any necessary arguments.
+        Loads the phase-prompt content shipped with the vibe-engineer
+        package and injects any necessary arguments.
 
         Args:
             chunk: Chunk name

@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: "Required Properties: retrofit-ability and partial-adoption — 'It must be possible to retrofit a legacy project into the workflow' and 'The tooling that supports this workflow must remain effective even if not every engineer working in the project uses the workflow.'"
 proposed_chunks:
   - prompt: >-

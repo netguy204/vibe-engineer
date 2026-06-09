@@ -55,8 +55,8 @@ Vibe Engineer is equally useful and applicable to projects written in any progra
 
 ### Workflow Contexts
 
-- **Project**: A git repository using ve for workflow management. Contains `docs/chunks/`, `.claude/commands/`, `CLAUDE.md`, and other ve artifacts. Projects are the primary context for most ve operations.
-- **Task Directory**: A directory containing `.ve-task.yaml` that coordinates work across multiple projects. Task directories have their own `CLAUDE.md` and `.claude/commands/` rendered with task-specific context. Use task directories when work spans multiple repositories.
+- **Project**: A git repository using ve for workflow management. Contains `docs/chunks/`, `AGENTS.md` (with a `CLAUDE.md` symlink), and other ve artifacts. Workflow commands are not stored in the project — they are distributed via the vibe-engineer Claude Code plugin (DEC-010). Projects are the primary context for most ve operations.
+- **Task Directory**: A directory containing `.ve-task.yaml` that coordinates work across multiple projects. Task directories have their own `AGENTS.md`/`CLAUDE.md`; workflow commands come from the plugin and detect task context at runtime via `.ve-task.yaml`. Use task directories when work spans multiple repositories.
 - **External Artifact Repo**: The project designated (via `--external` flag during `ve task init`) to hold cross-cutting workflow artifacts (chunks, narratives, subsystems, investigations) for a task. The external artifact repo is a regular project that happens to store shared documentation. Participating projects reference these artifacts via `external.yaml` files.
 
 ### Task Context Modes
@@ -114,7 +114,8 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
 
 ```
 {project_root}/
-  CLAUDE.md                          # Project workflow instructions for agents
+  AGENTS.md                          # Project workflow instructions for agents
+  CLAUDE.md                          # Symlink to AGENTS.md (Claude Code compatibility)
   docs/
     trunk/
       GOAL.md                         # Project goal and constraints
@@ -131,14 +132,14 @@ All artifacts are UTF-8 encoded Markdown files. Chunk documents use YAML frontma
     investigations/
       {short_name}/                   # Investigation directories
         OVERVIEW.md                   # Investigation documentation with frontmatter
-  .claude/
-    commands/                         # Agent command definitions
-      chunk-create.md
-      chunk-plan.md
-      chunk-complete.md
-      chunk-update-references.md
-      chunks-resolve-references.md
 ```
+
+Workflow commands (slash commands, skills, hooks, subagents) are not part of
+the project layout: they are distributed via the vibe-engineer Claude Code
+plugin (DEC-010) and updated through the plugin manager, not by re-running
+`ve init`. Earlier ve versions rendered commands into `.agents/skills/` with
+`.claude/commands/` symlinks; re-running `ve init` removes that legacy layout
+(see `ve init` below).
 
 ### Task Directory Structure
 
@@ -147,12 +148,8 @@ Task directories coordinate work across multiple projects:
 ```
 {task_root}/
   .ve-task.yaml                       # Task configuration
-  CLAUDE.md                           # Task-specific agent instructions
-  .claude/
-    commands/                         # Task-context command definitions
-      chunk-create.md                 # Includes task-specific guidance
-      chunk-implement.md              # References participating projects
-      ...                             # All command templates rendered for task context
+  AGENTS.md                           # Task-specific agent instructions
+  CLAUDE.md                           # Symlink to AGENTS.md
   {external_repo}/                    # External artifact repository
     docs/
       chunks/                         # Shared chunks
@@ -173,16 +170,15 @@ projects:
   - org/project-2
 ```
 
-**Task CLAUDE.md**:
-- Rendered from `src/templates/task/CLAUDE.md.jinja2`
+**Task AGENTS.md**:
+- Rendered from `src/templates/task/AGENTS.md.jinja2` (with a `CLAUDE.md` symlink)
 - Contains external artifact repo reference
 - Lists participating projects
 - Provides task-specific workflow orientation
 
-**Task Commands (.claude/commands/)**:
-- Rendered from same templates as project commands
-- Include task-context conditional content (`{% if task_context %}...{% endif %}`)
-- Reference external_artifact_repo and projects list
+**Task Commands**:
+- Provided by the vibe-engineer Claude Code plugin — nothing is rendered into the task directory
+- Commands detect task context at runtime by finding `.ve-task.yaml` and read `.ve-config.yaml` for project configuration
 - Guide agents on where artifacts are created and how cross-project workflows differ
 
 ### Chunk Directory Naming
@@ -402,13 +398,25 @@ Initialize a project with the vibe engineering document structure.
 - **Preconditions**: None (idempotent operation)
 - **Postconditions**:
   - `docs/trunk/` contains GOAL.md, SPEC.md, DECISIONS.md, TESTING_PHILOSOPHY.md
-  - `docs/chunks/` directory exists
-  - `.claude/commands/` contains command definition files
-  - `CLAUDE.md` exists at project root
+  - `docs/chunks/` and `docs/narratives/` directories exist
+  - `docs/reviewers/baseline/` contains the baseline reviewer
+  - `AGENTS.md` exists at project root with a `CLAUDE.md` symlink
+  - No command files are rendered (commands are distributed via the
+    vibe-engineer Claude Code plugin, DEC-010)
 - **Behavior**:
   - Skips files that already exist (preserves existing content)
-  - Command files are symlinked to package templates (copies on Windows)
-  - Reports created files, skipped files, and any warnings
+  - Reports created files, removed files, skipped files, and any warnings
+  - **Legacy-layout migration**: if the project carries the pre-plugin
+    rendered layout, removes ve-generated `.agents/skills/` content
+    (identified by the AUTO-GENERATED header) and `.claude/commands/`
+    symlinks pointing into `.agents/skills/` (plus ve-generated regular
+    command files from Windows-era copies), prunes directories emptied by
+    the cleanup, rewrites the AGENTS.md managed block (between
+    `<!-- VE:MANAGED:START/END -->`) to the slimmed form, and prints a
+    pointer to the plugin install. User-authored files in those directories
+    (no AUTO-GENERATED header, or symlinks pointing elsewhere) are
+    preserved with a warning. The migration is idempotent: a second run
+    removes nothing and reports only skips.
 - **Errors**:
   - IOError if directories cannot be created
 - **Exit codes**: 0 on success
@@ -430,9 +438,8 @@ Initialize a task directory for cross-repository work.
   - All referenced repositories have `docs/chunks/` (VE-initialized)
 - **Postconditions**:
   - `.ve-task.yaml` created with external_artifact_repo and projects list
-  - `CLAUDE.md` created with task-specific content (external repo and project list rendered from template)
-  - `.claude/commands/` directory created with all command templates rendered for task context
-  - Command templates include task-context specific guidance (e.g., "artifacts created in external repo")
+  - `AGENTS.md` created with task-specific content (external repo and project list rendered from template), plus a `CLAUDE.md` symlink
+  - No command files are rendered — plugin commands detect task context at runtime via `.ve-task.yaml`
 - **Behavior**:
   - Repository references can be `org/repo` format or plain directory names
   - Resolves directories by trying `{repo}` first, then `{org}/{repo}`
