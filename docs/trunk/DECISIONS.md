@@ -343,3 +343,29 @@ By always resolving to HEAD, we:
 - The plugin version and the Python package version can drift; a version-compatibility policy is defined by the plugin_session_hooks chunk.
 
 **Revisit If**: Multi-agent (non-Claude-Code) support becomes a requirement, plugin install size becomes a practical friction point, or Claude Code's plugin system changes in ways that break repository-root marketplace hosting.
+
+### DEC-011: Plugin/CLI version-compatibility policy — co-versioned, major.minor must match
+
+**Date**: 2026-06-09
+
+**Status**: ACCEPTED
+
+**Decision**: The Claude Code plugin and the `ve` Python package are co-versioned: `.claude-plugin/plugin.json` `version` must equal the `pyproject.toml` `version` at every release (enforced by a test). An installed plugin and an installed CLI are **compatible** when their `major.minor` version components match; patch-level drift is silently tolerated. The version source on the CLI side is the new `ve --version` flag (click `version_option` reading installed package metadata). The plugin's SessionStart hook enforces the policy advisorily: a `major.minor` mismatch produces a single warning line naming both versions; a CLI that does not support `--version` predates this policy and is treated as an unknown-version mismatch with the same one-line warning. Warnings never block — the hook always exits 0.
+
+**Context**: DEC-010 moved agent-facing content into a plugin while the `ve` CLI remains separately installed via uv/pip, so the two halves can drift: a user can update the plugin without upgrading the CLI, or vice versa. The plugin's commands and hooks shell out to `ve` and depend on its CLI surface (flags, subcommands, output formats). DEC-010 explicitly deferred the compatibility policy to the plugin_session_hooks chunk. The CLI previously had no version flag at all (`ve --version` exited 2), so any policy needed a version source first.
+
+**Alternatives Considered**:
+- *Supported-range declaration*: plugin.json (or a sidecar file) declares a supported ve version range (e.g., `>=0.2,<0.3`). Rejected — since both halves live in this repository and release together, a range adds a second thing to maintain that co-versioning makes redundant.
+- *Exact-version match*: require full `major.minor.patch` equality. Rejected — patch releases fix bugs without changing the CLI surface; warning on every patch drift trains users to ignore the warning.
+- *Hard failure on mismatch*: block the session or disable plugin commands. Rejected — a stale CLI is usually still mostly functional, and a session-start hook that blocks work is worse than the drift it guards against.
+- *No policy (silent drift)*: rejected — DEC-010's consequence list called the drift risk out explicitly, and a one-line advisory warning is nearly free.
+
+**Rationale**: Co-versioning is the cheapest honest policy for a single repository that ships both artifacts: there is exactly one version number to reason about, and "matching minor" maps directly onto how the CLI surface actually evolves (new commands and flags land in minor releases; patches do not change the contract). Treating a `--version`-less CLI as a mismatch gives pre-0.2.x installs a correct upgrade nudge without special-casing.
+
+**Consequences**:
+- Every release must bump `plugin.json` and `pyproject.toml` together; `tests/test_session_hook.py` fails the build if they disagree.
+- The `ve` CLI now has a `--version` flag; downstream tooling may rely on its `ve, version X.Y.Z` output format.
+- Users see at most one warning line per session on drift, with the upgrade command inline (`uv tool install --upgrade vibe-engineer` or a plugin update).
+- A breaking CLI change within a minor release would evade the policy; the policy assumes semver discipline in this repository.
+
+**Revisit If**: The plugin and CLI move to separate repositories or release cadences, the plugin grows features that genuinely need a version *range* (e.g., supporting older CLIs deliberately), or warning fatigue is observed in practice.

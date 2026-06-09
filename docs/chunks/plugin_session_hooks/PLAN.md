@@ -10,170 +10,196 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The SessionStart hook ships as two plugin files plus one small CLI addition:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`hooks/hooks.json`** — registers a `SessionStart` hook that runs a shell
+   script via `${CLAUDE_PLUGIN_ROOT}`, per Claude Code's plugin hook
+   convention (DEC-010 established `hooks/` as the canonical home).
+2. **`hooks/session_start.sh`** — a dependency-free POSIX shell script. It
+   must work precisely when the `ve` CLI is *missing*, so it cannot be
+   written in Python or depend on `jq`; it uses only `sh` built-ins, `grep`,
+   and `sed`. Logic, in order:
+   - **ve-project detection**: resolve the project root as
+     `${CLAUDE_PROJECT_DIR:-$PWD}` and require `docs/trunk/GOAL.md` to exist
+     there. This is the cheapest unambiguous signal — `ve init` always
+     scaffolds it, and `docs/chunks/` alone can exist in non-ve repos that
+     merely vendor docs. Not a ve project → `exit 0` with no output.
+   - **CLI presence**: `command -v ve`. Missing → emit exactly one
+     actionable line (`uv tool install vibe-engineer` hint) and exit 0.
+   - **Version compatibility**: read the plugin version from
+     `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (grep/sed, no jq);
+     read the CLI version from `ve --version`. Warn per the policy below.
+   - **Current chunk**: run `ve chunk list --current` from the project root.
+     Exit 0 → print `Current IMPLEMENTING chunk: <dir>`. Non-zero (no
+     implementing chunk, or project not initialized) → print nothing for
+     this section. Total output is at most 3 lines.
+3. **`ve --version`** — the CLI currently has no version flag (`ve --version`
+   exits 2), and the hook needs a version source. Add
+   `@click.version_option(package_name="vibe-engineer", prog_name="ve")` to
+   the `cli` group in `src/cli/__init__.py`. Version comes from installed
+   package metadata (single source of truth: `pyproject.toml`), output is
+   `ve, version X.Y.Z`. This is the cleanest mechanism — no parallel version
+   constant to keep in sync.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+### Version-compatibility policy (the DEC-010 deferral)
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/plugin_session_hooks/GOAL.md)
-with references to the files that you expect to touch.
--->
+Recorded as a new ADR (DEC-011) in `docs/trunk/DECISIONS.md`:
+
+- The plugin and the Python package are co-versioned in this repository:
+  `.claude-plugin/plugin.json` `version` must equal `pyproject.toml`
+  `version` at every release (enforced by a test).
+- **Compatible** iff the `major.minor` of the plugin and the installed CLI
+  match; patch-level drift is tolerated silently.
+- `major.minor` mismatch → one warning line naming both versions and
+  suggesting `uv tool install --upgrade vibe-engineer` (or a plugin update
+  if the CLI is newer).
+- A CLI that does not support `--version` predates this policy (< 0.2.x
+  installs) → treated as a mismatch with version "unknown"; same one-line
+  warning.
+- Warnings never block the session; the hook always exits 0.
+
+### Testing strategy (per docs/trunk/TESTING_PHILOSOPHY.md)
+
+TDD with behavioral assertions. The hook script is pure behavior — write the
+tests first, run them red, then implement:
+
+- **Hook behavior tests** (`tests/test_session_hook.py`): invoke
+  `hooks/session_start.sh` via `subprocess` with a controlled environment
+  (tmp project dirs, a tmp `PATH` containing fake `ve` stub executables that
+  report chosen versions / chunk output). Each test maps to a GOAL success
+  criterion: silent in non-ve dirs, one-line hint when ve is missing,
+  mismatch warning naming both versions, current chunk surfaced, output ≤ 3
+  lines, exit 0 in all cases.
+- **Hook registration tests**: `hooks/hooks.json` is valid JSON, registers a
+  `SessionStart` command hook pointing at the script via
+  `${CLAUDE_PLUGIN_ROOT}`, and the script is executable.
+- **CLI version test**: `click.testing.CliRunner` invokes `cli` with
+  `--version`; asserts the reported version equals
+  `importlib.metadata.version("vibe-engineer")`.
+- **Co-versioning test**: plugin.json version == pyproject.toml version
+  (extends the contract started by `tests/test_plugin_manifest.py`).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No documented subsystem in `docs/subsystems/` covers plugin layout or CLI
+flag wiring; the closest governing artifacts are DEC-010 and the
+`plugin_scaffold` chunk, which this plan builds on directly.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `ve --version` to the CLI
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/cli/__init__.py`, decorate the `cli` group with
+`@click.version_option(package_name="vibe-engineer", prog_name="ve")`. Add a
+chunk backreference comment. Write the CliRunner test first
+(`tests/test_session_hook.py::TestVeVersionFlag` or a small dedicated test
+class) asserting `ve --version` exits 0 and reports the installed package
+version.
 
-Example:
+Location: `src/cli/__init__.py`, `tests/test_session_hook.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Write failing hook tests
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Create `tests/test_session_hook.py` with subprocess-based tests against
+`hooks/session_start.sh`:
 
-Location: src/segment/format.rs
+- `test_silent_in_non_ve_directory` — tmp dir without `docs/trunk/GOAL.md`:
+  no stdout, exit 0.
+- `test_missing_ve_cli_emits_single_install_hint` — ve project, `PATH`
+  without `ve`: exactly one line containing `uv tool install vibe-engineer`.
+- `test_surfaces_implementing_chunk` — fake `ve` stub whose `--version`
+  matches plugin major.minor and whose `chunk list --current` prints a chunk
+  dir: output names the chunk, contains no warning.
+- `test_no_chunk_line_when_nothing_implementing` — stub exits 1 with "No
+  implementing chunk found": no chunk line emitted.
+- `test_version_mismatch_warns_naming_both_versions` — stub reports a
+  different minor version: warning line contains both version strings.
+- `test_patch_drift_is_silent` — stub reports same major.minor, different
+  patch: no warning.
+- `test_cli_without_version_flag_warns` — stub exits 2 on `--version` (the
+  pre-policy CLI): warning emitted, hook still exits 0 and surfaces chunk.
+- `test_output_stays_within_budget` — worst case (mismatch + chunk) ≤ 3
+  lines.
 
-### Step 2: Implement header serialization
+Fake `ve` stubs are tiny shell scripts written into a tmp `PATH` dir by a
+test helper. Run the suite; these must fail (script doesn't exist yet).
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Implement `hooks/session_start.sh`
 
-### Step 3: ...
+Dependency-free shell script implementing the Approach logic. Set the
+executable bit. Add a chunk backreference comment. Parse plugin.json with
+`sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'`-style
+extraction; compare versions by splitting on dots and comparing the first
+two components. Remove `hooks/.gitkeep` now that the directory has content.
 
----
+Location: `hooks/session_start.sh`
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Register the hook in `hooks/hooks.json`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Add registration tests (valid JSON, SessionStart entry, command references
+the script, script file exists and is executable, plugin.json/pyproject
+co-versioning).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `hooks/hooks.json`, `tests/test_session_hook.py`
+
+### Step 5: Document the policy (DEC-011) and README note
+
+Append DEC-011 "Plugin/CLI version-compatibility policy" to
+`docs/trunk/DECISIONS.md` following the existing ADR format: co-versioned
+releases, major.minor compatibility rule, unknown-version handling,
+warn-don't-block, and `ve --version` as the version source. Add a short
+"Session hook" paragraph to the plugin section of `README.md` describing
+what the hook surfaces.
+
+Location: `docs/trunk/DECISIONS.md`, `README.md`
+
+### Step 6: Full test run and GOAL.md bookkeeping
+
+Run `uv run pytest tests/` — only the 32 pre-existing failures
+(subsystem-related files + orchestrator daemon negative-pid test) may
+remain; all new tests green. Update `code_paths` in the chunk GOAL.md.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `plugin_scaffold` (ACTIVE) — provides `.claude-plugin/plugin.json`, the
+  `hooks/` directory, and DEC-010. Already merged.
+- No new Python or system dependencies; the hook script deliberately uses
+  only POSIX shell tooling.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Hook output channel**: SessionStart stdout is added to session context.
+  We rely on plain stdout (simplest, documented behavior) rather than the
+  JSON `additionalContext` envelope; if Claude Code changes this, only the
+  script's echo statements are affected.
+- **`CLAUDE_PROJECT_DIR` availability**: assumed set for hooks; the script
+  falls back to `$PWD` so it degrades gracefully.
+- **plugin.json parsing without jq**: sed extraction assumes the `version`
+  key appears once with simple formatting — true for our manifest, and the
+  co-versioning test pins the file's shape indirectly.
+- **`ve chunk list --current` cost**: runs a Python CLI at session start
+  (~hundreds of ms). Acceptable; the script only reaches it inside ve
+  projects with ve installed.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
