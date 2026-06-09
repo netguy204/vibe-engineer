@@ -1,17 +1,22 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- commands/chunk-create.md
+- docs/chunks/plugin_runtime_context/PORTING_GUIDE.md
+- tests/test_plugin_commands.py
 code_references: []
 narrative: claude_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["plugin_scaffold"]
-created_after: ["orch_max_turns_config", "watch_handshake_timeout_retry"]
+depends_on:
+- plugin_scaffold
+created_after:
+- orch_max_turns_config
+- watch_handshake_timeout_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

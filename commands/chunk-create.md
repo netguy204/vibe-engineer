@@ -1,0 +1,233 @@
+---
+name: chunk-create
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk create:*), Bash(ve chunk list:*)
+---
+
+<!-- Chunk: docs/chunks/plugin_runtime_context - Runtime context-detection pilot port of chunk-create -->
+
+## Context
+
+- ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
+- Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
+- Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+
+## Runtime context
+
+Interpret the context above before following the instructions:
+
+- **ve CLI**: The `ve` command is an installed CLI tool, not a file in the
+  repository. Do not search for it — run it directly via Bash. If the
+  context shows "(ve CLI not found)", tell the operator that the
+  vibe-engineer plugin requires the separately installed `ve` CLI, suggest
+  `uv tool install vibe-engineer` (or `pip install vibe-engineer`), and
+  stop.
+- **Uninitialized project**: If `ve` is installed but commands fail because
+  there is no `docs/chunks/` structure, tell the operator to run `ve init`
+  in the project root, then stop.
+- **Task workspace**: If the Task workspace context shows YAML (keys
+  `external_artifact_repo` and `projects`) instead of "(not a task
+  workspace)", you are in a multi-project task workspace. Artifacts
+  (chunks, narratives, investigations) live in the external artifact repo
+  named by `external_artifact_repo`; code changes happen in the
+  participating `projects`. Command-specific task guidance appears below.
+- **Project config**: `.ve-config.yaml` holds project configuration.
+  Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
+  at which to suggest subsystem documentation). When the context shows
+  "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **If this is a task workspace** (the Task workspace context above shows
+  `.ve-task.yaml` contents): this command creates artifacts in the external
+  artifact repo named by `external_artifact_repo` in `.ve-task.yaml`. The
+  chunk GOAL.md and PLAN.md will be created there. When implementing, code
+  changes happen in the participating projects listed under `projects`, and
+  external.yaml references allow projects to discover the external chunk.
+
+## Instructions
+
+The operator wants to define a piece of work to do the following:
+
+$ARGUMENTS
+
+---
+
+You will help them achieve this by following these steps carefully and
+completely in order:
+
+1. Determine a short name for this work. A short name must be less than 32
+   characters long. Its words are underscore separated and it is intended to
+   provide a terse handle for thinking about what the work represents.
+   Substitute this shortname below for the <shortname> placeholder.
+
+   **Naming Guidance:** When naming this chunk, ask yourself: **"What initiative
+   does this chunk advance?"** Use that initiative noun as a prefix.
+
+   - **Good prefixes** (initiative nouns): `ordering_`, `taskdir_`, `template_`,
+     `validation_`, `crossref_` — these describe the multi-chunk effort being
+     advanced
+   - **Bad prefixes** (artifact types or generic terms): `chunk_`, `fix_`, `cli_`,
+     `api_`, `util_`, `misc_`, `update_` — these create meaningless superclusters
+
+   If this chunk is derived from a narrative or investigation, look there for
+   the initiative name. For example, work from `docs/narratives/causal_ordering/`
+   might use the `ordering_` prefix.
+
+2. If the operator has referenced a ticket number, extract it and supply it to
+   the command below where the placeholder <ticket number> is referenced. If no
+   ticket number is referenced, omit that argument entirely.
+
+   **Note:** The ticket ID affects only the `ticket:` field in GOAL.md frontmatter,
+   not the directory name. The directory will always be `docs/chunks/<shortname>/`.
+
+3. Run `ve chunk create <shortname> <ticket number>` and note the path
+   that is returned by the command. The chunk will be created at:
+   `docs/chunks/<shortname>/GOAL.md` (regardless of whether a ticket was provided)
+
+   Substitute this path below for the <chunk directory> placeholder.
+
+4. **Apply the intent-judgment gate before refining the goal.**
+
+   <!-- This gate enforces docs/trunk/CHUNKS.md principle 2 — chunks exist only
+        for intent-bearing work. The asymmetry is load-bearing: operators routinely
+        spawn entire narratives' worth of chunks in one prompt. Re-confirming each
+        would be unbearable. The agent only interrupts on suspected scope creep. -->
+
+   Before investing time in goal refinement, judge whether the proposed work is
+   **intent-bearing** — i.e., whether the resulting code needs to remember *why*
+   it exists (per `docs/trunk/CHUNKS.md` principle 2).
+
+   Route based on your judgment:
+
+   - **Clearly intent-bearing** (architectural decision, constraint to remember,
+     contract being established, behavioral invariant, design boundary) →
+     proceed silently to step 5. No operator prompt needed.
+
+   - **Orchestrator-execution signals detected** in the operator's request
+     (phrases like: "in the background", "in parallel", "via the orchestrator",
+     "queue these up", "have an agent do this", "spawn all the chunks in this
+     narrative", or semantically equivalent variants) → proceed silently to
+     step 5 regardless of intent-bearing judgment. The operator has signaled
+     they want a unit of delegated work.
+
+   - **Suspected non-intent-bearing** (mechanical change, typo fix, dependency
+     bump, performance tweak that doesn't change shape, comment cleanup, one-off
+     bug patch) → surface to the operator with a one-line summary of *why* the
+     work looks like it could be vibed, and ask:
+
+     *"This looks like it could be vibed — [your one-line reason]. Create the
+     chunk anyway?"*
+
+     If the operator declines, stop. If the operator confirms, proceed to step 5.
+
+5. Refine the contents of <chunk directory>/GOAL.md given the piece of work that
+   the user has described, ask them any questions required to complete the
+   template and cohesively and thoroughly define the goal of what they're trying
+   to accomplish.
+
+   **Critical: Capture conversation context for the implementing agent.**
+   The agent that implements this chunk will work in a separate session with NO
+   access to this conversation. Everything the implementing agent needs must be
+   written into the GOAL.md. As you refine the goal, actively extract and embed:
+
+   - **File paths and symbols** — Specific files, functions, classes, or config
+     keys referenced in discussion. Don't say "the parser"; say
+     "`src/parser/core.py#Parser.parse_block`".
+   - **Error messages and reproduction steps** — For bugs, include the exact
+     error text, stack traces, and steps to trigger the issue.
+   - **Design decisions and rejected alternatives** — If the operator considered
+     approach A but chose B, record both and the reasoning. This prevents the
+     implementing agent from re-proposing rejected ideas.
+   - **Code patterns or snippets** — If the operator showed example code,
+     described a desired API shape, or referenced existing patterns to follow,
+     include them verbatim.
+   - **Operator preferences and constraints** — Performance requirements, style
+     preferences, backward-compatibility needs, or any "make sure to..." notes.
+   - **Related artifacts** — Link to relevant chunks, investigations,
+     subsystems, or narratives that provide additional context.
+
+   The goal is **self-contained**: an agent reading only the GOAL.md should have
+   everything needed to plan and implement without asking follow-up questions.
+
+6. **Check if this chunk comes from a narrative or investigation with dependencies.**
+
+   If the work being created matches a prompt in a narrative's or investigation's
+   `proposed_chunks` array, check for `depends_on` references:
+
+   a. **Find the matching prompt**: Read the source artifact's OVERVIEW.md and find
+      the `proposed_chunks` entry whose `prompt` matches (or closely describes) this work.
+
+   b. **Check for depends_on**: If the matching entry has `depends_on: [0, 2]` or similar,
+      these are indices referencing other entries in the same `proposed_chunks` array.
+
+   c. **Resolve to chunk names**: For each index in `depends_on`:
+      - Look up `proposed_chunks[index]` in the same array
+      - Get the `chunk_directory` value from that entry
+      - If `chunk_directory` is a valid name (not null), add it to the chunk's `depends_on`
+      - If `chunk_directory` is null, **warn the user**: "Dependency at index N has not
+        been created yet. Consider creating chunks in dependency order, or leave this
+        dependency unresolved for now."
+
+   d. **Populate the chunk's depends_on field**: Add the resolved chunk directory names
+      to the new chunk's GOAL.md `depends_on` frontmatter field as a list of strings.
+      Example: `depends_on: ["auth_core", "config_module"]`
+
+   e. **Update the narrative/investigation**: After creating the chunk, update the
+      source artifact's `proposed_chunks` array to set `chunk_directory: "<shortname>"`
+      for the entry matching this chunk's prompt.
+
+7. **Understand the `depends_on` null vs empty semantics.**
+
+   The `depends_on` field in GOAL.md has three meaningful states, and the default
+   template value of `depends_on: []` is an **explicit assertion**, not a placeholder.
+
+   - **`depends_on: []`** (empty list): You have analyzed the chunk and determined it
+     has no implementation dependencies on other chunks. This **bypasses the orchestrator's
+     conflict oracle**—use it when you're confident the chunk is independent.
+
+   - **`depends_on: null`** or omit entirely: You haven't analyzed dependencies, or the
+     analysis is uncertain. This **triggers oracle consultation** at injection time for
+     heuristic dependency detection.
+
+   - **`depends_on: ["chunk_a", ...]`**: You know specific chunks that must complete
+     before this one. This also **bypasses the oracle** with your explicit declarations.
+
+   **When to change the default:**
+
+   - If step 6 above found dependencies from a narrative/investigation, populate them.
+   - If this chunk is part of a batch and you're uncertain about inter-dependencies,
+     **change `depends_on: []` to `depends_on: null`** so the oracle can analyze.
+   - If you're creating a standalone chunk and have verified it's independent, leave `[]`.
+
+   See the GOAL.md template's DEPENDS_ON section for the full semantics table.
+
+8. **Check if this is a bug fix.** Look for these signals that indicate bug fix
+   work: "bug", "fix", "broken", "error", "issue", "defect", "regression",
+   "incorrect", "wrong", "failing".
+
+   If the work is a bug fix, note this in the GOAL.md success criteria so that
+   when implementation is complete, the fix can be verified.
+
+9. **Check for existing implementing chunk.** Run `ve chunk list --current` to
+   check if there's already an IMPLEMENTING chunk.
+
+   If there IS an existing IMPLEMENTING chunk, inform the user:
+   "Note: Chunk <existing_chunk> is currently being implemented. You can work
+   on this new chunk by completing the current one first with `ve chunk complete`,
+   or create this one with `--future` to work on it later."
+
+10. **IMPORTANT: When committing a new chunk, commit the entire chunk directory.**
+
+    The `ve chunk create` command creates both GOAL.md and PLAN.md files. When
+    committing after refinement and approval, add the **entire chunk directory**
+    to the commit, not just the files you modified:
+
+    ```bash
+    git add docs/chunks/<shortname>/
+    ```
+
+    **Why this matters:** If you only commit GOAL.md (the file you edited), PLAN.md
+    remains untracked on main. When the orchestrator later creates a worktree to
+    run the PLAN phase, the merge will fail with "untracked working tree files
+    would be overwritten" because PLAN.md exists in both places.
+
+    This is especially critical for FUTURE chunks being prepared for orchestrator
+    injection—always commit both files together.

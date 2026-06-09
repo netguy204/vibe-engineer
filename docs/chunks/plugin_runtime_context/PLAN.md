@@ -10,170 +10,193 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Plugin command files are static markdown (DEC-010), so everything the template
+system resolved at render time must become instructions the agent resolves at
+execution time. Two render-time mechanisms are being replaced:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **`{% if task_context %}` conditionals** (with `{{ external_artifact_repo }}`
+   and `{% for project in projects %}` interpolations) — replaced by a
+   `!`-prefixed context line that prints `.ve-task.yaml` when present, plus
+   runtime-conditional prose ("If this is a task workspace ..."). The values
+   that Jinja2 interpolated (`external_artifact_repo`, `projects`) are exactly
+   the keys `ve task init` writes into `.ve-task.yaml`
+   (src/task_init.py#TaskInitializer.initialize), so surfacing the file's
+   contents gives the agent the same data the renderer had.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **`ve_config` injection** — replaced by a `!`-prefixed context line that
+   prints `.ve-config.yaml` when present, with documented defaults. The only
+   config key today is `cluster_subsystem_threshold` (default 5, see
+   src/template_system.py#load_ve_config); no command template currently
+   interpolates it, so for the pilot this is purely the conventional mechanism
+   that later ports rely on.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/plugin_runtime_context/GOAL.md)
-with references to the files that you expect to touch.
--->
+**Form of the convention**: an embedded standard preamble (a `## Context`
+block of `!` lines plus a `## Runtime context` instruction section) that each
+ported command carries verbatim, documented once in a porting guide. The
+narrative offered "a reusable preamble or skill reference"; the preamble is
+chosen over a skill indirection because commands stay self-contained — an
+agent reading one command file needs no second fetch to know how to behave,
+and the wave-3 ports become a mechanical copy-paste plus per-block rewrite.
+
+**Where the guide lives**: `docs/chunks/plugin_runtime_context/PORTING_GUIDE.md`
+— a chunk artifact. The wave-3 chunks (plugin_core_commands,
+plugin_orch_commands) already `depends_on` this chunk and their GOALs say "per
+the plugin_runtime_context convention and porting guide", so the chunk
+directory is where they will look. The durable intent (plugin commands detect
+context at runtime) is owned by this chunk's GOAL.md per the intent-ownership
+model; the guide is the mechanical companion.
+
+**Pilot**: `commands/chunk-create.md`, ported end-to-end from
+src/templates/commands/chunk-create.md.jinja2 following plugin_scaffold's
+conventions (frontmatter `name`/`description`/`allowed-tools`; bare `ve`, not
+`uv run ve`; probe presence with `ve --help` since `ve` has no `--version`;
+failure-mode instructions; HTML-comment chunk backreference). The
+auto-generated header partial is dropped — plugin files are source, not render
+output. Source templates in src/templates/commands/ are NOT deleted or
+modified (plugin_init_slimdown owns that).
+
+**Testing** (per docs/trunk/TESTING_PHILOSOPHY.md): tests are written first in
+tests/test_plugin_commands.py. Two layers:
+
+- **Generic invariants over every `commands/*.md`** — valid frontmatter with
+  `name`/`description`, no Jinja2 syntax (`{%`, `{{`, `{#`), no AUTO-GENERATED
+  header. These run for free against every command the wave-3 chunks add,
+  giving the mass ports standing regression coverage.
+- **Pilot-specific assertions** — chunk-create.md detects `.ve-task.yaml` and
+  `.ve-config.yaml`, preserves the task-context guidance (external artifact
+  repo routing) as runtime conditionals, keeps `$ARGUMENTS`, keeps the
+  intent-judgment gate, and carries the chunk backreference.
+
+The three behavioral situations from the success criteria (plain project /
+project with .ve-config.yaml / task workspace) are verified by executing the
+preamble's `!` shell lines in three temp directories and asserting the output
+distinguishes the situations — this tests the actual detection mechanism the
+agent will see, not just the markdown text.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (status: see OVERVIEW.md): this chunk
+  documents the runtime replacement for two of its render-time features
+  (`task_context` conditionals, `ve_config` injection) but does not modify the
+  subsystem's code. src/template_system.py and src/task_init.py are read-only
+  references here; removal of the commands collection belongs to
+  plugin_init_slimdown.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write failing tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_plugin_commands.py`:
 
-Example:
+- `TestCommandInvariants` (parameterized over `commands/*.md`):
+  - frontmatter parses and has non-empty `name` and `description`; `name`
+    matches the file stem
+  - body contains no `{%`, `{{`, or `{#` (no Jinja2 syntax)
+  - body contains no "AUTO-GENERATED" header
+- `TestChunkCreateCommand`:
+  - `commands/chunk-create.md` exists; frontmatter name is `chunk-create`
+  - body references `.ve-task.yaml` and `.ve-config.yaml` (runtime detection)
+  - body preserves task-context guidance: mentions `external_artifact_repo`
+    and external-repo artifact routing as a runtime conditional
+  - body keeps `$ARGUMENTS` and the chunk backreference comment
+    (`docs/chunks/plugin_runtime_context`)
+- `TestRuntimeDetection` (three-situation check):
+  - extract the `` !`...` `` shell lines from chunk-create.md's Context block
+  - run them (via `bash -c`) in three temp dirs: empty; with `.ve-config.yaml`
+    (`cluster_subsystem_threshold: 3`); with `.ve-task.yaml`
+    (`external_artifact_repo`/`projects` keys)
+  - assert each situation produces distinguishable output (fallback text in
+    the empty dir; file contents in the others)
 
-### Step 1: Define the SegmentHeader struct
+Run `uv run pytest tests/test_plugin_commands.py` and confirm the new tests
+fail (commands/chunk-create.md does not exist yet).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Write the porting guide with the canonical preamble
 
-Location: src/segment/format.rs
+Create `docs/chunks/plugin_runtime_context/PORTING_GUIDE.md` containing:
 
-### Step 2: Implement header serialization
+1. **The convention** — how plugin commands resolve context at runtime:
+   - task context: `.ve-task.yaml` at the workspace root (the session cwd in
+     a task workspace) is the detection signal; its `external_artifact_repo`
+     and `projects` keys carry the values templates used to interpolate
+   - project config: `.ve-config.yaml` at the project root; known keys and
+     defaults (`cluster_subsystem_threshold: 5`); absence means defaults
+2. **The canonical preamble** — the exact `## Context` block (`!` lines with
+   fallback chains for ve CLI, `.ve-task.yaml`, `.ve-config.yaml`) and the
+   `## Runtime context` instruction section (ve missing → suggest
+   `uv tool install vibe-engineer`; uninitialized → suggest `ve init`; task
+   workspace and config interpretation rules) to paste into every ported
+   command.
+3. **Mechanical porting steps** — numbered recipe for converting one
+   `src/templates/commands/<name>.md.jinja2` into `commands/<name>.md`:
+   frontmatter mapping (add `allowed-tools`), drop the auto-generated header
+   include, fold the common-tips include into the preamble, rewrite
+   `{% if task_context %}` blocks as "If this is a task workspace" prose,
+   rewrite `{% if %}/{% else %}` pairs as both-variants-with-conditions,
+   replace `{{ external_artifact_repo }}`/`{% for project in projects %}`
+   with references to the `.ve-task.yaml` keys, keep `$ARGUMENTS`, add the
+   porting chunk's backreference, and a final no-Jinja2 grep check.
+4. **Worked example** — pointer to commands/chunk-create.md as the reference
+   port, with the template's task_context block and its ported form shown
+   side by side.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Port chunk-create
 
-### Step 3: ...
+Create `commands/chunk-create.md` from chunk-create.md.jinja2 by applying the
+guide's recipe exactly (the pilot must be a faithful application of the
+recipe, since wave-3 agents will treat the pair as guide + worked example):
 
----
+- frontmatter: `name: chunk-create`, description copied from the template,
+  `allowed-tools` covering the preamble probes and the ve invocations the
+  body uses (`ve chunk create`, `ve chunk list`, `ve chunk suggest-prefix`
+  is not used here — check the template body for the exact set)
+- chunk backreference comment for docs/chunks/plugin_runtime_context
+- canonical preamble (Context block + Runtime context section)
+- the template's task_context block ("creates artifacts in the external
+  artifact repo ...") preserved as a runtime conditional under the task
+  workspace branch
+- the 10 instruction steps carried over verbatim (no behavioral changes to
+  the command itself), `$ARGUMENTS` intact
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Make tests pass and run the three-situation check
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+`uv run pytest tests/test_plugin_commands.py tests/test_plugin_manifest.py`
+until green. Then run the full suite `uv run pytest tests/` and compare
+against the pre-existing-failure baseline (32 known failures on main —
+subsystem test files + one orchestrator daemon negative-pid test); no new
+failures attributable to this chunk.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Update chunk metadata
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Update `docs/chunks/plugin_runtime_context/GOAL.md` `code_paths` with the
+files touched. Record any deviations in this PLAN.md.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **plugin_scaffold** (ACTIVE) — supplies the plugin layout, manifest, the
+  ve-status pilot whose conventions this chunk extends, and
+  tests/test_plugin_manifest.py whose helpers the new tests mirror.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`!` context-line portability**: the preamble's shell fallback chains must
+  behave on a plain POSIX shell. Mitigated by the three-situation test that
+  actually executes the extracted lines.
+- **Workspace-root ambiguity**: an agent whose cwd is *inside* a participating
+  project (not the task root) won't see `.ve-task.yaml` in cwd. The convention
+  documents that the workspace root is the session cwd in a task workspace
+  (where `ve task init` renders today) and tells the agent to check one parent
+  level before concluding it is not in a task. Deeper resolution is out of
+  scope.
+- **allowed-tools breadth**: too narrow and the `!` lines silently fail; too
+  broad and the command pre-approves writes. Follow ve-status's pattern and
+  list only what the command actually runs.
+- **Guide drift**: wave-3 agents may improvise if the recipe is ambiguous.
+  Mitigated by the side-by-side worked example and the generic invariant
+  tests that fail on any Jinja2 leftovers in commands/.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
